@@ -127,7 +127,7 @@ test("direct ad fields and shot editor expose user-facing choices without claimi
 });
 
 test('all portrait templates validate, scale to short cuts and reject unknown fields',()=>{
- assert.equal(catalog.DIAGRAM_CATALOG.length,75);
+ assert.equal(catalog.DIAGRAM_CATALOG.length,95);
  for(const entry of catalog.DIAGRAM_CATALOG){
   const d=catalog.defaultDiagram(entry.type,3);
   assert.equal(contract.shortformDiagramSchema.safeParse(d).success,true,entry.type);

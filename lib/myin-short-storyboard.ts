@@ -7,7 +7,7 @@ import { myinCueMisses, myinNorm, myinSceneStarts, openingTextIssues, type MyinS
 
 /** A vertical diagram as the render PC's catalog lists it (lib/shortform-diagram-catalog.json): its slots and their letter limits. */
 export interface ShortDiagram { type: string; name: string; slots: string; spec: SlotSpec }
-/** required: slots the new vertical diagrams (2026-10-30 GPT) stop the render without; a cue_ slot may also come as its t_ time. */
+/** required: slots the new vertical diagrams (2026-10-30 GPT) stop the render without; cue may also come as t, a cue_x slot as t_x. */
 interface SlotSpec { kind: string; fields?: Record<string, SlotSpec>; item?: SlotSpec; min?: number; max?: number; required?: string[] }
 /** 인물 카드: Logan's persona scene (myin_persona.py), centred in the vertical frame by the render PC — for the first time the script
  *  brings in a person (시안 2: 「6년 차 디자이너 수진 씨」). His drawer reads every person's name and desc. */
@@ -49,7 +49,7 @@ const lineText = (line: Piece[]) => line.map((piece) => String(piece.text ?? "")
 function slotIssues(spec: SlotSpec, value: unknown, where: string, path = ""): string[] {
   if (spec.kind === "object" && value && typeof value === "object" && !Array.isArray(value)) {
     const o = value as Record<string, unknown>;
-    const missing = (spec.required ?? []).filter((key) => o[key] === undefined && !(key.startsWith("cue_") && o[`t_${key.slice(4)}`] !== undefined));
+    const missing = (spec.required ?? []).filter((key) => o[key] === undefined && !(key.startsWith("cue") && o[`t${key.slice(3)}`] !== undefined));
     return [...missing.map((key) => `${where} ${path ? `${path}.` : ""}${key} 칸이 없어요.`),
       ...Object.entries(spec.fields ?? {}).flatMap(([key, child]) => slotIssues(child, o[key], where, path ? `${path}.${key}` : key))];
   }
@@ -99,11 +99,7 @@ export function checkShortStoryboard(value: unknown, input: { words: [number, nu
         }
       });
     } else if (diagrams.has(sc.type)) {
-      issues.push(...slotIssues(diagrams.get(sc.type)!.spec, sc, `${where} ${sc.type}`));
-      // 공통점 찾기 marks the same words in every card; the render PC stops when a card lacks them or has them twice.
-      const cards = sc.type === "lib_common_thread" && Array.isArray(sc.cards) ? sc.cards as Piece[] : [];
-      if (cards.length && (new Set(cards.map((c) => c?.mark)).size !== 1 || cards.some((c) => typeof c?.mark !== "string" || !c.mark || String(c.text ?? "").split(String(c.mark)).length !== 2)))
-        issues.push(`${where} lib_common_thread는 카드마다 같은 mark가 text 안에 꼭 한 번 들어가요.`);
+      issues.push(...slotIssues(diagrams.get(sc.type)!.spec, sc, `${where} ${sc.type}`), ...newDiagramIssues(sc).map((issue) => `${where} ${sc.type}${issue}`));
     }
     else issues.push(`${where} "${sc.type}"는 세로로 그릴 수 없어요. 큰 글자는 opening, 관계와 사람은 아래 세로 도식 목록에서 골라요.`);
   });
@@ -161,6 +157,41 @@ function timedSlots(value: unknown, when: { cue?: unknown; t?: unknown }, root =
   if (!value || typeof value !== "object") return value;
   const o = Object.fromEntries(Object.entries(value).map(([key, item]) => [key, timedSlots(item, when, false)]));
   return !root && (typeof o.text === "string" || typeof o.name === "string") && !timed(o) ? { ...o, ...when } : o;
+}
+
+/** What the 2026-10-30 vertical diagrams (GPT) refuse beyond letter limits: a mode's own slots, indexes inside their lists, shares that
+ *  add up. The render PC stops the whole short on any of these. */
+function newDiagramIssues(sc: Scene): string[] {
+  const list = (key: string) => (Array.isArray(sc[key]) ? sc[key] : []) as Piece[];
+  const timed = (key: string) => typeof sc[`cue_${key}`] === "string" || typeof sc[`t_${key}`] === "number";
+  const out: string[] = [];
+  if (sc.type === "lib_common_thread" && list("cards").length && (new Set(list("cards").map((c) => c?.mark)).size !== 1
+    || list("cards").some((c) => typeof c?.mark !== "string" || !c.mark || String(c.text ?? "").split(String(c.mark)).length !== 2)))
+    out.push("는 카드마다 같은 mark가 text 안에 꼭 한 번 들어가요.");
+  if (sc.type === "lib_zero_line" && sc.mode === "ball" && !(typeof sc.start === "number" && sc.start < 0 && typeof sc.end === "number" && timed("ball")))
+    out.push(" 공 모드는 start(음수) · end · cue_ball이 있어야 해요.");
+  if (sc.type === "lib_zero_line" && sc.mode !== "ball" && !(sc.down && sc.up)) out.push("는 down · up이 있어야 해요(공 모드가 아니면).");
+  if (sc.type === "lib_big_number") {
+    const v = Number(sc.value);
+    if (sc.mode === "compare" && typeof sc.base !== "number") out.push(" compare는 기준 base가 있어야 해요.");
+    if (sc.mode === "tally" && !(Number.isInteger(v) && v >= 0 && v <= 50)) out.push(" tally는 0~50 정수예요.");
+    if (sc.mode === "fraction" && !(Number.isInteger(v) && v >= 1)) out.push(" fraction은 1 이상 정수(1/value)예요.");
+  }
+  if (sc.type === "lib_numbered" && (sc.mode === "grid6") !== (list("items").length === 6)) out.push(" 항목 6개는 mode \"grid6\"으로, grid6은 항목 정확히 6개예요.");
+  if (sc.type === "lib_numbered" && sc.mode === "grid6" && list("items").some((it) => String(it?.text ?? "").length > 6)) out.push(" grid6 항목은 6자 이하예요.");
+  if (sc.type === "lib_timeline" && list("items").length >= 4 && list("items").some((it) => String(it?.when ?? "").length > 4)) out.push(" 4~5칸은 when 4자 이하예요.");
+  if (sc.type === "lib_calendar") {
+    const cells = list("marks").map((m) => m?.cell), top = sc.mode === "month" ? 12 : 7;
+    if (new Set(cells).size !== cells.length || cells.some((cell) => !Number.isInteger(cell) || Number(cell) < 1 || Number(cell) > top)) out.push(` cell은 1~${top}, 같은 칸은 한 번만이에요.`);
+  }
+  if (sc.type === "lib_share_bar") {
+    const parts = list("parts"), sum = parts.reduce((a, it) => a + Number(it?.ratio), 0);
+    if (Math.abs(sum - 100) > 0.01 || parts.some((it) => !(Number(it?.ratio) > 0))) out.push(" ratio는 모두 0보다 크고 합이 100이에요.");
+    if (sc.focus !== undefined && !(Number.isInteger(sc.focus) && Number(sc.focus) < parts.length)) out.push(" focus는 0부터 부분 번호예요.");
+  }
+  if (sc.type === "lib_sort_bins" && list("items").some((it) => it?.bin !== 0 && it?.bin !== 1)) out.push(" 항목마다 bin은 0(왼쪽) 또는 1(오른쪽)이에요.");
+  if (sc.type === "lib_stage_rail" && list("pins").some((it) => !Number.isInteger(it?.stage) || Number(it?.stage) >= list("stages").length)) out.push(" pin의 stage는 0부터 단계 번호예요.");
+  return out;
 }
 
 /** A diagram's limits as the OS checks them (slotIssues): "a.text ≤ 8자 · items 1~4개 · items.text ≤ 9자". */
