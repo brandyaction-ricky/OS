@@ -26,7 +26,6 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { findPage, findStage, NAV_STAGES } from "@/lib/navigation";
-import { canAccessFinance } from "@/lib/finance/access";
 import { canOpenMenu } from "@/lib/menu-access";
 import { useMenuAccess } from "./use-menu-access";
 import { useYoutubeCanConfirm, useYoutubeConfirmWaiting, useYoutubeV1Access } from "./use-youtube-confirm";
@@ -85,7 +84,7 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
     .filter(entry => entry.href !== "/hr/my-leave"
       && !(hrShell.legacyHidden && (!teamV1Enabled && entry.href === "/organization/members" || !teamV1Enabled && entry.href === "/organization/schedule"))
       && canOpenMenu(profile, entry.href, menuAccess.loading || menuAccess.error ? [] : menuAccess.allowed))
-    .map(entry => teamV1Enabled && entry.href === "/organization/schedule" ? { ...entry, label: "팀 일정", aliases: ["이번 주 일정", "일정"] } : teamV1Enabled && entry.href === "/organization/members" ? { ...entry, label: "팀 현황", href: "/organization/people", icon: Gauge, aliases: ["팀원 업무량"] } : entry) })).filter(item => item.pages.length && (!item.requiresFinance || canAccessFinance(profile)));
+    .map(entry => teamV1Enabled && entry.href === "/organization/schedule" ? { ...entry, label: "팀 일정", aliases: ["이번 주 일정", "일정"] } : teamV1Enabled && entry.href === "/organization/members" ? { ...entry, label: "팀 현황", href: "/organization/people", icon: Gauge, aliases: ["팀원 업무량"] } : entry) })).filter(item => item.pages.length);  // canOpenMenu already keeps finance pages to finance access, plus 카드지출·정기 결제 for everyone
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);

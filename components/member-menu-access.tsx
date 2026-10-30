@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getMenuAccess, saveMenuAccess, type OsMember } from "@/lib/api-client";
 import { roleLabel } from "@/lib/company-settings";
 import { availableMenuGroups, canOpenMenu, type MenuAccessPolicy } from "@/lib/menu-access";
+import { STAFF_FINANCE_MENUS } from "@/lib/finance/access";
 import { useHrEnabled } from "./hr/feature-context";
 import { NAV_STAGES } from "@/lib/navigation";
 
@@ -81,7 +82,7 @@ export function MemberMenuAccess({ members, token, demo, isAdmin }: { members: O
     setSaving(true);
     setModalError("");
     try {
-      const allowedMenus = mode === "default" ? null : [...new Set(["/home", ...allowed])];
+      const allowedMenus = mode === "default" ? null : [...new Set(["/home", ...allowed.filter(href => !STAFF_FINANCE_MENUS.includes(href))])];
       const policy = demo
         ? { member_id: selected.id, allowed_menus: allowedMenus, version: version + 1 }
         : (await saveMenuAccess(token, { memberId: selected.id, allowedMenus, expectedVersion: version })).policy;
@@ -131,7 +132,7 @@ function MenuAccessDialog({ member, allowed, mode, saving, ready, error, onMode,
   const dialog = useRef<HTMLElement>(null);
   const isAdmin = member.role === "admin";
   const eligibleGroups = availableMenuGroups(memberProfile(member), hrEnabled);
-  const selected = mode === "default" || isAdmin ? eligibleGroups.flatMap(stage => stage.pages.map(page => page.href)) : [...new Set([...allowed, ...(hrEnabled ? ["/hr/my-leave"] : [])])];
+  const selected = mode === "default" || isAdmin ? eligibleGroups.flatMap(stage => stage.pages.map(page => page.href)) : [...new Set([...allowed, ...STAFF_FINANCE_MENUS, ...(hrEnabled ? ["/hr/my-leave"] : [])])];
   const disabled = saving || isAdmin || mode === "default" || !ready;
 
   useEffect(() => {
@@ -167,8 +168,8 @@ function MenuAccessDialog({ member, allowed, mode, saving, ready, error, onMode,
             return <fieldset key={group.id} disabled={groupDisabled} className={`menu-access-group${financeLocked ? " menu-access-group-locked" : ""}`} aria-describedby={financeLocked ? "menu-access-finance-help" : undefined}>
               <legend>{group.id === "content" ? "영상 콘텐츠 (공통 · 롱폼 · 숏폼 · 광고)" : group.id === "automation" ? "스레드 · 자동화 관리" : group.label}<span>{count}/{hrefs.length}</span>{financeLocked ? <small className="menu-access-lock-badge"><LockKeyhole size={12} aria-hidden="true" />권한 필요</small> : null}</legend>
               <label className="menu-access-group-toggle"><input type="checkbox" checked={count === hrefs.length} ref={input => { if (input) input.indeterminate = count > 0 && count < hrefs.length; }} onChange={event => toggleGroup(hrefs, event.target.checked)} disabled={groupDisabled || group.id === "home" || (group.requiresHr && hrefs.length === 1)} />그룹 전체 선택</label>
-              <div>{group.pages.map(page => <label key={page.href}><input type="checkbox" checked={selected.includes(page.href)} disabled={groupDisabled || page.href === "/home" || page.href === "/hr/my-leave"} onChange={event => toggleGroup([page.href], event.target.checked)} />{page.label}{page.href === "/home" || page.href === "/hr/my-leave" ? <small>항상 허용</small> : null}</label>)}</div>
-              {financeLocked ? <p id="menu-access-finance-help" className="menu-access-group-help">재무관리 메뉴를 선택하려면 팀원에서 이 계정의 ‘경영지원 민감정보 접근’을 먼저 허용해 주세요. 메뉴 선택만으로 재무자료 접근 권한이 부여되지는 않습니다.<Link href="/organization/members" onClick={onClose}>구성원 권한 관리 →</Link></p> : null}
+              <div>{group.pages.map(page => <label key={page.href}><input type="checkbox" checked={selected.includes(page.href)} disabled={groupDisabled || page.href === "/home" || page.href === "/hr/my-leave" || STAFF_FINANCE_MENUS.includes(page.href)} onChange={event => toggleGroup([page.href], event.target.checked)} />{page.label}{page.href === "/home" || page.href === "/hr/my-leave" || STAFF_FINANCE_MENUS.includes(page.href) ? <small>항상 허용</small> : null}</label>)}</div>
+              {financeLocked ? <p id="menu-access-finance-help" className="menu-access-group-help">카드지출·정기 결제는 모든 직원에게 열려 있어요. 나머지 재무관리 메뉴를 선택하려면 팀원에서 이 계정의 ‘경영지원 민감정보 접근’을 먼저 허용해 주세요. 메뉴 선택만으로 재무자료 접근 권한이 부여되지는 않습니다.<Link href="/organization/members" onClick={onClose}>구성원 권한 관리 →</Link></p> : null}
             </fieldset>;
           })}
         </div>

@@ -30,10 +30,11 @@ function load(file, imports = {}) {
   return exports;
 }
 const schema = load("lib/finance/schema.ts");
+const financeAccess=load("lib/finance/access.ts");
 const resources = schema.READ_RESOURCES.filter(resource => resource !== "events");
 const emptyLedger = () => Object.fromEntries(resources.map(resource => [resource, []]));
 const server = load("lib/server/finance.ts", {
-  "./auth": {}, "@/lib/finance/schema": schema, "@/lib/finance/domain.mjs": domain,
+  "./auth": {}, "@/lib/finance/schema": schema, "@/lib/finance/domain.mjs": domain, "@/lib/finance/access": financeAccess,
 });
 function actorFor({ rows = {}, fail = "" } = {}) {
   const calls = [];
@@ -54,13 +55,13 @@ function actorFor({ rows = {}, fail = "" } = {}) {
   } } };
   return { actor, calls, get peak() { return peak; } };
 }
-function route(actor, denied = false) {
+function route(actor, denied = false, full = true) {
   let authentications = 0;
   const api = load("app/api/v1/finance/[...path]/route.ts", {
     "next/server": { NextResponse: Response },
-    "@/lib/server/finance": { ...server, financeActor: async () => { authentications += 1; if (denied) throw new ApiError(403, "FINANCE_FORBIDDEN", "권한 없음"); return actor; } },
+    "@/lib/server/finance": { ...server, financeMember: async () => { authentications += 1; if (denied) throw new ApiError(403, "FINANCE_FORBIDDEN", "권한 없음"); return { actor, full }; } },
     "@/lib/server/finance-receipts": {}, "@/lib/server/finance-refunds": {}, "@/lib/server/finance-imports": {},
-    "@/lib/finance/schema": schema, "@/lib/finance/domain.mjs": domain,
+    "@/lib/finance/schema": schema, "@/lib/finance/domain.mjs": domain, "@/lib/finance/access": financeAccess,
   });
   return { ...api, get authentications() { return authentications; } };
 }
@@ -93,6 +94,35 @@ test("finance workspace retains single-resource paging and rejects unauthorized 
   const denied = actorFor();
   assert.equal((await route(denied.actor, true).GET(request("batch=1"), context)).status, 403);
   assert.equal(denied.calls.length, 0);
+});
+
+test("staff (no finance access) load only the card screens' rows and cannot reach the rest", async () => {
+  const fixture = actorFor({ rows: { card_transactions: [{ id: "c1", version: 1 }], payments: [{ id: "p1", version: 1 }] } });
+  const api = route(fixture.actor, false, false);
+  const body = await (await api.GET(request("batch=1"), context)).json();
+  assert.deepEqual(Object.keys(body.data).sort(), [...financeAccess.STAFF_FINANCE_READ].sort());
+  assert.ok(fixture.calls.every(call => financeAccess.STAFF_FINANCE_READ.includes(call.resource)), "never queries other finance tables");
+  assert.deepEqual(await (await api.GET(request("resource=payments"), context)).json(), { rows: [], nextOffset: null });
+  assert.equal((await api.GET(new Request("https://example.invalid/api/v1/finance/overview"), { params: Promise.resolve({ path: ["overview"] }) })).status, 403);
+  assert.equal((await api.GET(new Request("https://example.invalid/api/v1/finance/payments"), { params: Promise.resolve({ path: ["payments"] }) })).status, 403);
+  const post = (path, body) => api.POST(new Request(`https://example.invalid/api/v1/finance/${path.join("/")}`, { method: "POST", body: JSON.stringify(body) }), { params: Promise.resolve({ path }) });
+  assert.equal((await post(["batch"], { changes: [{ resource: "bank_rules", row: { id: "00000000-0000-4000-8000-000000000001", version: 0 } }] })).status, 403);
+  assert.equal((await post(["imports", "commit"], {})).status, 403);
+  assert.equal((await post(["events"], { kind: "csv_export", view: "bank", ids: [] })).status, 403);
+});
+
+test("staff may change only a card use's classification, purpose and receipt", async () => {
+  const id = "00000000-0000-4000-8000-0000000000c1", card = "00000000-0000-4000-8000-0000000000a1";
+  const old = { id, version: 3, archived_at: null, card_id: card, used_date: "2026-10-01", time: "10:00", merchant: "가맹점", amount_krw: 10000, foreign_amount: null, currency: null, approval_no: "A1", installment: null, canceled: false, manual_category: null, manual_biz: null, manual_vat: null, memo: null, receipt_path: null, import_batch_id: null };
+  let committed = null;
+  const actor = { supabase: { from(table) { const resource = table.replace(/^os_fin_/, ""); return { select() { return this; }, order() { return this; }, async range() { return { data: resource === "card_transactions" ? [old] : [], error: null }; } }; },
+    async rpc(_name, args) { committed = args.p_changes; return { data: args.p_changes, error: null }; } } };
+  const memo = await server.commitFinance(actor, { changes: [{ resource: "card_transactions", row: { ...old, memo: "팀 회의", manual_category: "회의비" } }] }, true);
+  assert.equal(memo.changes[0].row.memo, "팀 회의");
+  await assert.rejects(server.commitFinance(actor, { changes: [{ resource: "card_transactions", row: { ...old, amount_krw: 1 } }] }, true), error => error.code === "FINANCE_STAFF_FIELDS");
+  await assert.rejects(server.commitFinance(actor, { changes: [{ resource: "card_transactions", row: { ...old, id: "00000000-0000-4000-8000-0000000000c2", version: 0 } }] }, true), error => error.code === "FINANCE_STAFF_FIELDS");
+  await assert.rejects(server.commitFinance(actor, { changes: [{ resource: "cards", row: { id: card, version: 1, archived_at: null, issuer: "KB국민카드", name: "x", last4: "1234", holder_profile_id: null, holder_name: "" } }] }, true), error => error.code === "FINANCE_FORBIDDEN");
+  assert.equal(committed.length, 1, "only the allowed change reached the database");
 });
 
 test("finance batch failure is atomic and stops queueing more resources", async () => {

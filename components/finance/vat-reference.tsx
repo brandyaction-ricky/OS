@@ -68,33 +68,50 @@ export function VatReference({ token }: { token: string | null }) {
   };
 
   const sum = (key: "supply" | "tax" | "total") => (result?.lines ?? []).reduce((total, line) => total + line[key], 0);
-  return <section className="panel finance-vat" aria-label="부가세 신고 참고 자료">
-    <header className="panel-header"><div><h1 className="page-title">부가세 신고 참고 자료</h1>
-      <p>토스 결제·취소, 홈택스 계산서, 외부 매출을 증빙별로 묶은 <b>참고 자료</b>예요. 실제 신고는 세무사와 홈택스 자료로 확인해 주세요.</p></div></header>
-    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "end" }}>
-      <label>사업자<select value={biz} onChange={event => setBiz(event.target.value as Biz)}>{BIZ_KEYS.map(key => <option key={key} value={key}>{TAX_BIZ[key]}</option>)}</select></label>
-      <label>기간<select value={period} onChange={event => setPeriod(event.target.value)}>
+  const count = (key: "payCount" | "cancelCount") => (result?.lines ?? []).reduce((total, line) => total + line[key], 0);
+  // "계좌이체·가상계좌 (토스, …)" reads as a name plus a quiet second line.
+  const split = (label: string) => { const [name, ...rest] = label.split(" ("); return { name, hint: rest.join(" (").replace(/\)$/, "") }; };
+  return <section className="finance-workspace finance-react" aria-label="부가세 신고 참고 자료">
+    <div className="ph"><div className="ph-t"><h1>부가세 신고 참고 자료</h1>
+      <p className="ph-s">토스 결제·취소, 홈택스 계산서, 외부 매출을 증빙별로 묶은 참고 자료예요. 실제 신고는 세무사와 홈택스 자료로 확인해 주세요.</p></div>
+      <div className="ph-a">
+        <button type="button" className="btn sm" disabled={!result?.rows.length} onClick={csv}>CSV 내보내기</button>
+        <button type="button" className="btn sm pri" disabled={!result?.rows.length || busy} onClick={() => void excel()}>{busy ? "만드는 중…" : "엑셀 내려받기"}</button>
+      </div></div>
+    <div className="toolbar">
+      <label className="fin-field"><span>사업자</span><select className="sel" value={biz} onChange={event => setBiz(event.target.value as Biz)}>{BIZ_KEYS.map(key => <option key={key} value={key}>{TAX_BIZ[key]}</option>)}</select></label>
+      <label className="fin-field"><span>기간</span><select className="sel" value={period} onChange={event => setPeriod(event.target.value)}>
         <optgroup label="신고기간 (예정·확정)">{options.quarters.map(key => <option key={key} value={key}>{labelOf(key)}</option>)}</optgroup>
         <optgroup label="반기 (개인사업자 확정)">{options.halves.map(key => <option key={key} value={key}>{labelOf(key)}</option>)}</optgroup>
         <optgroup label="월별">{options.months.map(key => <option key={key} value={key}>{labelOf(key)}</option>)}</optgroup>
       </select></label>
-      <button type="button" className="secondary-button" disabled={!result?.rows.length} onClick={csv}>CSV 내려받기</button>
-      <button type="button" className="secondary-button" disabled={!result?.rows.length || busy} onClick={() => void excel()}>{busy ? "만드는 중…" : "엑셀 내려받기"}</button>
+      {result ? <span className="small muted num">{result.period.from} ~ {result.period.to}</span> : null}
     </div>
-    {error ? <p className="inline-alert" role="alert">{error}</p> : null}
-    {!result && !error ? <p role="status">자료를 모으는 중이에요…</p> : null}
+    {error ? <p className="callout bad" role="alert">{error}</p> : null}
+    {!result && !error ? <p className="small muted" role="status">자료를 모으는 중이에요…</p> : null}
     {result ? <>
-      <p><b>{result.period.label}</b> · {result.period.from} ~ {result.period.to}</p>
-      {result.review ? <p className="inline-alert">같은 매출인지 확인하지 않은 계산서가 {result.review}건 있어요. 확인 전에는 카드·외부 매출 줄과 계산서 줄에 둘 다 들어갈 수 있어요. <Link href="/finance/sales">매출내역에서 확인하기 →</Link></p> : null}
-      <div className="table-wrap"><table>
-        <thead><tr><th>증빙</th><th>기준일</th><th>건수</th><th>결제·발급</th><th>취소·수정</th><th>공급가액</th><th>세액</th><th>합계</th></tr></thead>
-        <tbody>{result.lines.map(line => <tr key={line.evidence}><td>{line.label}</td><td>{line.basis}</td><td>{line.count}</td><td>{line.payCount}</td><td>{line.cancelCount}</td><td>{won(line.supply)}</td><td>{won(line.tax)}</td><td>{won(line.total)}</td></tr>)}
-          <tr><th colSpan={5}>합계</th><th>{won(sum("supply"))}</th><th>{won(sum("tax"))}</th><th>{won(sum("total"))}</th></tr></tbody>
+      {result.review ? <div className="callout warn"><b>확인 필요</b><span className="grow">같은 매출인지 확인하지 않은 계산서가 {result.review}건 있어요. 확인 전에는 결제·외부 매출 줄과 계산서 줄에 둘 다 들어갈 수 있어요.</span><Link href="/finance/sales" className="btn sm">매출내역에서 확인</Link></div> : null}
+      <div className="tiles t4 fin-gap">
+        <div className="tile"><span className="l">공급가액</span><span className="v">{won(sum("supply"))}원</span></div>
+        <div className="tile"><span className="l">세액</span><span className="v">{won(sum("tax"))}원</span></div>
+        <div className="tile fin-total"><span className="l">합계</span><span className="v">{won(sum("total"))}원</span></div>
+        <div className="tile"><span className="l">건수</span><span className="v">{won(result.rows.length)}건</span><span className="d">결제·발급 {count("payCount")} · 취소·수정 {count("cancelCount")}</span></div>
+      </div>
+      <div className="tbl-wrap"><table className="tbl">
+        <thead><tr><th>증빙</th><th>기준일</th><th className="r">결제·발급</th><th className="r">취소·수정</th><th className="r">공급가액</th><th className="r">세액</th><th className="r">합계</th></tr></thead>
+        <tbody>{result.lines.map(line => { const { name, hint } = split(line.label); return <tr key={line.evidence} className={line.count ? undefined : "fin-zero"}>
+          <td><b>{name}</b>{hint ? <span className="sub2">{hint}</span> : null}</td><td className="small nw">{line.basis}</td>
+          <td className="r">{line.payCount}</td><td className="r">{line.cancelCount}</td><td className="r">{won(line.supply)}</td><td className="r">{won(line.tax)}</td><td className="r"><b>{won(line.total)}</b></td></tr>; })}</tbody>
+        <tfoot><tr><td colSpan={2}>합계</td><td className="r">{count("payCount")}</td><td className="r">{count("cancelCount")}</td><td className="r">{won(sum("supply"))}</td><td className="r">{won(sum("tax"))}</td><td className="r">{won(sum("total"))}</td></tr></tfoot>
       </table></div>
-      <p><small>토스 결제는 과세 매출로 보고 합계를 11로 나눠 세액을 계산했어요(면세 상품이면 달라요). 계좌이체·가상계좌의 현금영수증 발급 여부는 토스에서 확인해 주세요. 세금계산서와 같은 매출로 확인한 결제·외부 매출은 계산서 줄에서만 셉니다.</small></p>
-      <details><summary>상세 {result.rows.length}건</summary><div className="table-wrap"><table>
-        <thead><tr><th>날짜</th><th>기준일</th><th>증빙</th><th>구분</th><th>거래처·상품</th><th>공급가액</th><th>세액</th><th>합계</th><th>메모</th></tr></thead>
-        <tbody>{result.rows.map((row, index) => <tr key={`${row.ref}:${row.kind}:${index}`}><td>{row.date}</td><td>{row.basis}</td><td>{EVIDENCE_LABEL[row.evidence]}</td><td>{row.kind}</td><td>{row.title}</td><td>{won(row.supply)}</td><td>{won(row.tax)}</td><td>{won(row.total)}</td><td>{row.note}</td></tr>)}</tbody>
+      <ul className="note fin-notes">
+        <li>토스 결제는 과세 매출로 보고 합계를 11로 나눠 세액을 계산했어요. 면세 상품이면 달라요.</li>
+        <li>계좌이체·가상계좌의 현금영수증 발급 여부는 토스에서 확인해 주세요.</li>
+        <li>세금계산서와 같은 매출로 확인한 결제·외부 매출은 계산서 줄에서만 셉니다.</li>
+      </ul>
+      <details className="fin-details"><summary>상세 {result.rows.length}건 보기</summary><div className="tbl-wrap"><table className="tbl">
+        <thead><tr><th>날짜</th><th>증빙</th><th>구분</th><th>거래처 · 상품</th><th className="r">공급가액</th><th className="r">세액</th><th className="r">합계</th><th>메모</th></tr></thead>
+        <tbody>{result.rows.map((row, index) => <tr key={`${row.ref}:${row.kind}:${index}`}><td className="num">{row.date}<span className="sub2">{row.basis}</span></td><td>{split(EVIDENCE_LABEL[row.evidence]).name}</td><td>{row.kind}</td><td><span className="ell">{row.title}</span></td><td className="r">{won(row.supply)}</td><td className="r">{won(row.tax)}</td><td className="r">{won(row.total)}</td><td className="small muted">{row.note}</td></tr>)}</tbody>
       </table></div></details>
     </> : null}
   </section>;

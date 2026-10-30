@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { apiRequest } from "@/lib/api-client";
 import { readImportFile } from "@/lib/finance/import-file.mjs";
 import { parseHometaxRows, TAX_BIZ, type Biz, type MatchState, type ParsedInvoices, type TaxInvoiceInput } from "@/lib/finance/tax-invoices";
@@ -17,6 +18,19 @@ const today = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seo
 // `|| 0` turns -0 (nothing excluded) into 0, so the total line never reads "-0원".
 const won = (value: number) => `${(value || 0).toLocaleString("ko-KR")}원`;
 const BIZ_KEYS = Object.keys(TAX_BIZ) as Biz[];
+const md = (date: string) => `${Number(date.slice(5, 7))}/${Number(date.slice(8, 10))}`;
+
+/** The period and business chosen at the top of the page (?period=month|week|all|custom, ?month, ?from/to, ?biz), so the panel never asks twice. */
+export function periodFromUrl(params: { get(name: string): string | null }, now = today()): { from: string; to: string; biz: Biz | "" } {
+  const biz = (BIZ_KEYS as string[]).includes(params.get("biz") ?? "") ? params.get("biz") as Biz : "";
+  const from = params.get("from"), to = params.get("to"), period = params.get("period");
+  if (period === "custom" && from && to && /^\d{4}-\d{2}-\d{2}$/.test(from) && /^\d{4}-\d{2}-\d{2}$/.test(to) && from <= to) return { from, to, biz };
+  if (period === "week") return { from: new Date(Date.parse(now) - 6 * 86_400_000).toISOString().slice(0, 10), to: now, biz };
+  if (period === "all") return { from: "2000-01-01", to: now, biz };
+  const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(params.get("month") ?? "") ? params.get("month")! : now.slice(0, 7);
+  const last = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).toISOString().slice(0, 10);
+  return { from: `${month}-01`, to: last < now ? last : now, biz };
+}
 const STATE_LABEL: Record<MatchState["state"], string> = { linked: "같은 매출 확인됨", suspect: "같은 매출 의심", review: "검토 필요", single: "계산서로만 잡힌 매출" };
 const DEPOSIT_LABEL: Record<Deposit["state"], string> = { confirmed: "입금 확인", likely: "입금 추정", unclear: "같은 금액 입금 여럿", none: "입금 못 찾음" };
 
@@ -47,9 +61,7 @@ async function readRows(file: File): Promise<string[][]> {
 }
 
 export function TaxInvoicePanel({ token, mode }: { token: string | null; mode: "sales" | "deposits" }) {
-  const [from, setFrom] = useState(() => today().slice(0, 7) + "-01");
-  const [to, setTo] = useState(today);
-  const [biz, setBiz] = useState<Biz | "">("");
+  const { from, to, biz } = periodFromUrl(useSearchParams());
   const [data, setData] = useState<Listing | null>(null);
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
@@ -103,62 +115,57 @@ export function TaxInvoicePanel({ token, mode }: { token: string | null; mode: "
   const invoices = data?.invoices ?? [];
   const stale = BIZ_KEYS.filter(key => data && data.lastImport[key] && Date.now() - Date.parse(data.lastImport[key]!) > 35 * 86_400_000);
   const totalOf = (rows: Invoice[]) => rows.reduce((sum, row) => sum + row.total_amount, 0);
-  return <section className="panel finance-tax-panel" aria-label={mode === "sales" ? "세금계산서 (홈택스)" : "계산서 입금 확인"}>
-    <header className="panel-header"><div>
+  const money = (value: number) => <td className="r">{won(value)}</td>;
+  return <section className="finance-workspace finance-react" aria-label={mode === "sales" ? "세금계산서 (홈택스)" : "계산서 입금 확인"}><div className="card">
+    <div className="card-h"><div>
       <h2>{mode === "sales" ? "세금계산서 (홈택스)" : "계산서 · 실제 입금 확인"}</h2>
-      <p>{mode === "sales" ? "홈택스 매출 계산서를 올리면, 같은 매출인 토스 결제·외부 매출과 짝을 찾아 한 번만 셉니다. 날짜는 계산서 작성일자 기준이에요." : "계산서마다 같은 금액이 통장에 들어왔는지 찾습니다. 작성일 3일 전부터 90일 뒤까지 같은 금액 입금이 하나면 「입금 추정」이에요."}</p>
-    </div></header>
-    <div className="finance-tax-filters" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "end" }}>
-      <label>시작<input type="date" value={from} onChange={event => setFrom(event.target.value)} /></label>
-      <label>끝<input type="date" value={to} onChange={event => setTo(event.target.value)} /></label>
-      <label>사업자<select value={biz} onChange={event => setBiz(event.target.value as Biz | "")}><option value="">전체</option>{BIZ_KEYS.map(key => <option key={key} value={key}>{TAX_BIZ[key]}</option>)}</select></label>
-      <button type="button" className="secondary-button" disabled={!invoices.length} onClick={download}>CSV 내려받기</button>
-    </div>
-    {mode === "sales" && data ? <div className="finance-tax-totals" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 8, margin: "12px 0" }}>
-      {[["토스 결제 (취소 뺌)", data.totals.toss], ["세금계산서", data.totals.invoices], ["외부 매출", data.totals.external], ["같은 매출이라 뺀 금액", -data.totals.linkedExcluded], ["합계 (겹친 것 한 번만)", data.totals.total]].map(([label, value]) =>
-        <div key={label as string} className="metric"><span>{label}</span><strong>{won(value as number)}</strong></div>)}
+      <p className="small muted">{md(from)} ~ {md(to)}{biz ? ` · ${TAX_BIZ[biz]}` : " · 모든 사업자"} · 위에서 고른 기간 · {mode === "sales" ? "계산서 작성일자 기준" : "작성일 3일 전 ~ 90일 뒤 같은 금액 입금을 찾아요"}</p>
+    </div><button type="button" className="btn sm" disabled={!invoices.length} onClick={download}>CSV 내보내기</button></div>
+    {mode === "sales" && data ? <div className="tiles t5">
+      {([["토스 결제", "취소 뺀 금액", data.totals.toss], ["세금계산서", "홈택스에서 올린 것", data.totals.invoices], ["외부 매출", "직접 입력한 매출", data.totals.external], ["겹친 매출", "같은 매출이라 한 번만 셈", data.totals.linkedExcluded ? -data.totals.linkedExcluded : 0]] as const).map(([label, hint, value]) =>
+        <div key={label} className="tile"><span className="l">{label}</span><span className="v">{won(value)}</span><span className="d">{hint}</span></div>)}
+      <div className="tile fin-total"><span className="l">합계</span><span className="v">{won(data.totals.total)}</span><span className="d">겹친 매출은 한 번만</span></div>
     </div> : null}
-    {mode === "sales" && data && data.totals.suspect ? <div className="inline-alert" role="status">확인 전인 「같은 매출 의심 · 검토 필요」 계산서 {won(data.totals.suspect)}이 합계에 아직 두 번 들어가 있어요. 아래에서 확인해 주세요.</div> : null}
-    {mode === "sales" ? <div className="finance-tax-upload" style={{ display: "grid", gap: 8, margin: "12px 0" }}>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "end" }}>
-        <label>올릴 사업자<select value={uploadBiz} onChange={event => setUploadBiz(event.target.value as Biz | "")}><option value="">고르세요</option>{BIZ_KEYS.map(key => <option key={key} value={key}>{TAX_BIZ[key]}</option>)}</select></label>
-        <label className="secondary-button" style={{ cursor: "pointer" }}>홈택스 엑셀 올리기<input type="file" accept=".xlsx,.xls,.csv" hidden onChange={event => { void pick(event.target.files?.[0]); event.target.value = ""; }} /></label>
-        <button type="button" className="secondary-button" onClick={() => void copyAside()}>Aside에 맡기기 (지침 복사)</button>
+    {mode === "sales" && data && data.totals.suspect ? <div className="callout warn" role="status"><b>확인 필요</b><span className="grow">「같은 매출 의심 · 검토 필요」 계산서 {won(data.totals.suspect)}이 합계에 아직 두 번 들어가 있어요. 아래 표에서 같은 매출인지 골라 주세요.</span></div> : null}
+    {mode === "sales" ? <div className="fin-upload">
+      <b>계산서 올리기</b>
+      <label className="fin-field"><span>사업자</span><select className="sel" value={uploadBiz} onChange={event => setUploadBiz(event.target.value as Biz | "")}><option value="">고르세요</option>{BIZ_KEYS.map(key => <option key={key} value={key}>{TAX_BIZ[key]}</option>)}</select></label>
+      <label className="btn sm pri">홈택스 엑셀 올리기<input type="file" accept=".xlsx,.xls,.csv" hidden onChange={event => { void pick(event.target.files?.[0]); event.target.value = ""; }} /></label>
+      <button type="button" className="btn sm" onClick={() => void copyAside()}>Aside에 맡기기 (지침 복사)</button>
+    </div> : null}
+    {stale.length && mode === "sales" ? <div className="callout warn"><b>오래됨</b><span className="grow">마지막으로 올린 지 한 달이 넘었어요: {stale.map(key => TAX_BIZ[key]).join(", ")}</span></div> : null}
+    {preview ? <div className="card flat fin-preview" role="status">
+      <p><b>{preview.file}</b> · 계산서 {preview.invoices.length}건 · 합계 {won(totalOf(preview.invoices as Invoice[]))}{preview.invoices.some(row => row.is_modified) ? ` · 수정계산서 ${preview.invoices.filter(row => row.is_modified).length}건` : ""}</p>
+      {preview.errors.length ? <ul className="callout bad">{preview.errors.slice(0, 8).map(item => <li key={item}>{item}</li>)}{preview.errors.length > 8 ? <li>외 {preview.errors.length - 8}건</li> : null}</ul> : null}
+      <div className="ph-a">
+        <button type="button" className="btn sm pri" disabled={busy || !uploadBiz || !preview.invoices.length || preview.supplierRegNos.length > 1} onClick={() => void save()}>{busy ? "저장하는 중…" : uploadBiz ? `${TAX_BIZ[uploadBiz]}로 저장` : "사업자를 먼저 고르세요"}</button>
+        <button type="button" className="btn sm ghost" onClick={() => setPreview(null)}>취소</button>
       </div>
-      {stale.length ? <p className="inline-alert">마지막으로 올린 지 한 달이 넘었어요: {stale.map(key => TAX_BIZ[key]).join(", ")}</p> : null}
-      {preview ? <div className="panel" role="status" style={{ padding: 12 }}>
-        <p><b>{preview.file}</b> · 계산서 {preview.invoices.length}건 · 합계 {won(totalOf(preview.invoices as Invoice[]))}{preview.invoices.some(row => row.is_modified) ? ` · 수정계산서 ${preview.invoices.filter(row => row.is_modified).length}건` : ""}</p>
-        {preview.errors.length ? <ul className="inline-alert">{preview.errors.slice(0, 8).map(item => <li key={item}>{item}</li>)}{preview.errors.length > 8 ? <li>외 {preview.errors.length - 8}건</li> : null}</ul> : null}
-        <div style={{ display: "flex", gap: 8 }}>
-          <button type="button" className="primary-button" disabled={busy || !uploadBiz || !preview.invoices.length || preview.supplierRegNos.length > 1} onClick={() => void save()}>{busy ? "저장하는 중…" : uploadBiz ? `${TAX_BIZ[uploadBiz]}로 저장` : "사업자를 먼저 고르세요"}</button>
-          <button type="button" className="secondary-button" onClick={() => setPreview(null)}>취소</button>
-        </div>
-      </div> : null}
     </div> : null}
-    {note ? <p role="status">{note}</p> : null}
-    {error ? <p className="inline-alert" role="alert">{error}</p> : null}
-    {!data && !error ? <p role="status">계산서를 불러오는 중이에요…</p> : null}
-    {data && !invoices.length ? <p className="empty-state">이 기간에 올린 계산서가 없어요.{mode === "sales" ? " 홈택스 엑셀을 올리거나 Aside에 맡겨 보세요." : ""}</p> : null}
-    {invoices.length ? <div className="table-wrap"><table className="finance-tax-table">
-      <thead><tr><th>작성일</th><th>사업자</th><th>거래처</th><th>합계</th>{mode === "sales" ? <th>같은 매출</th> : <th>입금</th>}<th aria-label="확인" /></tr></thead>
+    {note ? <p className="callout fin-note" role="status">{note}</p> : null}
+    {error ? <p className="callout bad" role="alert">{error}</p> : null}
+    {!data && !error ? <p className="small muted" role="status">계산서를 불러오는 중이에요…</p> : null}
+    {data && !invoices.length ? <div className="empty"><b>이 기간에 올린 계산서가 없어요</b>{mode === "sales" ? "홈택스 엑셀을 올리거나 Aside에 맡겨 보세요." : "매출내역에서 홈택스 계산서를 먼저 올려 주세요."}</div> : null}
+    {invoices.length ? <div className="tbl-wrap"><table className="tbl">
+      <thead><tr><th>작성일</th><th>사업자</th><th>거래처 · 품목</th><th className="r">합계</th><th className="r">공급가액</th><th className="r">세액</th>{mode === "sales" ? <th>같은 매출</th> : <th>입금</th>}<th aria-label="확인" /></tr></thead>
       <tbody>{invoices.map(row => <tr key={row.id}>
-        <td>{row.written_date}{row.issued_date && row.issued_date !== row.written_date ? <small> · 발급 {row.issued_date}</small> : null}</td>
+        <td className="num">{md(row.written_date)}{row.issued_date && row.issued_date !== row.written_date ? <span className="sub2">발급 {md(row.issued_date)}</span> : null}</td>
         <td>{TAX_BIZ[row.biz]}</td>
-        <td>{row.buyer_name || "공급받는자 미기재"}{row.is_modified ? <small> · 수정계산서</small> : null}{row.invoice_class === "exempt" ? <small> · 면세</small> : null}<br /><small>{row.item_summary}</small></td>
-        <td>{won(row.total_amount)}<br /><small>공급 {won(row.supply_amount)} · 세액 {won(row.tax_amount)}</small></td>
+        <td>{row.buyer_name || "공급받는자 미기재"}{row.is_modified ? <span className="pill warn">수정</span> : null}{row.invoice_class === "exempt" ? <span className="pill out">면세</span> : null}<span className="sub2">{row.item_summary}</span></td>
+        {money(row.total_amount)}{money(row.supply_amount)}{money(row.tax_amount)}
         {mode === "sales" ? <td><b>{STATE_LABEL[row.match.state]}</b>
-          {row.match.linked ? <><br /><small>{row.match.linked.label} · {row.match.linked.date}</small></> : null}
-          {row.match.candidates.map(candidate => <div key={`${candidate.type}:${candidate.ref}`}><small>{candidate.type === "payment" ? "토스" : "외부 매출"} · {candidate.label} · {candidate.date} · {won(candidate.amount)}</small>{" "}
-            <button type="button" className="secondary-button" disabled={busy} onClick={() => void act({ action: "link", invoiceId: row.id, targetType: candidate.type, targetRef: candidate.ref, state: "confirmed" }, "같은 매출로 확인했어요. 합계에서 한 번만 셉니다.")}>같은 매출</button>{" "}
-            <button type="button" className="secondary-button" disabled={busy} onClick={() => void act({ action: "link", invoiceId: row.id, targetType: candidate.type, targetRef: candidate.ref, state: "rejected" }, "다른 매출로 표시했어요.")}>다른 매출</button></div>)}
-        </td> : <td><b>{DEPOSIT_LABEL[row.deposit.state]}</b>{row.deposit.bank ? <><br /><small>{row.deposit.bank.tx_date} · {row.deposit.bank.description}</small></> : null}</td>}
-        <td>{mode === "sales"
-          ? row.match.state === "linked" && row.match.linked ? <button type="button" className="secondary-button" disabled={busy} onClick={() => void act({ action: "link", invoiceId: row.id, targetType: row.match.linked!.type, targetRef: row.match.linked!.ref, state: "clear" }, "되돌렸어요.")}>되돌리기</button> : null
-          : row.deposit.state === "likely" && row.deposit.bank ? <>
-            <button type="button" className="secondary-button" disabled={busy} onClick={() => void act({ action: "link", invoiceId: row.id, targetType: "bank_tx", targetRef: row.deposit.bank!.id, state: "confirmed" }, "입금을 확인했어요.")}>입금 맞음</button>{" "}
-            <button type="button" className="secondary-button" disabled={busy} onClick={() => void act({ action: "link", invoiceId: row.id, targetType: "bank_tx", targetRef: row.deposit.bank!.id, state: "rejected" }, "이 입금이 아니라고 표시했어요.")}>아님</button></>
-          : row.deposit.state === "confirmed" && row.deposit.bank ? <button type="button" className="secondary-button" disabled={busy} onClick={() => void act({ action: "link", invoiceId: row.id, targetType: "bank_tx", targetRef: row.deposit.bank!.id, state: "clear" }, "되돌렸어요.")}>되돌리기</button> : null}</td>
+          {row.match.linked ? <span className="sub2">{row.match.linked.label} · {md(row.match.linked.date)}</span> : null}
+          {row.match.candidates.map(candidate => <div key={`${candidate.type}:${candidate.ref}`} className="fin-candidate"><span className="small muted">{candidate.type === "payment" ? "토스" : "외부 매출"} · {candidate.label} · {md(candidate.date)} · {won(candidate.amount)}</span>
+            <button type="button" className="btn sm" disabled={busy} onClick={() => void act({ action: "link", invoiceId: row.id, targetType: candidate.type, targetRef: candidate.ref, state: "confirmed" }, "같은 매출로 확인했어요. 합계에서 한 번만 셉니다.")}>같은 매출</button>
+            <button type="button" className="btn sm ghost" disabled={busy} onClick={() => void act({ action: "link", invoiceId: row.id, targetType: candidate.type, targetRef: candidate.ref, state: "rejected" }, "다른 매출로 표시했어요.")}>다른 매출</button></div>)}
+        </td> : <td><b>{DEPOSIT_LABEL[row.deposit.state]}</b>{row.deposit.bank ? <span className="sub2">{md(row.deposit.bank.tx_date)} · {row.deposit.bank.description}</span> : null}</td>}
+        <td className="r">{mode === "sales"
+          ? row.match.state === "linked" && row.match.linked ? <button type="button" className="btn sm ghost" disabled={busy} onClick={() => void act({ action: "link", invoiceId: row.id, targetType: row.match.linked!.type, targetRef: row.match.linked!.ref, state: "clear" }, "되돌렸어요.")}>되돌리기</button> : null
+          : row.deposit.state === "likely" && row.deposit.bank ? <span className="ph-a">
+            <button type="button" className="btn sm" disabled={busy} onClick={() => void act({ action: "link", invoiceId: row.id, targetType: "bank_tx", targetRef: row.deposit.bank!.id, state: "confirmed" }, "입금을 확인했어요.")}>입금 맞음</button>
+            <button type="button" className="btn sm ghost" disabled={busy} onClick={() => void act({ action: "link", invoiceId: row.id, targetType: "bank_tx", targetRef: row.deposit.bank!.id, state: "rejected" }, "이 입금이 아니라고 표시했어요.")}>아님</button></span>
+          : row.deposit.state === "confirmed" && row.deposit.bank ? <button type="button" className="btn sm ghost" disabled={busy} onClick={() => void act({ action: "link", invoiceId: row.id, targetType: "bank_tx", targetRef: row.deposit.bank!.id, state: "clear" }, "되돌렸어요.")}>되돌리기</button> : null}</td>
       </tr>)}</tbody>
     </table></div> : null}
-  </section>;
+  </div></section>;
 }

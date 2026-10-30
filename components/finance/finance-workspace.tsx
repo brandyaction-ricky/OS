@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { canAccessFinance } from "@/lib/finance/access";
+import { canAccessFinance, STAFF_FINANCE_MENUS } from "@/lib/finance/access";
 import type { FinanceController } from "@/lib/finance/workspace.mjs";
 import { useSession } from "../session-provider";
 import { TossReadPanel } from "./toss-read-panel";
@@ -32,7 +32,10 @@ export function FinanceWorkspace() {
     /^\/finance\/(overview|sales|settlements|bank|cards|recurring|budget)$/.test(
       pathname,
     );
-  const allowed = canAccessFinance(profile);
+  const full = canAccessFinance(profile);
+  // 카드지출·정기 결제 open to every active member, with only the staff actions (lib/finance/access).
+  const staff = !full && profile?.isActive === true && STAFF_FINANCE_MENUS.includes(pathname);
+  const allowed = full || staff;
   const actor = profile?.id;
 
   useEffect(() => {
@@ -47,6 +50,7 @@ export function FinanceWorkspace() {
         controller.current = mountFinanceWorkspace(node, {
           ...connection,
           actorId:demo?undefined:actor,
+          scope: full ? undefined : "staff",
           url: currentUrl.current,
           navigate: (next) => router.push(next, { scroll: false }),
           replaceUrl: (next) =>
@@ -65,7 +69,7 @@ export function FinanceWorkspace() {
       controller.current = null;
       node.replaceChildren();
     };
-  }, [allowed, loading, actor, revision, router, validPage, demo]);
+  }, [allowed, full, loading, actor, revision, router, validPage, demo]);
 
   useEffect(() => {
     controller.current?.setUrl(url);
@@ -76,11 +80,11 @@ export function FinanceWorkspace() {
   if (loading) return <p role="status">재무 접근 권한을 확인하고 있습니다.</p>;
   if (!allowed)
     return (
-      <section className="panel empty-state" role="status">
-        <h1>재무관리 접근 권한이 없습니다</h1>
-        <p>활성 관리자 또는 재무 권한이 있는 구성원만 이용할 수 있습니다.</p>
-        <Link href="/home">내 할 일로 돌아가기</Link>
-      </section>
+      <section className="panel empty-state" role="status"><div>
+        <h1>재무 권한이 있는 사람만 볼 수 있어요</h1>
+        <p>카드지출과 정기 결제는 누구나 쓸 수 있어요.</p>
+        <p><Link href="/finance/cards">카드지출로 가기</Link> · <Link href="/home">내 할 일로 돌아가기</Link></p>
+      </div></section>
     );
   // 부가세 신고 참고 자료 is its own React page; the shared ledger app is not mounted for it.
   if (vatPage) return demo ? <section className="panel empty-state" role="status"><h1>부가세 신고 참고 자료</h1><p>연습용 화면에서는 실제 결제·계산서가 없어 비어 있어요.</p></section> : <VatReference token={accessToken} />;

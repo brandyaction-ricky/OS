@@ -10,6 +10,8 @@ export interface FinanceWorkspaceOptions {
   onReset(): void;
   data?: WorkspaceData;
   actorId?: string;
+  /** "staff": 카드지출·정기 결제 without upload, card management or rule editing. */
+  scope?: "staff";
   today?: string;
   dataStart?: string;
   onChange?(before: WorkspaceData, after: WorkspaceData): Promise<WorkspaceData>;
