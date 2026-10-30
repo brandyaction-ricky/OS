@@ -952,7 +952,11 @@
       "sha256": "c8a48d4ff5b1f9a06a124df0b37586d50be20d54769f6cab4880e28836b08f89",
       "purpose": "재무관리 2026-10-30: 카드지출·정기 결제를 모든 직원에게 (읽기: settings·cards·card_transactions·card_rules·recurring_overrides·영수증; 쓰기: 카드 내역의 분류·사용 목적·영수증, 정기 결제 담당·상태). 나머지 재무 자료는 재무 권한자만",
       "requiresApproval": true,
-      "notes": "Replaces finance_read on five tables, finance_update on card_transactions/recurring_overrides, finance_insert on recurring_overrides and the two finance-receipts storage policies; os_fin_before_write/os_fin_commit/os_fin_log_action are the live bodies (md5 checked on Production) plus staff lines. Rollback-only run on DEV: staff read card uses (bank/payments 0), save purpose+category through os_fin_commit, and are refused amount change, archive, insert, card edit, bank rule, bank CSV log; finance member still edits amounts; anon has no grant."
+      "productionApprovedAt": "2026-10-30",
+      "appliedEnvironments": [
+        "production"
+      ],
+      "notes": "Owner approved Production on 2026-10-30 (\"둘다 반영해\"). Applied in one transaction with its schema history row and read back (five finance_read policies are active-member only, bank accounts still finance-only, staff check in os_fin_before_write, history 1). Not applied to DEV. Replaces finance_read on five tables, finance_update on card_transactions/recurring_overrides, finance_insert on recurring_overrides and the two finance-receipts storage policies; os_fin_before_write/os_fin_commit/os_fin_log_action are the live bodies (md5 checked on Production) plus staff lines. Rollback-only run on DEV: staff read card uses (bank/payments 0), save purpose+category through os_fin_commit, and are refused amount change, archive, insert, card edit, bank rule, bank CSV log; finance member still edits amounts; anon has no grant."
     }
   ],
   "legacyMigrations": [
