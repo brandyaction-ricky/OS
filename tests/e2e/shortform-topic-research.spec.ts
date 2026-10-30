@@ -17,7 +17,7 @@ test("a 숏폼 fixes its topic from a 주제 후보 drawn from the references' f
   await expect(page.getByText("조회 125만 · 구독자의 13.6배 · 좋아요 3.3%")).toBeVisible();
   await expect(page.getByText("반응 높음")).toHaveCount(3);
   await expect(page.getByText("틱톡 · 직접 넣음")).toBeVisible();
-  await expect(page.getByRole("button", { name: "릴스 · 틱톡 찾기 (Aside)" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "릴스 · 틱톡 찾기 지시 복사" })).toBeVisible();
   await expect(page.getByText("기준 아래 · AI에 안 넘김")).toHaveCount(1);
   await page.getByRole("button", { name: "이 주제로" }).first().click();
   await expect(page.getByLabel("주제", { exact: true })).toHaveValue("[예시] 약속은 잡았는데 가기 싫을 때");
