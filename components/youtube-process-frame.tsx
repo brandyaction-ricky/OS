@@ -3,8 +3,8 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { AlertTriangle, Check, ChevronDown, ChevronUp, Clock, Info, PauseCircle } from "lucide-react";
-import { editedSinceDecision, GATE_FIELDS, gateName } from "@/lib/youtube-process/confirm";
-import { projectName, stepHref, stepName, YP_FLOW, YP_KIND_LABEL, YP_STAGE_INDEX, type YpGate, type YpProject } from "@/lib/youtube-process/project";
+import { canReopen, editedSinceDecision, GATE_FIELDS, gateName } from "@/lib/youtube-process/confirm";
+import { projectHref, projectName, stepHref, stepName, YP_FLOW, YP_KIND_LABEL, YP_STAGE_INDEX, type YpGate, type YpProject } from "@/lib/youtube-process/project";
 import { useSession } from "./session-provider";
 import { useYoutubeCanConfirm, YP_CONFIRM_EVENT } from "./use-youtube-confirm";
 import { ConfirmActions } from "./youtube-process-confirm";
@@ -52,22 +52,39 @@ export function useYpBundle() {
 }
 export type YpPage = ReturnType<typeof useYpBundle>;
 
-/** A gate's PD 컨펌 (owner decision 2026-10-26) · legacy request cancel for the progress line (S0), and the re-request reason (S11-5). */
-export function useGate(page: YpPage, gate: YpGate) {
+/** Warns before the tab closes or reloads while typed text is not saved yet (로건 QA 10/30: a reload 4 s after typing lost the 클로징). */
+export function useLeaveGuard(dirty: boolean) {
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+}
+
+/**
+ * A gate's PD 컨펌 (owner decision 2026-10-26) · legacy request cancel for the progress line (S0), and the re-request reason (S11-5).
+ * `flush` saves what the screen still holds first and gives the project it saved into (null: the save failed, so nothing is sent) —
+ * the confirm used to go out before the last typed text was saved and was refused as unfilled (로건 QA 10/30).
+ */
+export function useGate(page: YpPage, gate: YpGate, flush?: () => Promise<YpProject | null>) {
+  const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [replyOpen, setReplyOpen] = useState(false);
   const act = async (action: "confirm" | "request" | "cancel", reply?: string) => {
-    const project = page.bundle?.project;
+    let project = page.bundle?.project;
     if (!page.client || !project) return;
-    if (action === "request" && !reply && project.yp.gates[gate].state === "changes" && !editedSinceDecision(project, gate)) { setReplyOpen(true); return; }
     setBusy(true); page.setError("");
     try {
+      if (flush && action !== "cancel") { const saved = await flush(); if (!saved) return; project = saved; }
+      if (action === "request" && !reply && project.yp.gates[gate].state === "changes" && !editedSinceDecision(project, gate)) { setReplyOpen(true); return; }
       const result = await page.client.gate(project.id, gate, action, project.version, reply);
       setReplyOpen(false);
       page.setBundle(current => current ? { ...current, project: result.project } : current);
-      // The confirm is usually sent from the step's last button; its OK line (and the next step's link) sit at the top.
-      if (action !== "cancel") window.scrollTo({ top: 0, behavior: "smooth" });
       window.dispatchEvent(new Event(YP_CONFIRM_EVENT));
+      // 로건 QA 10/30: a 컨펌 left the PD on the same screen with the button turned into 「이어서 하기」; it now opens the next step.
+      if (action === "confirm" && result.project.yp.stage !== project.yp.stage) router.push(projectHref(result.project));
+      else if (action !== "cancel") window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (reason) { page.fail(reason); } finally { setBusy(false); }
   };
   return { busy, act, replyOpen, setReplyOpen };
@@ -122,8 +139,22 @@ export function GateBanner({ page, gate, okExtra }: { page: YpPage; gate: YpGate
   </div>;
   if (info.state === "changes") return <div className="yp-note yp-warn" role="status"><AlertTriangle size={16} className="yp-i" aria-hidden="true" /><div><b>대표 수정 요청 · {md(info.decidedAt)}</b><br />메모: “{info.memo}”<br />{info.fields?.length ? `특히 볼 칸: ${info.fields.map(field => GATE_FIELDS[gate][field] ?? field).join(", ")} · ` : ""}모든 칸을 고칠 수 있어요</div></div>;
   if (info.state === "hold") return <div className="yp-note yp-bad" role="status"><PauseCircle size={16} className="yp-i" aria-hidden="true" /><div><b>보류됨 · {md(info.decidedAt)} · 대표</b><br />사유: “{info.reason}”<br />손본 뒤 컨펌할 수 있어요.</div></div>;
-  if (info.state === "ok") return <div className="yp-note yp-ok" role="status"><Check size={16} className="yp-i" aria-hidden="true" /><div><b>{name} OK{info.decidedAt ? ` · ${md(info.decidedAt)}` : ""} · {info.self ? "PD 컨펌" : "대표"}</b>{okExtra}<GateNotes project={project} gate={gate} /></div></div>;
+  if (info.state === "ok") return <div className="yp-note yp-ok" role="status"><Check size={16} className="yp-i" aria-hidden="true" /><div><b>{name} OK{info.decidedAt ? ` · ${md(info.decidedAt)}` : ""} · {info.self ? "PD 컨펌" : "대표"}</b>
+    {canReopen(project, gate) && page.client ? <> <ReopenButton project={project} gate={gate} client={page.client} onDone={next => page.setBundle(current => current ? { ...current, project: next } : current)} onError={page.fail} /></> : null}
+    {okExtra}<GateNotes project={project} gate={gate} /></div></div>;
   return <GateNotes project={project} gate={gate} />;
+}
+
+/** 다시 열기 (로건 QA 10/30): the PD's own 컨펌 reopened from the very next step; confirming again comes back to where the video was. */
+export function ReopenButton({ project, gate, client, onDone, onError }: { project: YpProject; gate: YpGate; client: NonNullable<YpPage["client"]>; onDone: (next: YpProject) => void; onError: (reason: unknown) => void }) {
+  const [busy, setBusy] = useState(false);
+  const name = gateName(gate, project.yp.topic.type);
+  const reopen = async () => {
+    if (!window.confirm(`${name}을 다시 열까요? 고친 뒤 다시 컨펌하면 지금 단계로 돌아와요.`)) return;
+    setBusy(true);
+    try { onDone((await client.gate(project.id, gate, "reopen", project.version)).project); } catch (reason) { onError(reason); } finally { setBusy(false); }
+  };
+  return <button type="button" className="yp-btn yp-sm" disabled={busy} onClick={() => void reopen()}>다시 열기</button>;
 }
 
 /** 대표 노트 on a step (owner decision 2026-10-26): the 대표 reads PD-confirmed steps and leaves notes instead of confirming. */

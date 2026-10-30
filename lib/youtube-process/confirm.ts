@@ -18,7 +18,7 @@ export const GATE_FIELDS: Record<YpGate, Record<string, string>> = {
   review: { "make.final": "최종본", "make.thumbs": "최종 썸네일" },
   shorts: { "shorts.pick": "고른 쇼츠", "shorts.parts": "구간 · 첫 3초", "shorts.copy": "제목 · 설명" },
 };
-export type YpPdAction = "request" | "cancel" | "confirm";
+export type YpPdAction = "request" | "cancel" | "confirm" | "reopen";
 export type YpApproverAction = "ok" | "changes" | "hold" | "revert";
 export interface YpGateInput { actor: string; now: string; fields?: string[]; memo?: string; reason?: string; reply?: string }
 
@@ -58,6 +58,11 @@ export function editableFields(project: Pick<YpProject, "yp">, gate: YpGate): st
   if (project.yp.stage !== GATE_STAGE[gate]) return [];
   return info.state === "ok" ? [] : "all";
 }
+/** The PD may reopen a step they confirmed themselves while the video is on the very next step (로건 QA 10/30). */
+export const canReopen = (project: Pick<YpProject, "yp">, gate: YpGate) => {
+  const info = project.yp.gates[gate];
+  return info.state === "ok" && Boolean(info.self) && project.yp.stage === nextStage(gate, project.yp);
+};
 /** True when the PD changed the content after the last decision (an unchanged re-request needs a reason, S11-5). */
 export const editedSinceDecision = (project: Pick<YpProject, "yp">, gate: YpGate) => {
   const decided = project.yp.gates[gate].decidedAt;
@@ -114,6 +119,11 @@ export function applyGateAction(project: Pick<YpProject, "yp">, gate: YpGate, ac
       if (!input.reason?.trim()) throw new GateError("MEMO_REQUIRED", "보류 사유를 한 줄 써 주세요.", 400);
       return put({ state: "hold", round: info.round, requestedAt: info.requestedAt, requestedBy: info.requestedBy, decidedAt: input.now, decidedBy: input.actor,
         reason: input.reason.trim().slice(0, 300), ...(info.revertedFrom ? { revertedFrom: info.revertedFrom } : {}) });
+    case "reopen":
+      // 로건 QA 10/30: a typo in a confirmed step needed someone else. The PD reopens their own 컨펌 while the video is on the very next
+      // step; confirming again returns there. Anything further back stays the 대표's 되돌리기.
+      if (!canReopen(project, gate)) throw new GateError("INVALID_TRANSITION", "바로 다음 단계에 있을 때 직접 컨펌한 단계만 다시 열 수 있어요.");
+      return put({ state: "none", round: info.round, decidedAt: info.decidedAt, decidedBy: info.decidedBy }, GATE_STAGE[gate]);
     case "revert": {
       if (info.state !== "ok") throw new GateError("INVALID_TRANSITION", "처리한 OK만 되돌릴 수 있어요.");
       // D20: 최종 검토 only until the upload starts (T10 adds the upload record).

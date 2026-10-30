@@ -39,8 +39,8 @@ export interface YpClient {
   bundle(id: string): Promise<YpBundle>;
   create(input: YpTopicInput): Promise<YpProject>;
   update(id: string, expectedVersion: number, patch: YpTopicInput): Promise<YpProject>;
-  topicGate(id: string, action: "confirm" | "request" | "cancel", expectedVersion: number, reply?: string): Promise<{ project: YpProject; created: YpProject[] }>;
-  gate(id: string, gate: YpGate, action: "confirm" | "request" | "cancel", expectedVersion: number, reply?: string): Promise<{ project: YpProject; created: YpProject[] }>;
+  topicGate(id: string, action: "confirm" | "request" | "cancel" | "reopen", expectedVersion: number, reply?: string): Promise<{ project: YpProject; created: YpProject[] }>;
+  gate(id: string, gate: YpGate, action: "confirm" | "request" | "cancel" | "reopen", expectedVersion: number, reply?: string): Promise<{ project: YpProject; created: YpProject[] }>;
   saveStage<K extends YpStageKind>(id: string, kind: K, expectedVersion: number, patch: Record<string, unknown>): Promise<{ stage: YpStageView<K>; project: YpProject }>;
   /** One SEO 칼럼 to the MYIN 아티클: send (draft or update), publish, or back to draft. */
   columnMyin(id: string, item: string, action: "send" | "publish" | "unpublish", expectedVersion: number): Promise<{ stage: YpStageView<"column">; project: YpProject }>;
@@ -310,7 +310,7 @@ function demoClient(): YpClient {
     const project = find(id);
     checkVersion(project.version, expectedVersion);
     const now = new Date().toISOString();
-    if (action === "cancel") return { project: bump(project, gateApply(project, name, "cancel", { actor: DEMO_ME, now })), created: [] };
+    if (action === "cancel" || action === "reopen") return { project: bump(project, gateApply(project, name, action, { actor: DEMO_ME, now })), created: [] };
     if (name !== "topic") {
       const stages = stagesOf(project);
       const missing = name === "draft" ? project.yp.topic.type === "short" ? shortScriptMissing(stages.shortScript.data) : draftMissing(stages.plan.data) : (demoFinals.get(id) ?? []).length ? "" : "최종본을 올려주세요";

@@ -7,7 +7,7 @@ import { editableFields } from "@/lib/youtube-process/confirm";
 import { projectName, stepHref, topicEditable, type YpProject } from "@/lib/youtube-process/project";
 import { checkShortScript, headCopyProblem, parseCount, refCounts, refCountsLine, refHostOk, refPlatform, refReaction, refTexts, SHORT_REF_BAR_TEXT, SHORT_SCRIPT, shortResearchOpen, shortScriptMissing, type YpShortRefFetch } from "@/lib/youtube-process/short-script";
 import type { YpShortFormula, YpShortRef, YpShortScript, YpShortTopicPick } from "@/lib/youtube-process/stages";
-import { GateBanner, gateAction, gateSub, hhmm, LockedStep, Subject, useGate, useYpBundle, YpFrame, YpSection, type YpPage } from "./youtube-process-frame";
+import { GateBanner, gateAction, gateSub, hhmm, LockedStep, Subject, useGate, useLeaveGuard, useYpBundle, YpFrame, YpSection, type YpPage } from "./youtube-process-frame";
 import { JobLine, SendDialog, useStaffJob, type SendTab } from "./youtube-process-ai";
 import { draftTag, isGptModel } from "@/lib/youtube-process/gpt-draft";
 
@@ -54,7 +54,14 @@ function useShortForm(page: YpPage, onProject?: (project: YpProject) => void) {
   const version = useRef<number | null>(null);
   useEffect(() => { if (stage) version.current = stage.version; }, [stage]);
   const queue = useRef<Promise<unknown>>(Promise.resolve());
+  // An answer may refill the form only if nothing was typed after the text it carried (로건 QA 10/30: fast typing vanished).
+  const editRev = useRef(0);
+  const timer = useRef<number | null>(null);
+  useEffect(() => () => { if (timer.current) window.clearTimeout(timer.current); }, []);
+  useLeaveGuard(dirty);
   const save = (next: YpShortScript | null = form) => {
+    if (timer.current) { window.clearTimeout(timer.current); timer.current = null; }
+    const rev = editRev.current;
     const run = queue.current.then(async () => {
       if (!page.client || !project || version.current === null || !next) return false;
       try {
@@ -63,7 +70,8 @@ function useShortForm(page: YpPage, onProject?: (project: YpProject) => void) {
         version.current = result.stage.version;
         page.setBundle(current => current ? { ...current, project: result.project, stages: { ...current.stages, shortScript: result.stage } } : current);
         onProject?.(result.project);
-        setDirty(false); setSavedAt(hhmm());
+        if (editRev.current === rev) setDirty(false);
+        setSavedAt(hhmm());
         return true;
       } catch (reason) { page.fail(reason); return false; }
     });
@@ -72,8 +80,11 @@ function useShortForm(page: YpPage, onProject?: (project: YpProject) => void) {
   };
   const edit = (patch: Partial<YpShortScript>, now = false) => {
     const next = { ...form!, ...patch };
+    editRev.current += 1;
     setForm(next); setDirty(true); page.setError("");
-    if (now) void save(next);
+    if (now) { void save(next); return; }
+    if (timer.current) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => void save(next), 1500);
   };
   // What the AI and the 영상 만드는 컴퓨터 read is the saved step: an unsaved edit is saved first instead of disabling the button.
   const saved = async () => !dirty || await save();
