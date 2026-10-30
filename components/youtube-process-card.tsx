@@ -84,15 +84,21 @@ export function CardStart() {
         <div className="yp-row-btns"><button type="submit" className="yp-btn yp-pri" disabled={busy || !ready}>{busy ? "만드는 중…" : "카드 만들러 가기"} <ArrowRight size={14} aria-hidden="true" /></button></div>
       </div>
     </form>
-    <div className="yp-seg2 yp-card-tabs" role="tablist" aria-label="카드뉴스 상태">
-      <button type="button" role="tab" aria-selected={tab === "open"} className={tab === "open" ? "yp-on" : ""} onClick={() => setTab("open")}>만드는 중인 카드뉴스 {open.length}</button>
-      <button type="button" role="tab" aria-selected={tab === "done"} className={tab === "done" ? "yp-on" : ""} onClick={() => setTab("done")}>완료된 카드뉴스 {done.length}</button>
+    <div className="yp-card-tabs" role="tablist" aria-label="카드뉴스 상태" onKeyDown={event => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      const tabs = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("[role=tab]")];
+      const index = event.key === "Home" ? 0 : event.key === "End" ? 1 : (tabs.indexOf(event.target as HTMLButtonElement) + (event.key === "ArrowRight" ? 1 : -1) + 2) % 2;
+      tabs[index]?.focus(); setTab(index ? "done" : "open");
+    }}>
+      {([{ key: "open", label: "만드는 중인 카드뉴스", count: open.length }, { key: "done", label: "완료된 카드뉴스", count: done.length }] as const).map(item =>
+        <button key={item.key} id={`yp-card-tab-${item.key}`} type="button" role="tab" aria-selected={tab === item.key} aria-controls="yp-card-status-panel" tabIndex={tab === item.key ? 0 : -1} className={tab === item.key ? "yp-on" : ""} onClick={() => setTab(item.key)}>{item.label}<span className="yp-card-tab-count">{item.count}</span></button>)}
     </div>
-    <CardList key={tab} title={tab === "done" ? "완료된 카드뉴스" : "만드는 중인 카드뉴스"} client={client} projects={projects === null ? null : tab === "done" ? done : open} />
+    <CardList key={tab} tab={tab} title={tab === "done" ? "완료된 카드뉴스" : "만드는 중인 카드뉴스"} client={client} projects={projects === null ? null : tab === "done" ? done : open} />
   </>;
 }
 
-function CardList({ title, projects, client }: { title: string; projects: YpProject[] | null; client: YpClient | null }) {
+function CardList({ title, projects, client, tab }: { title: string; projects: YpProject[] | null; client: YpClient | null; tab: "open" | "done" }) {
   const [query, setQuery] = useState(""), [page, setPage] = useState(0), [covers, setCovers] = useState<Record<string, CardDraft>>({}), [coverError, setCoverError] = useState(false);
   const rows = (projects ?? []).filter(project => projectName(project).toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   const shown = rows.slice(page * 12, (page + 1) * 12);
@@ -103,7 +109,7 @@ function CardList({ title, projects, client }: { title: string; projects: YpProj
     client.cardCovers(ids.split(",")).then(result => { if (active) setCovers(result); }, () => { if (active) { setCovers({}); setCoverError(true); } });
     return () => { active = false; };
   }, [client, ids]);
-  return <section className="yp-card" style={{ marginTop: 14 }}><div className="yp-card-h">{title} {projects ? projects.length : ""}</div>
+  return <section className="yp-card" id="yp-card-status-panel" role="tabpanel" aria-labelledby={`yp-card-tab-${tab}`} tabIndex={0} style={{ marginTop: 14 }}><div className="yp-card-h">{title} {projects ? projects.length : ""}</div>
     <div className="yp-card-b"><input className="yp-in" aria-label="카드뉴스 검색" placeholder="카드뉴스 제목으로 찾기" value={query} onChange={event => { setQuery(event.target.value); setPage(0); }} />{coverError && <p className="yp-hint" role="status">표지는 불러오지 못했지만 카드뉴스는 열 수 있어요.</p>}</div>
     <div className="yp-card-b">{projects === null ? <p className="yp-hint" role="status">불러오는 중이에요…</p>
       : rows.length ? <ul className="yp-hist yp-card-catalog">{shown.map(project => <li key={project.id} style={{ alignItems: "center", gap: 10 }}>

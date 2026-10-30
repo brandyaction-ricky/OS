@@ -36,7 +36,7 @@ jobs:
           HR_E2E_DEMO: "true"
           NEXT_PUBLIC_DEMO_MODE: "true"
       - name: Verify portrait diagrams, topic research, video feedback and cardnews editing
-        run: npm run test:e2e -- tests/e2e/shortform-diagrams.spec.ts tests/e2e/shortform-topic-research.spec.ts tests/e2e/topic-hub.spec.ts tests/e2e/video-feedback.spec.ts tests/e2e/cardnews-uiux.spec.ts
+        run: npm run test:e2e -- tests/e2e/shortform-diagrams.spec.ts tests/e2e/shortform-topic-research.spec.ts tests/e2e/topic-hub.spec.ts tests/e2e/video-feedback.spec.ts tests/e2e/cardnews-uiux.spec.ts tests/e2e/content-schedule-uiux.spec.ts
         env:
           PLAYWRIGHT_SERVER_MODE: production
           YOUTUBE_V1_ENABLED: "true"

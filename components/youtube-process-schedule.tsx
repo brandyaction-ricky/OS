@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, GripVertical, X } from "lucide-react";
 import { gateName } from "@/lib/youtube-process/confirm";
 import { projectHref, projectName, stageLabel, YP_FLOW, YP_STAGE_INDEX } from "@/lib/youtube-process/project";
 import { useSession } from "./session-provider";
@@ -15,7 +15,7 @@ type Kind = "up" | "ed" | "cf";
 interface Ev { item: YpScheduleItem; kind: Kind; date: string; label: string }
 
 /** S9 스케줄 (4-9): every project's 편집 완료 · 업로드 (예상) · 컨펌 대기 on a week or month calendar; drag a date to move it. */
-export function YoutubeScheduleScreen() {
+export function YoutubeScheduleScreen({ header }: { header: ReactNode }) {
   const { accessToken, demo } = useSession();
   const client = useMemo(() => youtubeProcessClient(accessToken, demo), [accessToken, demo]);
   const [items, setItems] = useState<YpScheduleItem[] | null>(null);
@@ -29,6 +29,8 @@ export function YoutubeScheduleScreen() {
   const [editing, setEditing] = useState<YpScheduleItem | null>(null);
   const [form, setForm] = useState({ editDue: "", uploadPlan: "", why: "" });
   const [busy, setBusy] = useState(false);
+  const [selected, setSelected] = useState("");
+  const [dragOver, setDragOver] = useState("");
   const dialog = useRef<HTMLDialogElement>(null);
   const load = useCallback(async () => {
     if (!client) return;
@@ -42,7 +44,8 @@ export function YoutubeScheduleScreen() {
   if (mode === "week") anchor.setDate(anchor.getDate() + offset * 7); else anchor.setMonth(anchor.getMonth() + offset, 1);
   const start = new Date(anchor);
   if (mode === "week") start.setDate(anchor.getDate() - anchor.getDay()); else start.setDate(1 - new Date(anchor.getFullYear(), anchor.getMonth(), 1).getDay());
-  const days = Array.from({ length: mode === "week" ? 7 : 42 }, (_, index) => { const date = new Date(start); date.setDate(start.getDate() + index); return date; });
+  const monthCells = Math.ceil((new Date(anchor.getFullYear(), anchor.getMonth(), 1).getDay() + new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0).getDate()) / 7) * 7;
+  const days = Array.from({ length: mode === "week" ? 7 : monthCells }, (_, index) => { const date = new Date(start); date.setDate(start.getDate() + index); return date; });
   const shown = (items ?? []).filter(item => (pd === "all" || item.project.assigneeId === pd) && (stage === "all" || String(YP_STAGE_INDEX[item.project.yp.stage]) === stage) && item.project.yp.stage !== "done");
   const events: Ev[] = shown.flatMap(item => [
     ...(item.uploadPlan ? [{ item, kind: "up" as const, date: item.uploadPlan, label: "업로드 예상일" }] : []),
@@ -53,6 +56,8 @@ export function YoutubeScheduleScreen() {
   for (const event of events) byDay.set(event.date, [...(byDay.get(event.date) ?? []), event]);
   const dupDays = [...byDay.entries()].filter(([, list]) => list.filter(event => event.kind === "up").length >= 2).map(([date]) => date);
   const noUpload = shown.filter(item => !item.uploadPlan && !["upload", "shorts"].includes(item.project.yp.stage));
+  const picked = noUpload.find(item => item.project.id === selected);
+  const periodEvents = events.filter(event => event.date >= iso(days[0]) && event.date <= iso(days[days.length - 1]));
   const pdName = (id: string | null) => members.find(member => member.id === id)?.name ?? "—";
   const state = (item: YpScheduleItem) => {
     const late = (item.editDue && ["outline", "make"].includes(item.project.yp.stage) && dayDiff(item.editDue) < 0) || (item.uploadPlan && YP_STAGE_INDEX[item.project.yp.stage] < 5 && dayDiff(item.uploadPlan) < 0);
@@ -61,59 +66,71 @@ export function YoutubeScheduleScreen() {
   };
 
   const move = async (item: YpScheduleItem, patch: { editDue?: string; uploadPlan?: string; why?: string }) => {
-    if (!client) return false;
+    if (!client || busy) return false;
     setBusy(true); setError("");
     try { await client.moveDates(item.project.id, item.makeVersion, patch); await load(); return true; }
-    catch (reason) { setError(errorMessage(reason)); await load(); return false; } finally { setBusy(false); }
+    catch (reason) { await load(); setError(errorMessage(reason)); return false; } finally { setBusy(false); }
   };
-  const open = (item: YpScheduleItem) => { setEditing(item); setForm({ editDue: item.editDue, uploadPlan: item.uploadPlan, why: "" }); dialog.current?.showModal(); };
+  const open = (item: YpScheduleItem) => { setSelected(""); setEditing(item); setForm({ editDue: item.editDue, uploadPlan: item.uploadPlan, why: "" }); dialog.current?.showModal(); };
   const chip = (event: Ev) => {
     const draggable = event.kind !== "cf";
-    return <button key={`${event.item.project.id}-${event.kind}`} type="button" className={`yp-ev yp-${event.kind}`} draggable={draggable} title={`${projectName(event.item.project)} · ${event.label}${draggable ? " · 끌어서 날짜 옮기기" : ""}`}
+    return <button key={`${event.item.project.id}-${event.kind}`} type="button" className={`yp-ev yp-${event.kind}`} draggable={draggable && !busy} disabled={busy} aria-label={`${projectName(event.item.project)} · ${event.label}`} title={`${projectName(event.item.project)} · ${event.label}${draggable ? " · 끌어서 날짜 옮기기" : ""}`}
       onDragStart={evt => { evt.dataTransfer.setData("text/plain", JSON.stringify({ id: event.item.project.id, kind: event.kind })); }}
-      onClick={() => draggable ? open(event.item) : window.location.assign(projectHref(event.item.project))}>{event.label} · {projectName(event.item.project)}</button>;
+      onClick={() => draggable ? open(event.item) : window.location.assign(projectHref(event.item.project))}>{projectName(event.item.project)}</button>;
   };
   const drop = (date: string, raw: string) => {
     try {
       const { id, kind } = JSON.parse(raw) as { id: string; kind: Kind };
-      const item = items?.find(row => row.project.id === id);
-      if (item && kind !== "cf") void move(item, kind === "up" ? { uploadPlan: date } : { editDue: date });
+      const item = shown.find(row => row.project.id === id);
+      if (item && (kind === "up" || kind === "ed")) void move(item, kind === "up" ? { uploadPlan: date } : { editDue: date }).then(ok => { if (ok) setSelected(""); });
     } catch { /* not one of our chips */ }
   };
   const title = mode === "week" ? `${md2(iso(days[0]))} ~ ${md2(iso(days[6]))}` : `${anchor.getFullYear()}년 ${anchor.getMonth() + 1}월`;
+  const place = (date: string) => { if (picked) void move(picked, { uploadPlan: date }).then(ok => { if (ok) setSelected(""); }); };
 
-  return <>
-    {noUpload.length ? <div className="yp-note" role="status"><CalendarDays size={16} className="yp-i" aria-hidden="true" /><div>업로드 예상일이 없는 영상 {noUpload.length}개: <b>{projectName(noUpload[0].project)}</b>{noUpload.length > 1 ? ` 외 ${noUpload.length - 1}개` : ""}
-      <button type="button" className="yp-btn yp-sm yp-pri" style={{ marginLeft: 6 }} onClick={() => open(noUpload[0])}>업로드 예상일 정하기</button></div></div> : null}
+  return <div className="yp-schedule">
+    <div className="yp-schedule-head">{header}<div className="yp-seg2" role="group" aria-label="달력 보기">
+      <button type="button" aria-pressed={mode === "week"} className={mode === "week" ? "yp-on" : ""} onClick={() => { setMode("week"); setOffset(0); }}>주</button>
+      <button type="button" aria-pressed={mode === "month"} className={mode === "month" ? "yp-on" : ""} onClick={() => { setMode("month"); setOffset(0); }}>월</button></div></div>
     {error ? <div className="yp-note yp-warn" role="alert"><div>{error}</div></div> : null}
-    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
-      <div className="yp-seg2"><button type="button" className={mode === "week" ? "yp-on" : ""} onClick={() => { setMode("week"); setOffset(0); }}>이번 주</button><button type="button" className={mode === "month" ? "yp-on" : ""} onClick={() => { setMode("month"); setOffset(0); }}>이번 달</button></div>
-      <button type="button" className="yp-ib" aria-label="이전" onClick={() => setOffset(value => value - 1)}><ChevronLeft size={16} /></button><b style={{ fontSize: 14 }}>{title}</b><button type="button" className="yp-ib" aria-label="다음" onClick={() => setOffset(value => value + 1)}><ChevronRight size={16} /></button>
+    <div className="yp-schedule-toolbar">
+      <div className="yp-schedule-nav"><button type="button" className="yp-btn yp-sm" aria-label="이전 기간" onClick={() => setOffset(value => value - 1)}><ChevronLeft size={16} /></button><b aria-live="polite">{title}</b><button type="button" className="yp-btn yp-sm" aria-label="다음 기간" onClick={() => setOffset(value => value + 1)}><ChevronRight size={16} /></button>
+        <button type="button" className="yp-btn yp-sm" onClick={() => setOffset(0)}>오늘</button></div>
       <select className="yp-in yp-w-auto" aria-label="담당 PD" value={pd} onChange={event => setPd(event.target.value)}><option value="all">담당 PD 전체</option>{members.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select>
       <select className="yp-in yp-w-auto" aria-label="단계" value={stage} onChange={event => setStage(event.target.value)}><option value="all">단계 전체</option>{YP_FLOW.map((step, index) => <option key={step} value={index}>{step}</option>)}</select>
-      <label className="yp-cbx"><input type="checkbox" checked={showConfirm} onChange={event => setShowConfirm(event.target.checked)} /> 컨펌 대기</label>
-      <span style={{ flex: 1 }} /><div className="yp-legend"><span><i className="yp-sw2 yp-upx" />업로드 예상일</span><span><i className="yp-sw2" style={{ background: "var(--panel-3)" }} />편집 완료일</span><span><i className="yp-sw2" style={{ background: "var(--warning-soft)" }} />컨펌 대기</span></div>
+      <div className="yp-legend"><span><i className="yp-sw2 yp-up" />업로드 예정</span><span><i className="yp-sw2 yp-ed" />편집 완료</span><button type="button" className="yp-schedule-confirm" aria-pressed={showConfirm} title={showConfirm ? "컨펌 대기 숨기기" : "컨펌 대기 보기"} onClick={() => setShowConfirm(value => !value)}><i className="yp-sw2 yp-cf" />컨펌 대기</button></div>
     </div>
     {dupDays.length ? <div className="yp-note yp-warn" role="status"><AlertTriangle size={16} className="yp-i" aria-hidden="true" /><div>같은 날 업로드가 2건 이상이에요: {dupDays.map(md2).join(", ")}</div></div> : null}
     {items === null && !error ? <p className="yp-hint" role="status">불러오는 중이에요…</p> : <>
-      <div className="yp-calw"><div className={`yp-cal${mode === "week" ? " yp-wk" : ""}`}>
+      <div className="yp-schedule-grid">
+      <aside className="yp-undated" aria-label="날짜 없는 콘텐츠"><h2>날짜 없음 <span className="yp-tag yp-warn">{noUpload.length}</span></h2>
+        <div className="yp-undated-list">{noUpload.map(item => <button key={item.project.id} type="button" className={`yp-undated-item${picked?.project.id === item.project.id ? " yp-on" : ""}`} disabled={busy} draggable={!busy} aria-pressed={picked?.project.id === item.project.id} aria-label={`${projectName(item.project)} 업로드 날짜 선택`} title={projectName(item.project)}
+          onDragStart={event => event.dataTransfer.setData("text/plain", JSON.stringify({ id: item.project.id, kind: "up" }))} onClick={() => setSelected(value => value === item.project.id ? "" : item.project.id)}><GripVertical size={14} aria-hidden="true" /><span>{projectName(item.project)}</span></button>)}</div>
+        {!noUpload.length && <p className="yp-hint">날짜 없는 콘텐츠가 없어요.</p>}
+        <p className="yp-hint" role="status">{picked ? `「${projectName(picked.project)}」 업로드 날짜를 선택해 주세요.` : "끌어서 날짜에 놓기 · 키보드: 항목 선택 후 날짜 선택"}</p>
+        {picked && <button type="button" className="yp-btn yp-sm" onClick={() => open(picked)}><CalendarDays size={14} aria-hidden="true" />날짜 직접 입력</button>}
+      </aside>
+      <div className="yp-schedule-calendar">
+      <div className="yp-calw"><div className={`yp-cal${mode === "week" ? " yp-wk" : ""}`} aria-label={title}>
         {[...WD].map(day => <div key={day} className="yp-dh">{day}</div>)}
         {days.map(date => { const key = iso(date); const list = byDay.get(key) ?? []; const ups = list.filter(event => event.kind === "up").length;
-          return <div key={key} className={`yp-dc${mode === "month" && date.getMonth() !== anchor.getMonth() ? " yp-out" : ""}${key === today ? " yp-today" : ""}${ups >= 2 ? " yp-dup" : ""}`}
-            onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); drop(key, event.dataTransfer.getData("text/plain")); }}>
-            <span className="yp-dn"><span>{date.getDate()}</span>{ups >= 2 ? <span className="yp-tag yp-warn" style={{ minHeight: 16 }}>⚠ 업로드 {ups}건</span> : null}</span>
+          return <div key={key} data-date={key} className={`yp-dc${mode === "month" && date.getMonth() !== anchor.getMonth() ? " yp-out" : ""}${key === today ? " yp-today" : ""}${ups >= 2 ? " yp-dup" : ""}${dragOver === key ? " yp-over" : ""}${picked ? " yp-pickable" : ""}`}
+            onClick={event => { if (event.target === event.currentTarget) place(key); }} onDragOver={event => { event.preventDefault(); if (!busy) setDragOver(key); }} onDragLeave={() => setDragOver("")} onDrop={event => { event.preventDefault(); setDragOver(""); if (!busy) drop(key, event.dataTransfer.getData("text/plain")); }}>
+            <button className="yp-dn" type="button" aria-label={`${key} 업로드 날짜로 선택`} disabled={!picked || busy} onClick={() => place(key)}><span>{date.getDate()}</span>{key === today ? <small>오늘</small> : null}</button>
+            {ups >= 2 ? <span className="yp-tag yp-warn">업로드 {ups}건</span> : null}
             {[...list].sort((a, b) => a.kind === "up" ? -1 : b.kind === "up" ? 1 : 0).map(chip)}</div>; })}
       </div></div>
-      <div className="yp-slist">{[...new Set(events.map(event => event.date))].sort().map(date => <div key={date}><div className="yp-sday">{md2(date)}{date === today ? <span className="yp-tag yp-acc">오늘</span> : null}</div>
-        {events.filter(event => event.date === date).map(event => <button key={`${event.item.project.id}-${event.kind}`} type="button" className="yp-sit" style={{ width: "100%", textAlign: "left" }} onClick={() => event.kind === "cf" ? window.location.assign(projectHref(event.item.project)) : open(event.item)}>
+      <div className="yp-slist">{picked && <button type="button" className="yp-btn yp-pri" onClick={() => open(picked)}>선택한 콘텐츠 날짜 지정</button>}{[...new Set(periodEvents.map(event => event.date))].sort().map(date => <div key={date}><div className="yp-sday">{md2(date)}{date === today ? <span className="yp-tag yp-acc">오늘</span> : null}</div>
+        {periodEvents.filter(event => event.date === date).map(event => <button key={`${event.item.project.id}-${event.kind}`} type="button" className="yp-sit" style={{ width: "100%", textAlign: "left" }} onClick={() => event.kind === "cf" ? window.location.assign(projectHref(event.item.project)) : open(event.item)}>
           <span className={`yp-tag${event.kind === "up" ? " yp-acc" : event.kind === "cf" ? " yp-warn" : ""}`}>{event.label}</span><span style={{ flex: 1, minWidth: 0 }}>{projectName(event.item.project)}</span></button>)}</div>)}
-        {!events.length ? <p className="yp-hint">이 기간에 일정이 없어요.</p> : null}</div>
-      <h2 style={{ margin: "18px 0 8px", fontSize: 16 }}>현황</h2>
+        {!periodEvents.length ? <p className="yp-hint">이 기간에 일정이 없어요.</p> : null}</div>
+      </div></div>
+      <details className="yp-schedule-status"><summary>전체 진행 현황 {shown.length}개</summary>
       <div className="yp-scards">{shown.map(item => { const [cls, text] = state(item); return <Link key={item.project.id} className="yp-scard" href={projectHref(item.project)}>
         <b className="yp-sc-t">{projectName(item.project)}</b><span className="yp-sc-p">담당 PD {pdName(item.project.assigneeId)}</span>
         <span className="yp-sc-s"><i className={`yp-sdot ${cls}`} />{stageLabel(item.project)}{text !== "여유" ? <span className={`yp-tag ${cls}`}>{text}</span> : null}</span>
         <span className="yp-muted" style={{ fontSize: 12 }}>{item.editDue ? `편집 완료일 ${md2(item.editDue)}` : "편집 완료일 —"} · {item.uploadPlan ? `업로드 예상일 ${md2(item.uploadPlan)}` : "업로드 예상일 —"}</span></Link>; })}
-        {!shown.length ? <p className="yp-hint">진행 중인 영상이 없어요.</p> : null}</div>
+        {!shown.length ? <p className="yp-hint">진행 중인 영상이 없어요.</p> : null}</div></details>
     </>}
     <dialog ref={dialog} className="yp-modal" aria-labelledby="yp-dates-title" onClose={() => setEditing(null)}>
       <div className="yp-modal-h"><span id="yp-dates-title">일정 바꾸기 · {editing ? projectName(editing.project) : ""}</span><span className="yp-sp" /><button type="button" className="yp-ib" aria-label="닫기" onClick={() => dialog.current?.close()}><X size={14} /></button></div>
@@ -128,5 +145,5 @@ export function YoutubeScheduleScreen() {
         <button type="button" className="yp-btn yp-pri" disabled={busy || !editing || Boolean(form.editDue && form.uploadPlan && form.uploadPlan < form.editDue)}
           onClick={() => editing && void move(editing, { editDue: form.editDue, uploadPlan: form.uploadPlan, why: form.why }).then(ok => { if (ok) dialog.current?.close(); })}>저장</button></div>
     </dialog>
-  </>;
+  </div>;
 }

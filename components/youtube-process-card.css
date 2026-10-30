@@ -59,7 +59,11 @@
 .yp-source-list li { display: flex; align-items: center; gap: 12px; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .yp-source-list li > span { min-width: 0; overflow-wrap: anywhere; }
 .yp-source-list small { display: block; color: var(--muted); margin-top: 4px; }
-.yp-card-tabs { margin-top: 18px; flex-wrap: wrap; }
+.linear-shell .ui-v2.yp .yp-card-tabs { display: flex; align-items: stretch; gap: 20px; margin: 24px 0 0; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.linear-shell .ui-v2.yp .yp-card-tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; flex: none; min-height: 46px; padding: 10px 2px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; font-size: 14px; color: var(--muted); white-space: nowrap; }
+.linear-shell .ui-v2.yp .yp-card-tabs button.yp-on { border-bottom-color: var(--accent); color: var(--text); font-weight: 700; }
+.yp-card-tab-count { min-width: 22px; padding: 1px 6px; border-radius: 4px; background: var(--panel-3); font-size: 12px; font-variant-numeric: tabular-nums; }
+.linear-shell .ui-v2.yp .yp-tag.yp-pf-tag.yp-pf-card { background: #d9822b; color: var(--media-bg); box-shadow: none; }
 .yp-card-catalog > li > span { overflow-wrap: anywhere; }
 .yp-card-cover { display: block; flex: none; }
 .yp-card-cover-empty { display: grid; place-items: center; width: 72px; height: 90px; padding: 6px; box-sizing: border-box; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; font-size: 11px; color: var(--muted); text-align: center; }
@@ -78,6 +82,8 @@
 .yp-url-bookmarks .yp-row-btns > input, .yp-url-bookmarks .yp-row-btns > select { flex: 1; min-width: 100px; }
 .yp-url-bookmarks p { margin: 0; }
 @media(max-width: 600px) {
+  .linear-shell .ui-v2.yp .yp-card-tabs { gap: 12px; }
+  .linear-shell .ui-v2.yp .yp-card-tabs button { font-size: 12px; gap: 5px; }
   .yp-card-catalog > li { flex-wrap: wrap; }
   .yp-card-catalog > li > span { flex-basis: calc(100% - 90px)!important; }
   .yp-card-tools > .yp-hint { margin-left: 0; width: 100%; }

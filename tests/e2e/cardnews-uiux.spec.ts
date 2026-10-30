@@ -169,3 +169,67 @@ test("card catalog and cover reads reject unauthenticated callers before validat
     const response = await request.get(url); expect(response.status()).toBe(401);
   }
 });
+
+test("project platform selector filters every kind, retains search and can leave an empty status", async ({ page }) => {
+  await page.goto("/content/projects");
+  const platform = page.getByLabel("영상 플랫폼");
+  for (const [value, label] of [["card", "카드뉴스"], ["ad", "광고"], ["short", "숏폼 · 릴스"], ["longform", "롱폼"]]) {
+    await platform.selectOption(value);
+    await expect(page).toHaveURL(new RegExp(`platform=${value}`));
+    await expect.poll(async () => { const tags = await page.locator(".yp-mv-list .yp-pf-tag").allTextContents(); return tags.length > 0 && tags.every(tag => tag === label); }).toBe(true);
+  }
+  await page.getByLabel("영상 검색").fill("QA 없는 주제");
+  await platform.selectOption("card");
+  await expect(page.getByLabel("영상 검색")).toHaveValue("QA 없는 주제");
+  await expect(page.getByText("찾는 영상이 없어요", { exact: true })).toBeVisible();
+  await page.getByLabel("영상 검색").fill("");
+  await page.getByRole("tab", { name: /^끝난 영상/ }).click();
+  await expect(page.getByText("아직 끝난 영상이 없어요", { exact: true })).toBeVisible();
+  await expect(platform).toBeVisible();
+  await platform.selectOption("longform");
+  await expect(page.locator(".yp-mv-list .yp-pf-tag")).toHaveText(["롱폼"]);
+  await page.reload();
+  await expect(platform).toHaveValue("longform");
+  await platform.selectOption("all");
+  await expect(page).not.toHaveURL(/platform=/);
+});
+
+for (const width of [1732, 1440, 390]) for (const theme of ["light", "dark"]) {
+  test(`platform and status layout aligns at ${width}px in ${theme}`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.addInitScript(value => localStorage.setItem("brandy-os-theme", value), theme);
+    await page.goto(startUrl);
+    for (const tab of await page.locator(".yp-pf").all()) await expect(tab).toHaveCSS("border-radius", "0px");
+    await expect(page.locator(".yp-pf-bar")).toHaveCSS("border-radius", "0px");
+    const colors = await page.locator(".yp-pf-tabs .yp-pf").evaluateAll(tabs => Object.fromEntries(tabs.flatMap(tab => { const kind = [...tab.classList].find(name => /^yp-pf-(longform|short|ad|card)$/.test(name)); return kind ? [[kind, getComputedStyle(tab).color]] : []; })));
+    const status = page.getByRole("tablist", { name: "카드뉴스 상태" });
+    const panel = page.getByRole("tabpanel");
+    const bar = await status.boundingBox(), body = await panel.boundingBox();
+    expect(Math.abs(bar!.x - body!.x)).toBeLessThan(1);
+    expect(Math.abs(bar!.width - body!.width)).toBeLessThan(1);
+    await status.getByRole("tab", { name: /만드는 중/ }).focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(status.getByRole("tab", { name: /완료된/ })).toBeFocused();
+    await expect(status.getByRole("tab", { name: /완료된/ })).toHaveAttribute("aria-selected", "true");
+    await page.keyboard.press("Home");
+    await expect(status.getByRole("tab", { name: /만드는 중/ })).toHaveAttribute("aria-selected", "true");
+    await page.screenshot({ path: info.outputPath(`catalog-${width}-${theme}.png`), fullPage: true });
+    await page.goto("/content/projects?view=discover");
+    const left = (await page.locator(".yp-pf-tabs").boundingBox())!.x;
+    for (const selector of [".yp-pf-bar", ".yp-disc-tabs", ".yp-disc-search", ".yp-chips", ".yp-ref-grid"]) expect(Math.abs((await page.locator(selector).boundingBox())!.x - left)).toBeLessThan(1);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    await page.screenshot({ path: info.outputPath(`discover-${width}-${theme}.png`), fullPage: true });
+    await page.goto("/content/projects");
+    await expect(page.locator(".yp-mv-list .yp-pf-tag").first()).toBeVisible();
+    for (const [kind, color] of Object.entries(colors)) await expect(page.locator(`.yp-pf-tag.${kind}`).first()).toHaveCSS("background-color", color);
+    const contrast = await page.locator(".yp-pf-tag").evaluateAll(tags => tags.map(tag => {
+      const style = getComputedStyle(tag);
+      const luminance = (value: string) => { const rgb = value.match(/[\d.]+/g)!.slice(0, 3).map(Number).map(n => { const v = n / 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }); return .2126 * rgb[0] + .7152 * rgb[1] + .0722 * rgb[2]; };
+      const front = luminance(style.color), back = luminance(style.backgroundColor);
+      return (Math.max(front, back) + .05) / (Math.min(front, back) + .05);
+    }));
+    expect(contrast.every(ratio => ratio >= 4.5)).toBe(true);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    await page.screenshot({ path: info.outputPath(`projects-${width}-${theme}.png`), fullPage: true });
+  });
+}
