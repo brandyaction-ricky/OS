@@ -20,6 +20,7 @@ import { callMyin, MYIN_BODY_MAX, MYIN_SLUG, myinSourceId, type MyinArticle } fr
 const shortScriptModule = () => import("./youtube-process-short-script");
 const shortRefsModule = () => import("./youtube-process-short-refs");
 const gptJobsModule = () => import("./youtube-gpt-jobs");
+const cardsModule = () => import("./youtube-process-cards");
 import { shortScriptMissing } from "@/lib/youtube-process/short-script";
 import { actOnGate, confirmActionSchema, confirmYoutubeGate, conflict, gateActionSchema, getYoutubeProject, notify, readFailed, saveProject } from "./youtube-process";
 
@@ -45,7 +46,7 @@ export async function readStages(supabase: Supabase, project: YpProject): Promis
     const record = records.find(row => row.record_type === spec.recordType && row.metadata?.[spec.key] === spec.value);
     return { id: record?.id ?? null, version: record?.version ?? 0, data: stageData(kind, record?.metadata?.yp, project.yp.topic.type) };
   };
-  const stages = { plan: pick("plan"), outline: pick("outline"), make: pick("make"), upload: pick("upload"), column: pick("column"), shortTopics: pick("shortTopics"), shortScript: pick("shortScript"), review2: pick("review2"), screenCheck: pick("screenCheck"), records };
+  const stages = { plan: pick("plan"), outline: pick("outline"), make: pick("make"), upload: pick("upload"), column: pick("column"), shortTopics: pick("shortTopics"), shortScript: pick("shortScript"), review2: pick("review2"), screenCheck: pick("screenCheck"), cards: pick("cards"), records };
   // 4-5: the first 원고 starts from the 기획안 영상 흐름.
   if (!stages.outline.id && stages.plan.data.opening) stages.outline.data = { ...stages.outline.data, script: scriptFromPlan(stages.plan.data) };
   return stages;
@@ -83,8 +84,8 @@ export async function readFinals(supabase: Supabase, projectId: string, make: Yp
 
 export async function youtubeProjectBundle(actor: RequestActor, id: string) {
   const project = await getYoutubeProject(actor, id);
-  const { plan, outline, make, upload, column, shortTopics, shortScript, review2, screenCheck } = await readStages(actor.supabase, project);
-  return { project, stages: { plan, outline, make, upload, column, shortTopics, shortScript, review2, screenCheck }, finals: await readFinals(actor.supabase, project.id, make.data, project.yp.topic.type),
+  const { plan, outline, make, upload, column, shortTopics, shortScript, review2, screenCheck, cards } = await readStages(actor.supabase, project);
+  return { project, stages: { plan, outline, make, upload, column, shortTopics, shortScript, review2, screenCheck, cards }, finals: await readFinals(actor.supabase, project.id, make.data, project.yp.topic.type),
     ...(project.yp.topic.type === "short" ? { formulas: await (await shortScriptModule()).readShortFormulas(createServiceSupabase()) } : {}) };
 }
 
@@ -275,6 +276,10 @@ export async function saveYoutubeStage(actor: RequestActor, id: string, kind: Yp
     data = nextShortScript(project, stages.shortScript.data, shortScriptPatchSchema.parse(input.patch));
   } else if (kind === "shortTopics") {
     throw locked("숏폼 주제 후보는 내 AI가 쓰고, [숏폼으로 만들기]로만 바뀌어요.");
+  } else if (kind === "cards") {
+    if (project.yp.topic.type !== "card") throw locked("카드뉴스에서만 카드를 고칠 수 있어요.");
+    const { cardsPatchSchema, nextCards } = await cardsModule();
+    data = nextCards(project, stages.cards.data, cardsPatchSchema.parse(input.patch), actor, now);
   } else {
     const patch = stagePatchSchemas.upload.parse(input.patch);
     if (stage !== "upload") throw locked("최종 검토 컨펌이 OK가 나야 업로드가 열려요.");
@@ -367,7 +372,7 @@ export async function moveYoutubeStage(actor: RequestActor, id: string, input: z
     // A 숏폼 has no YouTube thumbnails.
     const missing = short ? "" : thumbsMissing(stages.make.data);
     need(!missing, missing);
-  } else if (project.yp.topic.type === "short") {
+  } else if (project.yp.topic.type === "short" || project.yp.topic.type === "card") {
     need(project.yp.stage === "upload" && input.to === "done", "최종 검토 컨펌 OK 뒤에 마칠 수 있어요.");
   } else {
     // After the YouTube upload: on to 쇼츠 · 칼럼, or done (from either).
@@ -380,6 +385,7 @@ export async function moveYoutubeStage(actor: RequestActor, id: string, input: z
 /** Why a 기획안 or 최종 검수 confirm cannot be requested yet, or "". */
 async function gateMissing(actor: RequestActor, project: YpProject, gate: YpGate) {
   const stages = await readStages(actor.supabase, project);
+  if (project.yp.topic.type === "card") return gate === "draft" ? (await cardsModule()).cardsMissing(stages.cards.data) : "";
   if (gate === "draft") return project.yp.topic.type === "short" ? shortScriptMissing(stages.shortScript.data, await (await shortRefsModule()).doneShortRefs(createServiceSupabase(), project.id, 60)) : draftMissing(stages.plan.data);
   if (gate === "review") return (await readFinals(actor.supabase, project.id, stages.make.data, project.yp.topic.type)).length ? "" : "최종본을 올려 주세요";
   return "";
@@ -393,11 +399,14 @@ async function adoptedClips(supabase: Supabase, projectId: string) {
 export async function requestYoutubeGate(actor: RequestActor, id: string, gate: YpGate, input: z.infer<typeof gateActionSchema>) {
   const result = await actOnGate(actor, id, gate, input, project => gateMissing(actor, project, gate));
   // The PD's own 기획안 컨펌 fixes the A · B · (C) pairs, as the 대표's OK did (4-4).
-  if (gate === "draft" && input.action === "confirm") await (result.project.yp.topic.type === "short" ? (await shortScriptModule()).fixConfirmedScript : fixConfirmedPlan)(actor, result.project);
+  if (gate === "draft" && input.action === "confirm") await (await draftFixer(result.project))(actor, result.project);
   // GPT 초안 (2026-10-29): the 최종 검토 OK starts 업로드 자료 · SEO 칼럼 · 숏폼 주제 후보 on GPT (the route allows 800 s for it).
   if (gate === "review" && input.action === "confirm" && result.project.yp.stage === "upload") (await gptJobsModule()).scheduleAutoDrafts(result.project, { id: actor.id, name: actor.name, team: actor.team });
   return result;
 }
+/** What the 기획안 place's confirm fixes: the A · B · (C) pairs, a 숏폼's 대본, a 카드뉴스's picked cards. */
+const draftFixer = async (project: YpProject) => project.yp.topic.type === "short" ? (await shortScriptModule()).fixConfirmedScript
+  : project.yp.topic.type === "card" ? (await cardsModule()).fixConfirmedCards : fixConfirmedPlan;
 async function fixConfirmedPlan(actor: RequestActor, project: YpProject) {
   const service = createServiceSupabase();
   const stages = await readStages(service, project);
@@ -408,7 +417,7 @@ async function fixConfirmedPlan(actor: RequestActor, project: YpProject) {
 /** The approver's decision; an OK on the 기획안 also fixes the A · B · (C) pairs later steps compare with (4-4). */
 export async function decideYoutubeGate(actor: RequestActor, id: string, gate: YpGate, input: z.infer<typeof confirmActionSchema>) {
   const project = await confirmYoutubeGate(actor, id, gate, input);
-  if (gate === "draft" && input.action === "ok") await (project.yp.topic.type === "short" ? (await shortScriptModule()).fixConfirmedScript : fixConfirmedPlan)(actor, project);
+  if (gate === "draft" && input.action === "ok") await (await draftFixer(project))(actor, project);
   if (gate === "review" && input.action === "ok" && project.yp.stage === "upload") (await gptJobsModule()).scheduleAutoDrafts(project, { id: actor.id, name: actor.name, team: actor.team });
   return project;
 }

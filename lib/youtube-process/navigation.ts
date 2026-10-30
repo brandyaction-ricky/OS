@@ -1,4 +1,4 @@
-import { AtSign, BarChart3, CalendarDays, CheckCircle2, Eye, Film, LayoutGrid, Lightbulb, Link2, Megaphone, PenLine, Radar, Scissors, Settings, Smartphone, UploadCloud, Youtube } from "lucide-react";
+import { AtSign, BarChart3, CalendarDays, CheckCircle2, Eye, Film, GalleryHorizontal, LayoutGrid, Lightbulb, Link2, Megaphone, PenLine, Radar, Scissors, Settings, Smartphone, UploadCloud, Youtube } from "lucide-react";
 import type { NavPage, NavStage } from "../navigation";
 
 // Owner decision 2026-10-21: the side menu is 내 영상 · 스케줄 · 성과; the steps live inside a video (its progress line), so nobody
@@ -33,6 +33,7 @@ export const YOUTUBE_V1_PLATFORM_STAGES: NavStage[] = [
   platformStage("yt-longform", "롱폼 유튜브", "내 롱폼 영상", "longform", Youtube),
   platformStage("yt-short", "숏폼 · 릴스", "내 숏폼 영상", "short", Smartphone),
   platformStage("yt-ad", "광고", "내 광고 영상", "ad", Megaphone),
+  platformStage("yt-card", "카드뉴스", "내 카드뉴스", "card", GalleryHorizontal),
 ];
 const THREADS_FLOW: Record<string, string> = {
   "/automation/references": "스레드 글감 모으기", "/automation/topics": "주제 기획", "/automation/threads": "쓰레드 쓰기",

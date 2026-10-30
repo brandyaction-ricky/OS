@@ -1,9 +1,10 @@
 // 유튜브 공정 v1 stage records (지시서 6-1 · 6-2): 기획안 · 구성안 · 제작 · 업로드 (+ SEO 칼럼, 2026-10-25), one child record each under the project.
 // Rules here are shared by the API, the screens and the demo store.
 import type { YpKind, YpRef } from "./project";
+import type { CardDraft, CardFormatId } from "../cardnews/formats.ts";
 import { narrationFromMarkdown } from "../youtube-narration-document.ts";
 
-export type YpStageKind = "plan" | "outline" | "make" | "upload" | "column" | "shortTopics" | "shortScript" | "review2" | "screenCheck";
+export type YpStageKind = "plan" | "outline" | "make" | "upload" | "column" | "shortTopics" | "shortScript" | "review2" | "screenCheck" | "cards";
 export const STAGE_RECORD: Record<YpStageKind, { recordType: "content_package" | "content_script"; key: "packageKind" | "scriptKind"; value: string; title: string }> = {
   plan: { recordType: "content_package", key: "packageKind", value: "yp_plan", title: "기획안" },
   outline: { recordType: "content_script", key: "scriptKind", value: "yp_outline", title: "구성안" },
@@ -14,6 +15,7 @@ export const STAGE_RECORD: Record<YpStageKind, { recordType: "content_package" |
   shortScript: { recordType: "content_package", key: "packageKind", value: "yp_short_script", title: "숏폼 대본" },
   review2: { recordType: "content_package", key: "packageKind", value: "yp_review2", title: "두 번째 검수" },
   screenCheck: { recordType: "content_package", key: "packageKind", value: "yp_screen_check", title: "화면 자동 검사" },
+  cards: { recordType: "content_package", key: "packageKind", value: "yp_cards", title: "카드뉴스" },
 };
 export const SLOTS = ["A", "B", "C"] as const;
 export type YpSlot = (typeof SLOTS)[number];
@@ -148,13 +150,23 @@ export interface YpScreenCheck {
   /** The run and the preparation (its prepared.at) whose sheets were judged: a newer preparation means an older check. */
   runId: string; sheetsAt: string; scenes: YpScreenIssue[]; note: string; error?: string;
 }
+/** 카드뉴스 (설계서 2026-10-30): the text it was made from (a copy, so a later change upstream never moves it), the drafts, the one
+ * picked, and what 카드 확정 fixed. Drafts of several formats sit side by side; the PD picks one and edits it. */
+export interface YpCardSource { kind: "longform" | "short" | "threads" | "none"; title: string; text: string; at: string }
+export interface YpCards {
+  source: YpCardSource; focus: string; drafts: CardDraft[]; picked: string;
+  recommend?: { formats: CardFormatId[]; why: string };
+  /** sig = the confirmed card; aiSig = the AI draft it started from, to see how far the PD moved it (정본 다듬기). */
+  confirmed?: { at: string; draftId: string; sig: string; aiSig?: string };
+  exported?: { at: string; by: string; url: string };
+}
 /** A short fingerprint of a 원고 (FNV-1a over the trimmed text), the same on the server and in the browser. */
 export function scriptKey(md: string) {
   let hash = 0x811c9dc5;
   for (const char of md.replace(/\r/g, "").trim()) hash = Math.imul(hash ^ char.codePointAt(0)!, 0x01000193) >>> 0;
   return hash.toString(16).padStart(8, "0");
 }
-export type YpStageData = { plan: YpPlan; outline: YpOutline; make: YpMake; upload: YpUpload; column: YpColumn; shortTopics: YpShortTopics; shortScript: YpShortScript; review2: YpReview2; screenCheck: YpScreenCheck };
+export type YpStageData = { plan: YpPlan; outline: YpOutline; make: YpMake; upload: YpUpload; column: YpColumn; shortTopics: YpShortTopics; shortScript: YpShortScript; review2: YpReview2; screenCheck: YpScreenCheck; cards: YpCards };
 export interface YpStageRecord<K extends YpStageKind = YpStageKind> { id: string | null; version: number; data: YpStageData[K] }
 export type YpStages = { [K in YpStageKind]: YpStageRecord<K> };
 
@@ -163,6 +175,7 @@ export const SPEC_DEFAULT: Record<YpKind, YpOutline["spec"]> = {
   live: { runtimeMin: null, res: "4K (선명 · 기본)", fps: "30fps (기본)", ratio: "16:9 가로 (롱폼 · 기본)" },
   anim: { runtimeMin: null, res: "FHD 1080p (기본)", fps: "30fps (기본)", ratio: "16:9 가로 (롱폼 · 기본)" },
   short: { runtimeMin: null, res: "720 × 1280", fps: "30fps (기본)", ratio: "9:16 세로" },
+  card: { runtimeMin: null, res: "1080 × 1350", fps: "—", ratio: "4:5 세로" },
 };
 export const SPEC_OPTIONS = {
   res: ["4K (선명 · 기본)", "FHD 1080p (기본)", "QHD 1440p"],
@@ -194,6 +207,7 @@ export function emptyStage<K extends YpStageKind>(kind: K, projectKind: YpKind |
     shortScript: { query: "", refs: [], text: "", hooks: [], insight: "", formula: "", headCopy: "" },
     review2: { state: "none", at: "", model: "", key: "", gates: [], doubts: [] },
     screenCheck: { state: "none", at: "", model: "", runId: "", sheetsAt: "", scenes: [], note: "" },
+    cards: { source: { kind: "none", title: "", text: "", at: "" }, focus: "", drafts: [], picked: "" },
   };
   return blank[kind] as YpStageData[K];
 }
@@ -270,6 +284,7 @@ export const MAKE_STEPS: Record<YpKind, [YpMakeStatus, string][]> = {
   live: [["prep", "준비"], ["shoot", "촬영"], ["edit", "편집 중"], ["done", "완료"]],
   anim: [["prep", "준비"], ["edit", "편집"], ["done", "완료"]],
   short: [["prep", "준비"], ["done", "완료"]],
+  card: [["prep", "준비"], ["done", "완료"]],
 };
 /** The title and thumbnail copy a slot goes out with: the confirmed pair, or what 제작 changed on purpose (empty keeps the confirmed one). */
 export function finalPair(plan: Pick<YpPlan, "confirmed">, make: Pick<YpMake, "aTitle" | "aReason" | "edits">, slot: YpSlot) {

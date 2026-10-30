@@ -76,7 +76,8 @@ export function scheduleGptJob(jobId: string, owner: Owner, tier: GptTier) {
  * none). A step that already has content, or a staff AI still writing it, is left alone.
  */
 export function scheduleAutoDrafts(project: YpProject, by: Owner) {
-  if (!process.env.OPENAI_API_KEY?.trim() || project.yp.topic.type === "short") return;
+  // 업로드 자료 · SEO 칼럼 · 숏폼 주제 후보 belong to a longform only.
+  if (!process.env.OPENAI_API_KEY?.trim() || !["live", "anim"].includes(project.yp.topic.type ?? "")) return;
   after(async () => {
     const service = createServiceSupabase();
     const ownerId = project.assigneeId || by.id;
