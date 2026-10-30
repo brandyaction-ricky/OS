@@ -8,6 +8,7 @@ import { projectName, stepHref, topicEditable, type YpProject } from "@/lib/yout
 import { checkShortScript, headCopyProblem, parseCount, refCounts, refCountsLine, refHostOk, refPlatform, refReaction, refTexts, SHORT_REF_BAR_TEXT, SHORT_SCRIPT, shortResearchOpen, shortScriptMissing, type YpShortRefFetch } from "@/lib/youtube-process/short-script";
 import type { YpShortFormula, YpShortRef, YpShortScript, YpShortTopicPick } from "@/lib/youtube-process/stages";
 import { GateBanner, gateAction, gateSub, hhmm, LockedStep, Subject, useGate, useLeaveGuard, useYpBundle, YpFrame, YpSection, type YpPage } from "./youtube-process-frame";
+import { AdBrief } from "./youtube-process-short";
 import { JobLine, SendDialog, useStaffJob, type SendTab } from "./youtube-process-ai";
 import { draftTag, isGptModel } from "@/lib/youtube-process/gpt-draft";
 
@@ -190,6 +191,7 @@ export function ShortScriptScreen({ page, header }: { page: YpPage; header: Reac
     {page.bundle && form && project ? project.yp.stage === "topic" ? <LockedStep page={page} name="대본" /> : <div onBlur={() => { if (dirty && can) void save(); }}>
       <GateBanner page={page} gate="draft" />
       <Subject page={page} />
+      {project.yp.topic.purpose === "ad" ? <AdBrief page={page} editable={can} /> : null}
       {from ? <div className="yp-note yp-gray"><div><b>롱폼에서 온 주제</b> · <Link className="yp-lnk" href={`/content/shorts?project=${from.projectId}`}>{from.title}</Link> · {from.scene}</div></div> : null}
 
       {can ? (job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => void askAi(job.status?.job?.executor === "gpt" ? "gpt" : "queue")} />

@@ -6,6 +6,7 @@ import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
 import { projectName, topicEditable, type YpProject } from "@/lib/youtube-process/project";
 import { checkShortScript, headCopyProblem, refCounts, refCountsLine, refReaction, refTexts, SHORT_REF_BAR_TEXT, SHORT_SCRIPT, SHORT_TOPIC_MAX, shortResearchOpen, shortTopicPickProblems } from "@/lib/youtube-process/short-script";
 import type { YpShortFormula, YpShortScript, YpShortTopic, YpShortTopics, YpStoredFormula } from "@/lib/youtube-process/stages";
+import type { YpShortBrief } from "@/lib/youtube-process/short";
 import type { PackagingMarket } from "./youtube-process-ai";
 import { v1Stages } from "./youtube-process-ai";
 import type { RequestActor } from "./auth";
@@ -231,7 +232,7 @@ export const shortScriptInputKey = (state: Pipeline) => {
 export const shortScriptQuery = (state: Pipeline) => { const { project, shortScript } = v1Stages(state); return shortScript.data.query.trim() || projectName(project); };
 
 const SCRIPT_SHAPE = `{ "formulas": [${FORMULA_SHAPE}], "use": "쓴 공식 이름", "insight": "통찰 한 줄", "headCopy": "이 숏폼 첫 화면의 헤드 카피 (20자 이하)", "hooks": [{ "kind": "반전형", "text": "첫 문장" }, { "kind": "직격형", "text": "첫 문장" }], "script": "첫 문장\\n둘째 문장\\n[관계] 비교가 있는 문장\\n…", "picked": ["실제로 본 레퍼런스 주소"], "notes": "출처 메모 · PD에게 한 줄" }`;
-export async function shortScriptCard(service: Service, state: Pipeline, leaseMinutes: number, market?: PackagingMarket) {
+export async function shortScriptCard(service: Service, state: Pipeline, leaseMinutes: number, market?: PackagingMarket, adBrief?: YpShortBrief) {
   const { project, shortScript } = v1Stages(state);
   const docs = await namedProcedures(service, [SHORT_SCRIPT_CANON, TONE_CANON]);
   const from = project.yp.shortFrom;
@@ -243,6 +244,7 @@ export async function shortScriptCard(service: Service, state: Pipeline, leaseMi
   const ad = project.yp.topic.purpose === "ad";
   const inputs = {
     topic: projectName(project), audience: project.yp.topic.target, note: project.yp.topic.note, ...(ad ? { purpose: "광고" } : {}),
+    ...(ad && adBrief ? { brief: { product: adBrief.product, audience: adBrief.audience, goal: adBrief.goal, landingUrl: adBrief.landingUrl, evidence: adBrief.evidence, appeal: adBrief.appeal } } : {}),
     ...(chosen ? { chosen: { formula: chosen, insight: draft.insight } } : {}),
     ...(from ? { from: { longform: from.title, scene: from.scene, paragraph: from.paragraph, script: longform.slice(0, 40_000) } } : {}),
     ...refs,
@@ -260,7 +262,7 @@ ${chosen ? `1. 공식: chosen.formula는 PD가 주제 단계에서 참고 영상
 3. 공식 뽑기(§2-3): ${DRAW_FORMULAS}`}
 4. 대본(§3~§9): 고른 공식에 이 주제의 장면을 넣어 우리 말로 새로 씁니다. headCopy는 이 숏폼 첫 3초 화면 맨 위 큰 글자(${SHORT_SCRIPT.head}자 이하, 첫 문장과 같지 않아도 됨)입니다. 한 줄 = 한 문장 = 화면 한 장. 첫 줄은 hooks 중 하나와 같게. 화면의 80% 이상이 도식이 되므로(§7) 첫 줄과 마지막 줄 사이는 그림이 되는 말(비교 · 순서 · 변화 · 선택 · 쌓이는 항목 · 질문)로 쓰고, 그런 줄 앞에 [관계], 인물이 처음 나오는 줄은 [사람]을 붙입니다.${from ? " 실제 사례 · 숫자는 from.script(롱폼 원고)에 있는 것만 씁니다." : ""}
 5. 기계 검사(§10)를 OS가 다시 셉니다: 전체 ${SHORT_SCRIPT.min}~${SHORT_SCRIPT.max}자(길게 쓸 때는 ${SHORT_SCRIPT.max60}자까지), 첫 문장 · 두 훅 ${SHORT_SCRIPT.first}자 이하, ${SHORT_SCRIPT.hard}자 넘는 줄 0개, ${SHORT_SCRIPT.line}자 넘는 줄 ${SHORT_SCRIPT.longLines}개까지, 바깥 지시어 · 「당신 · 여러분」 · 인사 · 예고 0건, 레퍼런스 제목 · 대본과 정본에서 10자 넘게 같은 구간 0건. 걸리면 고칠 점이 돌아옵니다.
-6. 판정 검사(§10 1~6)는 새 대화에서 대본만 보고 답해 notes에 한 줄로 남깁니다.${ad ? `\n7. 광고: ${AD_NOTE}` : ""}
+6. 판정 검사(§10 1~6)는 새 대화에서 대본만 보고 답해 notes에 한 줄로 남깁니다.${ad ? `\n7. 광고: ${AD_NOTE} brief(광고 브리프)에 적힌 상품 · 구매 이유 · 근거 · 할 행동 · 연결 페이지에 맞춰 쓰고, brief에 없는 효과 · 수치 · 후기를 만들지 않습니다.` : ""}
 
 ## 먼저 끝까지 열 문서
 ${docLines(docs, [SHORT_SCRIPT_CANON, TONE_CANON])}

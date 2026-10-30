@@ -379,11 +379,11 @@ async function currentShortCopyInput(job: OsRecord) {
 async function currentShortInput(job: OsRecord) {
   const m = meta(job);
   const state = await readPipeline({ supabase: service() }, m.sourceId);
-  const { project } = v1Stages(state);
+  const { project, shortScript } = v1Stages(state);
   try { assertShortJobOpen(project); } catch { await closeStale(job, m); }
   const { brief } = await shortJobInputs(service(), project);
   if (shortJobInputKey(project, brief) !== m.inputKey) await closeStale(job, m);
-  return { project, brief };
+  return { project, brief, script: shortScript.data.confirmed?.text ?? "" };
 }
 
 /** The approvals behind a ⑦ kit job; closed the same way when they moved on. */
@@ -455,7 +455,10 @@ export async function claimStaffJob(agent: RequestActor, jobId: string, byGpt = 
   if (m.task === "short-script") {
     const state = await currentShortScriptInput(job);
     const lease = await take();
-    return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: await shortScriptCard(service(), state, minutes, m.market) };
+    // An ad's script follows the 광고 브리프 the PD filled above it on the same step (로건 QA 10/30).
+    const { project } = v1Stages(state);
+    const brief = project.yp.topic.purpose === "ad" ? (await shortJobInputs(service(), project)).brief : undefined;
+    return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: await shortScriptCard(service(), state, minutes, m.market, brief) };
   }
   if (m.task === "column") {
     const state = await currentColumnInput(job);
@@ -469,11 +472,11 @@ export async function claimStaffJob(agent: RequestActor, jobId: string, byGpt = 
     return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: shortCopyCard(project, brief, scenes, docs, minutes) };
   }
   if (m.task === "short") {
-    const { project, brief } = await currentShortInput(job);
+    const { project, brief, script } = await currentShortInput(job);
     const lease = await take();
     const lists = await Promise.all((brief.purpose === "ad" ? ["shorts_proposal", "appeal_candidates"] as const : ["shorts_proposal"] as const).map(action => procedureRefs(service(), action).catch(() => [])));
     const docs = withNamed(await namedProcedures(service(), [SHORTFORM_CANON_TITLE]), lists.flat(), 8);
-    return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: shortJobCard(project, brief, docs, minutes) };
+    return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: shortJobCard(project, brief, docs, minutes, script) };
   }
   if (m.task === "retitle") {
     const state = await currentRetitleInput(job);

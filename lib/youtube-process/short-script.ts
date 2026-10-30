@@ -5,6 +5,7 @@ import { editableFields } from "./confirm.ts";
 import { compactCount } from "./discover.ts";
 import { topicEditable, type YpProject } from "./project.ts";
 import type { YpShortScript, YpShortTopicPick } from "./stages.ts";
+import type { YpShortScene } from "./short.ts";
 
 export const SHORT_SCRIPT = { min: 250, max: 370, max60: 490, first: 25, line: 24, hard: 30, longLines: 3, head: 20 } as const;
 /** 숏폼 목소리는 1.25배 빠르다(대표 2026-10-29, 대본 분량은 그대로) — 렌더 PC 숏폼 패키지 short_style.json의 voice_tempo와 같은 값. */
@@ -15,6 +16,16 @@ const MARK = /^\s*\[(관계|사람)\]\s*/;
 export function scriptLines(text: string) {
   return text.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
     .map(line => ({ text: line.replace(MARK, "").trim(), mark: (line.match(MARK)?.[1] ?? "") as "" | "관계" | "사람" })).filter(line => line.text);
+}
+/** 광고 A안 (owner decision 2026-10-30): a confirmed 대본 starts an ad's scenes — its lines shared out in order over at most 20 scenes,
+ * each saying its line, the last taking what is left of the length. Images go in per scene afterwards. */
+export function scenesFromScript(text: string, duration: number): YpShortScene[] {
+  const lines = scriptLines(text).map(line => line.text);
+  if (!lines.length) return [];
+  const per = Math.ceil(lines.length / 20);
+  const parts = Array.from({ length: Math.ceil(lines.length / per) }, (_, at) => lines.slice(at * per, at * per + per).join(" "));
+  const seconds = Math.max(1, Math.floor(duration / parts.length));
+  return parts.map((line, at) => ({ seconds: at === parts.length - 1 ? 0 : seconds, text: line.slice(0, 240), voice: line, note: "", asset: "" }));
 }
 /**
  * The 대본 as one paragraph for the voice and its subtitles (2026-10-28 시안 1): the lines carry no full stops, so joined with spaces the

@@ -51,7 +51,9 @@ async function saveCard(service: Service, row: OsRecord, metadata: Record<string
   return data as OsRecord;
 }
 
-const projectSeed = (project: YpProject) => ({ shortformBrief: { ...DEFAULT_SHORTFORM_BRIEF, mode: "direct", audience: project.yp.topic.target.slice(0, 5000) }, cuts: [] });
+// A 광고 숏폼 starts as an ad (owner decision 2026-10-30, 광고 A안: ads are made in this scene editor with 9:16 · 1:1 · 4:5).
+const projectSeed = (project: YpProject) => ({ shortformBrief: { ...DEFAULT_SHORTFORM_BRIEF, mode: "direct", audience: project.yp.topic.target.slice(0, 5000),
+  ...(project.yp.topic.purpose === "ad" ? { purpose: "ad" } : {}) }, cuts: [] });
 async function shortProject(actor: RequestActor, id: string) {
   const project = await getYoutubeProject(actor, id);
   if (project.yp.topic.type !== "short") throw new ApiError(409, "NOT_SHORT_PROJECT", "숏폼 프로젝트에서만 쓸 수 있어요.");
@@ -118,7 +120,8 @@ export const shortSaveSchema = z.object({
 }).strict();
 export async function saveYoutubeShort(actor: RequestActor, id: string, input: z.infer<typeof shortSaveSchema>) {
   const project = await shortProject(actor, id);
-  assertShortEditable(project);
+  // The 광고 브리프 is filled on the 대본 step, before the script it shapes (로건 QA 10/30); scenes still wait for 제작.
+  if (input.scenes || input.useAiScenes || project.yp.stage !== "draft") assertShortEditable(project);
   const service = createServiceSupabase();
   const row = await cardOf(service, project, shortCardId(project.id), projectSeed(project));
   if (row.version !== input.expectedVersion) throw conflict();
@@ -267,10 +270,11 @@ export function assertShortJobOpen(project: YpProject) {
   assertShortEditable(project);
 }
 const SHORT_SHAPE = (duration: number) => `{ "appeals": [{ "title": "구매 이유", "reason": "이 고객에게 필요한 이유", "evidence": "입력된 근거 또는 확인할 자료", "basis": "evidence" }], "chosen": 0, "cuts": [{ "start": "00:00", "end": "00:03", "text": "첫 화면 자막", "note": "화면 구성", "voice": "내레이션 (없으면 빈 문자열)", "asset": "필요한 이미지", "missingAsset": true }, { "start": "00:03", "end": "${duration === 60 ? "01:00" : `00:${duration}`}", "text": "…", "note": "…", "voice": "", "asset": "…", "missingAsset": true }] }`;
-export function shortJobCard(project: YpProject, brief: ShortformBrief, docs: { id: string; title: string }[], leaseMinutes: number) {
+export function shortJobCard(project: YpProject, brief: ShortformBrief, docs: { id: string; title: string }[], leaseMinutes: number, script = "") {
   const ad = brief.purpose === "ad";
   const inputs = { topic: projectName(project), audience: brief.audience || project.yp.topic.target, note: project.yp.topic.note, references: project.yp.topic.refs.map(ref => ref.url),
-    purpose: ad ? "광고" : "일반 콘텐츠", seconds: brief.duration, product: brief.product, goal: brief.goal, landingUrl: brief.landingUrl, evidence: brief.evidence, appeal: brief.appeal };
+    purpose: ad ? "광고" : "일반 콘텐츠", seconds: brief.duration, product: brief.product, goal: brief.goal, landingUrl: brief.landingUrl, evidence: brief.evidence, appeal: brief.appeal,
+    ...(script.trim() ? { script } : {}) };
   return `이 작업 하나만 처리합니다. 승인 · 게시 · 광고 집행 · 삭제는 하지 않습니다.
 
 ## 할 일 — ${brief.duration}초 세로 숏폼의 장면
@@ -279,6 +283,7 @@ ${ad ? `1. 구매 이유 후보 2~5개(appeals): title · reason(이 고객에�
    - text: 화면 자막, 네 줄 안(40자 안팎). note: 화면 구성. asset: 그 장면에 필요한 이미지(실제 상품 사진, 서비스 화면 등). missingAsset: true.
    - voice: 내레이션(필요 없으면 ""). 1초에 6자 이하 — 장면보다 길면 OS가 영상을 만들지 않습니다.
    - 첫 장면은 2초 안에 멈춰 보게 하는 훅, 마지막 장면은 goal(보고 나서 할 행동)로 끝냅니다.
+   - script가 있으면 PD가 대본 단계에서 확정한 대본입니다. 자막 · 내레이션은 그 줄을 순서대로 장면에 나눠 쓰고, 대본에 없는 주장 · 사실을 더하지 않습니다.
 
 ## 지켜야 할 것
 - ${ad ? `숏폼 정본(「${SHORTFORM_CANON_TITLE}」)의 썸네일 카피 문법 · 장면 재현 · 본론 직행 · 말투 원칙을 따릅니다. 정본의 '숏폼은 유입형' 원칙은 광고에 적용하지 않고, 광고의 짜임은 아래 줄을 따릅니다.`
