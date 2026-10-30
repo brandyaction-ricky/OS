@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { checkShortStoryboard, shortDiagramList, shortLineWidth } from "../lib/myin-short-storyboard.ts";
 
 // 숏폼 기획표 (2026-10-28): opening (big type) and vertical lib_ diagrams only, the confirmed 헤드 카피 on the first screen, lines inside
@@ -62,6 +63,33 @@ test("only diagrams with a vertical layout, inside their letter limits", () => {
   assert.match(checkShortStoryboard(listed, { ...input, diagrams: [many] }).issues.join(" "), /items는 1~2개예요\(지금 3개\)/);
   story.scenes[1].type = "iceberg";
   assert.match(checkShortStoryboard(story, input).issues.join(" "), /"iceberg"는 세로로 그릴 수 없어요/);
+});
+
+test("the 2026-10-30 vertical diagrams need their required slots and mode rules, and 공통점 찾기 the same mark once in every card", () => {
+  const catalog = JSON.parse(readFileSync(new URL("../lib/shortform-diagram-catalog.json", import.meta.url), "utf8"));
+  const withNew = { ...input, diagrams: catalog };
+  const swap = good();
+  swap.scenes[1] = { type: "lib_order_swap", at: "가고 싶고", first: { text: "만나기", cue: "가고 싶고" }, second: { text: "쉬기", cue: "쉬고 싶은" }, cue_swap: "같이 있는" };
+  assert.deepEqual(checkShortStoryboard(swap, withNew).issues, []);
+  delete swap.scenes[1].cue_swap;
+  assert.match(checkShortStoryboard(swap, withNew).issues.join(" "), /lib_order_swap cue_swap 칸이 없어요/);
+  const thread = good();
+  thread.scenes[1] = { type: "lib_common_thread", at: "가고 싶고", cards: [{ text: "혼자 끝까지 기획", mark: "혼자 끝까지", cue: "가고 싶고" },
+    { text: "혼자 끝까지 맡음", mark: "혼자 끝까지", cue: "쉬고 싶은" }], common: { text: "혼자 끝까지", cue: "같이 있는" } };
+  assert.deepEqual(checkShortStoryboard(thread, withNew).issues, []);
+  thread.scenes[1].cards[1].text = "끝까지 맡음";
+  assert.match(checkShortStoryboard(thread, withNew).issues.join(" "), /카드마다 같은 mark가 text 안에 꼭 한 번/);
+  // A mode brings its own slots, and shares add up to 100: the render PC stops the whole short otherwise.
+  const ball = good();
+  ball.scenes[1] = { type: "lib_zero_line", at: "가고 싶고", mode: "ball", start: -10, end: 1, cue_ball: "같이 있는" };
+  assert.deepEqual(checkShortStoryboard(ball, withNew).issues, []);
+  delete ball.scenes[1].cue_ball;
+  assert.match(checkShortStoryboard(ball, withNew).issues.join(" "), /공 모드는 start\(음수\) · end · cue_ball/);
+  const share = good();
+  share.scenes[1] = { type: "lib_share_bar", at: "가고 싶고", parts: [{ text: "만남", ratio: 60, cue: "가고 싶고" }, { text: "쉼", ratio: 30, cue: "쉬고 싶은" }] };
+  assert.match(checkShortStoryboard(share, withNew).issues.join(" "), /합이 100/);
+  share.scenes[1].parts[1].ratio = 40;
+  assert.deepEqual(checkShortStoryboard(share, withNew).issues, []);
 });
 
 test("a big line wider than the frame, a missing cue and a sentence with no text are sent back", () => {

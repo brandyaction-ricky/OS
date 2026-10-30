@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFileSync } from "node:fs";
 
 test.beforeEach(() => {
   test.skip(process.env.YOUTUBE_V1_ENABLED !== "true", "Portrait editing requires the YouTube process v1 flag.");
@@ -28,13 +29,13 @@ test("local demo edits portrait diagram labels and returns to image mode", async
   expect(errors).toEqual([]);
 });
 
-test('all 70 diagrams expose editable fields without losing rapid edits or overflowing mobile',async({page})=>{
+test('all portrait diagrams expose editable fields without losing rapid edits or overflowing mobile',async({page})=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto('/content/make?project=demo-p9');
  await page.getByRole('button',{name:/직접 쓰기/}).click();
  const row=page.locator('.yp-scn').first(),select=row.getByRole('combobox',{name:'화면 소재'});
  const types=await select.locator('option').evaluateAll(nodes=>nodes.map(n=>(n as HTMLOptionElement).value).filter(x=>x!=='image'));
- expect(types.length).toBe(70);
+ expect(types.length).toBe(JSON.parse(readFileSync('lib/shortform-diagram-catalog.json','utf8')).length);
  for(const type of types){await select.selectOption(type);await expect(row.locator('input').first()).toBeVisible();}
  await select.selectOption('lib_row_contrast');
  await row.getByLabel('첫 번째',{exact:true}).fill('관계');
