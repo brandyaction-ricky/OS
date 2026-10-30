@@ -3,7 +3,7 @@
 import type { YpKind, YpRef } from "./project";
 import { narrationFromMarkdown } from "../youtube-narration-document.ts";
 
-export type YpStageKind = "plan" | "outline" | "make" | "upload" | "column" | "shortTopics" | "shortScript" | "review2" | "screenCheck";
+export type YpStageKind = "plan" | "outline" | "make" | "upload" | "column" | "shortTopics" | "shortScript" | "review2" | "screenCheck" | "topicResearch";
 export const STAGE_RECORD: Record<YpStageKind, { recordType: "content_package" | "content_script"; key: "packageKind" | "scriptKind"; value: string; title: string }> = {
   plan: { recordType: "content_package", key: "packageKind", value: "yp_plan", title: "기획안" },
   outline: { recordType: "content_script", key: "scriptKind", value: "yp_outline", title: "구성안" },
@@ -14,6 +14,7 @@ export const STAGE_RECORD: Record<YpStageKind, { recordType: "content_package" |
   shortScript: { recordType: "content_package", key: "packageKind", value: "yp_short_script", title: "숏폼 대본" },
   review2: { recordType: "content_package", key: "packageKind", value: "yp_review2", title: "두 번째 검수" },
   screenCheck: { recordType: "content_package", key: "packageKind", value: "yp_screen_check", title: "화면 자동 검사" },
+  topicResearch: { recordType: "content_package", key: "packageKind", value: "yp_topic_research", title: "롱폼 주제 후보" },
 };
 export const SLOTS = ["A", "B", "C"] as const;
 export type YpSlot = (typeof SLOTS)[number];
@@ -148,13 +149,19 @@ export interface YpScreenCheck {
   /** The run and the preparation (its prepared.at) whose sheets were judged: a newer preparation means an older check. */
   runId: string; sheetsAt: string; scenes: YpScreenIssue[]; note: string; error?: string;
 }
+/** 롱폼 주제 (owner 2026-10-30, like the 숏폼's): the title formulas the staff AI drew from the 참고 영상 and the 주제 후보 made from
+ * them; the PD picks one and fixes the topic. channels = different channels among a formula's videos (3 = 확인된 주제, as in 틈새). */
+export interface YpTopicFormula { formula: string; desire: string; refs: { title: string; url: string; channel: string }[]; channels: number }
+export interface YpTopicResearch {
+  research?: { by: string; model: string; at: string; jobId: string; market?: { query: string; count: number }; formulas: YpTopicFormula[]; topics: YpShortTopicPick[]; notes: string };
+}
 /** A short fingerprint of a 원고 (FNV-1a over the trimmed text), the same on the server and in the browser. */
 export function scriptKey(md: string) {
   let hash = 0x811c9dc5;
   for (const char of md.replace(/\r/g, "").trim()) hash = Math.imul(hash ^ char.codePointAt(0)!, 0x01000193) >>> 0;
   return hash.toString(16).padStart(8, "0");
 }
-export type YpStageData = { plan: YpPlan; outline: YpOutline; make: YpMake; upload: YpUpload; column: YpColumn; shortTopics: YpShortTopics; shortScript: YpShortScript; review2: YpReview2; screenCheck: YpScreenCheck };
+export type YpStageData = { plan: YpPlan; outline: YpOutline; make: YpMake; upload: YpUpload; column: YpColumn; shortTopics: YpShortTopics; shortScript: YpShortScript; review2: YpReview2; screenCheck: YpScreenCheck; topicResearch: YpTopicResearch };
 export interface YpStageRecord<K extends YpStageKind = YpStageKind> { id: string | null; version: number; data: YpStageData[K] }
 export type YpStages = { [K in YpStageKind]: YpStageRecord<K> };
 
@@ -197,6 +204,7 @@ export function emptyStage<K extends YpStageKind>(kind: K, projectKind: YpKind |
     shortScript: { query: "", refs: [], text: "", hooks: [], insight: "", formula: "", headCopy: "" },
     review2: { state: "none", at: "", model: "", key: "", gates: [], doubts: [] },
     screenCheck: { state: "none", at: "", model: "", runId: "", sheetsAt: "", scenes: [], note: "" },
+    topicResearch: {},
   };
   return blank[kind] as YpStageData[K];
 }

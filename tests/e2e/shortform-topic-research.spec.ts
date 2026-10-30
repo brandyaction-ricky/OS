@@ -64,3 +64,19 @@ test("a new 숏폼 starts from a 초안 키워드 and finds its references befor
   await expect(confirm).toBeDisabled();
   expect(errors).toEqual([]);
 });
+
+// 롱폼 주제 (owner 2026-10-30, like the 숏폼's): 참고 영상 by keyword (터진 영상 first), the staff AI's 주제 후보, and the pick in 전달 사항.
+test("a 롱폼 at 주제 finds 참고 영상 by keyword and takes a 주제 후보 with its formula", async ({ page }) => {
+  const errors: string[] = []; page.on("pageerror", error => errors.push(error.message));
+  await page.goto("/content/plan?project=demo-p1&view=topic");
+  await page.getByRole("button", { name: "참고 영상 찾기" }).click();
+  await page.getByRole("button", { name: "넣기", exact: true }).first().click();
+  await expect(page.getByText("넣었어요", { exact: true })).toHaveCount(1);
+  await page.getByRole("button", { name: "이 주제로" }).nth(1).click();
+  await expect(page.getByLabel("주제", { exact: true })).toHaveValue("[예시] 쉬는 날에도 머리가 쉬지 않는 진짜 이유");
+  await expect(page.getByText("고른 주제", { exact: true })).toBeVisible();
+  await expect(page.locator("#yp-topic-note")).toHaveValue(/^주제 후보: \[예시\] 쉬는 날에도 머리가 쉬지 않는 진짜 이유\n제목 공식: \[예시\] \[흔한 장면\]하는 진짜 이유 \(채널 3곳\)/);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  expect(errors).toEqual([]);
+});
