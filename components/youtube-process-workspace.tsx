@@ -15,15 +15,17 @@ import { YoutubeScheduleScreen } from "./youtube-process-schedule";
 import { YoutubeShortsScreen } from "./youtube-process-shorts";
 import { ContentPerformanceDashboard } from "./content-performance-dashboard";
 import { YoutubeLinksScreen } from "./youtube-process-links";
+import { YoutubeVoiceDictionaryScreen } from "./youtube-process-voice-dictionary";
 
 // The step screens show this header only while they load, so only 스케줄 · 컨펌 carry a line under the title.
 const SUB: Partial<Record<YoutubeV1Screen | "shorts", string>> = {
   schedule: "날짜를 끌어서 옮겨요.",
   confirm: "PD가 컨펌한 것을 보고 노트를 남겨요.",
   links: "회사 공용 선택값으로 UTM 링크를 만들어 링크 대장에 남기고, 마이인 단축 링크로 줄여요.",
+  "voice-dictionary": "영상 만드는 컴퓨터가 음성을 만들 때마다 읽는 사전이에요.",
 };
 
-const TITLES: Record<YoutubeV1Screen | "shorts", string> = { projects: "내 영상", plan: "기획", make: "제작", "final-check": "최종 검토", upload: "업로드", shorts: "쇼츠 · 칼럼", schedule: "스케줄", confirm: "컨펌", links: "링크관리" };
+const TITLES: Record<YoutubeV1Screen | "shorts", string> = { projects: "내 영상", plan: "기획", make: "제작", "final-check": "최종 검토", upload: "업로드", shorts: "쇼츠 · 칼럼", schedule: "스케줄", confirm: "컨펌", links: "링크관리", "voice-dictionary": "음성 사전" };
 
 /** 유튜브 공정 v1 screens behind YOUTUBE_V1_ENABLED. */
 /**
@@ -33,7 +35,7 @@ const TITLES: Record<YoutubeV1Screen | "shorts", string> = { projects: "내 영�
 function widthOf(screen: YoutubeV1Screen | "shorts" | "performance", view: string | null) {
   if (screen === "projects") return view === "discover" ? "yp-w-l" : "yp-w-m";
   if (screen === "plan") return !view || view === "topic" ? "yp-w-m" : "";
-  if (screen === "make" || screen === "links") return "yp-w-m";
+  if (screen === "make" || screen === "links" || screen === "voice-dictionary") return "yp-w-m";
   return screen === "final-check" || screen === "schedule" || screen === "performance" ? "yp-w-l" : "";
 }
 
@@ -58,6 +60,7 @@ export function YoutubeProcessWorkspace({ screen }: { screen: YoutubeV1Screen | 
     {screen === "projects" ? <YoutubeProjectsScreen />
       : screen === "schedule" ? <YoutubeScheduleScreen />
       : screen === "links" ? <YoutubeLinksScreen />
+      : screen === "voice-dictionary" ? <YoutubeVoiceDictionaryScreen />
       : screen === "confirm" && canConfirm === null ? <p className="yp-hint" role="status">권한을 확인하는 중이에요…</p>
       : screen === "confirm" && !canConfirm ? <div className="yp-locked"><Lock size={18} className="yp-i" aria-hidden="true" /><div><b>대표만 볼 수 있어요</b><p>컨펌 상태는 각 영상 화면에서 볼 수 있어요.</p></div></div>
         : screen === "confirm" ? <YoutubeConfirmScreen />

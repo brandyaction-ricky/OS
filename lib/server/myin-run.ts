@@ -12,6 +12,8 @@ import { readSoundCatalog } from "./sound-catalog";
 import { readYoutubeAutomationInput } from "./youtube-automation-input";
 import { assertSpokenScript } from "./youtube-script-canon";
 import { digestVoiceValue, voiceRunId, YOUTUBE_VOICE_BUCKET, YOUTUBE_VOICE_TIMING_BUCKET } from "./youtube-voice-run";
+import { readVoiceDictionary, reportVoiceDictionary } from "./youtube-voice-dictionary";
+import { dictionaryFiles, type VoiceDictionaryFiles } from "@/lib/youtube-process/voice-dictionary";
 
 // 마이인 v13 (owner decision 2026-10-19: the default format; design https://claude.ai/artifact/NCJ5qjYNeBYgfwjCnm1JgQ).
 // One run per approved script. Stage 1: the render PC picks each paragraph's breath commas with Logan's model (breath_pending, 로건
@@ -401,8 +403,11 @@ export async function claimMyinWords(service: Service = createServiceSupabase(),
     const voiceUploadUrls = (await Promise.all(Array.from({ length: MYIN_VOICE_PARTS }, (_, n) =>
       service.storage.from(YOUTUBE_VOICE_BUCKET).createSignedUploadUrl(voicePartPath(prefix, n), { upsert: true })))).map(({ data }) => data?.signedUrl).filter(Boolean);
     const { data: preview } = await service.storage.from(YOUTUBE_VOICE_BUCKET).createSignedUploadUrl(previewPath(prefix), { upsert: true });
+    // 음성 사전 (phase ④): the render PC voices with what the OS keeps; until the OS has one, his package's files stand.
+    const dictionary = await readVoiceDictionary(service).catch(() => null);
     return { runId: record.id, lease: lease.token, ...voice, bundleUploadUrl: upload.signedUrl, ...(voiceUploadUrls.length === MYIN_VOICE_PARTS ? { voiceUploadUrls } : {}),
       ...(preview ? { previewUploadUrl: preview.signedUrl } : {}), ...(run.layout ? { layout: run.layout } : {}),
+      ...(dictionary?.exists ? { dictionary: dictionaryFiles(dictionary.dictionary) } : {}),
       ...(run.voiceFixes?.length ? { fixes: run.voiceFixes.map(({ memo, say, read, video }) => ({ memo, ...(say ? { say } : {}), ...(read ? { read } : {}), ...(video ? { video } : {}) })) } : {}) };
   } catch (error) {
     await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_CLAIM_FAILED");
@@ -444,6 +449,9 @@ export async function completeMyinWords(input: { runId: string; lease: string; v
   const stage = run.voiceResume ?? "words_ready";
   if (run.voiceResume) next.voiceChanged = { at: new Date().toISOString(), count: run.voiceFixes?.length ?? 0 };
   await save(service, record, "done", stage, next);
+  // His dictionaries as the render PC left them (new lines from voice_fix, or his starting set): the OS keeps what it does not have.
+  await reportVoiceDictionary((bundle.data as { dictionary?: Partial<VoiceDictionaryFiles> }).dictionary, { id: record.owner_id ?? "", team: record.team ?? "" }, service)
+    .catch((error) => console.error(JSON.stringify({ event: "voice_dictionary_report_failed", message: error instanceof Error ? error.message : String(error) })));
   // A fixed voice replaces the one before it: those parts (~75 MB for 13 minutes) are removed so storage holds one voice per video.
   const old = run.words?.voice;
   if (old && input.voice && old.path !== next.words?.voice?.path)
