@@ -17,17 +17,18 @@ export function YoutubeFlow({ project, view, action }: { project: YpProject; vie
   const name = projectName(project);
   const flow = flowOf(project.yp.topic.type);
   const shown = flow.find(step => step.index === view) ?? flow[0];
-  return <div className="yp-flow">
+  const card = project.yp.topic.type === "card";
+  return <div className={`yp-flow${card ? " yp-card-flow" : ""}`}>
     <Link className="yp-fl-proj" href="/content/projects" title="내 영상으로"><Folder size={15} className="yp-i" aria-hidden="true" /><span>{name}</span></Link>
     <ol className="yp-fl-steps" aria-label="공정 흐름">
       {flow.map(({ index, name: step }, at) => {
         const state = index < current ? "yp-done" : index === current ? "yp-now" : "";
-        const mark = <span className="yp-d" aria-hidden="true">{index < current ? "✓" : ""}</span>;
+        const mark = <span className="yp-d" aria-hidden="true">{card ? at + 1 : index < current ? "✓" : ""}</span>;
         const cls = `yp-fs ${state}${index === view ? " yp-view" : ""}`;
         return <Fragment key={step}>
           {at ? <li className="yp-fl-sep" aria-hidden="true"><ChevronRight size={12} /></li> : null}
           <li>{index <= current
-            ? <Link className={cls} href={stepHref(index, project.id)} aria-current={index === view ? "step" : undefined}>{mark}{step}</Link>
+            ? <Link className={cls} href={stepHref(index, project.id)} aria-current={index === view ? "step" : undefined}>{mark}{step}{card && index < current ? <small className="yp-step-done">완료</small> : null}</Link>
             : <button type="button" className={cls} disabled title="아직 열리지 않았어요">{mark}{step}</button>}</li>
         </Fragment>;
       })}

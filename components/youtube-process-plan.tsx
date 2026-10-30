@@ -74,6 +74,8 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
   const [created, setCreated] = useState<YpProject[]>([]);
   const [refUrl, setRefUrl] = useState("");
   const [refError, setRefError] = useState("");
+  const [reuseQuery, setReuseQuery] = useState("");
+  const [reuseLimit, setReuseLimit] = useState(5);
   const [loading, setLoading] = useState(projectParam !== "new");
   const [replyOpen, setReplyOpen] = useState(false);
   const [replyText, setReplyText] = useState("");
@@ -204,6 +206,13 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
     : { kind: "button", label: `${confirmLabel}하고 다음으로${lines.length > 1 ? ` (${lines.length}개)` : ""}`, busy, onClick: () => void gate("confirm"),
       reason: topicMissing(form.title, { type: form.kind, target: form.target }) || (!short ? "" : !research.refs ? "참고 영상을 찾아 주세요" : !research.formula ? "공식을 고르고 주제를 정해 주세요" : "") };
   const others = projects.filter(row => row.id !== shell.id);
+  const reusableMatches = others.filter(row => projectName(row).toLocaleLowerCase().includes(reuseQuery.trim().toLocaleLowerCase()));
+  const reusable = recentProjects(reusableMatches, reuseLimit);
+  const importTopic = (source: YpProject) => {
+    if (!editable || busy) return;
+    if ((form.title.trim() || dirty) && !window.confirm("지금 입력한 주제·타겟·메모·참고 자료를 가져온 내용으로 바꿀까요? 원본 문서는 바뀌지 않습니다.")) return;
+    editAndSave({ title: source.title, target: source.yp.topic.target, note: source.yp.topic.note, refs: source.yp.topic.refs.map(ref => ({ ...ref })), kind: form.kind ?? source.yp.topic.type });
+  };
   const similar = editable ? similarProjects(form.title, others, shell.id) : [];
 
   return <>
@@ -229,7 +238,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
           <label>고친 칸 없이 다시 요청하는 이유 (대표에게 보여요)<input className="yp-in" id="yp-topic-reply" maxLength={200} value={replyText} onChange={event => setReplyText(event.target.value)} /></label>
           <div><button type="submit" className="yp-btn yp-pri" disabled={busy || !replyText.trim()}>이유와 함께 다시 요청</button> <button type="button" className="yp-btn" onClick={() => setReplyOpen(false)}>취소</button></div>
         </form> : null}
-        <div className="yp-savebar">
+        <div className="yp-savebar yp-topic-owner">
           <label>담당 PD <select className="yp-pdsel" id="yp-topic-pd" value={form.assigneeId ?? ""} onChange={event => editAndSave({ assigneeId: event.target.value || null })}>
             <option value="">정하지 않음</option>{members.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label>
         </div>
@@ -300,8 +309,11 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
         <StepFooter action={action} todo={editable ? [{ label: "주제", done: Boolean(lines.length) }, { label: "유형", done: Boolean(form.kind) }, { label: "정밀 타겟", done: Boolean(form.target.trim()) },
           ...(short ? [{ label: "참고 영상", done: research.refs }, { label: "공식", done: Boolean(research.formula) }] : [])] : undefined} />
         <div className="yp-lists" style={{ marginTop: 16 }}><section className="yp-card"><div className="yp-card-h">우리가 했던 주제</div>
-          <div>{recentProjects(others, 5).map(row => <Link key={row.id} className="yp-lrow" href={stepHref(0, row.id)}><div className="yp-lt"><b>{projectName(row)}</b><div className="yp-lm"><span>{row.yp.topic.type ? YP_KIND_SHORT[row.yp.topic.type] : "유형 없음"}</span><span>{stageLabel(row)}</span><span>{md(row.yp.contentUpdatedAt).split(" ")[0]}</span></div></div></Link>)}
-            {others.length ? null : <p className="yp-pempty">아직 다른 영상이 없어요</p>}</div>
+          <div className="yp-card-b"><input className="yp-in" aria-label="했던 주제 검색" placeholder="이전에 쓴 주제 찾기" value={reuseQuery} onChange={event => { setReuseQuery(event.target.value); setReuseLimit(5); }} /></div>
+          <div>{reusable.map(row => <div key={row.id} className="yp-lrow yp-reuse-row"><Link className="yp-lt" href={stepHref(0, row.id)}><b>{projectName(row)}</b><div className="yp-lm"><span>{row.yp.topic.type ? YP_KIND_SHORT[row.yp.topic.type] : "유형 없음"}</span><span>{stageLabel(row)}</span><span>{md(row.yp.contentUpdatedAt).split(" ")[0]}</span></div></Link>
+            <button type="button" className="yp-btn yp-sm" disabled={!editable || busy} title={!editable ? "주제를 다시 연 뒤 불러올 수 있어요." : "현재 주제에 내용 복사"} aria-label={`${projectName(row)} 주제 불러오기`} onClick={() => importTopic(row)}>주제 불러오기</button></div>)}
+            {reusable.length ? null : <p className="yp-pempty">{reuseQuery ? "찾는 주제가 없어요" : "아직 다른 영상이 없어요"}</p>}</div>
+          {reusableMatches.length > reusable.length && <div className="yp-card-b"><button type="button" className="yp-btn yp-sm" onClick={() => setReuseLimit(value => value + 10)}>이전 주제 더 보기</button></div>}
           <div className="yp-lfoot"><span>주제가 겹치는지 확인해요</span><Link className="yp-lnk" href="/content/projects">더 보기 →</Link></div>
         </section></div>
       </div> : null}
