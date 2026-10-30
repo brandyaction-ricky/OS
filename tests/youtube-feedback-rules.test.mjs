@@ -112,3 +112,12 @@ test("N06·N07: attachments stay under the project as images or PDFs; any existi
   assert.match(server, /files\.length !== input\.files\.length\) throw new ApiError\(400, "FEEDBACK_FILE_INVALID"/);
   assert.match(server, /if \(!feedbackFilePath\(project\.id\)\.test\(path\)\) throw new ApiError\(400, "FEEDBACK_FILE_INVALID"/);
 });
+
+// 음성 피드백 (로건 OS 요청 2026-10-30): the 최종 검토 notes that go to the render PC as voice fixes.
+test("voice feedback is told from notes about the picture, the render cut and the content", async () => {
+  const { voiceFeedback } = await import("../lib/youtube-process/feedback.ts");
+  for (const text of ["복권. 당첨자와. 끊겨서 들려요", "여기 말투가 AI스러워요", "발음이 이상해요", "사람과. 분위기는. 대놓고. 묻기", "호흡이 너무 길어요"])
+    assert.equal(voiceFeedback(text), true, text);
+  for (const text of ["구독 멘트 뒤에 씹힘", "쇼릴 끝에 목소리 끊김", "화면이 어색해요", "예시가 실무와 안 맞아요", "자막 위치가 어색"])
+    assert.equal(voiceFeedback(text), false, text);
+});

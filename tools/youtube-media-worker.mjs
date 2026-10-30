@@ -530,20 +530,26 @@ export async function processMyinWords() {
     const script = path.join(voiceDir, "script.md");
     writeFileSync(script, job.scriptMarkdown);
     const { env } = speaker;
-    // 음성 확인·수정 (로건 OS 요청 2026-10-30): memos from stage 1 redo only their sentences in this video's voice (his voice_fix); the
-    // rest stays. A video whose folder is gone, or an older package, is voiced again from the script instead.
+    // 음성 확인·수정 (로건 OS 요청 2026-10-30): memos redo only their sentences in this video's voice (his voice_fix); the rest stays.
+    // A 최종 검토 memo (video) carries the video's time, which his time map from the last full render turns into the voice's.
     const fixes = Array.isArray(job.fixes) ? job.fixes : [];
     const timing = path.join(work, "tools", "voice_timing");
     const fixed = [];
-    if (fixes.length && existsSync(path.join(voiceDir, "voice.wav")) && existsSync(path.join(timing, "voice_fix.py"))) {
+    const hasVoice = existsSync(path.join(voiceDir, "voice.wav")), hasTool = existsSync(path.join(timing, "voice_fix.py"));
+    if (fixes.length && hasVoice && hasTool) {
       current.step = "voice fix";
       for (const fix of fixes) {
-        const result = await runOut(speaker.python, ["voice_fix.py", voiceJob, "--memo", fix.memo, ...(fix.say ? ["--say", fix.say] : []), ...(fix.read ? ["--read", fix.read] : [])], { cwd: timing, env });
+        const result = await runOut(speaker.python, ["voice_fix.py", voiceJob, "--memo", fix.memo, ...(fix.say ? ["--say", fix.say] : []), ...(fix.read ? ["--read", fix.read] : []),
+          ...(fix.video ? ["--video", "--video_work", videoJob] : [])], { cwd: timing, env });
         fixed.push({ memo: fix.memo, ok: result.ok, report: fixReport(result.out) });
       }
       if (fixed.some((fix) => fix.ok)) mergeVoiceDictionaries(timing, path.join(job.layout === "short" ? myinPkgShort : myinPkg, "tools", "voice_timing"));
+    } else if (fixes.length) {
+      // Never voice a whole video again for a memo: it stays as it was and the screen says why.
+      const why = !hasTool ? "이 영상은 문장만 다시 만드는 도구가 없는 패키지로 시작했어요." : "영상 만드는 컴퓨터에 이 영상의 음성 작업 폴더가 없어요.";
+      for (const fix of fixes) fixed.push({ memo: fix.memo, ok: false, report: why });
+      if (!hasVoice) throw Object.assign(new Error("the voice to fix is gone from this render PC"), { code: "MYIN_VOICE_FIX_NO_VOICE" });
     } else {
-      for (const fix of fixes) fixed.push({ memo: fix.memo, ok: false, report: "이 영상의 음성 작업 폴더가 없어 음성을 처음부터 다시 만들었어요." });
       current.step = "narration";
       await runAsync(speaker.python, ["stage_voice.py", script, voiceJob], { cwd: path.join(work, "tools", "mindmap_pipeline"), env });
     }

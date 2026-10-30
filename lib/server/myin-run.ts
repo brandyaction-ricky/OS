@@ -60,7 +60,11 @@ const runSchema = z.object({
   // voice_fix (two new takes, the better one swapped in, the sentence added to his dictionary) and transcribes again; the check itself
   // (or skipping it) is recorded and never blocks stage 2.
   voiceFixes: z.array(z.object({ memo: z.string().min(1).max(300), say: z.string().max(300).optional(), read: z.string().max(100).optional(),
-    by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict()).max(20).optional(),
+    video: z.literal(true).optional(), by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict()).max(20).optional(),
+  // 최종 검토 음성 피드백 (phase ③): a fix asked after the full video goes back to ④ when done, and says the voice changed until the
+  // full video is made again.
+  voiceResume: z.literal("prep_ready").optional(),
+  voiceChanged: z.object({ at: z.string().datetime(), count: z.number().int().min(0) }).strict().optional(),
   voiceCheck: z.object({ skipped: z.boolean(), by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict().optional(),
   // Stage 2: the staff AI's storyboard (kept in the voice-timing bucket) and what Logan sees to confirm it.
   storyboard: z.object({ path: z.string(), scenes: z.number().int().positive(), model: z.string(), at: z.string().datetime(),
@@ -142,6 +146,7 @@ export function presentMyinRun(record: OsRecord) {
     clips: run.clips ? run.clips.items.map(({ name, label }) => ({ name, label })) : null, clipsReview: run.clipsReview ?? null, sound: run.sound ?? null,
     final: run.final ? { bytes: run.final.bytes, durationSeconds: run.final.durationSeconds, lufs: run.final.lufs, peak: run.final.peak, at: run.final.at } : null,
     voiceFixes: (run.voiceFixes ?? []).map(({ memo, say, read, name }) => ({ memo, say: say ?? null, read: read ?? null, name })), voiceCheck: run.voiceCheck ?? null,
+    voiceFixable: voiceFixable(record, run), voiceChanged: run.voiceChanged ?? null,
     lastErrorCode: run.lastError?.code ?? null, createdAt: record.created_at, local: run.local ? { by: run.local.by, name: run.local.name } : null, localReady: Boolean(run.words?.voice) && !run.layout,
     // 로건 피드백 10/26-8: when the render PC took this step, so the screen can say how long it has been working.
     workingSince: record.status === "in_progress" ? run.lease?.startedAt ?? null : null };
@@ -398,7 +403,7 @@ export async function claimMyinWords(service: Service = createServiceSupabase(),
     const { data: preview } = await service.storage.from(YOUTUBE_VOICE_BUCKET).createSignedUploadUrl(previewPath(prefix), { upsert: true });
     return { runId: record.id, lease: lease.token, ...voice, bundleUploadUrl: upload.signedUrl, ...(voiceUploadUrls.length === MYIN_VOICE_PARTS ? { voiceUploadUrls } : {}),
       ...(preview ? { previewUploadUrl: preview.signedUrl } : {}), ...(run.layout ? { layout: run.layout } : {}),
-      ...(run.voiceFixes?.length ? { fixes: run.voiceFixes.map(({ memo, say, read }) => ({ memo, ...(say ? { say } : {}), ...(read ? { read } : {}) })) } : {}) };
+      ...(run.voiceFixes?.length ? { fixes: run.voiceFixes.map(({ memo, say, read, video }) => ({ memo, ...(say ? { say } : {}), ...(read ? { read } : {}), ...(video ? { video } : {}) })) } : {}) };
   } catch (error) {
     await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_CLAIM_FAILED");
     throw error;
@@ -434,17 +439,27 @@ export async function completeMyinWords(input: { runId: string; lease: string; v
     subtitleLines: (bundle.data.subtitlesAss.match(/^Dialogue:/gm) ?? []).length, durationSeconds: bundle.data.durationSeconds, at: new Date().toISOString(),
     ...(input.voice ? { voice: { path: voicePrefix(record, run, input.lease), ...input.voice } } : {}),
     ...(input.preview ? { preview: { path: previewPath(voicePrefix(record, run, input.lease)), bytes: input.preview.bytes } } : {}) } };
-  delete next.lease; delete next.lastError; delete next.voiceFixes;
-  await save(service, record, "done", "words_ready", next);
+  delete next.lease; delete next.lastError; delete next.voiceFixes; delete next.voiceResume;
+  // A fix asked from 최종 검토 returns to ④, where 「전체 영상 만들기」 makes the video again with the new voice.
+  const stage = run.voiceResume ?? "words_ready";
+  if (run.voiceResume) next.voiceChanged = { at: new Date().toISOString(), count: run.voiceFixes?.length ?? 0 };
+  await save(service, record, "done", stage, next);
   // A fixed voice replaces the one before it: those parts (~75 MB for 13 minutes) are removed so storage holds one voice per video.
   const old = run.words?.voice;
   if (old && input.voice && old.path !== next.words?.voice?.path)
     await service.storage.from(YOUTUBE_VOICE_BUCKET).remove([...Array.from({ length: old.parts }, (_, n) => voicePartPath(old.path, n)), ...(run.words?.preview ? [run.words.preview.path] : [])]).catch(() => undefined);
-  return { runId: record.id, stage: "words_ready" };
+  return { runId: record.id, stage };
 }
 
 export async function failMyinWords(input: { runId: string; lease: string; code: string }, service: Service = createServiceSupabase()) {
   const { record, run } = await leased(service, input.runId, input.lease);
+  // A voice fix that cannot be done leaves the video where it was (the voice it had still stands) instead of stopping it at stage 1.
+  if (run.voiceFixes?.length && run.words && (input.code === "MYIN_VOICE_FIX_NO_VOICE" || run.attempts >= 3)) {
+    const next: MyinRun = { ...run, attempts: 0, lastError: { code: input.code.replace(/[^A-Z0-9_]/g, "").slice(0, 60) || "MYIN_FAILED", at: new Date().toISOString() } };
+    delete next.lease; delete next.voiceFixes; delete next.voiceResume;
+    await save(service, record, "done", run.voiceResume ?? "words_ready", next);
+    return { runId: record.id, retry: false };
+  }
   await failed(service, record, run, input.code);
   return { runId: record.id, retry: run.attempts < 3 };
 }
@@ -623,19 +638,29 @@ export async function myinDownloads(actor: RequestActor, runId: string) {
 
 /** 음성 확인·수정 (로건 OS 요청 2026-10-30): what may be asked of the render PC for one sentence. `read` is 「원래말=읽는소리」. */
 export const myinVoiceFixSchema = z.object({ memo: z.string().trim().min(1).max(300), say: z.string().trim().min(1).max(300).optional(),
-  read: z.string().trim().max(100).regex(/^[^=]+=[^=]+$/, "「원래말=읽는소리」로 써 주세요").optional() }).strict();
+  read: z.string().trim().max(100).regex(/^[^=]+=[^=]+$/, "「원래말=읽는소리」로 써 주세요").optional(),
+  // 최종 검토 음성 피드백: the memo's time is the video's; the render PC turns it into the voice's with the time map his render left.
+  video: z.literal(true).optional() }).strict();
+// The render PC's package with his voice_fix and voice_audit went live 2026-10-30 15:46 KST; a run keeps the engine it was cloned with,
+// so only runs started after it can have one sentence made again.
+const MYIN_VOICE_FIX_SINCE = "2026-10-30T06:46:00Z";
+const voiceFixable = (record: Pick<OsRecord, "created_at">, run: MyinRun) => Boolean(run.voiceOn) && !run.layout && Date.parse(record.created_at) >= Date.parse(MYIN_VOICE_FIX_SINCE);
 /** Stage 1's memos go to the render PC together: it redoes those sentences only and transcribes again (words_pending → words_ready). */
 export async function requestMyinVoiceFix(actor: RequestActor, runId: string, fixes: z.infer<typeof myinVoiceFixSchema>[]) {
   const service = createServiceSupabase();
   const { record, run } = await visibleRun(actor, runId);
   await assertCurrent(service, run);
-  if (record.stage !== "words_ready" || !run.words) throw new ApiError(409, "MYIN_VOICE_FIX_CLOSED", "받아쓰기·자막이 끝난 뒤, 기획표를 쓰기 전까지 고칠 수 있어요.");
-  // His voice_fix works on the sentence files the render PC's own voice leaves (2026-10-30 package); a 숏폼's package does not have it yet.
-  if (run.layout === "short" || !run.voiceOn) throw new ApiError(409, "MYIN_VOICE_FIX_UNAVAILABLE", "이 영상은 문장 하나만 다시 만들 수 없어요. 고칠 곳은 최종 검토 피드백에 남겨 주세요.");
+  // Stage 1's memos before the storyboard; 최종 검토's (video: true) once the full video exists, from ④ or after it.
+  const video = fixes.some((fix) => fix.video);
+  if (video ? !["final_ready", "prep_ready"].includes(record.stage ?? "") || !run.final : record.stage !== "words_ready")
+    throw new ApiError(409, "MYIN_VOICE_FIX_CLOSED", video ? "완성 영상이 나온 뒤에 최종 검토 피드백으로 음성을 고칠 수 있어요." : "받아쓰기·자막이 끝난 뒤, 기획표를 쓰기 전까지 고칠 수 있어요.");
+  // His voice_fix works on the sentence files the render PC's own voice leaves; a 숏폼's package does not have it yet.
+  if (!run.words || !voiceFixable(record, run)) throw new ApiError(409, "MYIN_VOICE_FIX_UNAVAILABLE", "이 영상은 문장 하나만 다시 만들 수 없어요(10/30 16시 전에 시작한 영상 · 숏폼).");
   if (!fixes.length) throw new ApiError(400, "MYIN_VOICE_FIX_EMPTY", "고칠 곳 메모를 하나 이상 남겨 주세요.");
   const at = new Date().toISOString();
-  const next: MyinRun = { ...run, attempts: 0, voiceFixes: fixes.slice(0, 20).map((fix) => ({ ...fix, by: actor.id, name: actor.name, at })) };
-  delete next.voiceCheck;
+  const next: MyinRun = { ...run, attempts: 0, voiceFixes: fixes.slice(0, 20).map((fix) => ({ ...fix, ...(video ? { video: true as const } : {}), by: actor.id, name: actor.name, at })),
+    ...(video ? { voiceResume: "prep_ready" as const } : {}) };
+  if (!video) delete next.voiceCheck;
   return presentMyinRun(await save(service, record, "backlog", "words_pending", next));
 }
 /** 「음성 확인 완료」 or 「확인 없이 바로 넘어가기」: who and when, for the record; stage 2 opens either way. */
@@ -954,7 +979,7 @@ export async function claimMyinFinal(service: Service = createServiceSupabase(),
 export async function completeMyinFinal(input: { runId: string; lease: string; bytes: number; durationSeconds: number; lufs: number; peak: number }, service: Service = createServiceSupabase()) {
   const { record, run } = await leased(service, input.runId, input.lease);
   const next: MyinRun = { ...run, attempts: 0, final: { ...finalFiles(record, run, input.lease), bytes: input.bytes, durationSeconds: input.durationSeconds, lufs: input.lufs, peak: input.peak, at: new Date().toISOString() } };
-  delete next.lease; delete next.lastError;
+  delete next.lease; delete next.lastError; delete next.voiceChanged;
   await save(service, record, "done", "final_ready", next);
   return { runId: record.id, stage: "final_ready" };
 }

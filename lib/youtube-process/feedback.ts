@@ -122,3 +122,13 @@ export function feedbackMatches(item: { text: string; who: string; status: strin
 
 /** N07: the B side's time for a given A time, with a manual offset for cuts of different length (never below 0). */
 export const compareTime = (aTime: number, offset: number, bDuration: number) => Math.max(0, Math.min(bDuration || Infinity, aTime + offset));
+
+/**
+ * 음성 피드백 (로건 OS 요청 2026-10-30): 최종 검토 notes about how the voice sounds go to the render PC, which redoes only that
+ * sentence. His words for it, or a line written as it was heard with full stops (「복권. 당첨자와.」). A 「씹힘」 after the 구독 멘트 or the
+ * reel is the render's cut, and notes about the picture are not about the voice.
+ */
+const VOICE_WORDS = /음성|나레이션|내레이션|목소리|말투|AI\s?스러|어색|끊김|끊겨|끊어|씹힘|씹혀|띄어\s?읽|띄어쓰기|호흡|쉼|억양|발음|읽기/;
+const HEARD_SHAPE = /(?:[가-힣]{1,8}\.\s+){2,}/;
+const NOT_VOICE = /구독|쇼릴|화면|도식|장면|썸네일|자막|글자|사진|그림|음악|배경/;
+export const voiceFeedback = (text: string) => (VOICE_WORDS.test(text) || HEARD_SHAPE.test(`${text} `)) && !NOT_VOICE.test(text);
