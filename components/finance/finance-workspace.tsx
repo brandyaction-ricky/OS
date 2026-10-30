@@ -80,11 +80,11 @@ export function FinanceWorkspace() {
   if (loading) return <p role="status">재무 접근 권한을 확인하고 있습니다.</p>;
   if (!allowed)
     return (
-      <section className="panel empty-state" role="status">
+      <section className="panel empty-state" role="status"><div>
         <h1>재무 권한이 있는 사람만 볼 수 있어요</h1>
         <p>카드지출과 정기 결제는 누구나 쓸 수 있어요.</p>
         <p><Link href="/finance/cards">카드지출로 가기</Link> · <Link href="/home">내 할 일로 돌아가기</Link></p>
-      </section>
+      </div></section>
     );
   // 부가세 신고 참고 자료 is its own React page; the shared ledger app is not mounted for it.
   if (vatPage) return demo ? <section className="panel empty-state" role="status"><h1>부가세 신고 참고 자료</h1><p>연습용 화면에서는 실제 결제·계산서가 없어 비어 있어요.</p></section> : <VatReference token={accessToken} />;

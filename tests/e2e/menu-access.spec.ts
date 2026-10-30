@@ -36,11 +36,16 @@ test("finance menus stay discoverable but locked without existing finance access
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("radio", { name: /메뉴 직접 선택/ }).check();
   const finance = dialog.getByRole("group", { name: /^재무관리/ });
-  await expect(finance).toContainText("0/8");
+  await expect(finance).toContainText("2/8");
   await expect(finance).toContainText("권한 필요");
-  for (const label of ["그룹 전체 선택", "개요", "매출내역", "정산입금", "통장 내역", "카드지출", "정기 결제", "예산 관리"]) {
+  for (const label of ["그룹 전체 선택", "개요", "매출내역", "정산입금", "통장 내역", "예산 관리"]) {
     await expect(finance.getByRole("checkbox", { name: label, exact: true })).toBeDisabled();
     await expect(finance.getByRole("checkbox", { name: label, exact: true })).not.toBeChecked();
+  }
+  // 카드지출·정기 결제 are open to every member (2026-10-30).
+  for (const label of ["카드지출 항상 허용", "정기 결제 항상 허용"]) {
+    await expect(finance.getByRole("checkbox", { name: label, exact: true })).toBeDisabled();
+    await expect(finance.getByRole("checkbox", { name: label, exact: true })).toBeChecked();
   }
   await expect(finance.getByRole("link", { name: "구성원 권한 관리 →", exact: true })).toHaveAttribute("href", "/organization/members");
   await dialog.getByRole("button", { name: "권한 저장", exact: true }).click();
@@ -56,16 +61,17 @@ test("eligible finance accounts can select, persist and reset individual finance
   const finance = dialog.getByRole("group", { name: /^재무관리/ });
   await expect(finance).toContainText("8/8");
   await dialog.getByRole("radio", { name: /메뉴 직접 선택/ }).check();
-  await expect(finance.getByRole("checkbox", { name: "카드지출", exact: true })).toBeEnabled();
+  await expect(finance.getByRole("checkbox", { name: "매출내역", exact: true })).toBeEnabled();
   await finance.getByRole("checkbox", { name: "그룹 전체 선택", exact: true }).uncheck();
-  await finance.getByRole("checkbox", { name: "카드지출", exact: true }).check();
-  await expect(finance).toContainText("1/8");
+  await expect(finance).toContainText("2/8");
+  await finance.getByRole("checkbox", { name: "매출내역", exact: true }).check();
+  await expect(finance).toContainText("3/8");
   await dialog.getByRole("button", { name: "권한 저장", exact: true }).click();
   await page.reload();
   await trigger.click();
-  await expect(finance.getByRole("checkbox", { name: "카드지출", exact: true })).toBeChecked();
-  await expect(finance.getByRole("checkbox", { name: "매출내역", exact: true })).not.toBeChecked();
-  await expect(finance).toContainText("1/8");
+  await expect(finance.getByRole("checkbox", { name: "매출내역", exact: true })).toBeChecked();
+  await expect(finance.getByRole("checkbox", { name: "개요", exact: true })).not.toBeChecked();
+  await expect(finance).toContainText("3/8");
   await dialog.getByRole("button", { name: "기본 권한으로", exact: true }).click();
   await dialog.getByRole("button", { name: "권한 저장", exact: true }).click();
   await page.reload();
@@ -80,7 +86,7 @@ test("revoked finance eligibility does not re-save stale finance menu selections
   await page.reload();
   await page.getByRole("button", { name: "가상 마케터 권한 설정", exact: true }).click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog.getByRole("checkbox", { name: "카드지출", exact: true })).not.toBeChecked();
+  await expect(dialog.getByRole("checkbox", { name: "매출내역", exact: true })).not.toBeChecked();
   await expect(dialog.getByRole("checkbox", { name: "주제·기획", exact: true })).toBeChecked();
   await dialog.getByRole("button", { name: "권한 저장", exact: true }).click();
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("brandy-os-demo-menu-access-v1") ?? "[]"));

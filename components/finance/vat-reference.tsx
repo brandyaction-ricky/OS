@@ -100,7 +100,7 @@ export function VatReference({ token }: { token: string | null }) {
       <div className="tbl-wrap"><table className="tbl">
         <thead><tr><th>증빙</th><th>기준일</th><th className="r">결제·발급</th><th className="r">취소·수정</th><th className="r">공급가액</th><th className="r">세액</th><th className="r">합계</th></tr></thead>
         <tbody>{result.lines.map(line => { const { name, hint } = split(line.label); return <tr key={line.evidence} className={line.count ? undefined : "fin-zero"}>
-          <td><b>{name}</b>{hint ? <span className="sub2">{hint}</span> : null}</td><td className="small">{line.basis}</td>
+          <td><b>{name}</b>{hint ? <span className="sub2">{hint}</span> : null}</td><td className="small nw">{line.basis}</td>
           <td className="r">{line.payCount}</td><td className="r">{line.cancelCount}</td><td className="r">{won(line.supply)}</td><td className="r">{won(line.tax)}</td><td className="r"><b>{won(line.total)}</b></td></tr>; })}</tbody>
         <tfoot><tr><td colSpan={2}>합계</td><td className="r">{count("payCount")}</td><td className="r">{count("cancelCount")}</td><td className="r">{won(sum("supply"))}</td><td className="r">{won(sum("tax"))}</td><td className="r">{won(sum("total"))}</td></tr></tfoot>
       </table></div>

@@ -2088,3 +2088,8 @@
 .page-content .finance-react .tbl tr.fin-zero td b { font-weight: 500; }
 .page-content .finance-react .fin-notes { margin: 12px 0 16px; padding-left: 18px; max-width: 760px; }
 .page-content .finance-react .fin-details > summary { cursor: pointer; font-size: 13px; font-weight: 600; margin-bottom: 10px; }
+.page-content .finance-react .tbl .nw { white-space: nowrap; }
+@media (max-width: 640px) {
+  .page-content .finance-react .tiles.t4, .page-content .finance-react .tiles.t5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .page-content .finance-react .tile .v { font-size: 17px; }
+}
