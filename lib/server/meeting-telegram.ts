@@ -1,8 +1,8 @@
 import { teamBusiness } from "@/lib/team/business";
 import { createServiceSupabase } from "@/lib/supabase/server";
 
-// 회의 확정 → 텔레그램 (2026-10-30 대표 요청): the confirmed meeting's summary goes to every chat that turned on
-// /회의공유켜기. A meeting shared only with attendees never leaves the OS.
+// 회의 확정 → 텔레그램 (2026-10-30 대표 요청): the confirmed meeting's summary goes to the chats set for its business
+// (/회의공유 마이인 → 액션팀 업무 소통방, /회의공유 에듀 → 마케팅 업무 소통방). A meeting shared only with attendees never leaves the OS.
 type Item = { kind: string; text: string; state: string; ownerId?: string; dueOn?: string };
 type Row = { id: string; title: string; brand: string | null; starts_at: string | null; metadata: { visibility?: string; summary?: string; items?: Item[] } };
 
@@ -29,11 +29,11 @@ export async function shareConfirmedMeeting(id: string, origin: string) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) return;
   const supabase = createServiceSupabase();
-  const [{ data: row }, { data: chats }] = await Promise.all([
-    supabase.from("os_records").select("id,title,brand,starts_at,metadata").eq("id", id).eq("record_type", "meeting").maybeSingle<Row>(),
-    supabase.from("os_telegram_chats").select("external_chat_id").eq("meeting_summary_enabled", true),
-  ]);
-  if (!row || row.metadata.visibility === "attendees" || !chats?.length) return;
+  const { data: row } = await supabase.from("os_records").select("id,title,brand,starts_at,metadata").eq("id", id).eq("record_type", "meeting").maybeSingle<Row>();
+  const business = teamBusiness(row?.brand ?? "")?.key;
+  if (!row || !business || row.metadata.visibility === "attendees") return;
+  const { data: chats } = await supabase.from("os_telegram_chats").select("external_chat_id").eq("meeting_share_business", business);
+  if (!chats?.length) return;
   const owners = [...new Set((row.metadata.items ?? []).flatMap(item => item.ownerId ? [item.ownerId] : []))];
   const { data: people } = owners.length ? await supabase.from("os_profiles").select("id,display_name").in("id", owners) : { data: [] };
   const text = meetingTelegramText(row, Object.fromEntries((people ?? []).map(person => [person.id, person.display_name])), origin);

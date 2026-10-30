@@ -27,6 +27,8 @@ const BRAND_ALIASES: Record<string, MeetingBusiness> = {
   "브랜디액션에듀": BRANDYEDU,
   "자영업교육": BRANDYEDU,
   "교육": BRANDYEDU,
+  "에듀": BRANDYEDU,
+  "마케팅교육": BRANDYEDU,
   "brandyedu": BRANDYEDU,
   "회사": COMPANY,
   "전체": COMPANY,

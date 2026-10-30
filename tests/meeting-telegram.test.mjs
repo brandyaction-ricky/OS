@@ -42,7 +42,8 @@ test("only a confirmed meeting is shared, never one for attendees only, and a fa
   const route = await readFile(new URL("../app/api/v1/team/command/route.ts", import.meta.url), "utf8");
   assert.match(route, /parsed\.data\.action === "meeting\.review"[^\n]*after\(\(\) => shareConfirmedMeeting\(id, origin\)\.catch/);
   const hook = await readFile(new URL("../app/api/v1/telegram/webhook/route.ts", import.meta.url), "utf8");
-  assert.match(hook, /\\\/회의공유\\s\*\(켜기\|끄기\)/);
+  assert.match(hook, /meeting_share_business: business\?\.key \?\? null/);
+  assert.match(source, /\.eq\("meeting_share_business", business\)/);
 });
 
 test("AI to-dos nobody took on and nobody dated start as 결정; 나중에 이어서 goes back to the meeting", async () => {

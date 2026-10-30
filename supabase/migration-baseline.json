@@ -960,10 +960,10 @@
     },
     {
       "file": "20261030120000_telegram_meeting_share.sql",
-      "sha256": "207b8337c44f8b2bc095cd36cab764cd1c47c1dca9d25f3bc80b4743cf97e804",
-      "purpose": "회의 확정 → 텔레그램: os_telegram_chats.meeting_summary_enabled (방에서 /회의공유켜기)",
+      "sha256": "da14fc31b8d46e187f00ca50461bc1904424e3d74bdc74a254e030cda61f2757",
+      "purpose": "회의 확정 → 텔레그램: os_telegram_chats.meeting_share_business (방마다 받을 사업, /회의공유 마이인|에듀|회사)",
       "requiresApproval": true,
-      "notes": "Additive: one boolean column with default false on a service-role table; existing chats stay off. Not applied yet."
+      "notes": "Additive: one nullable text column (myin/edu/company) on a service-role table; existing chats stay off. Not applied yet."
     }
   ],
   "legacyMigrations": [
