@@ -214,6 +214,12 @@ export function stageData<K extends YpStageKind>(kind: K, stored: unknown, proje
   return stored && typeof stored === "object" ? { ...base, ...(stored as object) } as YpStageData[K] : base;
 }
 
+// ── 제작 (S5) ──
+/** 업로드 전 급한 수정 (로건 요청 2026-10-30): after the 최종 검토 컨펌, until the video is on YouTube, a new final or a thumbnail file still goes in
+ * (the upload sends the newest final); titles, copies and dates stay as confirmed. */
+export const lateMakeOk = (stage: string, uploaded: boolean, patch: object) =>
+  stage === "upload" && !uploaded && Object.entries(patch).every(([key, value]) => value === undefined || key === "addFinal" || key === "thumb");
+
 // ── 기획안 (S3) ──
 export const thumbFilled = (thumb?: YpThumb | null) => Boolean(thumb && (thumb.mode === "img" ? thumb.path : (thumb.copy?.trim() || thumb.screen?.trim())));
 /** The one-line reason the 기획안 컨펌 request is not ready, or "" (시안 draftMissing). */
