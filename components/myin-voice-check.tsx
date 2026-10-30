@@ -18,8 +18,8 @@ const when = (iso: string) => { const d = new Date(iso); return `${d.getMonth() 
  * 음성 확인·수정 (로건 OS 요청 2026-10-30): before the storyboard, listen to the sentences the render PC flagged, leave memos at their
  * times, and have only those sentences made again (his voice_fix; subtitles follow). Checking — or skipping it — is only recorded.
  */
-export function MyinVoiceCheck({ runId, stage, pending, check, token, onChanged, askCost }: {
-  runId: string; stage: string; pending: MyinVoiceFixView[]; check: MyinVoiceCheckView | null; token: string | null;
+export function MyinVoiceCheck({ runId, stage, fixable, pending, check, token, onChanged, askCost }: {
+  runId: string; stage: string; fixable: boolean; pending: MyinVoiceFixView[]; check: MyinVoiceCheckView | null; token: string | null;
   onChanged: () => Promise<void>; askCost: (sentences: number) => Promise<boolean>;
 }) {
   const [data, setData] = useState<VoiceCheckData | null>(null);
@@ -62,9 +62,10 @@ export function MyinVoiceCheck({ runId, stage, pending, check, token, onChanged,
           {data.listen.length ? <ul className="yt-voice-list" style={{ listStyle: "none", padding: 0, display: "grid", gap: 6 }}>{data.listen.map((row, at) => <li key={at} style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
             <button type="button" className="secondary-button compact" disabled={!data.previewUrl} onClick={() => play(row.at)}>▶ {mmss(row.at)}</button>
             <span style={{ flex: "1 1 260px", minWidth: 0 }}>{row.sentence}<br /><small>{[row.score >= 0.8 ? `끊김 의심 ${row.issues.map(issue => issue.split(" ")[0]).join(" · ")}` : "", row.long ? `긴 한 호흡 ${row.long}음절` : ""].filter(Boolean).join(" · ")}</small></span>
-            {open ? <button type="button" className="secondary-button compact" onClick={() => { setTime(mmss(row.at)); setText(row.sentence.slice(0, 40)); }}>메모</button> : null}
+            {open && fixable ? <button type="button" className="secondary-button compact" onClick={() => { setTime(mmss(row.at)); setText(row.sentence.slice(0, 40)); }}>메모</button> : null}
           </li>)}</ul> : <p>기계가 찾은 어색한 문장이 없어요. 무작위로 두 문단만 들어 봐요.</p>}</>}
-      {open ? <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
+      {open && !fixable ? <p>이 영상은 10/30 16시 전에 시작해 문장만 다시 만들 수 없어요. 고칠 곳은 최종 검토 피드백에 남겨요.</p> : null}
+      {open && fixable ? <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <input className="input" style={{ width: 80 }} value={time} placeholder="02:03" aria-label="시각" onChange={event => setTime(event.target.value)} />
           {data.previewUrl ? <button type="button" className="secondary-button compact" onClick={() => { const el = audio.current; if (el) setTime(mmss(el.currentTime)); }}>지금 위치</button> : null}
