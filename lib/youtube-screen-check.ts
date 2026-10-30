@@ -13,13 +13,13 @@ export function sceneHints(scenes: Record<string, unknown>[]) {
 }
 
 export function screenPrompt(hints: string, short: boolean) {
-  return `영상 하나의 점검 시트${short ? "(세로 숏폼)" : ""}입니다. 시트 한 장에 장면이 3열 × 4행으로 들어 있고, 칸마다 왼쪽 아래 빨간 「#번호」가 장면 번호입니다. 칸은 그 장면이 끝나기 직전의 한 화면입니다.
+  return `영상 하나의 점검 시트${short ? "(세로 숏폼)" : ""}입니다. 시트 한 장에 장면이 3열 × 4행으로 들어 있고, 칸마다 왼쪽 아래 빨간 「#번호」가 장면 번호입니다. 칸은 그 장면 도중의 한 순간입니다(쇼릴 뒤 장면은 조금 이른 순간이라 글자가 차례로 나오는 중일 수 있어요).
 
 시청자 눈에 문제로 보일 장면만 골라 주세요. 볼 것:
 - 넘침: 글자가 카드 · 상자 · 말풍선 · 화면 밖으로 나감
 - 겹침: 글자끼리, 글자와 그림, 화면 글자와 아래 자막이 겹침
 - 잘림: 인물 사진의 얼굴 · 머리 · 몸이 어색하게 잘림, 글자가 잘려 끝이 안 보임
-- 빈 화면: 비어 있거나 회색 자리표시(사진을 못 받은 자리)만 있음
+- 빈 화면: 아무것도 없거나 회색 자리표시(사진을 못 받은 자리)만 있음. 제목만 있고 본문이 아직 없는 칸, 따옴표만 있는 칸은 글자가 나오는 중이라 적지 않음
 - 깨진 글자: □ 같은 깨진 글자, 파일 이름 · 코드 · 영어 변수 이름이 화면에 보임
 - 로고: 화면 구석의 MYIN 로고 · 표기 (진단 광고 · 마이인 사이트 화면 장면은 괜찮음)
 - 글자 많음: 한 화면에 글자가 너무 많아 한눈에 안 읽힘
@@ -43,12 +43,25 @@ export const SCREEN_SCHEMA = { type: "object", additionalProperties: false, requ
 const resultSchema = z.object({ scenes: z.array(z.object({ scene: z.number().int(), kind: z.string(), issue: z.string(), fix: z.string() })), note: z.string() });
 const cut = (text: string, size = 300) => text.trim().slice(0, size);
 
-/** GPT's answer as the stored check: scenes that exist, one line each, in scene order, at most 40; null when it is not that. */
+/** GPT's answer as the stored check: scenes that exist, one line each, in scene order, at most 120 (a problem on every scene of a
+ * 60-scene video, plus others); null when it is not that. */
 export function parseScreen(text: string, sceneCount: number): Pick<YpScreenCheck, "scenes" | "note"> | null {
   let parsed: z.infer<typeof resultSchema>;
   try { parsed = resultSchema.parse(JSON.parse(text)); } catch { return null; }
   const scenes = parsed.scenes.filter((item) => item.scene >= 1 && (!sceneCount || item.scene <= sceneCount + 2) && item.issue.trim())
     .map((item) => ({ scene: item.scene, kind: (SCREEN_KINDS as readonly string[]).includes(item.kind) ? item.kind : "기타", issue: cut(item.issue), fix: cut(item.fix) }))
-    .sort((a, b) => a.scene - b.scene).slice(0, 40);
+    .sort((a, b) => a.scene - b.scene).slice(0, 120);
   return { scenes, note: cut(parsed.note, 400) };
+}
+
+/** The card's lines: the same problem on many scenes (a logo on every scene) is one line with its scenes, not one line each. */
+export function groupScreenIssues(scenes: YpScreenCheck["scenes"]) {
+  const groups = new Map<string, { kind: string; issue: string; fix: string; scenes: number[] }>();
+  for (const item of scenes) {
+    const key = `${item.kind}\u0000${item.issue}\u0000${item.fix}`;
+    const group = groups.get(key) ?? { kind: item.kind, issue: item.issue, fix: item.fix, scenes: [] };
+    if (!group.scenes.includes(item.scene)) group.scenes.push(item.scene);
+    groups.set(key, group);
+  }
+  return [...groups.values()].sort((a, b) => a.scenes.length - b.scenes.length || a.scenes[0] - b.scenes[0]);
 }
