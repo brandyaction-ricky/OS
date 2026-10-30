@@ -277,8 +277,8 @@ function demoFilledStages(project: YpProject): YpStagesView {
 /** One 정리형 draft, so the 카드 만들기 screen has something to show in the demo. */
 function demoCards(): YpStageData["cards"] {
   const draft = emptyCardDraft("list", "demo-d1", "리키", daysAgo(0));
-  const fill = [["월요일마다 무거운 사람의 공통점 3가지", "쉬어도 안 풀리는 피로는 신호일 수 있어요"], ["잘한 일보다 실수가 먼저 떠올라요", "칭찬받은 날에도 집에 오는 길엔 그때 왜 그렇게 말했지만 남아요."],
-    ["주말에도 일 생각이 꺼지지 않아요", "쉬는 날인데 월요일 회의 장면이 머릿속에서 계속 돌아가요."], ["내가 고른 일이 하나도 없어요", "하루를 다 써도 내 기준으로 고른 일이 없으면 남는 게 없어요."],
+  const fill = [["월요일마다 무거운 사람의 공통점 3가지", "쉬어도 안 풀리는 피로는 신호일 수 있어요"], ["실수가 먼저 떠올라요", "칭찬받은 날에도 집에 오는 길엔 그때 왜 그렇게 말했지만 남아요."],
+    ["주말에도 일 생각이 나요", "쉬는 날인데 월요일 회의 장면이 머릿속에서 계속 돌아가요."], ["내가 고른 일이 없어요", "하루를 다 써도 내 기준으로 고른 일이 없으면 남는 게 없어요."],
     ["지친 건 양이 아니라 고를 수 없어서예요", ""], ["이번 주에 내가 고를 일 하나를 적어 봐요", "저장해 두기"]];
   draft.slides.forEach((slide, index) => { const [a, b] = fill[index] ?? ["", ""]; const keys = Object.keys(slide.fields); slide.fields = { [keys[0]]: a, ...(keys[1] ? { [keys[1]]: b } : {}) }; });
   return { ...emptyStage("cards", "card"), source: { kind: "longform", title: "[예시] 고객 인터뷰 질문 다섯 개", text: "[예시] 원고 본문", at: daysAgo(0) },

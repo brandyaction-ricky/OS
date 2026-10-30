@@ -147,11 +147,15 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
   const reload = page.reload;
   const job = useStaffJob(page, "card", useCallback(() => { setDirty(false); void reload(); }, [reload]));
   const onOver = useCallback((index: number, fields: string[]) => setOver(current => JSON.stringify(current[index] ?? []) === JSON.stringify(fields) ? current : { ...current, [index]: fields }), []);
+  // Saves follow one another (two formats written by hand, then typing): each goes on the version the last one left.
+  const version = useRef(0);
+  useEffect(() => { if (stage) version.current = Math.max(version.current, stage.version); }, [stage]);
   const save = useCallback(async (patch: Record<string, unknown>) => {
     if (!page.client || !project || !stage) return false;
     setBusy(true);
     try {
-      const result = await page.client.saveStage(project.id, "cards", stage.version, patch);
+      const result = await page.client.saveStage(project.id, "cards", Math.max(version.current, stage.version), patch);
+      version.current = result.stage.version;
       page.setBundle(current => current ? { ...current, project: result.project, stages: { ...current.stages, cards: result.stage } } : current);
       return true;
     } catch (reason) { page.fail(reason); return false; } finally { setBusy(false); }
@@ -185,7 +189,7 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
     {editable ? <YpSection n={1} title="포맷 고르기" gq="최대 3개를 한 번에 뽑아 나란히 비교해요">
       <div className="yp-card-formats">{CARD_FORMAT_IDS.map(id => { const format = CARD_FORMATS[id]; const on = chosen.includes(id);
         return <label key={id} className={`yp-card-format${on ? " yp-on" : ""}`}>
-          <input type="checkbox" checked={on} disabled={!on && chosen.length >= 3} onChange={() => setChosen(on ? chosen.filter(row => row !== id) : [...chosen, id])} />
+          <input type="checkbox" aria-label={format.name} checked={on} disabled={!on && chosen.length >= 3} onChange={() => setChosen(on ? chosen.filter(row => row !== id) : [...chosen, id])} />
           <span><b>{format.name}</b>{cards.recommend?.formats.includes(id) ? <span className="yp-tag yp-acc">추천</span> : null}<small>{format.when}</small>
             <small>{format.slides.map(row => row.min === row.max ? `${row.label} ${row.min}` : `${row.label} ${row.min}~${row.max}`).join(" · ")}장</small></span></label>; })}</div>
       {cards.recommend?.why ? <p className="yp-hint">추천 이유: {cards.recommend.why}</p> : null}

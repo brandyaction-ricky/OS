@@ -29,5 +29,5 @@
 @media (max-width: 1100px) { .yp-card-edit { grid-template-columns: 1fr; } .yp-card-list { grid-auto-flow: column; grid-auto-columns: 96px; max-height: none; overflow-x: auto; } }
 /* 주제 찾기 다섯째 칸 · 카드뉴스 색 (테마 두 곳에 같은 값, 글자는 테마 색 그대로). */
 .linear-shell .ui-v2.yp .yp-pf-card { color: #d9822b; }
-.linear-shell .ui-v2.yp .yp-pf-tabs { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-@media (max-width: 820px) { .linear-shell .ui-v2.yp .yp-pf-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.linear-shell .ui-v2.yp div.yp-pf-tabs { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+@media (max-width: 820px) { .linear-shell .ui-v2.yp div.yp-pf-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
