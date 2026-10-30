@@ -116,7 +116,7 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
             <span className="yp-sp1"><span className="yp-sp1-l">러닝타임</span><input className="yp-in yp-sel1" inputMode="numeric" maxLength={3} style={{ width: 64 }} aria-label="러닝타임 분" placeholder="1~120" readOnly={!editable}
               value={form.spec.runtimeMin ?? ""} onChange={event => { const value = event.target.value.replace(/\D/g, ""); edit({ spec: { ...form.spec, runtimeMin: value ? Number(value) : null } }); }} /><span>분</span></span>
             {(["res", "fps", "ratio"] as const).map(key => <span key={key} className="yp-sp1"><span className="yp-dot1">·</span><span className="yp-sp1-l">{{ res: "해상도", fps: "프레임", ratio: "비율" }[key]}</span>
-              <select className="yp-in yp-sel1" aria-label={key} disabled={!editable} value={form.spec[key]} onChange={event => edit({ spec: { ...form.spec, [key]: event.target.value } })}>{[...new Set([form.spec[key], ...SPEC_OPTIONS[key]])].map(option => <option key={option}>{option}</option>)}</select></span>)}
+              <select className="yp-in yp-sel1" aria-label={key} disabled={!editable} value={form.spec[key]} onChange={event => edit({ spec: { ...form.spec, [key]: event.target.value } })}>{[...new Set([form.spec[key], ...SPEC_OPTIONS[project.yp.topic.type ?? "anim"][key]])].map(option => <option key={option}>{option}</option>)}</select></span>)}
           </div>
           {runtimeError(form.spec.runtimeMin) ? <div className="yp-errline">{runtimeError(form.spec.runtimeMin)}</div> : null}
         </YpSection>

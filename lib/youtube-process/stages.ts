@@ -159,15 +159,18 @@ export interface YpStageRecord<K extends YpStageKind = YpStageKind> { id: string
 export type YpStages = { [K in YpStageKind]: YpStageRecord<K> };
 
 const id = () => (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`).slice(0, 12);
+// 로건 QA 10/30: animation is made at 60 fps (meeting decision; Logan's engine renders 60 fps since 2026-10-29), and each kind marks
+// only its own default — both 4K and FHD read 「기본」 before.
 export const SPEC_DEFAULT: Record<YpKind, YpOutline["spec"]> = {
   live: { runtimeMin: null, res: "4K (선명 · 기본)", fps: "30fps (기본)", ratio: "16:9 가로 (롱폼 · 기본)" },
-  anim: { runtimeMin: null, res: "FHD 1080p (기본)", fps: "30fps (기본)", ratio: "16:9 가로 (롱폼 · 기본)" },
+  anim: { runtimeMin: null, res: "FHD 1080p (기본)", fps: "60fps (기본)", ratio: "16:9 가로 (롱폼 · 기본)" },
   short: { runtimeMin: null, res: "720 × 1280", fps: "30fps (기본)", ratio: "9:16 세로" },
 };
-export const SPEC_OPTIONS = {
-  res: ["4K (선명 · 기본)", "FHD 1080p (기본)", "QHD 1440p"],
-  fps: ["30fps (기본)", "24fps", "60fps"],
-  ratio: ["16:9 가로 (롱폼 · 기본)", "9:16 세로", "1:1 정사각"],
+const LONG_RATIOS = ["16:9 가로 (롱폼 · 기본)", "9:16 세로", "1:1 정사각"];
+export const SPEC_OPTIONS: Record<YpKind, Record<"res" | "fps" | "ratio", string[]>> = {
+  live: { res: ["4K (선명 · 기본)", "FHD 1080p", "QHD 1440p"], fps: ["30fps (기본)", "24fps", "60fps"], ratio: LONG_RATIOS },
+  anim: { res: ["FHD 1080p (기본)", "4K (선명)", "QHD 1440p"], fps: ["60fps (기본)", "30fps", "24fps"], ratio: LONG_RATIOS },
+  short: { res: ["720 × 1280", "1080 × 1920"], fps: ["30fps (기본)", "60fps"], ratio: ["9:16 세로"] },
 };
 // 보낼 곳 (owner decision 2026-10-26: 회사 유튜브는 마이인 자사몰로, 영상마다 UTM을 따로): a MYIN page, or any https address.
 export const UTM_DESTS = [["정밀 진단", "https://www.myinlab.co.kr/services/n6"], ["무료 진단", "https://www.myinlab.co.kr/services/free"],
