@@ -28,9 +28,9 @@ test("a 숏폼 fixes its topic from a 주제 후보 drawn from the references' f
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.screenshot({ path: "local-artifacts/short-topic-research-mobile.png", fullPage: true });
   await page.setViewportSize({ width: 1280, height: 900 });
+  // 로건 QA 10/30: the 주제 확정 opens the 대본 step itself (in the app, so the demo keeps its data).
   await confirm.click();
-  // The demo keeps its data in the page: go on by the link, not a reload.
-  await page.locator(".yp-foot").getByRole("link", { name: /이어서 하기 · 대본/ }).click();
+  await expect(page).toHaveURL(/project=demo-p12&view=draft/);
   // GPT 초안 (2026-10-29): the 대본 step offers GPT first, the staff member's own AI second, both with the formula just picked.
   await expect(page.getByRole("button", { name: /GPT로 바로 쓰기/ })).toContainText("고른 공식으로 헤드 카피와 대본을 써요");
   await expect(page.getByRole("button", { name: /내 AI에게 맡기기/ })).toBeVisible();

@@ -26,7 +26,6 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
   const [send, setSend] = useState(false);
   const [moving, setMoving] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
-  const [manual, setManual] = useState(false);
   const editRev = useRef(0);
   const router = useRouter();
   const saving = useRef(false);
@@ -103,8 +102,6 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
   const plan = page.bundle?.stages.plan.data;
   const anim = project?.yp.topic.type !== "live";
   const aiOpen = job.open || Boolean(job.status?.job && job.status.job.status === "blocked");
-  // An empty 원고 starts with the choice of how to write it; the section's own AI button waits until then.
-  const ways = project?.yp.stage === "outline" && !form?.versions.length && !aiOpen && !manual;
 
   return <YpFrame page={page} view={2} action={action} header={header} title="구성안" sub={project?.yp.stage === "outline" ? "러닝타임을 정하고 원고를 써요." : "제작이 시작된 원고예요. 고치면 버전이 남아요."} savedAt={savedAt}
     todo={form && project?.yp.stage === "outline" ? [{ label: "러닝타임", done: form.spec.runtimeMin !== null && !runtimeError(form.spec.runtimeMin) }, { label: "원고", done: scriptChars(form.script) > 0 }] : undefined}
@@ -113,10 +110,6 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
       {project.yp.stage === "outline" ? <GateBanner page={page} gate="draft" /> : null}
       {project.yp.stage !== "outline" && editable && anim ? <div className="yp-note yp-warn" role="status"><Info size={16} className="yp-i" aria-hidden="true" /><div>고치면 영상을 음성부터 다시 만들어야 해요.</div></div> : null}
       <Subject page={page} />
-      {/* Before any 원고 is saved, the step starts with how to write it (owner request 2026-10-21: no guide text). */}
-      {ways ? <div className="yp-ways">
-        <button type="button" className="yp-way yp-rec" onClick={() => setSend(true)}><b><Sparkles size={14} aria-hidden="true" /> 내 AI에게 맡기기</b><span>원고 초안을 써서 넣어 줘요 (10~20분)</span></button>
-        <button type="button" className="yp-way" onClick={() => setManual(true)}><b>직접 쓰기</b><span>기획안 흐름이 들어간 편집기에서 바로 써요</span></button></div> : null}
       <div className="yp-wrap2"><div>
         <YpSection n={1} title="영상 스펙" gq={anim ? "최종본 기준" : "촬영 · 최종본 기준"} need className="yp-compact">
           <div className="yp-spec1">
@@ -127,7 +120,7 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
           </div>
           {runtimeError(form.spec.runtimeMin) ? <div className="yp-errline">{runtimeError(form.spec.runtimeMin)}</div> : null}
         </YpSection>
-        <YpSection n={2} title="원고" need extra={editable && !viewing && !ways ? <button type="button" className="yp-btn yp-sm yp-pri" onClick={() => setSend(true)}><Sparkles size={14} /> {form.ai ? "내 AI로 다시 쓰기" : "내 AI로 원고 쓰기"}</button> : null}>
+        <YpSection n={2} title="원고" need extra={editable && !viewing ? <button type="button" className="yp-btn yp-sm yp-pri" onClick={() => setSend(true)}><Sparkles size={14} /> {form.ai ? "내 AI로 다시 쓰기" : "내 AI로 원고 쓰기"}</button> : null}>
           <div className="yp-est"><span className="yp-tag yp-acc"><Clock size={12} aria-hidden="true" /> 예상 길이 {estimate?.label}</span><span className="yp-muted" style={{ fontSize: 12 }} title="공백 · 제목 줄 · 사진 · 표를 빼고 분당 350자로 셈">원고 {estimate?.chars.toLocaleString()}자</span>
             {voiceSec ? <span className="yp-tag" title="영상 만드는 컴퓨터가 만든 음성의 실제 길이">실제 음성 {Math.floor(voiceSec / 60)}분 {Math.round(voiceSec % 60)}초</span> : null}
             {estimate?.verdict ? <span className={estimate.verdict.ok ? "yp-ok" : "yp-bad"}>{estimate.verdict.ok ? "✓" : "⚠"} {estimate.verdict.text}</span> : null}</div>
