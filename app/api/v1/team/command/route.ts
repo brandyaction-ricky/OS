@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const commandSchema = z.object({
-  action: z.enum(["meeting.create", "meeting.save", "meeting.start", "meeting.finish", "meeting.review", "meeting.correct", "meeting.import_legacy", "meeting.merge_legacy", "decision.supersede", "decision.drop", "task.merge", "meeting.archive"]),
+  action: z.enum(["meeting.create", "meeting.save", "meeting.start", "meeting.finish", "meeting.review", "meeting.correct", "meeting.import_legacy", "meeting.merge_legacy", "decision.supersede", "decision.drop", "task.merge", "meeting.archive", "meeting.share"]),
   id: z.string().uuid().optional(), expectedVersion: z.number().int().positive().optional(),
 }).passthrough();
 
@@ -20,6 +20,16 @@ export async function POST(request: Request) {
     if (actor.type !== "user") throw new ApiError(403, "USER_REQUIRED", "구성원 계정으로 진행해 주세요.");
     const parsed = commandSchema.safeParse(await parseJson(request, 2_000_000));
     if (!parsed.success) throw new ApiError(400, "INVALID_TEAM_COMMAND", "회의·결정 입력을 확인해 주세요.");
+    // 「텔레그램에 올리기」: a confirmed meeting sent again by its owner or an admin (e.g. one confirmed before rooms were set).
+    if (parsed.data.action === "meeting.share") {
+      const { data: row } = parsed.data.id ? await actor.supabase.from("os_records").select("owner_id,status").eq("id", parsed.data.id).eq("record_type", "meeting").maybeSingle() : { data: null };
+      if (!row) throw new ApiError(404, "TEAM_RECORD_NOT_FOUND", "기록을 찾지 못했습니다.");
+      if (actor.role !== "admin" && row.owner_id !== actor.id) throw new ApiError(403, "TEAM_FORBIDDEN", "작성자 또는 관리자만 올릴 수 있습니다.");
+      if (row.status !== "done") throw new ApiError(409, "MEETING_NOT_CONFIRMED", "확정한 회의만 올릴 수 있어요.");
+      const sent = await shareConfirmedMeeting(parsed.data.id!, new URL(request.url).origin);
+      if (!sent) throw new ApiError(409, "MEETING_SHARE_NO_ROOM", "올릴 텔레그램 방이 없어요. 회의 사업을 확인하고, 참석자만 보기 회의는 올리지 않아요.");
+      return NextResponse.json({ sent }, { headers: { "Cache-Control": "no-store" } });
+    }
     const archive = parsed.data.action === "meeting.archive";
     if (archive && (!parsed.data.id || !parsed.data.expectedVersion)) throw new ApiError(400, "INVALID_TEAM_COMMAND", "회의·결정 입력을 확인해 주세요.");
     const { data, error } = archive

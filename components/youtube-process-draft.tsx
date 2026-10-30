@@ -4,7 +4,8 @@ import { ArrowDown, ArrowUp, ImagePlus, Plus, Sparkles, X } from "lucide-react";
 import { editableFields } from "@/lib/youtube-process/confirm";
 import { parseYoutubeRef, projectName, sameRef } from "@/lib/youtube-process/project";
 import { draftMissing, PLAN_FIELD_KEY, slotOf, thumbFilled, type YpPlan, type YpThumb } from "@/lib/youtube-process/stages";
-import { GateBanner, gateAction, gateSub, hhmm, LockedStep, ReplyForm, Subject, useGate, useYpBundle, YpFrame, YpSection } from "./youtube-process-frame";
+import { GateBanner, gateAction, gateSub, hhmm, LockedStep, ReplyForm, Subject, useGate, useLeaveGuard, useYpBundle, YpFrame, YpSection } from "./youtube-process-frame";
+import type { YpProject } from "@/lib/youtube-process/project";
 import { ThumbView } from "./youtube-process-media";
 import { JobLine, PatternsBox, SendDialog, useStaffJob } from "./youtube-process-ai";
 import { ShortScriptScreen } from "./youtube-process-short-script";
@@ -21,7 +22,6 @@ const move = <T,>(list: T[], from: number, to: number) => { const next = [...lis
 /** S3 기획안: 제목 후보 · 썸네일 후보 · 영상 흐름 · 전달 사항, then the 기획안 컨펌 (4-4). */
 export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
   const page = useYpBundle();
-  const control = useGate(page, "draft");
   const [form, setForm] = useState<YpPlan | null>(null);
   const [dirty, setDirty] = useState(false);
   const [savedAt, setSavedAt] = useState("");
@@ -29,12 +29,11 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
   const [refUrl, setRefUrl] = useState("");
   const [uploading, setUploading] = useState("");
   const editRev = useRef(0);
-  const saving = useRef(false);
-  // A save asked for while one is running goes out right after it, on the newest version (로건 피드백 A-2: it was dropped, then a stale save read as an error).
-  const queued = useRef<YpPlan | null>(null);
+  // Saves go out one after another, each on the version the last one returned (로건 피드백 A-2), and a 컨펌 waits for them (로건 QA 10/30).
+  const queue = useRef<Promise<YpProject | null>>(Promise.resolve(null));
+  const timer = useRef<number | null>(null);
   const savedVersion = useRef({ project: "", version: 0 });
   const [send, setSend] = useState(false);
-  const [manual, setManual] = useState(false);
   const plan = page.bundle?.stages.plan;
   useEffect(() => { if (plan && !dirty) setForm(plan.data); }, [plan, dirty]);
   const reload = page.reload;
@@ -46,30 +45,41 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
   const can = (key: keyof typeof PLAN_FIELD_KEY) => Boolean(project && project.yp.stage === "draft" && (fields === "all" || fields.includes(PLAN_FIELD_KEY[key])));
   const rev = (key: string) => project?.yp.gates.draft.state === "changes" && (project.yp.gates.draft.fields ?? []).includes(key);
 
-  const save = async (next: YpPlan | null = form) => {
-    if (!page.client || !project || !plan || !next) return;
-    if (saving.current) { queued.current = next; return; }
-    saving.current = true;
+  const save = (next: YpPlan | null = form): Promise<YpProject | null> => {
+    if (timer.current) { window.clearTimeout(timer.current); timer.current = null; }
+    // The text this save carries is the text typed up to now: only then may its answer refill the form.
     const rev0 = editRev.current;
-    const patch = Object.fromEntries((Object.keys(PLAN_FIELD_KEY) as (keyof typeof PLAN_FIELD_KEY)[]).filter(key => can(key)).map(key => [key, next[key]]));
-    try {
-      const result = await page.client.saveStage(project.id, "plan", savedVersion.current.project === project.id ? Math.max(plan.version, savedVersion.current.version) : plan.version, patch);
-      savedVersion.current = { project: project.id, version: result.stage.version };
-      page.setBundle(current => current ? { ...current, project: result.project, stages: { ...current.stages, plan: result.stage } } : current);
-      setSavedAt(hhmm());
-      if (editRev.current === rev0) setDirty(false);
-    } catch (reason) { page.fail(reason); } finally {
-      saving.current = false;
-      const after = queued.current; queued.current = null;
-      if (after) void save(after);
-    }
+    const run = queue.current.then(async () => {
+      if (!page.client || !project || !plan || !next) return null;
+      const patch = Object.fromEntries((Object.keys(PLAN_FIELD_KEY) as (keyof typeof PLAN_FIELD_KEY)[]).filter(key => can(key)).map(key => [key, next[key]]));
+      try {
+        const result = await page.client.saveStage(project.id, "plan", savedVersion.current.project === project.id ? Math.max(plan.version, savedVersion.current.version) : plan.version, patch);
+        savedVersion.current = { project: project.id, version: result.stage.version };
+        page.setBundle(current => current ? { ...current, project: result.project, stages: { ...current.stages, plan: result.stage } } : current);
+        setSavedAt(hhmm());
+        if (editRev.current === rev0) setDirty(false);
+        return result.project;
+      } catch (reason) { page.fail(reason); return null; }
+    });
+    queue.current = run;
+    return run;
   };
+  // Typing saves itself after a short pause, not only when the cursor leaves the box (로건 QA 10/30: a reload lost the 클로징).
   const edit = (patch: Partial<YpPlan>, now = false) => {
     editRev.current += 1;
     const next = { ...form!, ...patch };
     setForm(next); setDirty(true); page.setError("");
-    if (now) void save(next);
+    if (now) { void save(next); return; }
+    if (timer.current) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => void save(next), 1500);
   };
+  useEffect(() => () => { if (timer.current) window.clearTimeout(timer.current); }, []);
+  useLeaveGuard(dirty);
+  const control = useGate(page, "draft", async () => {
+    if (dirty && project?.yp.stage === "draft") return save();
+    const last = await queue.current;
+    return last && project && last.version > project.version ? last : project ?? null;
+  });
   const upload = async (index: number, file: File) => {
     if (!page.client || !project || !form) return;
     setUploading(form.thumbs[index].id);
@@ -84,7 +94,6 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
   // A 카드뉴스's 기획안 place is 카드 만들기 (설계서 2026-10-30).
   if (project?.yp.topic.type === "card") return <CardMakeScreen page={page} header={header} />;
   const missing = form ? draftMissing(form) : "";
-  const started = Boolean(form && (form.titles.some(row => row.text.trim()) || form.opening.trim() || form.body.trim() || form.closing.trim()));
   const action = page.bundle ? gateAction(page, "draft", 1, control, missing) : null;
   return <YpFrame page={page} view={1} action={action} header={header} title="기획안" sub={gateSub(project, "draft", "제목 A · B와 썸네일 A · B, 영상 흐름을 채우고 컨펌해요.", "기획안 컨펌이 끝났어요. 구성안으로 넘어가요.")} savedAt={savedAt}
     todo={form && project?.yp.stage === "draft" ? [{ label: "제목 A", done: Boolean(form.titles[0]?.text.trim()) }, { label: "제목 B", done: Boolean(form.titles[1]?.text.trim()) }, { label: "썸네일 A", done: thumbFilled(form.thumbs[0]) }, { label: "썸네일 B", done: thumbFilled(form.thumbs[1]) }, { label: "오프닝", done: Boolean(form.opening.trim()) }, { label: "본론", done: Boolean(form.body.trim()) }, { label: "클로징", done: Boolean(form.closing.trim()) }] : undefined}
@@ -94,11 +103,9 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
       <ReplyForm control={control} />
       <Subject page={page} />
       {project.yp.stage === "draft" && project.yp.gates.draft.state !== "wait" ? (job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(true)} />
-        // An empty 기획안 starts with the choice of how to fill it; a started one keeps a small re-run button.
-        : !started && !manual ? <div className="yp-ways">
-          <button type="button" className="yp-way yp-rec" onClick={() => setSend(true)}><b><Sparkles size={14} aria-hidden="true" /> 내 AI에게 맡기기</b><span>제목 · 썸네일 · 영상 흐름 초안을 채워 줘요 (10분쯤)</span></button>
-          <button type="button" className="yp-way" onClick={() => { setManual(true); window.setTimeout(() => document.querySelector<HTMLInputElement>("[aria-label='제목 A']")?.focus(), 50); }}><b>직접 쓰기</b><span>아래 칸을 바로 채워요</span></button></div>
-        : <div className="yp-row-btns" style={{ marginBottom: 10 }}><button type="button" className="yp-btn yp-sm" onClick={() => setSend(true)}><Sparkles size={14} /> {form.ai ? "내 AI로 다시 쓰기" : "내 AI에게 맡기기"}</button>
+        // The boxes are open from the start with one button above them: the two big choice cards shrank into this button on 「직접 쓰기」
+        // and pulled the page up ~50 px, so text meant for 제목 A landed in B (로건 QA 10/30).
+        : <div className="yp-row-btns" style={{ marginBottom: 10 }}><button type="button" className="yp-btn yp-sm" onClick={() => setSend(true)}><Sparkles size={14} /> {form.ai ? "내 AI로 다시 쓰기" : "내 AI로 초안 채우기"}</button>
           {form.ai ? <span className="yp-aitag"><Sparkles size={11} aria-hidden="true" /> AI 초안 · {form.ai.by}</span> : null}</div>) : null}
       {form.aiDraft && project.yp.stage === "draft" ? <div className="yp-note yp-purple" role="status"><Sparkles size={16} className="yp-i" aria-hidden="true" /><div><b>AI 기획안이 왔어요.</b> 이미 쓴 내용이 있어 바로 넣지 않았어요.
         <button type="button" className="yp-lnk" disabled={!can("titles")} onClick={() => { const draft = form.aiDraft!; editRev.current += 1; const next = { ...form, ...draft, aiDraft: undefined }; setForm(next); setDirty(true);

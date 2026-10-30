@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { newProjectMeta } from "../lib/youtube-process/project.ts";
-import { applyGateAction, confirmTab, dueReminders, editableFields, firstRemindAt, nextRemindAt, quietHours } from "../lib/youtube-process/confirm.ts";
+import { applyGateAction, canReopen, confirmTab, dueReminders, editableFields, firstRemindAt, nextRemindAt, quietHours } from "../lib/youtube-process/confirm.ts";
 
 const kst = (date, time) => new Date(`${date}T${time}:00+09:00`).toISOString();
 const project = (id = "p1") => ({ id, yp: newProjectMeta({ type: "live", target: "타겟", note: "", refs: [] }, kst("2026-10-17", "09:00")).yp });
@@ -106,4 +106,19 @@ test("the confirm menu: waiting oldest first, my decisions, holds", () => {
   assert.deepEqual(confirmTab([second, first, decided, held], "wait", "ceo").map(row => row.project.id), ["a", "b"]);
   assert.deepEqual(confirmTab([second, first, decided, held], "done", "ceo").map(row => row.project.id), ["c"]);
   assert.deepEqual(confirmTab([second, first, decided, held], "hold", "ceo").map(row => row.project.id), ["d"]);
+});
+
+// 로건 QA 10/30: a typo in a confirmed step needed someone else; the PD reopens their own 컨펌 from the very next step.
+test("다시 열기: the PD reopens their own 컨펌 from the next step only, and confirming again comes back there", () => {
+  const ok = act(project(), "confirm");
+  assert.equal(canReopen(ok, "topic"), true);
+  const open = act(ok, "reopen");
+  assert.deepEqual([open.yp.stage, open.yp.gates.topic.state, editableFields(open, "topic")], ["topic", "none", "all"]);
+  assert.equal(act(open, "confirm").yp.stage, "draft");
+  // Not from further on (the 대표's 되돌리기), not a 대표 OK, not a step still open.
+  const later = { ...ok, yp: { ...ok.yp, stage: "outline" } };
+  assert.equal(canReopen(later, "topic"), false);
+  assert.throws(() => act(later, "reopen"), /다시 열 수 있어요/);
+  assert.throws(() => act(act(act(project(), "request"), "ok", { actor: "ceo" }), "reopen"), /다시 열 수 있어요/);
+  assert.throws(() => act(project(), "reopen"), /다시 열 수 있어요/);
 });

@@ -44,6 +44,8 @@ test("only a confirmed meeting is shared, never one for attendees only, and a fa
   const hook = await readFile(new URL("../app/api/v1/telegram/webhook/route.ts", import.meta.url), "utf8");
   assert.match(hook, /meeting_share_business: business\?\.key \?\? null/);
   assert.match(source, /\.eq\("meeting_share_business", business\)/);
+  assert.match(route, /if \(row\.status !== "done"\) throw new ApiError\(409, "MEETING_NOT_CONFIRMED"/);
+  assert.match(route, /actor\.role !== "admin" && row\.owner_id !== actor\.id/);
 });
 
 test("AI to-dos nobody took on and nobody dated start as 결정; 나중에 이어서 goes back to the meeting", async () => {

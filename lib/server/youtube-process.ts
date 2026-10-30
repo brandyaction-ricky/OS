@@ -21,7 +21,7 @@ const topicFields = {
 };
 export const projectCreateSchema = z.object(topicFields).partial().strict();
 export const projectPatchSchema = z.object({ ...topicFields, expectedVersion: z.number().int().positive() }).partial().required({ expectedVersion: true }).strict();
-export const gateActionSchema = z.object({ action: z.enum(["confirm", "request", "cancel"]), expectedVersion: z.number().int().positive(), reply: z.string().max(200).optional() }).strict();
+export const gateActionSchema = z.object({ action: z.enum(["confirm", "request", "cancel", "reopen"]), expectedVersion: z.number().int().positive(), reply: z.string().max(200).optional() }).strict();
 // note: the 대표 leaves a note on a step the PD confirmed (owner decision 2026-10-26); it changes nothing else.
 export const confirmActionSchema = z.object({ action: z.enum(["ok", "changes", "hold", "revert", "note"]), expectedVersion: z.number().int().positive(),
   fields: z.array(z.string().max(40)).max(20).optional(), memo: z.string().max(1000).optional(), reason: z.string().max(300).optional() }).strict();
@@ -145,6 +145,12 @@ export async function actOnGate(actor: RequestActor, id: string, gate: YpGate, i
   if (input.action === "cancel") {
     const yp = apply(project, gate, "cancel", gateInput);
     return { project: await saveProject(actor, project, input.expectedVersion, { yp }), created: [] as YpProject[] };
+  }
+  if (input.action === "reopen") {
+    const saved = await saveProject(actor, project, input.expectedVersion, { yp: apply(project, gate, "reopen", gateInput) });
+    // Who reopened it and when stays in the 컨펌 history (its actions are fixed by the table: a reopen is kept as a revert).
+    await recordConfirmation(saved, gate, "revert", actor.ownerId, { memo: "PD가 다시 열었어요" });
+    return { project: saved, created: [] as YpProject[] };
   }
   const reason = gate === "topic" ? topicMissing(project.title, project.yp.topic) : await missing(project);
   if (reason) throw new ApiError(400, gate === "topic" ? "TOPIC_INCOMPLETE" : "GATE_INCOMPLETE", reason);

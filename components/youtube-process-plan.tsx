@@ -4,17 +4,17 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, Info, X } from "lucide-react";
 import {
-  emptyGates, parseYoutubeRef, projectName, sameRef, recentProjects, similarProjects, stageLabel, stepHref, stepName, topicEditable, topicFieldEditable, topicLines, topicMissing,
+  emptyGates, parseYoutubeRef, projectHref, projectName, sameRef, recentProjects, similarProjects, stageLabel, stepHref, stepName, topicEditable, topicFieldEditable, topicLines, topicMissing,
   YP_FLOW, YP_KIND_LABEL, YP_KIND_SHORT, YP_STAGE_INDEX, type YpKind, type YpProject, type YpRef,
 } from "@/lib/youtube-process/project";
 import { apiRequest } from "@/lib/api-client";
 import { useSession } from "./session-provider";
 import { errorMessage, isConflict, youtubeProcessClient, type YpMember, type YpTopicInput } from "./youtube-process-data";
 import { YoutubeFlow, type YpAction } from "./youtube-process-flow";
-import { GateNotes, StepFooter } from "./youtube-process-frame";
+import { GateNotes, ReopenButton, StepFooter, useLeaveGuard } from "./youtube-process-frame";
 import { ConfirmActions } from "./youtube-process-confirm";
 import { useYoutubeCanConfirm } from "./use-youtube-confirm";
-import { editedSinceDecision, GATE_FIELDS, gateName } from "@/lib/youtube-process/confirm";
+import { canReopen, editedSinceDecision, GATE_FIELDS, gateName } from "@/lib/youtube-process/confirm";
 import { YoutubeDraftScreen } from "./youtube-process-draft";
 import { YoutubeOutlineScreen } from "./youtube-process-outline";
 import { ShortTopicResearch } from "./youtube-process-short-script";
@@ -81,8 +81,10 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
   const savingKey = useRef("");
   // The project on screen, so the URL change after a first save does not reload it over newer typing.
   const loadedId = useRef<string | null>(null);
-  // Bumped on every edit; a save clears 'unsaved' only if nothing changed while it ran.
+  // Bumped on every edit; a save clears 'unsaved' only if nothing changed while it ran. savedRev is the edit the last good save carried.
   const editRev = useRef(0);
+  const savedRev = useRef(0);
+  const timer = useRef<number | null>(null);
 
   // A plan screen opened without a project goes to the last one opened, or to the project list (4-0).
   useEffect(() => {
@@ -107,22 +109,32 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
     if (!force && loadedId.current === projectParam) return;
     const found = await client.get(projectParam);
     loadedId.current = found.id;
-    setProject(found); setForm(formOf(found)); setDirty(false); setLoading(false);
+    setProject(found); setForm(formOf(found)); setDirty(false); setLoading(false); savedRev.current = editRev.current;
     try { localStorage.setItem(LAST_KEY, found.id); } catch { /* convenience only */ }
   }, [client, projectParam, profile?.id, params, setProject]);
   useEffect(() => { load().catch(reason => { setError(errorMessage(reason)); setLoading(false); }); }, [load]);
 
   const editable = project ? topicEditable(project) : projectParam === "new";
+  useLeaveGuard(dirty && editable);
   const viewParam = params.get("view");
   const current = project ? (project.yp.stage === "done" ? YP_FLOW.length : YP_STAGE_INDEX[project.yp.stage]) : 0;
   const view = Math.max(0, VIEWS.indexOf((viewParam ?? "topic") as typeof VIEWS[number]));
 
-  const edit = (patch: Partial<Form>) => { editRev.current += 1; setForm(value => ({ ...value, ...patch })); setDirty(true); setError(""); };
+  // Typing saves itself after a short pause (로건 QA 10/30: the 저장 time stopped at 11:09 while the 정밀 타겟 kept changing). A new
+  // video is made by the first save, so it still waits for the cursor to leave the box.
+  const edit = (patch: Partial<Form>) => {
+    editRev.current += 1; const next = { ...form, ...patch };
+    setForm(next); setDirty(true); setError("");
+    if (timer.current) window.clearTimeout(timer.current);
+    if (project) timer.current = window.setTimeout(() => void save(next), 1500);
+  };
+  useEffect(() => () => { if (timer.current) window.clearTimeout(timer.current); }, []);
 
   const save = useCallback(async (next: Form = form): Promise<YpProject | null> => {
     if (!client) return null;
     const input: YpTopicInput = { title: next.title, kind: next.kind, target: next.target, note: next.note, refs: next.refs, purpose: next.kind === "short" ? next.purpose : null, assigneeId: next.assigneeId };
     const key = JSON.stringify(input);
+    if (timer.current) { window.clearTimeout(timer.current); timer.current = null; }
     // One save at a time: a click during a save of the same content uses its result; newer content (a second reference added
     // meanwhile) waits and saves on top of it with its version — it used to go out with the old one and read as an error (로건 피드백 A-2).
     let base = latest.current?.id === project?.id ? latest.current : project;
@@ -134,7 +146,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
     const run = (async () => {
       try {
         const saved = base ? await client.update(base.id, base.version, topicEditable(base) ? input : { assigneeId: next.assigneeId }) : await client.create(input);
-        setProject(saved); setSavedAt(hhmm(new Date())); setUnsaved(false);
+        setProject(saved); setSavedAt(hhmm(new Date())); setUnsaved(false); savedRev.current = Math.max(savedRev.current, rev);
         if (editRev.current === rev) setDirty(false);
         if (!base) {
           loadedId.current = saved.id;
@@ -160,7 +172,10 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
     if (!client) return;
     setBusy(true); setError(""); setCreated([]);
     try {
-      const base = saving.current ? await saving.current : dirty || !project ? await save() : latest.current?.id === project.id ? latest.current : project;
+      // A save still running may carry older text than the screen (로건 QA 10/30: 「정밀 타겟을 써 주세요」 with the box filled):
+      // wait for it, then save whatever was typed after it, and only then confirm.
+      const running = saving.current ? await saving.current : null;
+      const base = !project || editRev.current !== savedRev.current ? await save() : running ?? (latest.current?.id === project.id ? latest.current : project);
       if (!base) return;
       // S11-5: after 수정 요청, re-requesting without changing anything needs a one-line reason.
       if (action === "request" && !reply && base.yp.gates.topic.state === "changes" && !editedSinceDecision(base, "topic")) { setReplyOpen(true); return; }
@@ -168,6 +183,8 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
       setReplyOpen(false); setReplyText("");
       setProject(result.project); setForm(formOf(result.project)); setDirty(false); setCreated(result.created);
       if (result.created.length) setProjects(list => [...result.created, ...list]);
+      // 로건 QA 10/30: a 컨펌 now opens the next step (the note about extra videos made from more lines keeps the PD here).
+      else if (action === "confirm" && result.project.yp.stage !== base.yp.stage) router.push(projectHref(result.project));
     } catch (reason) {
       if (isConflict(reason)) setConflict(true); else setError(errorMessage(reason));
     } finally { setBusy(false); }
@@ -203,6 +220,8 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
             : <p className="yp-hint">아래 [{confirmLabel}하고 다음으로]를 누르면 PD 컨펌으로 넘어가요.</p>}</div> : null}
         {topicGate.state === "changes" ? <div className="yp-note yp-warn" role="status"><div><b>대표 수정 요청</b> · {md(topicGate.decidedAt)} — “{topicGate.memo}”<br />{topicGate.fields?.length ? `특히 볼 칸: ${topicGate.fields.map(field => GATE_FIELDS.topic[field] ?? field).join(", ")} · ` : ""}모든 칸을 고칠 수 있어요</div></div> : null}
         {topicGate.state === "hold" ? <div className="yp-note yp-warn" role="status"><div><b>대표 보류</b> · {md(topicGate.decidedAt)} — 사유: {topicGate.reason}. 손본 뒤 컨펌할 수 있어요.</div></div> : null}
+        {project && client && canReopen(project, "topic") ? <div className="yp-note yp-ok" role="status"><div><b>{confirmLabel} OK · PD 컨펌</b> <ReopenButton project={project} gate="topic" client={client}
+          onDone={next => { setProject(next); setForm(formOf(next)); }} onError={reason => isConflict(reason) ? setConflict(true) : setError(errorMessage(reason))} /></div></div> : null}
         {project ? <GateNotes project={project} gate="topic" /> : null}
         {replyOpen ? <form className="yp-card yp-confirm-form" onSubmit={event => { event.preventDefault(); if (replyText.trim()) void gate("request", replyText.trim()); }}>
           <label>고친 칸 없이 다시 요청하는 이유 (대표에게 보여요)<input className="yp-in" id="yp-topic-reply" maxLength={200} value={replyText} onChange={event => setReplyText(event.target.value)} /></label>

@@ -78,7 +78,7 @@ function ShortStart({ platform }: { platform: "short" | "ad" }) {
     <form className={`yp-card yp-pf-start yp-pf-${platform}`} onSubmit={event => { event.preventDefault(); if (keyword.trim().length >= 2) void start(); }}>
       <div className="yp-card-h">{ad ? "광고 주제 찾기" : "숏폼 · 릴스 주제 찾기"}</div>
       <div className="yp-card-b" style={{ display: "grid", gap: 10 }}>
-        <p className="yp-hint" style={{ margin: 0 }}>주제를 먼저 정하지 않아요. 초안 키워드로 시작해서 {ad ? "오래 켜진 광고" : "반응 좋은 영상"}을 보고, 공식을 뽑은 뒤 주제를 확정해요.</p>
+        <p className="yp-hint" style={{ margin: 0 }}>주제를 먼저 정하지 않아요. 초안 키워드로 시작해서 {ad ? "오래 켜진 광고를" : "반응 좋은 영상을"} 보고, 공식을 뽑은 뒤 주제를 확정해요.</p>
         <label className="yp-field" style={{ margin: 0 }}><span className="yp-fld-h"><b>초안 키워드</b><span className="yp-need">필수</span></span>
           <input className="yp-in" value={keyword} maxLength={60} onChange={event => setKeyword(event.target.value)} placeholder={ad ? "예) 강점 진단, 일이 안 맞을 때" : "예) 일이 안 맞는 신호"} aria-label="초안 키워드" /></label>
         <label className="yp-field" style={{ margin: 0 }}><span className="yp-fld-h"><b>관련 링크</b><span className="yp-opt">선택</span></span>
@@ -86,7 +86,10 @@ function ShortStart({ platform }: { platform: "short" | "ad" }) {
         <label className="yp-field" style={{ margin: 0 }}><span className="yp-fld-h"><b>정밀 타겟</b><span className="yp-opt">선택</span></span>
           <input className="yp-in" value={target} maxLength={300} onChange={event => setTarget(event.target.value)} placeholder="예) 일이 안 맞는 것 같은데 이유를 모르는 3~7년 차 직장인" aria-label="정밀 타겟" /></label>
         {error ? <p className="yp-errline" role="alert">{error}</p> : null}
-        <div className="yp-row-btns"><button type="submit" className="yp-btn yp-pri" disabled={busy || keyword.trim().length < 2}>{busy ? "만드는 중…" : "참고 자료 찾으러 가기"} <ArrowRight size={14} aria-hidden="true" /></button></div>
+        <div className="yp-row-btns"><button type="submit" className="yp-btn yp-pri" disabled={busy || keyword.trim().length < 2}>{busy ? "만드는 중…" : "참고 자료 찾으러 가기"} <ArrowRight size={14} aria-hidden="true" /></button>
+          {/* 로건 QA 10/30: the 광고 tab had nothing to look at. Meta's own library lists the ads running now, longest first when sorted. */}
+          {ad ? <a className="yp-btn" href={`https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=KR&media_type=video&search_type=keyword_unordered&q=${encodeURIComponent(keyword.trim())}`}
+            target="_blank" rel="noreferrer">메타 광고 라이브러리에서 보기 ↗</a> : null}</div>
       </div>
     </form>
     <section className="yp-card" style={{ marginTop: 14 }}><div className="yp-card-h">주제를 찾는 중인 {ad ? "광고" : "숏폼"} {projects ? open.length : ""}</div>

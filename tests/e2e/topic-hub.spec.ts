@@ -20,8 +20,10 @@ test("주제 찾기 switches platforms and starts a 숏폼 or a 광고 from a �
   await expect(page).toHaveURL(/\/content\/plan\?project=(?!new)[^&]+&view=topic/);
   const use = page.getByRole("radiogroup", { name: "숏폼 쓰임" });
   await expect(use.getByRole("radio", { name: /광고/ })).toHaveAttribute("aria-checked", "true");
-  await expect(page.getByLabel("참고 영상 검색어")).toHaveValue("[시험] 강점 진단 광고");
-  await expect(page.getByRole("button", { name: /메타 광고 찾기/ })).toHaveClass(/yp-pri/);
+  // 로건 QA 10/30: an ad's search words go to Aside for Meta's ad library, never to the YouTube Shorts search.
+  await expect(page.getByLabel("메타 광고 검색어")).toHaveValue("[시험] 강점 진단 광고");
+  await expect(page.getByRole("button", { name: "메타 광고 찾기 지시 복사" })).toHaveClass(/yp-pri/);
+  await expect(page.getByRole("button", { name: "찾기", exact: true })).toHaveCount(0);
   await page.goto("/content/projects?view=discover&platform=short");
   await page.getByLabel("초안 키워드").fill("[시험] 일이 안 맞는 신호");
   await page.getByLabel("관련 링크").fill("https://www.tiktok.com/@demo/video/1");
