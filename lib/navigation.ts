@@ -35,6 +35,7 @@ import {
   Repeat,
   Receipt,
 } from "lucide-react";
+import { STAFF_FINANCE_MENUS } from "./finance/access.ts";
 import { YOUTUBE_V1_CEO_STAGE, YOUTUBE_V1_CONFIRM_PAGE, YOUTUBE_V1_HREFS, YOUTUBE_V1_PAGES, YOUTUBE_V1_STEP_PAGES } from "./youtube-process/navigation.ts";
 export { YOUTUBE_V1_HREFS };
 
@@ -187,6 +188,6 @@ export function findStage(pathname: string) {
 }
 export function searchNavigation(query: string, financeAccess = false, canVisit: (href: string) => boolean = () => true, hrEnabled = false) {
   const normalized = query.trim().toLocaleLowerCase("ko-KR");
-  const pages = [...NAV_STAGES.filter(stage => (!stage.requiresFinance || financeAccess) && (!stage.requiresHr || hrEnabled)).flatMap(stage => stage.pages.map(page => ({ ...page, stage: stage.label }))), { label: "문서 찾기", href: "/knowledge/search", icon: Search, aliases: ["지식 검색"], stage: "회사 문서" }, { ...ACCOUNT_PAGE, stage: "내 계정" }];
+  const pages = [...NAV_STAGES.filter(stage => !stage.requiresHr || hrEnabled).flatMap(stage => stage.pages.filter(page => !stage.requiresFinance || financeAccess || STAFF_FINANCE_MENUS.includes(page.href)).map(page => ({ ...page, stage: stage.label }))), { label: "문서 찾기", href: "/knowledge/search", icon: Search, aliases: ["지식 검색"], stage: "회사 문서" }, { ...ACCOUNT_PAGE, stage: "내 계정" }];
   return (normalized ? pages.filter(page => `${page.stage} ${page.group ?? ""} ${page.label} ${(page.aliases ?? []).join(" ")}`.toLocaleLowerCase("ko-KR").includes(normalized)) : pages).filter(page => canVisit(page.href)).slice(0, 8);
 }

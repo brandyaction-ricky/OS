@@ -1,3 +1,4 @@
+import { STAFF_FINANCE_MENUS } from "./finance/access";
 import { ACCOUNT_PAGE, findPage, NAV_STAGES, YOUTUBE_V1_HREFS } from "./navigation";
 
 export interface MenuAccessPolicy {
@@ -36,6 +37,7 @@ export function canOpenMenu(profile: MenuAccessProfile | null, href: string, all
   const canonical = page.navHref ?? page.href;
   if (profile.role === "admin") return true;
   if (canonical === "/hr/my-leave") return true;
+  if (STAFF_FINANCE_MENUS.includes(canonical)) return true;
   if (canonical.startsWith("/hr/") && !profile.financeAccess) return false;
   if (canonical.startsWith("/finance/") && !profile.financeAccess) return false;
   const companyDocument = href.split(/[?#]/)[0].startsWith("/knowledge/") && !href.startsWith("/knowledge/development");

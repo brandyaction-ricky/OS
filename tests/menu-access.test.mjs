@@ -5,6 +5,7 @@ import vm from "node:vm";
 import ts from "typescript";
 import * as zod from "zod";
 import * as navigation from "../lib/navigation.ts";
+import * as financeAccess from "../lib/finance/access.ts";
 
 class ApiError extends Error { constructor(status, code, message) { super(message); this.status = status; this.code = code; } }
 function load(file, imports) {
@@ -14,7 +15,7 @@ function load(file, imports) {
   vm.runInNewContext(code, { module: mod, exports: mod.exports, require: id => { assert.ok(id in imports, id); return imports[id]; }, Request, Response, URL, Date, Set });
   return mod.exports;
 }
-const access = load("lib/menu-access.ts", { "./navigation": navigation });
+const access = load("lib/menu-access.ts", { "./navigation": navigation, "./finance/access": financeAccess });
 const member = { role: "member", isActive: true, financeAccess: false };
 
 test("company document detail follows an allowed list without opening other menus",()=>{
@@ -33,7 +34,12 @@ test("menu selection preserves role/data boundaries and always-available destina
   assert.equal(access.canOpenMenu(member, "/settings/account", []), true);
   assert.equal(access.canOpenMenu(member, "/content/scripts", []), false);
   assert.equal(access.canOpenMenu(member, "/content/scripts", ["/content/scripts"]), true);
-  assert.equal(access.canOpenMenu(member, "/finance/cards", ["/finance/cards"]), false);
+  // 카드지출·정기 결제 are open to every active member (2026-10-30); the rest of 재무관리 still needs finance access.
+  assert.equal(access.canOpenMenu(member, "/finance/cards", []), true);
+  assert.equal(access.canOpenMenu(member, "/finance/recurring", []), true);
+  assert.equal(access.canOpenMenu({ ...member, isActive: false }, "/finance/cards", null), false);
+  assert.equal(access.canOpenMenu(member, "/finance/sales", ["/finance/sales"]), false);
+  assert.equal(access.canOpenMenu(member, "/finance/vat", null), false);
   assert.equal(access.canOpenMenu({ ...member, financeAccess: true }, "/finance/cards", ["/finance/cards"]), true);
   assert.equal(access.canOpenMenu({ ...member, role: "admin" }, "/settings/access", []), true);
   assert.equal(access.canOpenMenu({ ...member, role: "admin", isActive: false }, "/settings/access", null), false);
@@ -52,7 +58,7 @@ test("aliases and query-backed menus cannot sidestep page selection", () => {
   assert.equal(access.canOpenMenu(member, "/knowledge/development?tab=updates", ["/knowledge/development?tab=updates"]), true);
   const matches = navigation.searchNavigation("", false, href => access.canOpenMenu(member, href, ["/settings/access"]));
   assert.ok(matches.some(page => page.href === "/settings/access"), "filter before the eight-result limit");
-  assert.ok(matches.every(page => ["/home", "/settings/access", "/settings/account"].includes(page.href)));
+  assert.ok(matches.every(page => ["/home", "/settings/access", "/settings/account", "/finance/cards", "/finance/recurring"].includes(page.href)));
 });
 
 const adminId = "00000000-0000-4000-8000-000000000001";

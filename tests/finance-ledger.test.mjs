@@ -21,6 +21,7 @@ function load(file,imports={},env={}){
   return compiled.exports;
 }
 const schema=load("lib/finance/schema.ts");
+const financeAccess=load("lib/finance/access.ts");
 function ledger(extra={}){return {...Object.fromEntries(schema.READ_RESOURCES.map(x=>[x,[]])),...extra};}
 function actorFor(data){
   const calls=[];
@@ -29,7 +30,7 @@ function actorFor(data){
     return {select(){return this;},order(){return this;},range(a,b){return Promise.resolve({data:rows.slice(a,b+1),error:null});}};
   },async rpc(name,args){calls.push({name,args});return {data:args.p_changes||{},error:null};}}};
 }
-const server=load("lib/server/finance.ts",{"./auth":{authenticateRequest:async()=>{throw new ApiError(401,"AUTH_REQUIRED","auth");}},"@/lib/finance/schema":schema,"@/lib/finance/domain.mjs":domain});
+const server=load("lib/server/finance.ts",{"./auth":{authenticateRequest:async()=>{throw new ApiError(401,"AUTH_REQUIRED","auth");}},"@/lib/finance/schema":schema,"@/lib/finance/domain.mjs":domain,"@/lib/finance/access":financeAccess});
 
 test("finance normalized schema rejects unsafe amounts, date/time and privileged fields",()=>{
   const item={...row(1),kind:"manual",amount:1};
@@ -152,7 +153,7 @@ test("overview uses each cancellation event date and does not invent unknown fee
 test("API rechecks active finance access and never trusts stale actor claims",async()=>{
   for(const profile of [null,{is_active:false,role:"admin",finance_access:true},{is_active:true,role:"member",finance_access:false},{is_active:true,role:"member",finance_access:true},{is_active:true,role:"admin",finance_access:false}]){
     const actor={id:id(9),role:"admin",supabase:{from(){return {select(){return this;},eq(){return this;},single:async()=>({data:profile,error:null})};}}};
-    const auth=load("lib/server/finance.ts",{"./auth":{authenticateRequest:async()=>actor},"@/lib/finance/schema":schema,"@/lib/finance/domain.mjs":domain});
+    const auth=load("lib/server/finance.ts",{"./auth":{authenticateRequest:async()=>actor},"@/lib/finance/schema":schema,"@/lib/finance/domain.mjs":domain,"@/lib/finance/access":financeAccess});
     if(profile?.is_active&&(profile.role==="admin"||profile.finance_access))assert.equal(await auth.financeActor({}),actor);
     else await assert.rejects(auth.financeActor({}),e=>e.status===403);
   }

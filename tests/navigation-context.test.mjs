@@ -59,7 +59,7 @@ test('company documents and finance menus coexist with gated HR navigation',()=>
   assert.deepEqual(NAV_STAGES.find(stage=>stage.id==='knowledge').pages.map(page=>page.href),['/knowledge/vault','/knowledge/notes','/knowledge/canon','/knowledge/trash']);
   assert.equal(NAV_STAGES.find(stage=>stage.id==='team').label,'업무 기록');
   assert.equal(NAV_STAGES.find(stage=>stage.id==='finance').requiresFinance,true);
-  assert.equal(searchNavigation('재무',false).some(page=>page.href.startsWith('/finance/')),false);
+  assert.deepEqual(searchNavigation('재무',false).map(page=>page.href),['/finance/cards','/finance/recurring'],'staff find only 카드지출·정기 결제');
   assert.equal(searchNavigation('재무',true).filter(page=>page.href.startsWith('/finance/')).length,8);
   assert.ok(!NAV_STAGES.some(stage=>stage.pages.some(page=>page.href===ACCOUNT_PAGE.href)));
   assert.equal(findPage(ACCOUNT_PAGE.href).label,'내 계정');
