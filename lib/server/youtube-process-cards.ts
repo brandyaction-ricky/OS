@@ -12,15 +12,52 @@ import { CardSlideView } from "@/lib/cardnews/card-slide";
 import { CardError, cardsMissing, nextCards, pickedDraft } from "@/lib/cardnews/cards";
 import { CAPTION_MAX, CARD_FORMAT_IDS, CARD_MAX_SLIDES, CARD_SIZE, cardSignature, type CardDraft } from "@/lib/cardnews/formats";
 import { storedZip } from "@/lib/cardnews/zip";
+import { projectCardSources, visibleThreadSource, type CardSourceChoice } from "@/lib/cardnews/sources";
 import { applyGateAction, quietHours } from "@/lib/youtube-process/confirm";
 import { newProjectMeta, projectName, type YpProject } from "@/lib/youtube-process/project";
-import { emptyStage, type YpCards, type YpCardSource } from "@/lib/youtube-process/stages";
+import { emptyStage, stageData, STAGE_RECORD, type YpCards, type YpCardSource } from "@/lib/youtube-process/stages";
 import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
 import type { RequestActor } from "./auth";
-import { approverIds, getYoutubeProject, insertProject, notify, recordConfirmation } from "./youtube-process";
+import { approverIds, getYoutubeProject, insertProject, listYoutubeProjects, notify, recordConfirmation } from "./youtube-process";
 import { readStages, writeStage } from "./youtube-process-stages";
 
 const SOURCE_MAX = 60_000;
+
+/** Discover only already-readable, approved sources. No source body or privileged service query in this list. */
+export async function listCardSources(actor: RequestActor): Promise<CardSourceChoice[]> {
+  const [projects, threads] = await Promise.all([
+    listYoutubeProjects(actor),
+    actor.supabase.from("os_records").select("id,title,status,owner_id,metadata,updated_at")
+      .eq("record_type", "content_publish").eq("metadata->>channel", "threads").in("status", ["ready", "scheduled", "published"])
+      .is("archived_at", null).order("updated_at", { ascending: false }).limit(200),
+  ]);
+  if (threads.error) throw new ApiError(503, "CARD_SOURCE_READ_FAILED", "완료한 주제를 불러오지 못했어요. 다시 시도해 주세요.");
+  const posts: CardSourceChoice[] = (threads.data ?? []).filter(row => visibleThreadSource(row, actor.ownerId)).map(row => ({
+    id: row.id, from: "threads", kind: "threads", title: String(row.title || "스레드 글").slice(0, 200), updatedAt: row.updated_at,
+  }));
+  return [...projectCardSources(projects), ...posts].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+/** One bounded batch, not a full project bundle or a PNG render for each list row. RLS and visible parents both apply. */
+export async function readCardCovers(actor: RequestActor, requested: string[]): Promise<Record<string, CardDraft>> {
+  const projects = (await listYoutubeProjects(actor)).filter(project => project.yp.topic.type === "card" && requested.includes(project.id));
+  const visible = projects.map(project => project.id);
+  if (!visible.length) return {};
+  const spec = STAGE_RECORD.cards;
+  const { data, error } = await actor.supabase.from("os_records").select("parent_id,metadata")
+    .eq("record_type", spec.recordType).eq(`metadata->>${spec.key}`, spec.value).in("parent_id", visible)
+    .is("archived_at", null).order("updated_at", { ascending: false }).limit(200);
+  if (error) throw new ApiError(503, "CARD_COVER_READ_FAILED", "표지를 불러오지 못했어요.");
+  const covers: Record<string, CardDraft> = {};
+  for (const row of data ?? []) {
+    if (!row.parent_id || !visible.includes(row.parent_id) || covers[row.parent_id]) continue;
+    const cards = stageData("cards", row.metadata?.yp, "card");
+    const selected = projects.find(project => project.id === row.parent_id)?.yp.stage === "draft" ? cards.picked : cards.confirmed?.draftId || cards.picked;
+    const draft = cards.drafts.find(item => item.id === selected) ?? cards.drafts[0];
+    if (draft) covers[row.parent_id] = draft;
+  }
+  return covers;
+}
 
 export const cardCreateSchema = z.discriminatedUnion("from", [
   z.object({ from: z.literal("none"), title: z.string().trim().min(2).max(200), target: z.string().trim().min(1).max(300), note: z.string().max(2000).default("") }).strict(),
