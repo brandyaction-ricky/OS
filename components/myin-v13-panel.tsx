@@ -9,6 +9,7 @@ import { CostTag, useCostConfirm, useCostModels, voiceEstimate } from "./cost-no
 import { MyinSoundEditor } from "./myin-sound-editor";
 import { MyinOurImages } from "./myin-our-images";
 import { MyinScreenCheck } from "./myin-screen-check";
+import { MyinVoiceCheck, type MyinVoiceCheckView, type MyinVoiceFixView } from "./myin-voice-check";
 import { DraftPlacePicker, localBlocker, useLocalRender, type DraftPlace } from "./myin-local-render";
 import { assToSrt } from "@/lib/subtitle-files";
 
@@ -22,7 +23,8 @@ interface MyinRun { id: string; status: string; stage: string; layout?: "short" 
   prepared: { misses: string[]; sheets: number; credits: string[]; at: string } | null;
   clips: { name: string; label: string }[] | null; clipsReview: { name: string; note: string; at: string } | null;
   final: { bytes: number; durationSeconds: number; lufs: number; peak: number; at: string } | null; scriptChanged?: boolean; workingSince?: string | null;
-  sound: { report: string; at: string; edited?: { name: string; at: string } } | null; local: { by: string; name: string } | null; localReady: boolean }
+  sound: { report: string; at: string; edited?: { name: string; at: string } } | null; local: { by: string; name: string } | null; localReady: boolean;
+  voiceFixes?: MyinVoiceFixView[]; voiceCheck?: MyinVoiceCheckView | null }
 interface Outputs { clips: { label: string; url: string | null }[]; video: string | null; summary: string | null; deck: string | null; srt: string | null }
 
 const PHASE: Record<string, string> = { breath_pending: "영상 만드는 컴퓨터가 숨 자리 고르는 중", voice_pending: "음성 만드는 중", words_pending: "영상 만드는 컴퓨터가 받아쓰기·자막 만드는 중", words_ready: "받아쓰기·자막 완료",
@@ -221,7 +223,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
         <small><CostTag kind="paid" /> 같은 {short ? "대본" : "원고"}으로 다시 누르면 만든 음성을 이어 써요.</small>
       </div> : null}
       {run ? <div className="yt-run">
-        <div className="yt-run-head"><span className="status-pill" data-status={run.status === "blocked" && !run.words ? "failed" : run.words ? "approved" : "scheduled"}>{run.words ? "받아쓰기·자막 완료" : phase}</span>
+        <div className="yt-run-head"><span className="status-pill" data-status={run.status === "blocked" && !run.words ? "failed" : run.words && !run.voiceFixes?.length ? "approved" : "scheduled"}>{run.voiceFixes?.length && run.stage === "words_pending" ? "고친 곳 다시 만드는 중" : run.words ? "받아쓰기·자막 완료" : phase}</span>
           {run.voiceOnPc ? <small>음성 {run.paragraphs}문단 · 영상 만드는 컴퓨터가 문장마다 만들어 고름</small> : <small>음성 {run.paragraphsReady}/{run.paragraphs}문단</small>}</div>
         {run.stage === "voice_pending" ? <progress max={run.paragraphs} value={run.paragraphsReady} aria-label="음성 진행" /> : null}
         {run.words ? <small>낭독 {Math.floor(run.words.durationSeconds / 60)}분 {Math.round(run.words.durationSeconds % 60)}초 · 받아쓴 단어 {run.words.words.toLocaleString()}개 · 자막 {run.words.subtitleLines}줄</small> : null}
@@ -232,6 +234,8 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
         <button type="button" className="secondary-button compact" disabled={Boolean(saving)} onClick={() => void download("ass")}>{saving === "ass" ? "받는 중…" : "방송 자막 내려받기 (ASS)"}</button>
         {!run.localReady ? <small>이 영상의 음성은 영상 만드는 컴퓨터가 OS에 올린 뒤 받을 수 있어요.</small> : null}
       </div> : null}
+      {run?.words && run.voiceOnPc && !short ? <MyinVoiceCheck key={`${run.id}-${run.stage}-${run.voiceCheck?.at ?? ""}`} runId={run.id} stage={run.stage} pending={run.voiceFixes ?? []} check={run.voiceCheck ?? null} token={accessToken} onChanged={load}
+        askCost={(sentences) => cost.confirm({ model: myinVoice, amount: voiceEstimate("가".repeat(sentences * 120), myinVoice).krw, detail: `문장 ${sentences}개 · 문장마다 두 번 만들어 더 나은 것을 골라요`, ok: "확인하고 다시 만들기" })} /> : null}
       {run?.words ? <details className="yt-details" onToggle={(event) => { if ((event.target as HTMLDetailsElement).open && !qc) void showQc(); }}>
         <summary>자막 검사표 보기</summary>
         <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, maxHeight: 360, overflow: "auto", margin: 0 }}>{qc || "불러오는 중…"}</pre>

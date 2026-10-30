@@ -19,3 +19,22 @@ test("myinVoiceEnv voices on the render PC when the OS sends no files, and keeps
   const cta = worker.myinVoiceEnv({ paragraphs: [], fishVoice: { referenceId: "voice-2" } }, { PATH: "/usr/bin", FISH_API_KEY: "k", STORY: "myin_storyboard.json" });
   assert.deepEqual([cta.onPc, cta.env.FISH_VOICE_ID, cta.env.STORY], [true, "voice-2", "myin_storyboard.json"]);
 });
+
+// 음성 확인·수정 (로건 OS 요청 2026-10-30): voice_fix's new dictionary lines go back into the package; lines already there win.
+test("mergeVoiceDictionaries adds only new readings and new break tests to the package", async () => {
+  const { mkdtempSync, readFileSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const worker = await import(`../tools/youtube-media-worker.mjs?merge-${Date.now()}`);
+  const from = mkdtempSync(join(tmpdir(), "dict-from-")), to = mkdtempSync(join(tmpdir(), "dict-to-"));
+  writeFileSync(join(to, "읽기사전.json"), JSON.stringify({ _설명: "x", GPT: "지피티" }));
+  writeFileSync(join(to, "어색문장모음.json"), JSON.stringify({ _설명: "y", items: [{ id: "a", text: "원래" }] }));
+  writeFileSync(join(from, "읽기사전.json"), JSON.stringify({ _설명: "x", GPT: "바뀐 값", AI: "에이아이" }));
+  writeFileSync(join(from, "어색문장모음.json"), JSON.stringify({ _설명: "y", items: [{ id: "a", text: "바뀜" }, { id: "b", text: "새 문장" }] }));
+  assert.deepEqual(worker.mergeVoiceDictionaries(from, to), { readings: 1, tests: 1 });
+  assert.deepEqual(JSON.parse(readFileSync(join(to, "읽기사전.json"), "utf8")), { _설명: "x", GPT: "지피티", AI: "에이아이" });
+  assert.deepEqual(JSON.parse(readFileSync(join(to, "어색문장모음.json"), "utf8")).items.map((item) => item.text), ["원래", "새 문장"]);
+  assert.deepEqual(worker.mergeVoiceDictionaries(from, to), { readings: 0, tests: 0 }, "a second run adds nothing");
+  assert.equal(worker.fixReport("W1030 ... Redirects are currently not supported\nLoading weights: 100%\n찾은 문장: 문단 1 · 문장 1 — 대신 듣고 보면서 알 수 있어요.\n목소리 업데이트: …/voice.wav"),
+    "찾은 문장: 문단 1 · 문장 1 — 대신 듣고 보면서 알 수 있어요.\n목소리 업데이트: …/voice.wav");
+});

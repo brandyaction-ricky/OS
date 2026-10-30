@@ -34,7 +34,8 @@ const inputSchema = z.discriminatedUnion("action", [
     breaths: z.array(z.object({ index: z.number().int().min(0).max(149), after: z.array(z.number().int().min(0).max(400)).max(80) }).strict()).max(150) }).strict(),
   z.object({ action: z.literal("myin_claim"), short: z.literal(true).optional() }).strict(),
   z.object({ action: z.literal("myin_complete"), runId: z.string().uuid(), lease: z.string().uuid(),
-    voice: z.object({ parts: z.number().int().min(1).max(MYIN_VOICE_PARTS), bytes: z.number().int().positive(), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict().optional() }).strict(),
+    voice: z.object({ parts: z.number().int().min(1).max(MYIN_VOICE_PARTS), bytes: z.number().int().positive(), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict().optional(),
+    preview: z.object({ bytes: z.number().int().positive() }).strict().optional() }).strict(),
   z.object({ action: z.literal("myin_fail"), runId: z.string().uuid(), lease: z.string().uuid(), code: z.string().max(80) }).strict(),
   // 지난 영상 음성 (2026-10-28): stage-1 voice.wav for runs made before the render PC kept it in the OS (tools/myin-voice-backfill.mjs).
   z.object({ action: z.literal("myin_voice_backfill"), runId: z.string().uuid().optional() }).strict(),
