@@ -46,7 +46,7 @@ for (const theme of ["light", "dark"]) {
     await expect(page.locator(".page-sidebar")).toHaveCSS("width", "240px");
     await expect(page.locator(".process-bar")).toHaveCSS("height", "47px");
     await expect(page.locator(".quick-add")).toHaveCSS("height", "28px");
-    await expect(page.locator(".guide-no").first()).toHaveCSS("font-size", "10.5px");
+    await expect(page.locator(".guide-no").first()).toHaveCSS("font-size", "11px"); // 스타일 점검 P1: 11px floor
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({path:testInfo.outputPath(`shell-${theme}.png`),mask:[page.locator(".profile-trigger")]});
     await page.getByRole("button", { name: "사이드바 접기" }).click();

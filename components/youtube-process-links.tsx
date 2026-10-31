@@ -14,12 +14,12 @@ interface ShortLink { key: string; url: string; target: string; label: string; c
 export function YoutubeLinksScreen() {
   const [mode, setMode] = useState<"utm" | "short" | "card" | "cta">("utm");
   return <>
-    <div className="yp-seg2" role="group" aria-label="링크 만들기 방식">
+    <div><div className="yp-seg2" role="group" aria-label="링크 만들기 방식">
       <button type="button" className={mode === "utm" ? "yp-on" : ""} aria-pressed={mode === "utm"} onClick={() => setMode("utm")}>UTM 링크 만들기</button>
       <button type="button" className={mode === "short" ? "yp-on" : ""} aria-pressed={mode === "short"} onClick={() => setMode("short")}>단축링크만 만들기</button>
       <button type="button" className={mode === "card" ? "yp-on" : ""} aria-pressed={mode === "card"} onClick={() => setMode("card")}>최종 화면 진단 카드</button>
       <button type="button" className={mode === "cta" ? "yp-on" : ""} aria-pressed={mode === "cta"} onClick={() => setMode("cta")}>CTA 일괄 바꾸기</button>
-    </div>
+    </div></div>
     {mode === "utm" ? <UtmLinkSection /> : mode === "short" ? <ShortLinkOnly /> : mode === "card" ? <EndscreenCardEditor /> : <CtaBulkScreen />}
   </>;
 }

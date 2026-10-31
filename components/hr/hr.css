@@ -82,7 +82,7 @@
   margin: 3px 0 1px;
   font-variant-numeric: tabular-nums;
 }
-.hr-card strong.warn { color: #a3650b; font-size: 16px; }
+.hr-card strong.warn { color: var(--warning); font-size: 16px; }
 .hr-panel {
   background: var(--hr-panel);
   border: 1px solid var(--hr-line);
@@ -178,20 +178,20 @@
   white-space: nowrap;
 }
 .hr-pill.good {
-  color: #16805a;
-  background: color-mix(in srgb, #16805a 12%, var(--hr-panel));
+  color: var(--mint);
+  background: color-mix(in srgb, var(--mint) 12%, var(--hr-panel));
 }
 .hr-pill.warn {
-  color: #b87b19;
-  background: color-mix(in srgb, #d99a2b 12%, var(--hr-panel));
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 12%, var(--hr-panel));
 }
 .hr-pill.danger {
-  color: #d74444;
-  background: color-mix(in srgb, #d74444 10%, var(--hr-panel));
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, var(--hr-panel));
 }
 .hr-danger,
 .hr-card .danger {
-  color: #d74444;
+  color: var(--danger);
 }
 .hr-muted {
   color: var(--hr-muted);
@@ -221,7 +221,7 @@
   color: var(--on-accent);
 }
 .hr-button.danger {
-  color: #d74444;
+  color: var(--danger);
 }
 .hr-button:disabled {
   opacity: 0.5;
@@ -259,7 +259,7 @@
 }
 .hr-field > b,
 .hr-field > span > b {
-  color: #d74444;
+  color: var(--danger);
 }
 .hr-field small {
   color: var(--hr-muted);
@@ -313,12 +313,12 @@
   font-size: 12px;
 }
 .hr-banner.error {
-  color: #d74444;
-  background: color-mix(in srgb, #d74444 6%, var(--hr-panel));
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 6%, var(--hr-panel));
 }
 .hr-banner.warning {
-  color: #a3650b;
-  background: color-mix(in srgb, #d99b20 10%, var(--hr-panel));
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 10%, var(--hr-panel));
 }
 .hr-grid2 {
   display: grid;
@@ -447,12 +447,12 @@
   white-space: normal;
 }
 .hr-promo-steps > span.current {
-  border-color: #d99a2b;
-  background: color-mix(in srgb, #d99a2b 10%, var(--hr-panel));
+  border-color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 10%, var(--hr-panel));
 }
 .hr-promo-steps > span.done {
-  border-color: #16805a;
-  background: color-mix(in srgb, #16805a 8%, var(--hr-panel));
+  border-color: var(--mint);
+  background: color-mix(in srgb, var(--mint) 8%, var(--hr-panel));
 }
 .hr-calendar {
   display: grid;
@@ -473,7 +473,7 @@
   box-shadow: inset 0 0 0 2px var(--hr-accent);
 }
 .hr-day.holiday {
-  background: color-mix(in srgb, #d74444 7%, var(--hr-panel));
+  background: color-mix(in srgb, var(--danger) 7%, var(--hr-panel));
 }
 .hr-day.weekend {
   background: color-mix(in srgb, var(--hr-muted) 7%, var(--hr-panel));
@@ -495,7 +495,7 @@
 }
 .hr-designation-calendar > button[aria-pressed="true"] {
   background: var(--hr-accent);
-  color: white;
+  color: var(--on-accent);
 }
 .hr-designation-calendar > button:disabled { opacity: .35; cursor: default; }
 .hr-designation-calendar > button.other { opacity: .55; }
@@ -509,7 +509,7 @@
   font-size: 12px;
 }
 .hr-day > header small {
-  color: #d74444;
+  color: var(--danger);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -521,8 +521,8 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: left;
-  border: 1px solid #d79a48;
-  background: color-mix(in srgb, #d79a48 12%, var(--hr-panel));
+  border: 1px solid var(--warning);
+  background: color-mix(in srgb, var(--warning) 12%, var(--hr-panel));
   border-radius: 4px;
   color: inherit;
   font: inherit;
@@ -670,5 +670,5 @@
   min-height: 260px;
 }
 .hr-day.holiday time {
-  color: #d74444;
+  color: var(--danger);
 }

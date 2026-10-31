@@ -75,7 +75,7 @@
 .linear-shell.shell-v2 .nav-chevron { width: 10px; font-size: 10px; color: var(--muted); }
 .linear-shell.shell-v2 .nav-icon { display: flex; color: var(--muted); }
 .linear-shell.shell-v2 .nav-icon svg { width: 16px; height: 16px; }
-.linear-shell.shell-v2 .nav-group-note { font-size: 10.5px; font-weight: 400; color: var(--muted); margin-left: 2px; }
+.linear-shell.shell-v2 .nav-group-note { font-size: 11px; font-weight: 400; color: var(--muted); margin-left: 2px; }
 .linear-shell.shell-v2 .nav-group-count { margin-left: auto; font-size: 12px; color: var(--muted); }
 /* 대표 메뉴: the number is the videos waiting for 컨펌 (2026-10-25), warm while any wait. */
 .linear-shell.shell-v2 .nav-group-count.is-alert { min-width: 18px; padding: 0 6px; border-radius: 999px; background: var(--warning-soft); color: var(--warning); font-weight: 700; text-align: center; }
@@ -101,7 +101,7 @@
 .linear-shell.shell-v2 .nav-count.is-soft { background: var(--panel-3); color: var(--text-2); }
 .linear-shell.shell-v2 .nav-count.is-warning { background: var(--warning-soft); color: var(--warning); }
 .linear-shell.shell-v2 .tag-new {
-  font-size: 10px; font-weight: 700; color: var(--accent-2); border: 1px solid var(--accent-2);
+  font-size: 11px; font-weight: 700; color: var(--accent-2); border: 1px solid var(--accent-2);
   border-radius: 4px; padding: 0 4px; line-height: 15px;
 }
 
@@ -165,8 +165,8 @@
 .linear-shell.shell-v2 .topbar .development-notifications-trigger svg { width: 19px; height: 19px; }
 .linear-shell.shell-v2 .topbar .development-notifications-badge {
   position: absolute; top: -2px; right: -4px; min-width: 0; height: auto; display: block; border: 0;
-  background: var(--danger); color: var(--on-accent);
-  font-size: 9px; font-weight: 700; border-radius: 7px; padding: 0 4px; line-height: 14px;
+  background: var(--danger); color: var(--bg);
+  font-size: 11px; font-weight: 700; border-radius: 7px; padding: 0 4px; line-height: 14px;
 }
 
 /* ───────────── 5. 공정 막대 (콘텐츠 ①~⑧ 화면, 47 = 46 + 1) — AppShell이 상단 막대 아래에 그림 ───────────── */
@@ -211,7 +211,7 @@
 .linear-shell.shell-v2 .guide-no {
   display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box;
   border-radius: 9px; background: var(--accent-soft); color: var(--accent-2); border: 1px solid var(--accent-2);
-  font-size: 10.5px; font-weight: 700; flex-shrink: 0; line-height: 1;
+  font-size: 11px; font-weight: 700; flex-shrink: 0; line-height: 1;
 }
 html[data-guidance="off"] .guide-strip, html[data-guidance="off"] .guide-no, html[data-guidance="off"] .ui-v2 .page-header-note { display: none; }
 
@@ -274,8 +274,8 @@ html[data-guidance="off"] .guide-strip, html[data-guidance="off"] .guide-no, htm
 
 /* ───────────── 10. 배지 · 칩 · 점 ───────────── */
 .linear-shell .ui-v2 .status-pill { font-size: 11px; font-weight: 500; padding: 2px 7px; border-radius: 4px; white-space: nowrap; line-height: normal; }
-.linear-shell .ui-v2 .status-pill.is-sm { font-size: 10.5px; }
-.linear-shell .ui-v2 .status-pill.is-xs { font-size: 10px; }
+.linear-shell .ui-v2 .status-pill.is-sm { font-size: 11px; }
+.linear-shell .ui-v2 .status-pill.is-xs { font-size: 11px; }
 .linear-shell .ui-v2 .status-pill[data-status="draft"]     { background: var(--panel-3); color: var(--text-2); }   /* 초안 */
 .linear-shell .ui-v2 .status-pill[data-status="review"]    { background: var(--warning-soft); color: var(--warning); } /* 검토 */
 .linear-shell .ui-v2 .status-pill[data-status="approved"]  { background: var(--mint-soft); color: var(--mint); }   /* 최종 승인 */

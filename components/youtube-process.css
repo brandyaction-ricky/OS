@@ -100,7 +100,7 @@
 .linear-shell .ui-v2.yp .yp-note .yp-i{margin-top:2px}
 .linear-shell .ui-v2.yp .yp-note>div{flex:1;min-width:0}
 .linear-shell .ui-v2.yp .yp-in{width:100%;border:1px solid var(--line);border-radius:6px;background:var(--card);padding:8px 10px;font-size:13px;color:var(--text)}
-.linear-shell .ui-v2.yp .yp-in:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+.linear-shell .ui-v2.yp .yp-in:focus{outline:2px solid var(--accent);border-color:var(--accent)}
 .linear-shell .ui-v2.yp .yp-in:disabled,
 .linear-shell .ui-v2.yp .yp-in[readonly]{background:var(--panel);color:var(--text-2)}
 .linear-shell .ui-v2.yp textarea.yp-in{resize:vertical;line-height:1.6}

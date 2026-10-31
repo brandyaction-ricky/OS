@@ -1,43 +1,43 @@
 .te-workspace { margin-bottom: 24px; }
-.te-workspace header > p,.te-request > p,.te-import > p,.te-save > p { color: var(--muted,#626874); font-size: 14px; line-height: 1.65; }
+.te-workspace header > p,.te-request > p,.te-import > p,.te-save > p { color: var(--muted); font-size: 14px; line-height: 1.65; }
 .te-route-cards { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; margin-top: 20px; }
-.ca-v07 .te-route-cards > a,.ca-v07 .te-route-cards > button { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; min-width: 0; padding: 20px; border: 1px solid var(--border,#dfe2e9); border-radius: 12px; background: var(--surface,#fff); color: inherit; text-align: left; text-decoration: none; white-space: normal; }
+.ca-v07 .te-route-cards > a,.ca-v07 .te-route-cards > button { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; min-width: 0; padding: 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: inherit; text-align: left; text-decoration: none; white-space: normal; }
 .te-route-cards strong { font-size: 17px; }
-.te-route-cards span { font-size: 14px; color: var(--muted,#626874); line-height: 1.6; }
-.te-route-cards small { margin-top: auto; color: var(--accent,#5c61d6); }
-.ca-v07 .te-route-cards > button[aria-pressed=true] { border-color: #666bdc; background: #f3f3ff; box-shadow: inset 0 0 0 1px #666bdc; }
-.te-collection { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border,#dfe2e9); }
-.te-steps { display: flex; flex-wrap: wrap; gap: 10px 24px; list-style: none; margin: 0 0 24px; padding: 0; font-size: 13px; color: var(--muted,#626874); }
+.te-route-cards span { font-size: 14px; color: var(--muted); line-height: 1.6; }
+.te-route-cards small { margin-top: auto; color: var(--accent-2); }
+.ca-v07 .te-route-cards > button[aria-pressed=true] { border-color: var(--accent-2); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-2); }
+.te-collection { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
+.te-steps { display: flex; flex-wrap: wrap; gap: 10px 24px; list-style: none; margin: 0 0 24px; padding: 0; font-size: 13px; color: var(--muted); }
 .te-request { max-width: 760px; }
 .te-request label,.te-import label { display: grid; gap: 8px; font-size: 14px; font-weight: 600; }
-.te-request label small { display: inline; color: var(--muted,#626874); font-weight: 400; }
+.te-request label small { display: inline; color: var(--muted); font-weight: 400; }
 .ca-v07 .te-request input,.ca-v07 .te-import textarea { width: 100%; box-sizing: border-box; }
 .te-canonical { display: block; margin: 12px 0; }
 .te-request > button { margin-top: 8px; }
-.te-import { margin-top: 24px; padding: 18px; background: var(--panel,#f7f8fa); border: 1px solid var(--border,#dfe2e9); border-radius: 10px; }
+.te-import { margin-top: 24px; padding: 18px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
 .te-import summary,.te-sources summary,.te-evidence > summary { cursor: pointer; font-weight: 600; }
 .te-import textarea { resize: vertical; font-family: inherit; font-weight: 400; }
 .te-import button { margin-top: 12px; }
 .te-previews { margin-top: 24px; }
-.te-candidate { margin: 16px 0; padding: 22px; border: 1px solid var(--border,#dfe2e9); border-radius: 12px; }
-.te-candidate header > span { font-size: 12px; color: var(--accent,#5c61d6); }
+.te-candidate { margin: 16px 0; padding: 22px; border: 1px solid var(--line); border-radius: 12px; }
+.te-candidate header > span { font-size: 12px; color: var(--accent-2); }
 .te-candidate h4 { font-size: 20px; line-height: 1.5; margin: 10px 0 20px; }
 .te-facts dl { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px 28px; }
 .te-facts dl > div { min-width: 0; }
 .te-facts .te-wide { grid-column: 1/-1; }
-.te-first-paragraph { padding: 16px; border-left: 3px solid #676ce0; background: var(--panel,#f7f8fa); border-radius: 0 8px 8px 0; }
-.te-facts dt { margin-bottom: 6px; color: var(--muted,#626874); font-size: 13px; }
-.te-facts dt span { margin-left: 6px; padding: 3px 6px; font-size: 11px; background: var(--panel,#f1f2f5); border-radius: 4px; }
+.te-first-paragraph { padding: 16px; border-left: 3px solid var(--accent-2); background: var(--panel); border-radius: 0 8px 8px 0; }
+.te-facts dt { margin-bottom: 6px; color: var(--muted); font-size: 13px; }
+.te-facts dt span { margin-left: 6px; padding: 3px 6px; font-size: 11px; background: var(--panel-2); border-radius: 4px; }
 .te-facts dd { margin: 0; font-size: 15px; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
-.te-person { color: var(--muted,#626874); font-size: 14px; }
-.te-sources { margin-top: 22px; border-top: 1px solid var(--border,#dfe2e9); padding-top: 16px; }
-.te-sources > p { font-size: 13px; color: var(--muted,#626874); }
+.te-person { color: var(--muted); font-size: 14px; }
+.te-sources { margin-top: 22px; border-top: 1px solid var(--line); padding-top: 16px; }
+.te-sources > p { font-size: 13px; color: var(--muted); }
 .te-sources li { margin: 15px 0; overflow-wrap: anywhere; }
-.te-sources li > span { font-size: 12px; color: var(--muted,#626874); }
+.te-sources li > span { font-size: 12px; color: var(--muted); }
 .te-sources li > small { display: block; margin-top: 6px; }
 .te-sources li p { font-size: 14px; line-height: 1.65; white-space: pre-wrap; }
 .te-save { padding: 0 0 8px; }
 .te-save > a { display: inline-block; margin-left: 16px; font-size: 14px; }
 .te-evidence .te-facts { padding-top: 16px; }
-.te-route-badge { display: inline-block; margin-bottom: 4px; color: var(--accent,#5c61d6); font-size: 12px; font-weight: 600; }
+.te-route-badge { display: inline-block; margin-bottom: 4px; color: var(--accent-2); font-size: 12px; font-weight: 600; }
 @media(max-width:760px){ .te-route-cards { grid-template-columns: 1fr; } .ca-v07 .te-route-cards > a,.ca-v07 .te-route-cards > button { padding: 16px; } .te-facts dl { grid-template-columns: 1fr; } .te-candidate { padding: 16px; } .te-save > a { display: block; margin: 14px 0 0; } }
