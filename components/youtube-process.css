@@ -162,6 +162,17 @@
 .linear-shell .ui-v2.yp .yp-adform{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;align-items:end}
 .linear-shell .ui-v2.yp .yp-adform label{display:grid;gap:4px;font-size:12px;color:var(--text-2)}
 .linear-shell .ui-v2.yp .yp-adform-note{grid-column:1 / -1}
+.linear-shell .ui-v2.yp .yp-shots{width:calc(100% - 20px);margin:0 10px 8px;border-collapse:collapse;font-size:13px}
+.linear-shell .ui-v2.yp .yp-shots th,.linear-shell .ui-v2.yp .yp-shots td{padding:5px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+.linear-shell .ui-v2.yp .yp-shots td:last-child{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.linear-shell .ui-v2.yp .yp-tag.yp-shot-s{box-shadow:inset 3px 0 var(--accent)}
+.linear-shell .ui-v2.yp .yp-tag.yp-shot-b{box-shadow:inset 3px 0 var(--mint)}
+.linear-shell .ui-v2.yp .yp-tag.yp-shot-i{box-shadow:inset 3px 0 var(--warning)}
+.linear-shell .ui-v2.yp .yp-changes{margin:8px 0 0;font-size:13px}
+.linear-shell .ui-v2.yp .yp-changes>summary{cursor:pointer;color:var(--text-2)}
+.linear-shell .ui-v2.yp .yp-changes ul{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:4px;max-height:220px;overflow:auto}
+.linear-shell .ui-v2.yp .yp-changes li{display:flex;gap:8px;align-items:baseline;min-width:0}
+.linear-shell .ui-v2.yp .yp-changes li>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-2)}
 .linear-shell .ui-v2.yp .yp-paras{list-style:none;margin:0;padding:0 10px 6px;display:grid;gap:4px;max-height:360px;overflow:auto;font-size:13px}
 .linear-shell .ui-v2.yp .yp-paras li{display:grid;grid-template-columns:28px 46px minmax(0,1fr);gap:6px;align-items:baseline}
 .linear-shell .ui-v2.yp .yp-paras time{color:var(--muted);font-variant-numeric:tabular-nums}

@@ -4,9 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { apiRequest } from "@/lib/api-client";
 import { Clock, Eye, Info, Sparkles } from "lucide-react";
 import { myinCleanScript } from "@/lib/myin-script";
-import { lengthEstimate, minSec, outlineMissing, paragraphTimes, runtimeError, scriptChars, SPEC_OPTIONS, specOption, type YpOutline } from "@/lib/youtube-process/stages";
+import { projectName } from "@/lib/youtube-process/project";
+import { lengthEstimate, minSec, outlineMissing, paragraphTimes, runtimeError, scriptChars, shotLine, shotList, SPEC_OPTIONS, specOption, type ShotKind, type YpOutline } from "@/lib/youtube-process/stages";
 import { checkScriptBody } from "@/lib/youtube-script-check";
-import { KnowledgeRichEditor } from "./knowledge-rich-editor";
+import { KnowledgeRichEditor, type KnowledgeRichEditorMethods } from "./knowledge-rich-editor";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
 import { GateBanner, hhmm, LockedStep, stepAction, Subject, useYpBundle, YpFrame, YpSection } from "./youtube-process-frame";
 import { YtCard } from "./youtube-process-media";
@@ -22,6 +23,7 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
   const [savedAt, setSavedAt] = useState("");
   const [viewV, setViewV] = useState<number | null>(null);
   const [editorKey, setEditorKey] = useState(0);
+  const editor = useRef<KnowledgeRichEditorMethods>(null);
   const [tab, setTab] = useState<"flow" | "refs">("flow");
   const [send, setSend] = useState(false);
   const [moving, setMoving] = useState(false);
@@ -99,7 +101,16 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
   const viewing = viewV && viewV !== current ? form?.versions.find(item => item.v === viewV) ?? null : null;
   const estimate = form ? lengthEstimate(viewing?.md ?? form.script, form.spec.runtimeMin, viewing ? null : voiceSec) : null;
   // 로건 QA 10/30: a 최종 검토 note at 00:56 had nowhere to point in 4,609 letters — each spoken paragraph with its number and time.
-  const paragraphs = form ? paragraphTimes(myinCleanScript(viewing?.md ?? form.script).spoken, viewing ? null : voiceSec) : [];
+  const paragraphs = form ? paragraphTimes(myinCleanScript(viewing?.md ?? form.script).spoken.map(text => shotLine(text)?.before ?? text).filter(Boolean), viewing ? null : voiceSec) : [];
+  // 실사 촬영 콘티 (로건 QA 10/30): the [샷] · [B롤] · [인서트] lines of the 원고, under the paragraph they follow.
+  const shots = form && project?.yp.topic.type === "live" ? shotList(viewing?.md ?? form.script) : [];
+  const downloadShots = () => {
+    const cell = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
+    const csv = "\uFEFF" + [["문단", "대사", "종류", "내용"], ...shots.map(row => [row.n || "시작 전", row.line, row.kind, row.text])].map(row => row.map(cell).join(",")).join("\r\n");
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); link.download = `촬영 콘티 · ${project ? projectName(project) : "원고"}.csv`;
+    link.click(); URL.revokeObjectURL(link.href);
+  };
   const confirmed = page.bundle?.stages.plan.data.confirmed;
   const plan = page.bundle?.stages.plan.data;
   const anim = project?.yp.topic.type !== "live";
@@ -136,11 +147,19 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
             {editable ? <button type="button" className="yp-btn yp-sm" onClick={() => { setViewV(null); setEditorKey(key => key + 1); void save({ restore: viewing.v }, form); }}>이 버전을 최신으로</button> : null}
             <button type="button" className="yp-btn yp-sm yp-pri" onClick={() => { setViewV(null); setEditorKey(key => key + 1); }}>보기 닫기</button></div> : null}
           {form.ai && form.versions.at(-1)?.why === "ai" && !viewing ? <p className="yp-hint" style={{ margin: "0 0 6px" }}><span className="yp-aitag"><Sparkles size={11} aria-hidden="true" /> AI 초안 · {form.ai.by}</span></p> : null}
+          {project.yp.topic.type === "live" && editable && !viewing ? <div className="yp-row-btns" style={{ margin: "0 0 6px" }}><span className="yp-muted" style={{ fontSize: 12 }}>촬영 표시</span>
+            {(["샷", "B롤", "인서트"] as ShotKind[]).map(kind => <button key={kind} type="button" className="yp-btn yp-sm" title={`커서 자리에 [${kind}] 줄을 넣어요. 그 줄은 대사 · 길이 계산에서 빠지고 촬영 콘티에 모여요.`}
+              onClick={() => editor.current?.insertMarkdown(` [${kind}] `)}>[{kind}]</button>)}</div> : null}
           <div className="yp-rte yp-tall" onBlur={() => { if (dirty) saveNow(); }}>
-            <KnowledgeRichEditor key={`${editorKey}-${viewing?.v ?? "cur"}`} markdown={viewing?.md ?? form.script} accessToken={page.accessToken} disabled={!editable || Boolean(viewing)}
+            <KnowledgeRichEditor ref={editor} key={`${editorKey}-${viewing?.v ?? "cur"}`} markdown={viewing?.md ?? form.script} accessToken={page.accessToken} disabled={!editable || Boolean(viewing)}
               onChange={markdown => { if (!viewing && markdown !== form.script) edit({ script: markdown }); }} onError={message => page.setError(message)} />
           </div>
           <p className="yp-hint"><Info size={12} aria-hidden="true" /> 마지막 20초는 최종 화면 자리로 비워 둬요.</p>
+          {project.yp.topic.type === "live" ? <details className="yp-card" style={{ marginTop: 8 }}><summary style={{ padding: "8px 10px", cursor: "pointer", fontSize: 13 }}>촬영 콘티 ({shots.length}개)</summary>
+            {shots.length ? <><table className="yp-shots"><thead><tr><th>문단</th><th>종류</th><th>내용</th><th>대사</th></tr></thead>
+              <tbody>{shots.map((row, index) => <tr key={index}><td>{row.n || "—"}</td><td><span className={`yp-tag yp-shot-${row.kind === "B롤" ? "b" : row.kind === "인서트" ? "i" : "s"}`}>{row.kind}</span></td><td>{row.text || "—"}</td><td className="yp-muted">{row.line || "시작 전"}</td></tr>)}</tbody></table>
+              <div className="yp-row-btns" style={{ margin: "0 10px 10px" }}><button type="button" className="yp-btn yp-sm" onClick={downloadShots}>엑셀로 내려받기 (CSV)</button></div></>
+              : <p className="yp-hint" style={{ margin: "0 10px 10px" }}>원고 줄 맨 앞에 [샷] · [B롤] · [인서트]를 쓰면 여기에 문단 번호와 함께 모여요. 그 줄은 대사 · 길이 계산에서 빠져요.</p>}</details> : null}
           {paragraphs.length ? <details className="yp-card" style={{ marginTop: 8 }}><summary style={{ padding: "8px 10px", cursor: "pointer", fontSize: 13 }}>문단 번호 · {voiceSec && !viewing ? "음성 기준" : "예상"} 시각 ({paragraphs.length}문단)</summary>
             <ol className="yp-paras">{paragraphs.map(row => <li key={row.n}><b>{row.n}</b><time>{String(Math.floor(row.at / 60)).padStart(2, "0")}:{String(Math.floor(row.at % 60)).padStart(2, "0")}</time><span>{row.text}</span></li>)}</ol>
             <p className="yp-hint" style={{ margin: "0 10px 10px" }}>{voiceSec && !viewing ? `만든 음성 ${minSec(voiceSec)}을 글자 수로 나눈 시각이에요.` : "분당 350자로 센 시각이에요."} 최종 영상은 오프닝 · 쉼이 더해져 조금 늦어요.</p></details> : null}

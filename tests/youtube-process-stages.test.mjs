@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { confirmPlan, descChecks, diagnosisLink, linksMissing, oneArrow, paragraphTimes, publishAtProblem, withLinks, shortLinkProblem, utmBase, utmUrl, draftMissing, emptyStage, hiddenTagsOf, lengthEstimate, outlineMissing, slotOf, specOption, stageData, thumbFilled, thumbsMissing, withScriptVersion } from "../lib/youtube-process/stages.ts";
+import { confirmPlan, descChecks, diagnosisLink, linksMissing, oneArrow, paragraphTimes, publishAtProblem, scriptChars, shotLine, shotList, withLinks, shortLinkProblem, utmBase, utmUrl, draftMissing, emptyStage, hiddenTagsOf, lengthEstimate, outlineMissing, slotOf, specOption, stageData, thumbFilled, thumbsMissing, withScriptVersion } from "../lib/youtube-process/stages.ts";
 import { applyGateAction, editableFields } from "../lib/youtube-process/confirm.ts";
 import { newProjectMeta } from "../lib/youtube-process/project.ts";
 
@@ -28,6 +28,17 @@ test("예상 길이: 3,150자 · 9분은 맞고 2,000자는 약 3분 짧다 (±2
   assert.equal(lengthEstimate("가".repeat(4200), 12, 740).verdict.ok, true);
   assert.deepEqual(paragraphTimes(["가".repeat(10), "나".repeat(30)], 80).map(row => [row.n, row.at]), [[1, 0], [2, 20]]);
   assert.equal(oneArrow("돈 -> 의미 → 행동"), "돈 → 의미 → 행동");
+  // 실사 촬영 콘티 (로건 QA 10/30): [샷] · [B롤] · [인서트] lines, escaped or not, are notes — not counted, gathered under their paragraph.
+  assert.deepEqual(shotLine("\\[B롤] 지하철 출근길"), { kind: "B롤", text: "지하철 출근길", before: "" });
+  assert.deepEqual(shotLine("내 기준 찾기[B롤] 지하철 출근길"), { kind: "B롤", text: "지하철 출근길", before: "내 기준 찾기" });
+  assert.equal(shotLine("[클로즈업] 손"), null);
+  const shotScript = "## 오프닝\n\n[샷] 와이드 · 사무실\n\n연봉을 보고 옮겼어요\n\n\\[인서트] 계약서 클로즈업\n\n그런데 또 힘들어요\n\n- [B롤] 퇴근길";
+  assert.equal(scriptChars(shotScript), scriptChars("연봉을 보고 옮겼어요\n\n그런데 또 힘들어요"));
+  assert.deepEqual(shotList(shotScript).map(row => [row.n, row.kind, row.text]), [[0, "샷", "와이드 · 사무실"], [1, "인서트", "계약서 클로즈업"], [2, "B롤", "퇴근길"]]);
+  assert.deepEqual(shotList("첫 문장\n\n둘째 문장 [인서트] 손").map(row => [row.n, row.line, row.text]), [[2, "둘째 문장", "손"]]);
+  assert.equal(scriptChars("둘째 문장 [인서트] 손"), scriptChars("둘째 문장"));
+  assert.equal(scriptChars("\\[예시] 문장"), scriptChars("[예시] 문장"));
+  assert.equal(shotList("\\[예시] 문장 \\[B롤] 길")[0].line, "[예시] 문장");
   const outline = emptyStage("outline", "live");
   // 로건 QA 10/30: a new longform starts at its usual length (실사 10분 · 애니메이션 12분); an emptied field still asks.
   assert.equal(outline.spec.runtimeMin, 10);
