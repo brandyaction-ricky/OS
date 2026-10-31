@@ -10,9 +10,13 @@ import { CardSlideView } from "@/lib/cardnews/card-slide";
 import { cardsMissing } from "@/lib/cardnews/cards";
 import { addCardSlide, CARD_FORMAT_IDS, CARD_FORMATS, CARD_MAX_SLIDES, CARD_SIZE, cardProblems, moveCardSlide, parseCardHashtags, removeCardSlide, slideSpec, type CardDraft, type CardFormatId } from "@/lib/cardnews/formats";
 import type { CardSourceChoice } from "@/lib/cardnews/sources";
-import { draftTag } from "@/lib/youtube-process/gpt-draft";
+import { apiRequest } from "@/lib/api-client";
+import { modelName } from "@/lib/cost";
+import { draftTag, GPT_TIERS, type GptTier } from "@/lib/youtube-process/gpt-draft";
+import type { YpScreenCheck } from "@/lib/youtube-process/stages";
+import { groupScreenIssues } from "@/lib/youtube-screen-check";
 import { projectName, stepHref, type YpProject } from "@/lib/youtube-process/project";
-import { CostTag } from "./cost-notice";
+import { CostTag, tokenEstimate, useCostConfirm } from "./cost-notice";
 import { useSession } from "./session-provider";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
 import { errorMessage, youtubeProcessClient, type YpClient } from "./youtube-process-data";
@@ -362,9 +366,62 @@ export function CardReviewScreen({ page, header }: { page: YpPage; header: React
         <YpSection n={2} title="캡션 · 해시태그"><p className="yp-card-caption">{draft.caption || "캡션이 없어요"}</p><p className="yp-muted">{draft.hashtags.map(tag => `#${tag}`).join(" ")}</p></YpSection>
         {check.blocking.length || check.warnings.length || overCount ? <ul className="yp-card-checks">{check.blocking.map(text => <li key={text} className="yp-bad">{text}</li>)}
           {overCount ? <li className="yp-bad">넘치는 카드가 {overCount}장 있어요</li> : null}{check.warnings.map(text => <li key={text} className="yp-warn">{text}</li>)}</ul> : null}
+        <CardScreenCheck page={page} />
       </> : <p className="yp-pempty">확정한 카드가 없어요.</p>}
     </>}
   </YpFrame>;
+}
+
+/** 최종 검토 › 화면 자동 검사 (설계서 §4-3): GPT's look at the confirmed cards as drawn, started by 카드 확정; [다시 검사] asks again. */
+function CardScreenCheck({ page }: { page: YpPage }) {
+  const [busy, setBusy] = useState(false);
+  const [tier, setTier] = useState<GptTier>("saving");
+  const [error, setError] = useState("");
+  const cost = useCostConfirm();
+  const confirmed = page.bundle?.stages.cards.data.confirmed, check: YpScreenCheck | undefined = page.bundle?.stages.screenCheck.data;
+  const current = confirmed && check?.runId === confirmed.draftId && check.sheetsAt === confirmed.sig ? check : null;
+  // 카드 확정 starts the check on the server; until it lands this waits for it (one to three minutes).
+  const waiting = busy || current?.state === "running" || Boolean(!current && confirmed?.at && Date.parse(confirmed.at) > Date.now() - 5 * 60_000);
+  const { reload } = page;
+  useEffect(() => {
+    if (!waiting || busy) return;
+    const timer = window.setInterval(() => void reload(), 20_000);
+    return () => window.clearInterval(timer);
+  }, [waiting, busy, reload]);
+  if (!confirmed) return null;
+  const again = async () => {
+    if (page.demo) { setError("연습 화면에서는 GPT를 부르지 않아요."); return; }
+    const model = GPT_TIERS[tier].model;
+    // Ten cards are about 8,000 image tokens with the prompt; the answer and its thinking at most 6,000.
+    if (!await cost.confirm({ model, amount: tokenEstimate(model, 10_000, 6_000), upTo: true, detail: "카드 그림을 GPT가 봐요", note: "GPT 크레딧(매달 500달러)에서 나가요.", ok: "검사하기" })) return;
+    setBusy(true); setError("");
+    try {
+      await apiRequest<{ check: YpScreenCheck }>(`/api/v1/content/youtube/projects/${page.bundle!.project.id}/cards`, { token: page.accessToken, method: "POST", body: JSON.stringify({ action: "check", tier }) });
+      await reload();
+    } catch (reason) { setError(errorMessage(reason)); } finally { setBusy(false); }
+  };
+  const scenes = current?.state === "done" ? current.scenes : [];
+  const groups = groupScreenIssues(scenes), count = new Set(scenes.map(item => item.scene)).size;
+  const show = (card: number) => document.querySelectorAll(".yp-card-grid > *")[card - 1]?.scrollIntoView({ behavior: "smooth", block: "center" });
+  const pill = waiting ? <span className="yp-tag">GPT가 보는 중 · 1~3분</span>
+    : current?.state === "done" ? <span className={count ? "yp-tag yp-bad" : "yp-tag yp-ok"}>{count ? `확인할 카드 ${count}장` : "✓ 문제 없음"}</span>
+    : current?.state === "failed" ? <span className="yp-tag yp-bad">⚠ 끝내지 못했어요</span>
+    : <span className="yp-tag">{check?.runId === confirmed.draftId ? "카드가 바뀌었어요 · 다시 검사해요" : "아직 검사하지 않았어요"}</span>;
+  return <YpSection n={3} title="화면 자동 검사" gq="GPT가 카드 그림에서 넘침 · 겹침 · 잘림 · 빈칸을 찾아요 · 참고용이라 컨펌은 막지 않아요">
+    <div className="yp-chips">{pill}{current?.state === "done" ? <small className="yp-muted">{modelName(current.model)}</small> : null}</div>
+    {current?.state === "failed" && !waiting ? <p className="yp-hint">{current.error}</p> : null}
+    {groups.length ? <ul className="yp-card-checks">{groups.map((group, index) => <li key={index} className="yp-warn">
+      <b>{group.kind}</b> · {group.issue}{group.fix ? ` → ${group.fix}` : ""}
+      <span className="yp-chips">{group.scenes.map(card => <button key={card} type="button" className="yp-btn" onClick={() => show(card)}>{card}번 카드</button>)}</span></li>)}</ul> : null}
+    {current?.state === "done" && current.note ? <p className="yp-hint">{current.note}</p> : null}
+    <div className="yp-row-btns">
+      <select aria-label="검사 모델" value={tier} disabled={waiting} onChange={event => setTier(event.target.value as GptTier)}>
+        {(Object.keys(GPT_TIERS) as GptTier[]).map(key => <option key={key} value={key}>{GPT_TIERS[key].label} · {modelName(GPT_TIERS[key].model)}</option>)}</select>
+      <button type="button" className="yp-btn" disabled={waiting} onClick={() => void again()}>{current ? "다시 검사" : "검사하기"}</button><CostTag kind="paid" />
+    </div>
+    {error ? <p className="yp-hint yp-bad" role="alert">{error}</p> : null}
+    {cost.element}
+  </YpSection>;
 }
 
 const saveBlob = (blob: Blob, name: string) => { const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = name; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 10_000); };

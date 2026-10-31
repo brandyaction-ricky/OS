@@ -115,6 +115,10 @@ async function exportCard(page: Page) {
   await page.locator(".yp-fl-act button.yp-pri").click();
   await expect(page).toHaveURL(/\/content\/final-check/);
   await expect(page.locator(".yp-card-caption")).toHaveText("QA 공통 게시글");
+  // 화면 자동 검사 (설계서 §4-3) sits under the cards; the practice screen never calls GPT.
+  await expect(page.getByText("아직 검사하지 않았어요")).toBeVisible();
+  await page.getByRole("button", { name: "검사하기", exact: true }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "연습 화면에서는 GPT를 부르지 않아요." })).toBeVisible();
   await page.locator(".yp-fl-act button.yp-pri").click();
   await expect(page).toHaveURL(/\/content\/upload/);
   await expect(page.getByLabel("올린 주소", { exact: true })).toBeVisible();

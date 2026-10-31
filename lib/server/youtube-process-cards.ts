@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createElement } from "react";
 import { ImageResponse } from "next/og";
+import { after } from "next/server";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
@@ -14,10 +15,14 @@ import { CAPTION_MAX, CARD_FORMAT_IDS, CARD_MAX_SLIDES, CARD_SIZE, cardSignature
 import { storedZip } from "@/lib/cardnews/zip";
 import { projectCardSources, visibleThreadSource, type CardSourceChoice } from "@/lib/cardnews/sources";
 import { applyGateAction, quietHours } from "@/lib/youtube-process/confirm";
+import { GPT_TIERS, type GptTier } from "@/lib/youtube-process/gpt-draft";
 import { newProjectMeta, projectName, type YpProject } from "@/lib/youtube-process/project";
-import { emptyStage, stageData, STAGE_RECORD, type YpCards, type YpCardSource } from "@/lib/youtube-process/stages";
+import { emptyStage, stageData, STAGE_RECORD, type YpCards, type YpCardSource, type YpScreenCheck } from "@/lib/youtube-process/stages";
+import { cardScreenPrompt, parseScreen, SCREEN_SCHEMA } from "@/lib/youtube-screen-check";
 import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
 import type { RequestActor } from "./auth";
+import { generateContentText } from "./content-model";
+import { creditTier } from "./openai-credit";
 import { approverIds, getYoutubeProject, insertProject, listYoutubeProjects, notify, recordConfirmation } from "./youtube-process";
 import { readStages, writeStage } from "./youtube-process-stages";
 
@@ -139,6 +144,49 @@ export async function fixConfirmedCards(actor: RequestActor, project: YpProject)
   if (!draft) return;
   await writeStage(service, actor.id, actor.team, project, "cards", stages.cards,
     { ...stages.cards.data, confirmed: { at: new Date().toISOString(), draftId: draft.id, sig: cardSignature(draft), ...(draft.ai ? { aiSig: draft.ai.sig } : {}) } } satisfies YpCards);
+  // 최종 검토 opens with GPT's look at the cards (설계서 §4-3): 정밀 unless this month's credit is nearly used up.
+  if (process.env.OPENAI_API_KEY?.trim()) after(() => creditTier().then(tier => checkCardScreens(project, { id: actor.id, team: actor.team }, tier)).then(() => undefined,
+    error => console.error(`card screen check failed: ${project.id}: ${error instanceof Error ? error.message : error}`)));
+}
+
+// ── 화면 자동 검사 ──
+const CHECK_RUNNING_MS = 10 * 60_000;
+/** GPT looks at every confirmed card as drawn and names the cards to look at again. It lives in the project's 화면 자동 검사 record (a
+ * card has no video run): runId = the confirmed draft, sheetsAt = its signature, so an edited card shows an older check. It only tells. */
+export async function checkCardScreens(project: YpProject, who: { id: string; team: string }, tier: GptTier, timeoutMs = 240_000): Promise<YpScreenCheck> {
+  if (!process.env.OPENAI_API_KEY?.trim()) throw new ApiError(503, "OPENAI_NOT_CONFIGURED", "OpenAI 연결이 아직 없어서 화면 검사를 할 수 없어요.");
+  const service = createServiceSupabase();
+  const stages = await readStages(service, project);
+  const confirmed = stages.cards.data.confirmed, draft = stages.cards.data.drafts.find(row => row.id === confirmed?.draftId);
+  if (!confirmed || !draft) throw new ApiError(409, "CARDS_NOT_CONFIRMED", "카드를 확정한 뒤에 검사할 수 있어요.");
+  const current = stages.screenCheck;
+  if (current.data.runId === draft.id && current.data.sheetsAt === confirmed.sig && current.data.state === "running" && Date.now() - Date.parse(current.data.at) < CHECK_RUNNING_MS) return current.data;
+  const { model, effort } = GPT_TIERS[tier];
+  const base = { at: new Date().toISOString(), model, runId: draft.id, sheetsAt: confirmed.sig, scenes: [], note: "" };
+  const running = await writeStage(service, who.id, who.team, project, "screenCheck", current, { ...base, state: "running" } satisfies YpScreenCheck);
+  let data: YpScreenCheck;
+  try {
+    const images = await Promise.all(draft.slides.map(async (_, index) => `data:image/png;base64,${Buffer.from(await cardPng(draft, index)).toString("base64")}`));
+    const hints = draft.slides.map((slide, index) => `#${index + 1} ${slide.type}: ${Object.values(slide.fields).filter(Boolean).join(" / ").replace(/\s+/g, " ").slice(0, 160)}`).join("\n");
+    const text = await generateContentText({ model, effort: effort === "high" ? "medium" : "low", maxTokens: 8_000, timeoutMs, jsonSchema: SCREEN_SCHEMA, prompt: cardScreenPrompt(hints), images });
+    const result = parseScreen(text, draft.slides.length);
+    data = result ? { ...base, state: "done", ...result } : { ...base, state: "failed", error: "GPT 답을 읽지 못했어요. 다시 검사해 주세요." };
+  } catch (error) {
+    data = { ...base, state: "failed", error: error instanceof ApiError ? error.message : "화면 검사를 끝내지 못했어요. 다시 검사해 주세요." };
+  }
+  data.at = new Date().toISOString();
+  await writeStage(service, who.id, who.team, project, "screenCheck", running, data).catch(async () => {
+    const latest = (await readStages(service, project)).screenCheck;
+    if (latest.data.sheetsAt !== confirmed.sig) return;   // the cards were confirmed again: that check wins
+    await writeStage(service, who.id, who.team, project, "screenCheck", latest, data);
+  });
+  return data;
+}
+/** [다시 검사] on 최종 검토, for someone who can open the project. */
+export async function checkCardsAgain(actor: RequestActor, id: string, tier: GptTier) {
+  const project = await getYoutubeProject(actor, id);
+  if (project.yp.topic.type !== "card") throw new ApiError(404, "CARD_NOT_FOUND", "카드뉴스가 아니에요.");
+  return checkCardScreens(project, { id: actor.id, team: actor.team }, tier);
 }
 
 // ── PNG · ZIP ──

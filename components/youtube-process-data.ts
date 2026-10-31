@@ -13,7 +13,7 @@ import { columnMeta } from "@/lib/seo-column";
 import { applyFeedback, cleanMarks, FEEDBACK_FILE_MAX, FEEDBACK_FILE_TYPES, FeedbackRuleError, type FeedbackAction, type FeedbackFile, type FeedbackMark, type FeedbackReply } from "@/lib/youtube-process/feedback";
 import { cutsFromScenes, scenesFromCuts, shortsAction, type YpShortAppeal, type YpShortBrief, type YpShortScene } from "@/lib/youtube-process/short";
 import { CardError, cardsMissing, nextCards, type CardsPatch } from "@/lib/cardnews/cards";
-import { emptyCardDraft, type CardDraft } from "@/lib/cardnews/formats";
+import { cardSignature, emptyCardDraft, type CardDraft } from "@/lib/cardnews/formats";
 import { cardSourceProjectReady, projectCardSources, type CardSourceChoice } from "@/lib/cardnews/sources";
 
 /** What the CTA screen shows of one change (lib/server/youtube-cta.ts summary). */
@@ -396,6 +396,11 @@ function demoClient(): YpClient {
       if (missing) throw demoError(400, "GATE_INCOMPLETE", missing);
       const yp = gateApply(project, name, action, { actor: DEMO_ME, now, reply });
       if (name === "draft" && action === "confirm") { const stages = stagesOf(project); demoStages.set(id, { ...stages, plan: { ...stages.plan, data: { ...stages.plan.data, confirmed: confirmPlan(stages.plan.data, now) } } }); }
+      // 카드 확정 fixes the picked cards, as fixConfirmedCards does on the server (no GPT check here: it waits for [검사하기]).
+      if (name === "draft" && action === "confirm" && project.yp.topic.type === "card") {
+        const stages = stagesOf(project), draft = stages.cards.data.drafts.find(row => row.id === stages.cards.data.picked);
+        if (draft) demoStages.set(id, { ...stages, cards: { ...stages.cards, data: { ...stages.cards.data, confirmed: { at: "", draftId: draft.id, sig: cardSignature(draft) } } } });
+      }
       return { project: bump(project, yp), created: [] };
     }
     const missing = topicMissing(project.title, project.yp.topic);
