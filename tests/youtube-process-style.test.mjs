@@ -2,12 +2,13 @@
 // tests/team-workspace-style.test.mjs 와 같은 방식(postcss)입니다. 규칙 설명: docs/handoff/youtube-process-20261015/01_스타일가이드.md
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import postcss from "postcss";
 
-const FILE = "components/youtube-process.css";
+// Every youtube-process*.css (스타일 점검 P2: the card news sheet was outside the check and grew its own unscoped rules and fixed colours).
+const FILES = readdirSync("components").filter(name => /^youtube-process.*\.css$/.test(name)).map(name => `components/${name}`);
 const SCOPE = /^\.linear-shell \.ui-v2\.yp(?![\w-])/;
-const root = postcss.parse(readFileSync(FILE, "utf8"));
+const sheets = FILES.map(file => [file, postcss.parse(readFileSync(file, "utf8"))]);
 const tokens = postcss.parse(readFileSync("app/theme-tokens.css", "utf8"));
 const osUi = postcss.parse(readFileSync("components/os-ui.css", "utf8"));
 
@@ -25,44 +26,55 @@ const splitSelectors = sel => { const out = []; let depth = 0, cur = ""; for (co
 const inKeyframes = rule => rule.parent?.type === "atrule" && /keyframes/.test(rule.parent.name);
 
 test("youtube css: 모든 규칙은 .linear-shell .ui-v2.yp 아래에 있다", () => {
-  root.walkRules(rule => {
-    if (inKeyframes(rule)) return;
-    for (const selector of splitSelectors(rule.selector)) assert.match(selector, SCOPE, `${FILE}: ${selector}`);
-  });
+  for (const [FILE, root] of sheets) {
+    root.walkRules(rule => {
+      if (inKeyframes(rule)) return;
+      for (const selector of splitSelectors(rule.selector)) assert.match(selector, SCOPE, `${FILE}: ${selector}`);
+    });
+  }
 });
 
 test("youtube css: 색은 토큰·color-mix만 쓰고 테마별 선택자가 없다", () => {
-  const light = palette("light"), dark = palette("dark");
-  root.walkRules(rule => assert.ok(!rule.selector.includes("data-theme"), `${FILE}: ${rule.selector}`));
-  root.walkDecls(decl => {
-    if (decl.prop.startsWith("--")) assert.fail(`${FILE}: 새 사용자 속성 금지 ${decl.prop}`);
-    assert.doesNotMatch(decl.value, /#[\da-f]{3,8}\b|rgba?\(|hsla?\(|\b(?:white|black)\b/i, `${FILE}: ${decl.parent.selector} ${decl.prop}`);
-    for (const match of decl.value.matchAll(/var\((--[\w-]+)/g))
-      assert.ok((light[match[1]] && dark[match[1]]) || osUiVars.has(match[1]), `undefined ${match[1]} in ${decl.parent.selector}`);
-  });
+  for (const [FILE, root] of sheets) {
+    const light = palette("light"), dark = palette("dark");
+    root.walkRules(rule => assert.ok(!rule.selector.includes("data-theme"), `${FILE}: ${rule.selector}`));
+    root.walkDecls(decl => {
+      if (decl.prop.startsWith("--")) assert.fail(`${FILE}: 새 사용자 속성 금지 ${decl.prop}`);
+      assert.doesNotMatch(decl.value, /#[\da-f]{3,8}\b|rgba?\(|hsla?\(|\b(?:white|black)\b/i, `${FILE}: ${decl.parent.selector} ${decl.prop}`);
+      for (const match of decl.value.matchAll(/var\((--[\w-]+)/g))
+        assert.ok((light[match[1]] && dark[match[1]]) || osUiVars.has(match[1]), `undefined ${match[1]} in ${decl.parent.selector}`);
+    });
+  }
 });
 
 test("youtube css: 글자는 11px 이상", () => {
-  root.walkDecls(/^(font|font-size)$/, decl => {
-    const m = decl.value.match(/\b(\d+(?:\.\d+)?)px/);
-    if (m) assert.ok(Number(m[1]) >= 11, `${decl.parent.selector}: ${decl}`);
-  });
+  for (const [FILE, root] of sheets) {
+    root.walkDecls(/^(font|font-size)$/, decl => {
+      const m = decl.value.match(/\b(\d+(?:\.\d+)?)px/);
+      if (m) assert.ok(Number(m[1]) >= 11, `${decl.parent.selector}: ${decl}`);
+    });
+  }
 });
 
 test("youtube css: 새 클래스는 yp- 접두어만 만든다", () => {
-  const allowed = new Set(["linear-shell", "ui-v2", "yp"]);
-  root.walkRules(rule => {
-    if (inKeyframes(rule)) return;
-    for (const cls of rule.selector.matchAll(/\.([a-z][\w-]*)/gi)) {
-      const name = cls[1];
-      assert.ok(name.startsWith("yp-") || allowed.has(name), `${FILE}: 새 클래스는 yp- 접두어 — ${name} (${rule.selector})`);
-    }
-  });
+  for (const [FILE, root] of sheets) {
+    // The OS kit buttons are only referenced, to leave them their kit font (스타일 점검 P2); no new class uses their names.
+    const allowed = new Set(["linear-shell", "ui-v2", "yp", "primary-button", "secondary-button"]);
+    root.walkRules(rule => {
+      if (inKeyframes(rule)) return;
+      for (const cls of rule.selector.matchAll(/\.([a-z][\w-]*)/gi)) {
+        const name = cls[1];
+        assert.ok(name.startsWith("yp-") || allowed.has(name), `${FILE}: 새 클래스는 yp- 접두어 — ${name} (${rule.selector})`);
+      }
+    });
+  }
 });
 
 test("youtube css: 키프레임 · 컨테이너 이름도 yp 로 시작한다", () => {
-  root.walkAtRules("keyframes", at => assert.match(at.params, /^yp-/, `@keyframes ${at.params}`));
-  root.walkAtRules("container", at => assert.match(at.params, /^yp\b/, `@container ${at.params}`));
+  for (const [FILE, root] of sheets) {
+    root.walkAtRules("keyframes", at => assert.match(at.params, /^yp-/, `@keyframes ${at.params}`));
+    root.walkAtRules("container", at => assert.match(at.params, /^yp\b/, `@container ${at.params}`));
+  }
 });
 
 test("youtube css: 화면에 쓰는 글자·바탕 짝이 두 테마 모두 4.5:1 이상", () => {
