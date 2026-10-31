@@ -55,9 +55,13 @@
   .linear-shell .ui-v2.yp dialog.yp-grind-dlg[open] { height: 92dvh; }
   .linear-shell .ui-v2.yp .yp-grind-dlg .yp-modal-h { flex-wrap: wrap; }
   .yp-grind-dlg-t { flex-basis: 100%; white-space: normal; }
-  .yp-grind-dlg-b { display: block; overflow: auto; }
-  .yp-grind-dlg-draft, .yp-grind-dlg-form { overflow: visible; }
-  .yp-grind-dlg-draft { border-right: 0; border-bottom: 1px solid var(--line-soft); }
+}
+/* Narrow windows: the draft on top and the criteria below, still each scrolling on its own, so the script stays in view while a reason is written. */
+@media (max-width: 700px) {
+  .yp-grind-dlg-b { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 46fr) minmax(0, 54fr); }
+  .yp-grind-dlg-draft, .yp-grind-dlg-form { padding: 12px; }
+  .yp-grind-dlg-draft { border-right: 0; border-bottom: 2px solid var(--line); font-size: 13px; }
+  .yp-grind-dlg-draft .yp-grind-lines { font-size: 13px; }
 }
 .yp-grind-form { display: grid; gap: 10px; margin: 14px 0; }
 .yp-grind-crit { display: grid; grid-template-columns: minmax(180px, 1.2fr) auto minmax(200px, 2fr); gap: 10px; align-items: center; }
