@@ -157,6 +157,12 @@
 .linear-shell .ui-v2.yp .yp-notices>summary{cursor:pointer;padding:6px 8px;color:var(--text-2)}
 .linear-shell .ui-v2.yp .yp-th-scr{position:absolute;left:7%;right:7%;bottom:8%;font-size:11px;line-height:1.35;color:var(--media-muted);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .linear-shell .ui-v2.yp .yp-ref-th{flex:none;width:96px;aspect-ratio:16/9;border-radius:4px;background:var(--panel-2) center/cover no-repeat}
+.linear-shell .ui-v2.yp .yp-shots{width:calc(100% - 20px);margin:0 10px 8px;border-collapse:collapse;font-size:13px}
+.linear-shell .ui-v2.yp .yp-shots th,.linear-shell .ui-v2.yp .yp-shots td{padding:5px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+.linear-shell .ui-v2.yp .yp-shots td:last-child{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.linear-shell .ui-v2.yp .yp-tag.yp-shot-s{box-shadow:inset 3px 0 var(--accent)}
+.linear-shell .ui-v2.yp .yp-tag.yp-shot-b{box-shadow:inset 3px 0 var(--mint)}
+.linear-shell .ui-v2.yp .yp-tag.yp-shot-i{box-shadow:inset 3px 0 var(--warning)}
 .linear-shell .ui-v2.yp .yp-changes{margin:8px 0 0;font-size:13px}
 .linear-shell .ui-v2.yp .yp-changes>summary{cursor:pointer;color:var(--text-2)}
 .linear-shell .ui-v2.yp .yp-changes ul{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:4px;max-height:220px;overflow:auto}
