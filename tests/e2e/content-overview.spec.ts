@@ -13,8 +13,12 @@ test("한눈에 보기 groups open work, confirms from the panel and switches to
   await expect(page.getByRole("region", { name: "AI 일하는 중" })).toContainText("분째");
   await expect(page.getByRole("region", { name: "막힘" })).toContainText("참고 영상 주소를 열지 못했어요");
   await expect(page.getByRole("link", { name: /한눈에 보기/ }).first()).toBeVisible();
+  // The state cards are 주제 찾기's platform cards; one narrows the list to its group.
+  await page.getByRole("button", { name: /^사람 작업 중/ }).click();
+  await expect(page.getByRole("region", { name: "AI 일하는 중" })).toHaveCount(0);
+  await page.getByRole("button", { name: "전체 보기" }).click();
 
-  await pane.getByRole("button", { name: "OK" }).click();
+  await pane.getByRole("button", { name: "컨펌", exact: true }).click();
   await expect(pane.getByRole("heading", { name: "확인 필요 0" })).toBeVisible();
   await expect(pane).toContainText("주제 컨펌 → 컨펌");
 
