@@ -19,6 +19,7 @@ import { cardJobCard, checkCardResult, VOICE_CANON_TITLE } from "./youtube-proce
 import { cardDocs, PREFACE, unwrap } from "./youtube-gpt-jobs";
 import { getYoutubeProject } from "./youtube-process";
 import { canonText, scriptResultSchema, shortScriptCard } from "./youtube-process-short-script";
+import { displayName } from "./youtube-process-ai";
 import { readStages } from "./youtube-process-stages";
 
 /** A run older than this that never finished counts as failed (the function was stopped). */
@@ -107,6 +108,8 @@ async function itemFromProject(actor: RequestActor, kind: GrindKind, projectId: 
 }
 
 export async function actOnGrind(actor: RequestActor, kind: GrindKind, input: z.infer<typeof grindActionSchema>) {
+  // Runs, items and scores show the person as the screens name them, not their sign-in email.
+  actor = { ...actor, name: await displayName(actor.supabase, actor.ownerId, actor.name) };
   if (input.action === "add" || input.action === "addTopic" || input.action === "remove") {
     if (input.action === "addTopic" && kind !== "card") throw new ApiError(400, "GRIND_TOPIC_ONLY_CARD", "숏폼은 대본을 확정한 숏폼만 넣을 수 있어요.");
     const item = input.action === "add" ? await itemFromProject(actor, kind, input.projectId)
