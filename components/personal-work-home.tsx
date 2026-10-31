@@ -9,10 +9,14 @@ import type { KnowledgeDocument } from "@/lib/types";
 import type { OsRecord } from "@/lib/record-types";
 import { TodayContentOperations } from "./today-content-operations";
 import { useSession } from "./session-provider";
+import { useYoutubeV1Access } from "./use-youtube-confirm";
+import type { YoutubeV1Mode } from "@/lib/youtube-process/gate";
 import { WorkspaceSkeleton } from "./workspace-load-state";
 const TABS: Array<[WorkTab, string]> = [["received", "받은 일"], ["review", "검토·승인"], ["requested", "요청한 일"]];
 interface WorkResponse { tabs: Record<WorkTab, WorkItem[]>; truncated: boolean; checkedAt: string }
-export function PersonalWorkHome() {
+export function PersonalWorkHome({ youtubeV1Mode = "off" }: { youtubeV1Mode?: YoutubeV1Mode }) {
+  // 한눈에 보기 (owner decision 2026-10-31): its own menu, with a way in from 홈.
+  const contentOverview = useYoutubeV1Access(youtubeV1Mode);
   const { demo, accessToken, profile, loading: sessionLoading } = useSession();
   const params = useSearchParams();
   const tab = TABS.some(([id]) => id === params.get("tab")) ? params.get("tab") as WorkTab : "received";
@@ -84,7 +88,7 @@ export function PersonalWorkHome() {
         {!data.tabs[tab].length && <div className="empty-state"><div><CheckCircle2 /><h2>{tab === "received" ? "배정된 일이 없습니다" : tab === "review" ? "확인할 항목이 없습니다" : "남긴 요청이 없습니다"}</h2><p>업무가 생기면 이곳에서 바로 확인할 수 있습니다.</p></div></div>}
       </section>}
       {data && !error && blocked.length > 0 ? <section className="panel personal-work-blocked"><h2>⚠ 막혀 있는 일 {blocked.length}</h2>{blocked.slice(0, 3).map(item => <Link key={`${item.kind}:${item.id}`} href={item.href}><strong>{item.title}</strong><span>{item.nextAction}</span></Link>)}</section> : null}
-      <div className="personal-work-links"><Link href="/organization/tasks">업무 열기 <ArrowRight size={14} /></Link><Link href="/knowledge/search">지식 찾기 <ArrowRight size={14} /></Link></div>
+      <div className="personal-work-links">{contentOverview ? <Link href="/content/overview">콘텐츠 한눈에 보기 <ArrowRight size={14} /></Link> : null}<Link href="/organization/tasks">업무 열기 <ArrowRight size={14} /></Link><Link href="/knowledge/search">지식 찾기 <ArrowRight size={14} /></Link></div>
     </section><aside className="fullscreen-home-side"><nav className="workspace-tabs" aria-label="내 할 일 보기">{TABS.map(([id,label]) => <button key={id} className={tab === id ? "active" : ""} aria-current={tab === id ? "page" : undefined} onClick={() => change("tab",id)}>{label} {loading || !data ? "…" : data.tabs[id].length}</button>)}</nav><section className="panel home-next-work"><h2>내 다음 차례</h2>{data?.tabs[tab][0] ? <Link href={data.tabs[tab][0].href}><strong>{data.tabs[tab][0].title}</strong><small>{data.tabs[tab][0].nextAction}</small><span>열어보기 →</span></Link> : <p>지금 확인할 항목이 없습니다.</p>}</section><section className="panel home-week-issues"><h2>이번 주의 이슈 <small>팀 · 회의 결정</small></h2>{recentDecisions.length ? recentDecisions.map((item) => <Link key={item.id} href={`/organization/meetings?tab=decisions&record=${encodeURIComponent(item.id)}`}>{item.title}</Link>) : <p>최근 일주일간 확인 가능한 결정이 없습니다.</p>}<Link className="home-more-link" href="/organization/meetings?tab=decisions">결정 보기 →</Link></section><section className="panel home-recent-documents"><h2>최근 문서</h2>{recentDocuments.length ? recentDocuments.map((item) => <Link key={item.id} href={`/knowledge?document=${encodeURIComponent(item.id)}`}>{item.title}<small>{new Date(item.updated_at).toLocaleDateString("ko-KR")}</small></Link>) : <p>표시할 문서가 없습니다.</p>}</section><section className="panel fullscreen-home-due"><header><h2>가까운 기한</h2><Link href="/organization/schedule">일정 보기 →</Link></header>{loading?<p role="status">기한 확인 중…</p>:error?<p>내 할 일을 다시 불러오면 기한을 확인할 수 있습니다.</p>:nextDue.length?nextDue.map(item=><Link key={`${item.kind}:${item.id}`} href={item.href}><time>{item.dueDate}</time><strong>{item.title}</strong><small>{item.status}</small></Link>):<p>기한이 등록된 내 업무가 없습니다.</p>}</section></aside></div>
   </>;
 }

@@ -2,6 +2,7 @@
 
 import { apiRequest, ApiRequestError, listMembers, listRecords, uploadContentMedia } from "@/lib/api-client";
 import type { OsRecord } from "@/lib/record-types";
+import type { OvJob } from "@/lib/youtube-process/overview";
 import { newProjectMeta, TOPIC_FIELD_OF, topicFieldEditable, topicLines, topicMissing, trashDaysLeft, YP_MAX_LINES, type YpGate, type YpKind, type YpProject, type YpRef, type YpTrashed } from "@/lib/youtube-process/project";
 import { applyGateAction, confirmTab, GateError, type YpApproverAction } from "@/lib/youtube-process/confirm";
 import { columnSignature, confirmPlan, draftMissing, emptyStage, outlineMissing, scriptFromPlan, scriptKey, thumbsMissing, withScriptVersion, type YpStageData, type YpStageKind, type YpStoredFormula } from "@/lib/youtube-process/stages";
@@ -38,6 +39,8 @@ export interface YpLegacyTopic { id: string; title: string; updatedAt: string; s
 export type YpAssetKind = "plan_thumb" | "thumb" | "final" | "srt" | "column";
 export interface YpClient {
   list(): Promise<YpProject[]>;
+  /** 한눈에 보기: the videos, the open staff-AI jobs on them, and whether I confirm. */
+  overview(): Promise<{ projects: YpProject[]; jobs: OvJob[]; canConfirm: boolean }>;
   get(id: string): Promise<YpProject>;
   bundle(id: string): Promise<YpBundle>;
   create(input: YpTopicInput): Promise<YpProject>;
@@ -51,6 +54,8 @@ export interface YpClient {
   uploadAsset(id: string, kind: YpAssetKind, file: File, onProgress?: (percent: number) => void): Promise<{ path: string; name: string; bytes: number }>;
   assetUrl(id: string, path: string): Promise<string>;
   finalUrl(id: string, final: YpFinalView): Promise<string | null>;
+  /** A render-PC version's subtitles (SRT text), for lining up two versions; null for an uploaded file. */
+  finalSrt(final: YpFinalView): Promise<string | null>;
   feedback(id: string): Promise<YpFeedbackView[]>;
   addFeedback(id: string, input: YpFeedbackInput): Promise<YpFeedbackView>;
   actFeedback(id: string, itemId: string, expectedVersion: number, action: FeedbackAction, text?: string, replyId?: string): Promise<YpFeedbackView>;
@@ -114,6 +119,7 @@ function apiClient(token: string): YpClient {
   return {
     demo: false,
     list: async () => (await apiRequest<{ projects: YpProject[] }>(base, { token })).projects,
+    overview: () => apiRequest("/api/v1/content/youtube/overview", { token }),
     get: async id => (await apiRequest<YpBundle>(`${base}/${id}`, { token })).project,
     bundle: id => apiRequest<YpBundle>(`${base}/${id}`, { token }),
     create: async input => (await apiRequest<{ project: YpProject }>(base, { token, method: "POST", body: json(input) })).project,
@@ -129,6 +135,11 @@ function apiClient(token: string): YpClient {
       return { path: upload.path, name: file.name, bytes: file.size };
     },
     assetUrl,
+    finalSrt: async final => {
+      if (final.source !== "myin" || !final.runId) return null;
+      const url = (await apiRequest<{ srt: string | null }>(`/api/v1/content/youtube-automation/myin?outputs=${final.runId}`, { token })).srt;
+      return url ? await fetch(url).then(response => response.ok ? response.text() : null, () => null) : null;
+    },
     finalUrl: async (id, final) => final.source === "short" && final.runId ? shortVideoUrl(id, final.runId)
       : final.runId ? (await apiRequest<{ video: string | null }>(`/api/v1/content/youtube-automation/myin?outputs=${final.runId}`, { token })).video
       : final.path ? assetUrl(id, final.path) : null,
@@ -375,6 +386,16 @@ function demoClient(): YpClient {
   return {
     demo: true,
     list: async () => structuredClone(demoProjects()),
+    // One AI job running on the first video in 제작 and one stopped on a 기획안, so the screen shows every group.
+    overview: async () => {
+      const projects = structuredClone(demoProjects()), at = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
+      const making = projects.find(row => row.yp.stage === "make"), planning = projects.find(row => row.yp.stage === "draft" && row.yp.gates.draft.state === "none");
+      const jobs: OvJob[] = [
+        ...(making ? [{ sourceId: making.id, task: "마이인 기획표(장면 · 비유 · 자료 후보)", status: "active" as const, requestedAt: at(9), claimedAt: at(4), failReason: null }] : []),
+        ...(planning ? [{ sourceId: planning.id, task: "기획안(제목 · 썸네일 문구 · 영상 흐름)", status: "blocked" as const, requestedAt: at(50), claimedAt: at(48), failReason: "참고 영상 주소를 열지 못했어요" }] : []),
+      ];
+      return { projects, jobs, canConfirm: true };
+    },
     get: async id => structuredClone(find(id)),
     bundle: async id => { const project = find(id); return structuredClone({ project, stages: stagesOf(project), finals: demoFinals.get(id) ?? [] }); },
     create: async input => structuredClone(add(input.title ?? "", input)),
@@ -489,6 +510,7 @@ function demoClient(): YpClient {
     },
     assetUrl: async (_id, path) => demoFiles.get(path) ?? "",
     finalUrl: async (_id, final) => final.path ? demoFiles.get(final.path) ?? null : null,
+    finalSrt: async () => null,
     feedback: async id => structuredClone(demoFeedback.get(id) ?? []),
     addFeedback: async (id, input) => {
       const item: YpFeedbackView = { id: crypto.randomUUID(), version: 1, text: input.text ?? "", who: "리키", whoId: DEMO_ME, at: new Date().toISOString(), target: input.target, ver: input.ver,

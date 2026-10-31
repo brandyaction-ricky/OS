@@ -29,7 +29,8 @@ export function YoutubeProjectsScreen() {
   const [legacy, setLegacy] = useState<YpLegacyTopic[]>([]);
   const [members, setMembers] = useState<YpMember[]>([]);
   const [error, setError] = useState("");
-  const [filter, setFilter] = useState<Filter>("open");
+  // ?filter=done opens 끝난 영상 (한눈에 보기 「끝」 카드).
+  const [filter, setFilter] = useState<Filter>(() => search.get("filter") === "done" ? "done" : "open");
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState("");
