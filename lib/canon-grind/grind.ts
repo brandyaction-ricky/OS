@@ -3,7 +3,8 @@
 // checked) sits in GRIND_KINDS. The rules here are read by the screen and the server; each 정본 is edited in its OS document.
 import { cardProblems, type CardDraft } from "../cardnews/formats.ts";
 import { checkShortScript, headCopyProblem } from "../youtube-process/short-script.ts";
-import type { YpCardSource } from "../youtube-process/stages.ts";
+import type { YpCardSource, YpReview2 } from "../youtube-process/stages.ts";
+import { REVIEW2_GATE_NAME, REVIEW2_GATES } from "../youtube-script-review2.ts";
 import { threadsPostsProblem } from "../threads-posts.ts";
 import { checkColumnHtml } from "../seo-column.ts";
 
@@ -132,4 +133,32 @@ export function fixList(run: Pick<BenchRun, "results" | "scores">, kind: GrindKi
     const drafts = new Set(notes.map(note => note.key)).size;
     return { n: c.n, name: c.name, drafts, canonIssue: drafts >= 2, notes };
   }).filter(row => row.notes.length).sort((a, b) => b.drafts - a.drafts);
+}
+
+// 롱폼 원고 (설계서 §9): never drawn again — the staff AI writes a 롱폼 in several steps, so a one-shot GPT redraw would not be the real
+// process. Each 원고's 두 번째 검수 (원고 검수 정본 관문 2~6) is its score, grouped by the 정본 묶음 its writer submitted.
+export interface ScriptVerdict { projectId: string; title: string; at: string; by: string; bundle: string; pass: boolean; gates: YpReview2["gates"] }
+/** The 정본 묶음 a 원고 was written under, from the value its writer submitted ("v2.5 (2026-10-30)" → v2.5). */
+export const scriptBundle = (submitted: string | null | undefined) => submitted?.match(/v\d+(?:\.\d+)*/)?.[0] ?? "묶음 모름";
+/** The newest 정본 묶음 first (by their newest 원고): how many 원고, how many passed every gate, and each gate's 반려. */
+export function scriptBundles(verdicts: ScriptVerdict[], limit = 3) {
+  const groups = new Map<string, ScriptVerdict[]>();
+  for (const verdict of [...verdicts].sort((a, b) => b.at.localeCompare(a.at))) groups.set(verdict.bundle, [...(groups.get(verdict.bundle) ?? []), verdict]);
+  return [...groups].slice(0, limit).map(([bundle, scripts]) => {
+    const passed = scripts.filter(script => script.pass).length;
+    return { bundle, scripts, passed, passRate: passed / scripts.length,
+      gates: REVIEW2_GATES.map(gate => ({ gate, name: REVIEW2_GATE_NAME[gate], failed: scripts.filter(script => turnedBack(script, gate)).length })) };
+  });
+}
+const turnedBack = (script: ScriptVerdict, gate: number) => script.gates.some(row => row.gate === gate && !row.pass);
+/** 졸업 for 원고: the two newest 정본 묶음 both have 80% of their 원고 through every gate. */
+export const scriptGraduated = (bundles: ReturnType<typeof scriptBundles>) =>
+  bundles.length >= 2 && bundles.slice(0, 2).every(row => row.bundle !== "묶음 모름" && row.passRate >= GRADUATION.passRate);
+/** 고칠 점 of one 정본 묶음: each gate that turned a 원고 back with what it pointed at; turned back on two or more 원고 = 정본 문제. */
+export function scriptFixes(scripts: ScriptVerdict[]) {
+  return REVIEW2_GATES.map(gate => {
+    const failed = scripts.filter(script => turnedBack(script, gate));
+    const notes = failed.flatMap(script => (script.gates.find(row => row.gate === gate)?.items ?? []).map(item => ({ projectId: script.projectId, title: script.title, ...item })));
+    return { gate, name: REVIEW2_GATE_NAME[gate], scripts: failed.length, canonIssue: failed.length >= 2, notes };
+  }).filter(row => row.scripts).sort((a, b) => b.scripts - a.scripts);
 }

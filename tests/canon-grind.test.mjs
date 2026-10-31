@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { emptyCardDraft } from "../lib/cardnews/formats.ts";
-import { canonVersion, fixList, graduatedTwice, GRIND_KINDS, mergedGrades, passes, resultKey, runSummary } from "../lib/canon-grind/grind.ts";
+import { canonVersion, fixList, graduatedTwice, GRIND_KINDS, mergedGrades, passes, resultKey, runSummary, scriptBundle, scriptBundles, scriptFixes, scriptGraduated } from "../lib/canon-grind/grind.ts";
 import { checkColumnHtml } from "../lib/seo-column.ts";
 
 // 정본 다듬기 (카드뉴스 정본 §8 · §9, 설계서 §9): the 평가표 merge, the graduation and the 고칠 점, for 카드뉴스 and 숏폼 대본.
@@ -86,4 +86,24 @@ test("a 정본's version: its 정본 묶음 line, else its 상태 line, else the
   assert.equal(canonVersion("> 상태: 초안 v0.2", 2), "v0.2");
   assert.equal(canonVersion("집필 입력 계약: threads_editorial_v1\n\n# 쓰레드 자동화 운영 정본\n\n운영 기준 v5.9 · 2026-10-29", 22), "v5.9");
   assert.equal(canonVersion("본문만", 5), "doc v5");
+});
+
+test("롱폼 원고: 두 번째 검수 by 정본 묶음, a gate turned back on two 원고 is a 정본 문제, graduation over two 묶음", () => {
+  assert.equal(scriptBundle("v2.5 (2026-10-30)"), "v2.5");
+  assert.equal(scriptBundle(""), "묶음 모름");
+  assert.equal(scriptBundle(null), "묶음 모름");
+  const verdict = (projectId, at, bundle, failed) => ({ projectId, title: projectId, at, by: "", bundle, pass: !failed.length,
+    gates: [2, 3, 4, 5, 6].map(gate => ({ gate, pass: !failed.includes(gate), items: failed.includes(gate) ? [{ paragraph: 1, quote: "q", grade: "상", reason: `g${gate}`, fix: "" }] : [] })) });
+  const verdicts = [verdict("a", "2026-10-30T09:00:00Z", "v2.5", [4, 5]), verdict("b", "2026-10-30T05:00:00Z", "v2.5", [5]), verdict("c", "2026-10-27T00:00:00Z", "v2.4", [])];
+  const bundles = scriptBundles(verdicts);
+  assert.deepEqual(bundles.map(row => row.bundle), ["v2.5", "v2.4"], "newest 원고 first");
+  assert.equal(bundles[0].passed, 0);
+  assert.deepEqual(bundles[0].gates.map(row => row.failed), [0, 0, 1, 2, 0]);
+  const fixes = scriptFixes(bundles[0].scripts);
+  assert.deepEqual(fixes.map(row => [row.gate, row.scripts, row.canonIssue]), [[5, 2, true], [4, 1, false]]);
+  assert.equal(fixes[0].notes.length, 2);
+  assert.equal(scriptGraduated(bundles), false);
+  const good = [verdict("d", "2026-11-02T00:00:00Z", "v2.7", []), verdict("e", "2026-11-01T00:00:00Z", "v2.6", [])];
+  assert.equal(scriptGraduated(scriptBundles(good)), true);
+  assert.equal(scriptGraduated(scriptBundles([verdict("f", "2026-11-02T00:00:00Z", "묶음 모름", []), good[1]])), false, "an unknown 묶음 never graduates");
 });

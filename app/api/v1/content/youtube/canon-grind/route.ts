@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { youtubeActor } from "@/lib/server/youtube-process";
-import { actOnGrind, grindActionSchema, grindKindSchema, readGrind } from "@/lib/server/canon-grind";
+import { actOnGrind, grindActionSchema, grindKindSchema, readGrind, readScriptCanon } from "@/lib/server/canon-grind";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,10 +11,12 @@ export const maxDuration = 800;
 const headers = { "cache-control": "private, no-store" };
 const kindOf = (request: Request) => grindKindSchema.parse(new URL(request.url).searchParams.get("kind") ?? "card");
 
-/** 정본 다듬기 (?kind=card | short | threads | column): the 시험 묶음, the runs under each 정본 version and their scores. */
+/** 정본 다듬기 (?kind=card | short | threads | column): the 시험 묶음, the runs under each 정본 version and their scores;
+ * ?kind=script: every 롱폼 원고's 두 번째 검수 by 정본 묶음 (read only). */
 export async function GET(request: Request) {
   try {
     const actor = await youtubeActor(request);
+    if (new URL(request.url).searchParams.get("kind") === "script") return NextResponse.json({ ...(await readScriptCanon()), me: actor.ownerId }, { headers });
     return NextResponse.json({ ...(await readGrind(kindOf(request))), me: actor.ownerId }, { headers });
   } catch (error) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "INVALID_GRIND", "요청을 확인해 주세요."));

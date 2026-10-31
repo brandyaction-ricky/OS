@@ -8,13 +8,14 @@ import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { CARD_FORMAT_IDS, type CardFormatId } from "@/lib/cardnews/formats";
 import { checkColumnHtml, cleanColumnHtml } from "@/lib/seo-column";
-import { BENCH_MAX, CARD_GRADES, canonVersion, GRIND_KINDS, internalLinks, resultKey, type Bench, type BenchItem, type BenchResult, type BenchRun, type GrindKind } from "@/lib/canon-grind/grind";
+import { BENCH_MAX, CARD_GRADES, canonVersion, GRIND_KINDS, internalLinks, resultKey, scriptBundle, type Bench, type BenchItem, type BenchResult, type BenchRun, type GrindKind, type ScriptVerdict } from "@/lib/canon-grind/grind";
 import { THREADS_EDITORIAL_WORKFLOW } from "@/lib/threads-editorial";
 import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
 import { threadsPostsProblem } from "@/lib/threads-posts";
 import { assertThreadsReferencesSelected, THREADS_REFERENCE_KIND, THREADS_REFERENCE_WORKFLOW } from "@/lib/threads-reference";
 import { GPT_TIERS, type GptTier } from "@/lib/youtube-process/gpt-draft";
 import { projectName, type YpProject } from "@/lib/youtube-process/project";
+import type { YpReview2 } from "@/lib/youtube-process/stages";
 import { checkShortScript, headCopyProblem, SHORT_SCRIPT } from "@/lib/youtube-process/short-script";
 import type { RequestActor } from "./auth";
 import { getPersonalRecord } from "./content-automation-v07";
@@ -83,6 +84,32 @@ const runOf = (row: Row): BenchRun => {
 export async function readGrind(kind: GrindKind) {
   const row = await benchRow(kind);
   return { bench: benchOf(row), runs: row ? (await runRows(kind, row.id)).map(runOf) : [], canon: await canonOf(kind) };
+}
+
+/** 롱폼 원고 정본 다듬기 (설계서 §9): every 원고's 두 번째 검수 with the 정본 묶음 its writer submitted — nothing is drawn, nothing costs. */
+export async function readScriptCanon() {
+  const db = service();
+  const [reviews, canon] = await Promise.all([
+    db.from("os_records").select("parent_id,review:metadata->yp").eq("record_type", "content_package").eq("metadata->>packageKind", "yp_review2").is("archived_at", null).limit(500),
+    db.from("os_documents").select("id,content_md,current_version").eq("title", "원고 공정 정본").eq("status", "canonical").limit(1),
+  ]);
+  if (reviews.error || canon.error) throw new ApiError(500, "SCRIPT_CANON_READ_FAILED", "원고 판정을 불러오지 못했어요.");
+  const done = (reviews.data ?? []).map(row => ({ projectId: String(row.parent_id ?? ""), review: row.review as YpReview2 | null }))
+    .filter((row): row is { projectId: string; review: YpReview2 } => Boolean(row.projectId && row.review?.state === "done" && typeof row.review.pass === "boolean"));
+  const ids = [...new Set(done.map(row => row.projectId))];
+  const [projects, outlines] = ids.length ? await Promise.all([
+    db.from("os_records").select("id,title").eq("record_type", "content_topic").in("id", ids).is("archived_at", null),
+    db.from("os_records").select("parent_id,bundle:metadata->yp->ai->>canonBundle,by:metadata->yp->ai->>by").eq("record_type", "content_script")
+      .eq("metadata->>scriptKind", "yp_outline").in("parent_id", ids).is("archived_at", null),
+  ]) : [{ data: [], error: null }, { data: [], error: null }];
+  if (projects.error || outlines.error) throw new ApiError(500, "SCRIPT_CANON_READ_FAILED", "원고 판정을 불러오지 못했어요.");
+  const title = new Map((projects.data ?? []).map(row => [String(row.id), projectName({ title: String(row.title ?? "") })]));
+  const writer = new Map((outlines.data ?? []).map(row => [String(row.parent_id), row as { bundle: string | null; by: string | null }]));
+  // A 원고 in the trash drops out with its video.
+  const verdicts: ScriptVerdict[] = done.filter(row => title.has(row.projectId)).map(({ projectId, review }) => ({ projectId, title: title.get(projectId)!, at: review.at,
+    by: writer.get(projectId)?.by ?? "", bundle: scriptBundle(writer.get(projectId)?.bundle), pass: review.pass!, gates: review.gates }));
+  const doc = canon.data?.[0];
+  return { verdicts, canon: doc ? { id: String(doc.id), version: canonVersion(String(doc.content_md ?? ""), Number(doc.current_version ?? 0)) } : null };
 }
 
 export const grindKindSchema = z.enum(["card", "short", "threads", "column"]);

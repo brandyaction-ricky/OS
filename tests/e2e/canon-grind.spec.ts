@@ -42,3 +42,16 @@ test("SEO 칼럼 정본 다듬기: the column page and its image prompts beside 
   await expect(page.getByRole("navigation", { name: "현재 위치" }).getByRole("link", { name: "롱폼 유튜브" })).toBeVisible();
   await expect(page.getByRole("link", { name: "칼럼 정본 다듬기" })).toHaveAttribute("href", "/content/column-canon");
 });
+
+test("롱폼 원고 정본 다듬기: 두 번째 검수 by 정본 묶음, the gate turned back twice as a 정본 문제, under the 롱폼 menu", async ({ page }) => {
+  await page.goto("/content/script-canon");
+  await expect(page.getByRole("heading", { name: "롱폼 원고 정본 다듬기" })).toBeVisible();
+  await expect(page.getByText("지금 정본: 원고 공정 정본 v2.5")).toBeVisible();
+  await expect(page.getByText("정본 묶음 v2.5", { exact: true })).toBeVisible();
+  await expect(page.getByText("원고 2 · 통과 0 (0%)")).toBeVisible();
+  await expect(page.getByText("관문 5 사실과 재료 0/2")).toBeVisible();
+  await expect(page.getByText("원고 2편에서 반려 · 정본 문제")).toBeVisible();
+  await expect(page.getByRole("link", { name: "[예시] 연봉 보고 옮겼는데 또 힘들다면" })).toHaveAttribute("href", /\/content\/plan\?project=demo-1&view=outline/);
+  await expect(page.getByRole("navigation", { name: "현재 위치" }).getByRole("link", { name: "롱폼 유튜브" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "원고 정본 다듬기" })).toHaveAttribute("href", "/content/script-canon");
+});
