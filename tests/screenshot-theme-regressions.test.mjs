@@ -9,10 +9,12 @@ const tokens = postcss.parse(read("app/theme-tokens.css"));
 const normalize = (s) => s.replace(/\s*([>,])\s*/g, "$1").trim();
 function styles(selector) {
   const result = {};
-  for (const rule of css.nodes) {
-    if (rule.type !== "rule" || !rule.selector.split(",").some(s => normalize(s) === normalize(selector))) continue;
+  // globals.css sits inside @layer os.legacy (공통 CSS 구조 L0); rules inside @media stay out as before.
+  css.walkRules(rule => {
+    if (rule.parent?.type === "atrule" && rule.parent.name !== "layer") return;
+    if (!rule.selector.split(",").some(s => normalize(s) === normalize(selector))) return;
     for (const d of rule.nodes) if (d.type === "decl") result[d.prop] = d.value;
-  }
+  });
   return result;
 }
 function palette(theme) {

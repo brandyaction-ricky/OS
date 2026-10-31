@@ -1,3 +1,5 @@
+@layer os.vendor, os.base, os.legacy, os.kit, os.screen;
+@layer os.legacy {
 /* Meeting recording progress, shared by both meeting screens. */
 .meeting-recorder-progress { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line-soft); border-radius: 10px; background: var(--panel-2); font-size: 13px; }
 .meeting-recorder-bar { height: 6px; border-radius: 999px; background: var(--line-soft); overflow: hidden; }
@@ -9,3 +11,5 @@
 .meeting-recorder-progress li[data-state=working] span:nth-child(2), .meeting-recorder-progress li[data-state=recording] span:nth-child(2) { color: var(--warning); }
 .meeting-recorder-progress li[data-state=failed] span:nth-child(2) { color: var(--danger); }
 .meeting-recorder-progress small { color: var(--text-2); }
+
+}

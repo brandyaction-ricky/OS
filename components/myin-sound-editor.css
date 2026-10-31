@@ -1,3 +1,5 @@
+@layer os.vendor, os.base, os.legacy, os.kit, os.screen;
+@layer os.legacy {
 /* ④ 자료 준비 › 사운드 (components/myin-sound-editor.tsx): three small cards (음악 · 앰비언스 · 효과음) with aligned rows, a dashed add
    row and a save bar. Theme tokens only, scoped like youtube-production-steps.css; phones stack each row. */
 .linear-shell .ui-v2 .yt-sound { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--line-soft); border-radius: 10px; background: var(--panel-2); }
@@ -40,4 +42,6 @@
   .linear-shell .ui-v2 .yt-sound-row > :not(.yt-sound-remove):not(:first-child), .linear-shell .ui-v2 .yt-sound-row.add > * { grid-column: 1 / -1; }
   .linear-shell .ui-v2 .yt-sound-row > .yt-sound-remove { grid-row: 1; grid-column: 2; }
   .linear-shell .ui-v2 .yt-sound-row.add > button { justify-self: start; }
+}
+
 }

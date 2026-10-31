@@ -1,3 +1,5 @@
+@layer os.vendor, os.base, os.legacy, os.kit, os.screen;
+@layer os.legacy {
 .hr-workspace,
 .hr-drawer {
   --hr-bg: var(--bg);
@@ -671,4 +673,6 @@
 }
 .hr-day.holiday time {
   color: var(--danger);
+}
+
 }

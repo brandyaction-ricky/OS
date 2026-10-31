@@ -32,7 +32,7 @@ import {
   type DirectiveEditorProps,
   type MDXEditorMethods,
 } from "@mdxeditor/editor";
-import "@mdxeditor/editor/style.css";
+import "./vendor/mdxeditor.layered.css";
 import type { ForwardedRef } from "react";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import type { ContainerDirective, LeafDirective, TextDirective } from "mdast-util-directive";

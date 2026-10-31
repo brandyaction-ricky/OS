@@ -1,3 +1,4 @@
+@layer os.vendor, os.base, os.legacy, os.kit, os.screen;
 :root {
   /* Obsidian Plum palette (2026-10-28): #17151C #292531 #45404F #716879 #AAA2B3 #E2DDE7 */
   --knowledge-tree-width: 280px;

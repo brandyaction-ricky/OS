@@ -1,3 +1,5 @@
+@layer os.vendor, os.base, os.legacy, os.kit, os.screen;
+@layer os.legacy {
 /* F1/F7/F9, T1–T4, V1–V3, S1–S4. Existing forms/permissions remain intact. */
 .linear-shell .ui-v2:is(.screen-home,.screen-meetings,.screen-decisions,.screen-tasks,.screen-schedule,.screen-leave,.screen-members,.screen-requests,.screen-updates,.screen-ai,.screen-settings,.screen-monitoring,.screen-channels,.screen-access,.screen-audit,.screen-company,.screen-account) :is(.metric-grid,.compact-metrics) { gap: 10px; margin: 0 0 10px; }
 .linear-shell .ui-v2:is(.screen-home,.screen-meetings,.screen-decisions,.screen-tasks,.screen-schedule,.screen-leave,.screen-members,.screen-requests,.screen-updates,.screen-ai,.screen-settings,.screen-monitoring,.screen-channels,.screen-access,.screen-audit,.screen-company,.screen-account) .metric-card { padding: 10px 12px; min-height: 0; background: var(--card); border-radius: 10px; }
@@ -236,4 +238,6 @@
  .linear-shell .ui-v2 .fullscreen-home-side .workspace-tabs { justify-content: flex-start; }
  .linear-shell .ui-v2 .personal-work-list > a { gap: 5px; }
  .linear-shell .ui-v2 :is(.meeting-grid,.roster-grid,.ai-system-grid,.task-board,.week-board,.service-grid) { grid-template-columns: minmax(0,1fr); }
+}
+
 }

@@ -1,3 +1,5 @@
+@layer os.vendor, os.base, os.legacy, os.kit, os.screen;
+@layer os.legacy {
 .kw-root { --kw-bg: var(--bg); --kw-surface: var(--card); --kw-line: var(--line); --kw-muted: var(--muted); --kw-fg: var(--text); --kw-soft: var(--panel); --kw-accent: var(--accent); --kw-accent-soft: var(--accent-soft); color: var(--kw-fg); font-size: 14px; line-height: 1.55; min-width: 0; }
 /* The workspace follows the OS theme tokens (Obsidian Plum, 2026-10-28); they already switch for dark mode. */
 .kw-root * { box-sizing: border-box; }
@@ -174,3 +176,5 @@
 .kw-share-list span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kw-share-links { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .kw-share-links li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid var(--kw-line); border-radius: 8px; font-size: 13px; }
+
+}

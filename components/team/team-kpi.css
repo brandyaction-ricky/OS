@@ -1,3 +1,5 @@
+@layer os.vendor, os.base, os.legacy, os.kit, os.screen;
+@layer os.legacy {
 /* KPI tab of 회의·결정 */
 .tm-kpi { display: grid; gap: 12px; }
 .tm-kpi-head { align-items: center; gap: 8px; }
@@ -45,3 +47,5 @@ dialog.tm-kpi-dialog::backdrop { background: rgb(0 0 0 / 45%); }
 .tm-kpi-dialog hr { border: 0; border-top: 1px solid var(--line-soft); margin: 4px 0; width: 100%; }
 .tm-kpi-dialog label .tm-row { gap: 6px; }
 .tm-kpi-dialog label input { width: 100%; }
+
+}

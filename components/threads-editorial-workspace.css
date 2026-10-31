@@ -1,3 +1,5 @@
+@layer os.vendor, os.base, os.legacy, os.kit, os.screen;
+@layer os.legacy {
 .te-workspace { margin-bottom: 24px; }
 .te-workspace header > p,.te-request > p,.te-import > p,.te-save > p { color: var(--muted); font-size: 14px; line-height: 1.65; }
 .te-route-cards { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; margin-top: 20px; }
@@ -41,3 +43,5 @@
 .te-evidence .te-facts { padding-top: 16px; }
 .te-route-badge { display: inline-block; margin-bottom: 4px; color: var(--accent-2); font-size: 12px; font-weight: 600; }
 @media(max-width:760px){ .te-route-cards { grid-template-columns: 1fr; } .ca-v07 .te-route-cards > a,.ca-v07 .te-route-cards > button { padding: 16px; } .te-facts dl { grid-template-columns: 1fr; } .te-candidate { padding: 16px; } .te-save > a { display: block; margin: 14px 0 0; } }
+
+}

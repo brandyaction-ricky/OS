@@ -16,7 +16,8 @@ const walk = (dir, ext, out = []) => {
   }
   return out;
 };
-const CSS_FILES = [...walk("app", /\.css$/), ...walk("components", /\.css$/)];
+// components/vendor/ holds package CSS copied as-is into a layer (공통 CSS 구조 L0); it is not ours to fix.
+const CSS_FILES = [...walk("app", /\.css$/), ...walk("components", /\.css$/)].filter(file => !file.startsWith(join("components", "vendor")));
 const CODE_FILES = [...walk("app", /\.(tsx?|mjs)$/), ...walk("components", /\.(tsx?|mjs)$/), ...walk("lib", /\.(tsx?|mjs)$/)];
 const parsed = CSS_FILES.map(file => ({ file, root: postcss.parse(readFileSync(file, "utf8")) }));
 const at = (file, node) => `${file}:${node.source.start.line}`;
@@ -94,7 +95,7 @@ test("P1-6 작은 누를 곳은 최소 24px", () => {
   for (const [file, selector] of need) {
     let min = 0;
     postcss.parse(readFileSync(file, "utf8")).walkRules(r => {
-      if (r.parent?.type === "atrule") return; // 휴대폰 값(40px)은 따로
+      if (r.parent?.type === "atrule" && r.parent.name !== "layer") return; // 휴대폰 값(40px)은 따로 · @layer 안은 그대로 본다
       if (r.selector.trim() === selector) r.walkDecls("min-height", d => { min = Math.max(min, parseFloat(d.value)); });
     });
     assert.ok(min >= 24, `${file} ${selector} min-height ${min}px`);

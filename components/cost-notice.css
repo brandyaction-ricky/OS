@@ -1,3 +1,5 @@
+@layer os.vendor, os.base, os.legacy, os.kit, os.screen;
+@layer os.legacy {
 /* 비용 안내 (owner requests 2026-10-25 · 10-26): one tag and one dialog for every paid button in the OS, on the theme tokens. */
 .cost-tag{display:inline-flex;flex:none;align-self:center;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:999px;font-size:12px;font-weight:600;line-height:1;white-space:nowrap;vertical-align:middle;cursor:help}
 .cost-tag-paid{background:var(--warning-soft);color:var(--warning)}
@@ -19,3 +21,5 @@ dialog.cost-dlg::backdrop{background:color-mix(in srgb,var(--media-shadow) 45%,t
 .cost-dlg .cost-btn-go{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .cost-dlg .cost-btn:focus-visible,.cost-dlg .cost-x:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 @media (max-width:640px){dialog.cost-dlg{max-width:none;margin:auto 0 0;width:100%;border-radius:16px 16px 0 0}.cost-dlg .cost-btn{flex:1;height:44px}}
+
+}
