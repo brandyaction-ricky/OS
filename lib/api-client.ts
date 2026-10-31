@@ -687,13 +687,22 @@ export async function completeYoutubeUpload(token: string | null, input: { kitId
   return apiRequest<{ uploaded: true; videoId: string; videoUrl: string; privacyStatus: string }>("/api/v1/youtube/upload/complete", { method: "POST", token, body: JSON.stringify(input) });
 }
 
+// Straight to the private bucket through a signed URL, so large files and whole folders are not held to the function body limit.
 export async function uploadCompanyFile(token: string | null, file: File) {
-  const body = new FormData(); body.set("file", file, file.name);
-  return apiRequest<{ path: string; name: string; size: number }>("/api/v1/company-files", { method: "POST", token, body });
+  const signed = await apiRequest<{ path: string; token: string; name: string; size: number; type: string }>("/api/v1/company-files", {
+    method: "POST", token, body: JSON.stringify({ fileName: file.name, fileSize: file.size }),
+  });
+  const { getBrowserSupabase } = await import("@/lib/supabase/client");
+  const client = getBrowserSupabase();
+  if (!client) throw new Error("파일 저장소 연결 정보가 없습니다.");
+  const { error } = await client.storage.from("os-company-files").uploadToSignedUrl(signed.path, signed.token, file, { contentType: signed.type });
+  if (error) throw new Error(error.message || "파일을 올리지 못했습니다.");
+  return { path: signed.path, name: signed.name, size: signed.size };
 }
 
-export async function getCompanyFileUrl(token: string | null, path: string) {
-  return apiRequest<{ url: string }>(`/api/v1/company-files?path=${encodeURIComponent(path)}`, { token });
+// downloadName: served as a download under that name (everything but PDFs and pictures).
+export async function getCompanyFileUrl(token: string | null, path: string, downloadName?: string) {
+  return apiRequest<{ url: string }>(`/api/v1/company-files?path=${encodeURIComponent(path)}${downloadName ? `&download=${encodeURIComponent(downloadName)}` : ""}`, { token });
 }
 
 const DEVELOPMENT_ATTACHMENT_FALLBACK_TYPES: Record<string, string> = {

@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {PAGE_GUIDES,guideClosedKey} from '../lib/page-guides.ts';
 import {NAV_STAGES,ACCOUNT_PAGE,findPage} from '../lib/navigation.ts';
 test('all current menus and account have three reviewed steps and a live next route',()=>{
-  assert.equal(Object.keys(PAGE_GUIDES).length,58);
+  assert.equal(Object.keys(PAGE_GUIDES).length,59);
   // Reviewed topic planning now ends at the chosen channel, not a fixed card-news route.
   // Preserve the remaining guide snapshot while checking all new guides below (2026-10-28: 검수 요청 → 검토 요청, AI 키 → 연결 키, plain-words pass).
   // 2026-10-29: approved Threads now dispatch through the official API after account/text confirmation.
