@@ -17,8 +17,8 @@ test("AI keys can only edit their own generated draft, never human notes or team
 });
 
 test("read-only AI keys include team documents and own AI drafts without granting writes", () => {
-  assert.deepEqual(agentReadableStatuses(["canonical"]), ["canonical", "team", "draft"]);
-  assert.deepEqual(agentReadableStatuses(["team", "canonical"]), ["team", "canonical", "draft"]);
+  assert.deepEqual(agentReadableStatuses(["canonical"]), ["canonical", "team", "review", "reviewed", "draft"]);
+  assert.deepEqual(agentReadableStatuses(["team", "canonical"]), ["team", "canonical", "review", "reviewed", "draft"]);
 });
 
 test("AI draft read requires explicit read status, same owner and MCP provenance", () => {
@@ -44,9 +44,15 @@ test("another owner's draft and archived document stay private", () => {
   assert.equal(canReadKnowledgeDocument(actor(), document("draft", "owner-a")), false);
 });
 
-test("the change does not expose another owner's review drafts to AI keys", () => {
-  assert.equal(canReadKnowledgeDocument(actor({ allowedStatuses: ["team", "review", "reviewed", "canonical"] }), document("review")), false);
-  assert.equal(canReadKnowledgeDocument(actor({ allowedStatuses: ["team", "review", "reviewed", "canonical"] }), document("reviewed")), false);
+// 대표 결정 2026-10-31 (e9cab82b): a teammate's 검토 요청 / 검토 완료 document stays readable to AI keys, as it is to the key's owner.
+test("AI keys read another owner's review-stage documents like their owner does", () => {
+  const reader = actor({ allowedStatuses: agentReadableStatuses(["team", "canonical"]) });
+  for (const status of ["review", "reviewed"]) {
+    assert.equal(canReadKnowledgeDocument(reader, document(status)), true, status);
+    assert.equal(canReadKnowledgeDocument(actor({ type: "user" }), document(status)), true, status);
+    assert.equal(canReadKnowledgeDocument(actor({ allowedStatuses: ["team", "canonical"] }), document(status)), false, status);
+  }
+  assert.equal(canReadKnowledgeDocument(reader, document("draft")), false);
 });
 
 test("routes, search, key defaults, and RLS migration share one team-read contract", async () => {
@@ -60,8 +66,8 @@ test("routes, search, key defaults, and RLS migration share one team-read contra
   assert.match(knowledgeRoute, /canReadKnowledgeDocument\(actor, data\)/);
   assert.match(documentRoute, /readableKnowledgePages\(actor, \[data\]\)/);
   assert.match(documentRoute, /DOCUMENT_NOT_FOUND/);
-  assert.match(search, /status\.eq\.canonical,status\.eq\.team,and\(status\.eq\.draft,owner_id\.eq\.\$\{actor.ownerId\},source\.eq\.mcp\)/);
-  assert.match(search, /status === "canonical" \|\| status === "team"/);
+  assert.match(search, /status\.in\.\(canonical,team,review,reviewed\),and\(status\.eq\.draft,owner_id\.eq\.\$\{actor.ownerId\},source\.eq\.mcp\)/);
+  assert.match(search, /\["canonical", "team", "review", "reviewed"\]\.includes\(status\)/);
   assert.match(keyRoute, /\["team", "canonical"\]/);
   assert.match(migration, /when p_status = 'team' then public\.os_is_active_member\(\)/);
   assert.match(migration, /when p_status = 'draft' then false/);
