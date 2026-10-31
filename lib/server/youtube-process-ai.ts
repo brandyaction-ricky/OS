@@ -5,7 +5,7 @@ import type { OsRecord } from "@/lib/record-types";
 import { checkManuscript } from "@/lib/youtube-script-check";
 import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
 import { projectFromRecord, projectName } from "@/lib/youtube-process/project";
-import { diagnosisLink, finalPair, SLOTS, stageData, STAGE_RECORD, utmCode, withLinks, withScriptVersion, type YpSlot, type YpStageKind, type YpStageData } from "@/lib/youtube-process/stages";
+import { descWritten, diagnosisLink, finalPair, SLOTS, stageData, STAGE_RECORD, utmCode, withLinks, withScriptVersion, type YpSlot, type YpStageKind, type YpStageData } from "@/lib/youtube-process/stages";
 import type { RequestActor } from "./auth";
 import type { readPipeline } from "./content-pipeline";
 import { namedProcedures, procedureRefs, SHORTFORM_CANON_TITLE, withNamed } from "./content-generation";
@@ -163,7 +163,8 @@ export function v1KitCardInputs(state: Pipeline) {
 export async function saveV1Kit(supabase: RequestActor["supabase"], ownerId: string, ownerName: string, state: Pipeline, result: { description: string; pinnedComment: string; tags: string[]; kakao: string; cafe: string; post: string; checklist: string[] }, author: { model: string; jobId: string }) {
   const stages = v1Stages(state);
   const current = stages.upload.data;
-  const untouched = !current.desc.trim() || (current.descBy && current.desc === current.descBy.draft);
+  // A description started from the bare layout (미리 쓰기, 로건 QA 10/30) and left empty takes the draft as an empty one would.
+  const untouched = !descWritten(current.desc) || (current.descBy && current.desc === current.descBy.draft);
   const descBy = { userId: ownerId, name: await displayName(supabase, ownerId, ownerName), model: author.model, jobId: author.jobId, at: new Date().toISOString(),
     // 로건 요청 10/30: the 이어서 볼 영상 and 다른 유입처 of 1번 go into the draft as they were written there.
     draft: withLinks(result.description, current.utm) };

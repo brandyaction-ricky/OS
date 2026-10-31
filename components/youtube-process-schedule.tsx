@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, GripVertical, X } from "lucide-react";
 import { gateName } from "@/lib/youtube-process/confirm";
-import { projectHref, projectName, stageLabel, YP_FLOW, YP_STAGE_INDEX } from "@/lib/youtube-process/project";
+import { personName, projectHref, projectName, stageLabel, YP_FLOW, YP_STAGE_INDEX } from "@/lib/youtube-process/project";
 import { useSession } from "./session-provider";
 import { errorMessage, youtubeProcessClient, type YpMember, type YpScheduleItem } from "./youtube-process-data";
 
@@ -142,7 +142,7 @@ export function YoutubeScheduleScreen({ header }: { header: ReactNode }) {
         <label className="yp-lbl" style={{ margin: 0, gridColumn: "1 / -1" }}>바꾸는 이유 (선택)<input className="yp-in" maxLength={200} value={form.why} onChange={event => setForm(value => ({ ...value, why: event.target.value }))} /></label></div>
         {form.editDue && form.uploadPlan && form.uploadPlan < form.editDue ? <div className="yp-errline">업로드 예상일은 편집 완료일보다 앞설 수 없어요.</div> : null}
         {editing?.log.length ? <><div className="yp-lbl">바꾼 기록 <span className="yp-gq">최근 5개</span></div><ul className="yp-hist">{editing.log.map(item => <li key={item.at + item.field}><time>{new Date(item.at).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" })}</time>
-          <span>{item.field === "uploadPlan" ? "업로드 예상일" : "편집 완료일"} {item.from ? md2(item.from) : "없음"} → {item.to ? md2(item.to) : "없음"} · {item.by}{item.why ? ` · ${item.why}` : ""}</span></li>)}</ul></> : null}</div>
+          <span>{item.field === "uploadPlan" ? "업로드 예상일" : "편집 완료일"} {item.from ? md2(item.from) : "없음"} → {item.to ? md2(item.to) : "없음"} · {personName(item.by)}{item.why ? ` · ${item.why}` : ""}</span></li>)}</ul></> : null}</div>
       <div className="yp-modal-f"><button type="button" className="yp-btn" onClick={() => dialog.current?.close()}>취소</button>
         <button type="button" className="yp-btn yp-pri" disabled={busy || !editing || Boolean(form.editDue && form.uploadPlan && form.uploadPlan < form.editDue)}
           onClick={() => editing && void move(editing, { editDue: form.editDue, uploadPlan: form.uploadPlan, why: form.why }).then(ok => { if (ok) dialog.current?.close(); })}>저장</button></div>

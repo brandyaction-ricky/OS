@@ -15,9 +15,11 @@ const KINDS: Record<CostKind, { label: string; title: string; icon: ReactNode }>
   ai: { label: "내 AI 사용량", title: "내 AI 구독 사용량으로 처리돼요.", icon: <Sparkles size={12} aria-hidden="true" /> },
   youtube: { label: "유튜브 한도", title: "유튜브가 채널마다 하루에 쓸 수 있는 양을 정해 둬요.", icon: <Youtube size={12} aria-hidden="true" /> },
 };
-export function CostTag({ kind }: { kind: CostKind }) {
+/** With `amount` (원) the tag says what the button costs instead of only that it costs (로건 QA 10/30: the price showed only after pressing). */
+export function CostTag({ kind, amount, upTo, what }: { kind: CostKind; amount?: number | null; upTo?: boolean; what?: string }) {
   const info = KINDS[kind];
-  return <span className={`cost-tag cost-tag-${kind}`} title={info.title}>{info.icon}{info.label}</span>;
+  const label = amount == null ? info.label : `${upTo ? "최대 " : ""}약 ${amount.toLocaleString("ko-KR")}원`;
+  return <span className={`cost-tag cost-tag-${kind}`} title={info.title}>{info.icon}{what ? `${what} · ` : ""}{label}</span>;
 }
 
 let loaded: Promise<CostModels> | null = null;

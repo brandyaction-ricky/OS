@@ -287,7 +287,8 @@ export async function saveYoutubeStage(actor: RequestActor, id: string, kind: Yp
     throw locked("주제 후보는 내 AI가 쓰고, [이 주제로]는 주제 칸을 바꿔요.");
   } else {
     const patch = stagePatchSchemas.upload.parse(input.patch);
-    if (stage !== "upload") throw locked("최종 검토 컨펌이 OK가 나야 업로드가 열려요.");
+    // 로건 QA 10/30: PDs write the 설명란 · 고정 댓글 while the video is being edited; the upload still waits for the 최종 검토 OK.
+    if (!["make", "review", "upload"].includes(stage)) throw locked("제작 단계부터 업로드 칸을 미리 쓸 수 있어요.");
     if (stages.upload.data.run?.status === "done") throw locked("이미 유튜브에 올린 영상이에요.");
     data = nextUpload(stages.upload.data, patch, project.id);
   }

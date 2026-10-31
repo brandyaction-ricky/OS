@@ -229,5 +229,5 @@ export function StepFooter({ action, todo = [] }: { action: YpAction; todo?: { l
 export function LockedStep({ page, name }: { page: YpPage; name: string }) {
   const project = page.bundle!.project;
   const current = project.yp.stage === "done" ? 0 : YP_STAGE_INDEX[project.yp.stage];
-  return <div className="yp-locked"><Info size={18} className="yp-i" aria-hidden="true" /><div><b>{name} 단계는 아직 열리지 않았어요</b><p>지금 단계: {stepName(current, project.yp.topic.type)} <Link className="yp-lnk" href={stepHref(current, project.id)}>지금 단계로 가기 →</Link></p></div></div>;
+  return <div className="yp-locked"><Info size={18} className="yp-i" aria-hidden="true" /><div><b>{name} 단계는 아직 열리지 않았어요</b><p>앞 단계를 차례로 마치면 열려요. 지금 단계: {stepName(current, project.yp.topic.type)} <Link className="yp-lnk" href={stepHref(current, project.id)}>지금 단계로 가기 →</Link></p></div></div>;
 }

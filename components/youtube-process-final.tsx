@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { ArrowUpRight, ChevronDown, ChevronUp, Columns2, Download, Eraser, MapPin, MessageSquare, Paperclip, Pause, Pencil, Play, Search, Square, ThumbsUp, Trash2, Upload, Waypoints } from "lucide-react";
-import { stepHref } from "@/lib/youtube-process/project";
+import { personName, stepHref } from "@/lib/youtube-process/project";
 import { finalPair, SLOTS, type YpSlot } from "@/lib/youtube-process/stages";
 import { GateBanner, gateAction, gateSub, LockedStep, ReplyForm, Subject, useGate, useYpBundle, YpFrame } from "./youtube-process-frame";
 import { CardReviewScreen } from "./youtube-process-card";
@@ -307,22 +307,22 @@ function FeedbackItem({ item, open, latest, onOpen, onSeek, onAct, onOpenFile }:
   const when = (at?: string) => at ? new Date(at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
   return <div id={`fb-${item.id}`} className={`yp-fi${done ? " yp-done" : ""}${open ? " yp-open" : ""}`}>
     <div className="yp-f1">{item.reaction ? <span className="yp-tag">👍</span> : <input type="checkbox" checked={item.status === "done"} disabled={item.status === "declined" || item.deleted} title="반영" aria-label="반영" onChange={event => void run(event.target.checked ? "resolve" : "reopen")} />}
-      <button type="button" className="yp-lnk yp-tlink" onClick={onSeek}>{label(item)}</button><span className={`yp-tx${item.deleted ? " yp-muted" : ""}`} onClick={onOpen}>{item.deleted ? "삭제된 댓글입니다" : item.text || (item.reaction ? "좋아요" : "")}</span><span className="yp-who">{item.who}</span>
+      <button type="button" className="yp-lnk yp-tlink" onClick={onSeek}>{label(item)}</button><span className={`yp-tx${item.deleted ? " yp-muted" : ""}`} onClick={onOpen}>{item.deleted ? "삭제된 댓글입니다" : item.text || (item.reaction ? "좋아요" : "")}</span><span className="yp-who">{personName(item.who)}</span>
       {item.status === "declined" ? <span className="yp-tag">반영 안 함</span> : item.status === "done" ? <span className={`yp-tag${item.confirmedBy ? " yp-ok" : ""}`}>{item.confirmedBy ? "확인 완료" : "반영됨"}</span> : item.target === "video" && item.ver < latest && !done ? <span className="yp-tag yp-warn">v{item.ver}에서</span> : null}
       {item.replies.length ? <span className="yp-muted" style={{ fontSize: 12 }}>답글 {item.replies.filter(row => !row.deleted).length}</span> : null}
       {item.marks?.length ? <span className="yp-muted" style={{ fontSize: 12 }} title="펼치고 시간을 누르면 화면에 보여요">표시 {item.marks.length}</span> : null}
       {item.files?.length ? <span className="yp-muted" style={{ fontSize: 12 }}><Paperclip size={11} aria-hidden="true" /> {item.files.length}</span> : null}
       <button type="button" className="yp-ib" style={{ width: 24, height: 24 }} aria-label="펼치기" onClick={onOpen}>{open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button></div>
     {open ? <div className="yp-more2"><div className="yp-muted" style={{ fontSize: 12 }}>{new Date(item.at).toLocaleString("ko-KR")}{item.editedAt ? " · 고침" : ""}{item.kind ? ` · ${item.kind}` : ""}{item.target === "video" && item.ver < latest ? ` · v${item.ver}에서 넘어옴` : ""}{item.declinedWhy ? ` · 반영 안 함: ${item.declinedWhy}` : ""}</div>
-      {item.status === "done" ? <p className="yp-fi-sug" role="status">반영됨{item.doneBy ? ` · ${item.doneBy}` : ""}{item.doneAt ? ` · ${when(item.doneAt)}` : ""}{item.fixedIn ? ` · v${item.fixedIn}` : ""}
-        {item.confirmedBy ? <> · <b>요청자 확인 완료</b> ({item.confirmedBy} · {when(item.confirmedAt)})</> : " · 요청자 확인 전"}
+      {item.status === "done" ? <p className="yp-fi-sug" role="status">반영됨{item.doneBy ? ` · ${personName(item.doneBy)}` : ""}{item.doneAt ? ` · ${when(item.doneAt)}` : ""}{item.fixedIn ? ` · v${item.fixedIn}` : ""}
+        {item.confirmedBy ? <> · <b>요청자 확인 완료</b> ({personName(item.confirmedBy)} · {when(item.confirmedAt)})</> : " · 요청자 확인 전"}
         {(mine || profile?.role === "admin") && !item.deleted ? <> {item.confirmedBy
           ? <button type="button" className="yp-lnk" disabled={saving} onClick={() => void run("unconfirm")}>확인 되돌리기</button>
           : <button type="button" className="yp-btn yp-sm yp-pri" disabled={saving} onClick={() => void run("confirm")}>반영 확인</button>}</> : null}</p> : null}
       {item.files?.length && !item.deleted ? <div className="yp-files">{item.files.map(file => <button key={file.path} type="button" className="yp-chip" onClick={() => onOpenFile(file.path)}><Paperclip size={11} aria-hidden="true" /> {file.name}</button>)}</div> : null}
       {item.marks?.length && !item.deleted ? <p className="yp-muted" style={{ fontSize: 12, margin: "4px 0" }}>화면 표시 {item.marks.length}개 · <button type="button" className="yp-lnk" onClick={onSeek}>{label(item)}로 가서 보기</button></p> : null}
       {item.sug && !item.deleted ? <p className="yp-fi-sug">바꿀 {item.kind === "제목" ? "제목" : "글자"}: <b>{item.sug}</b></p> : null}
-      {item.replies.map(row => <div key={row.id} className="yp-rep"><b>{row.by}</b> {row.deleted ? <span className="yp-muted">삭제된 댓글입니다</span> : <span style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{row.text}</span>}
+      {item.replies.map(row => <div key={row.id} className="yp-rep"><b>{personName(row.by)}</b> {row.deleted ? <span className="yp-muted">삭제된 댓글입니다</span> : <span style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{row.text}</span>}
         <span className="yp-muted" style={{ fontSize: 11 }}> · {when(row.at)}{row.editedAt ? " · 고침" : ""}</span>
         {row.byId === me && !row.deleted ? <> <button type="button" className="yp-lnk" onClick={() => begin("reply_edit", row.text, row.id)}>수정</button> <button type="button" className="yp-lnk" disabled={saving} onClick={() => { if (window.confirm("이 답글을 지울까요?")) void run("reply_delete", "", row.id); }}>삭제</button></> : null}</div>)}
       {mode ? <div className="yp-repin"><textarea className="yp-in" rows={2} value={draft} onChange={event => setDraft(event.target.value)} autoFocus

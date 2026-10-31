@@ -1,4 +1,5 @@
 "use client";
+import { CostTag } from "./cost-notice";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
@@ -6,7 +7,7 @@ import { CalendarDays, Check, ChevronRight, Download, Film, FileText, Sparkles, 
 import { editableFields } from "@/lib/youtube-process/confirm";
 import { myinCleanScript, myinScriptMarkdown } from "@/lib/myin-script";
 import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
-import { projectName, topicKeywords, stepHref } from "@/lib/youtube-process/project";
+import { personName, projectName, topicKeywords, stepHref } from "@/lib/youtube-process/project";
 import { finalPair, MAKE_STEPS, SLOTS, thumbsMissing, type YpMake, type YpSlot } from "@/lib/youtube-process/stages";
 import { MyinV13Panel } from "./myin-v13-panel";
 import { FormulaNote, JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
@@ -115,7 +116,7 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
           : <><div className="yp-sched2 yp-one"><div className="yp-sdate"><span className="yp-k">편집 완료일</span><div className="yp-v"><span className={`yp-due-big${dayDiff(data.editDue) < 0 ? " yp-late" : ""}`}>{md2(data.editDue)}</span><DueChip date={data.editDue} /></div>
             {editable ? <div><button type="button" className="yp-btn yp-sm" onClick={() => setChanging(true)}><CalendarDays size={14} /> 바꾸기</button></div> : null}</div></div>
             {dayDiff(data.editDue) < 0 && project.yp.stage === "make" ? <div className="yp-note yp-bad" style={{ margin: "10px 0 0" }}><div>편집 완료일이 지났어요. 날짜를 바꾸거나 제작을 마쳐 주세요.</div></div> : null}
-            {data.log.length ? <><div className="yp-lbl">바꾼 기록</div><ul className="yp-hist">{data.log.slice(0, 5).map(item => <li key={item.at}><time>{md(item.at)}</time><span>편집 완료 {item.from ? md2(item.from) : "없음"} → {md2(item.to)} · {item.by}{item.why ? ` · ${item.why}` : ""}</span></li>)}</ul></> : null}</>}
+            {data.log.length ? <><div className="yp-lbl">바꾼 기록</div><ul className="yp-hist">{data.log.slice(0, 5).map(item => <li key={item.at}><time>{md(item.at)}</time><span>편집 완료 {item.from ? md2(item.from) : "없음"} → {md2(item.to)} · {personName(item.by)}{item.why ? ` · ${item.why}` : ""}</span></li>)}</ul></> : null}</>}
       </YpSection>
       {/* The OS-made video moves on by itself; the manual 준비 · 편집 · 완료 buttons are for 실사. */}
       {short && !auto ? <ShortMake page={page} editable={canFinal} n0={n} /> : null}
@@ -215,7 +216,7 @@ function PairPanel({ page, slot, make, job, saving, onClose, onSave, onRedo }: {
     <input className="yp-in yp-rev" style={{ marginTop: 8 }} value={reason} maxLength={200} onChange={event => setReason(event.target.value)} placeholder="바꾸는 이유 한 줄 (저장할 때 필수)" aria-label="바꾸는 이유" />
     <div className="yp-row-btns" style={{ marginTop: 8 }}>
       <button type="button" className="yp-btn yp-pri" disabled={saving || same || !title.trim() || !reason.trim()} onClick={() => onSave(title.trim(), copy.trim(), reason.trim())}>{saving ? "저장 중…" : "저장"}</button>
-      <button type="button" className="yp-btn" onClick={() => onRedo(reason.trim())}><Sparkles size={14} /> 공식대로 다시 뽑기</button>
+      <button type="button" className="yp-btn" onClick={() => onRedo(reason.trim())}><Sparkles size={14} /> 공식대로 다시 뽑기 <CostTag kind="ai" /></button>
       <button type="button" className="yp-btn" onClick={onClose}>닫기</button></div>
     {job.status?.job?.slot === slot ? <div style={{ marginTop: 8 }}><JobLine job={job} onRetry={() => onRedo(reason.trim())} /></div> : null}
     {redo ? <>
