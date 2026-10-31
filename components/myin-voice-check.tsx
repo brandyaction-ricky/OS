@@ -1,4 +1,5 @@
 "use client";
+import { personName } from "@/lib/youtube-process/project";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { apiRequest } from "@/lib/api-client";
@@ -52,7 +53,7 @@ export function MyinVoiceCheck({ runId, stage, fixable, pending, check, token, o
     <small>그 문장만 다시 만들고 받아쓰기 · 자막도 새로 만들어요.</small>
   </div>;
   return <details className="yt-details" onToggle={event => { if ((event.target as HTMLDetailsElement).open && !data) void load(); }}>
-    <summary>{check ? check.skipped ? `음성 확인 없이 넘어감 · ${check.name} · ${when(check.at)}` : `음성 확인 완료 · ${check.name} · ${when(check.at)}` : "음성 확인 · 수정"}</summary>
+    <summary>{check ? check.skipped ? `음성 확인 없이 넘어감 · ${personName(check.name)} · ${when(check.at)}` : `음성 확인 완료 · ${personName(check.name)} · ${when(check.at)}` : "음성 확인 · 수정"}</summary>
     {error ? <p className="yt-note yt-warn" role="alert">{error}</p> : null}
     {!data ? <p>불러오는 중…</p> : <>
       {data.previewUrl ? <audio ref={audio} controls preload="none" src={data.previewUrl} style={{ width: "100%" }} /> : <p>이 영상은 여기서 들을 음성이 없어요. 위 「음성 내려받기」로 들어요.</p>}

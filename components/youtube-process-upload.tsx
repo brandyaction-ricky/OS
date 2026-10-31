@@ -52,7 +52,9 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
   const finals = page.bundle?.finals ?? [];
   const last = finals.at(-1) ?? null;
   const done = form?.run?.status === "done";
-  const editable = project?.yp.stage === "upload" && !done;
+  // 로건 QA 10/30: the 업로드 칸 can be written while the video is edited (제작 · 최종 검토); the upload waits for the 최종 검토 OK.
+  const early = project?.yp.stage === "make" || project?.yp.stage === "review";
+  const editable = (project?.yp.stage === "upload" || early) && !done;
   const reloadAll = useCallback(() => { setDirty(false); void page.reload(); }, [page]);
   const job = useStaffJob(page, "kit", reloadAll);
 
@@ -129,7 +131,7 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
     catch (reason) { page.fail(reason); }
   };
 
-  const reason = !form ? "" : !last ? "최종본이 없어요" : !descWritten(form.desc) ? "설명란을 채워 주세요" : !channels.length && !page.demo ? "유튜브 채널을 연결해 주세요"
+  const reason = !form ? "" : early ? "최종 검토 컨펌 OK 뒤에 올릴 수 있어요" : !last ? "최종본이 없어요" : !descWritten(form.desc) ? "설명란을 채워 주세요" : !channels.length && !page.demo ? "유튜브 채널을 연결해 주세요"
     : publishAtProblem(form.publishAt) ? "예약 시각을 10분 뒤 이후로 정해 주세요" : "";
   const others = form?.utm.others ?? [];
   const setOthers = (list: { note: string; url: string }[], now = false) => edit({ utm: { ...form!.utm, others: list } }, now);
@@ -145,7 +147,7 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
   return <YpFrame page={page} view={5} action={action} header={header} title="업로드" sub={done ? "유튜브에 올렸어요. 이어서 쇼츠 · 칼럼을 만들어요." : "설명란을 채우고 유튜브에 올려요."} savedAt={savedAt}
     todo={form && !done ? [{ label: "최종본", done: Boolean(last) }, { label: "설명란", done: descWritten(form.desc) }, { label: "유튜브 채널", done: page.demo || channels.length > 0 }] : undefined}
     onSave={editable ? () => void save() : undefined} saveDisabled={!dirty}>
-    {page.bundle && form && project && make ? !["upload", "done", "shorts"].includes(project.yp.stage) ? <LockedStep page={page} name="업로드" /> : <div onBlur={() => { if (dirty) void save(); }}>
+    {page.bundle && form && project && make ? !["make", "review", "upload", "done", "shorts"].includes(project.yp.stage) ? <LockedStep page={page} name="업로드" /> : <div onBlur={() => { if (dirty) void save(); }}>
       {done ? <div className="yp-note yp-ok" role="status"><Check size={16} className="yp-i" aria-hidden="true" /><div><b>유튜브에 올렸어요.</b> {form.run?.thumbnail === "ok" ? "썸네일 A도 넣었어요." : "썸네일은 스튜디오에서 넣어 주세요."}
         {form.run?.publishAt ? ` ${whenKo(form.run.publishAt)}에 공개돼요.` : ""}<br />
         {form.run?.privacy === "private" && !form.run.publishAt && form.privacy !== "private" ? <><b className="yp-warn-t">유튜브가 비공개로 올렸어요.</b> 스튜디오에서 공개 범위를 바꿔 주세요.<br /></> : null}
@@ -191,12 +193,13 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
           <input ref={srtInput} type="file" hidden accept=".srt,application/x-subrip" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void uploadSrt(file); }} />
         </YpSection>
         <YpSection n={3} title="설명란 · 고정 댓글" need>
-          {!form.desc.trim() && !aiDraftWaiting ? (job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(job.status?.job?.executor === "gpt" ? "gpt" : "queue")} /> : editable ? <div className="yp-ways">
+          {early && !form.desc.trim() ? <div className="yp-ways"><button type="button" className="yp-way" onClick={() => edit({ desc: DESC_TEMPLATE })}><b>미리 쓰기</b><span>최종 검토 컨펌 OK 때 GPT 초안이 와도 쓴 글은 그대로 두고 옆에 보여 줘요</span></button></div>
+            : !form.desc.trim() && !aiDraftWaiting ? (job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(job.status?.job?.executor === "gpt" ? "gpt" : "queue")} /> : editable ? <div className="yp-ways">
             <button type="button" className="yp-way yp-rec" onClick={() => setSend("gpt")}><b><Sparkles size={14} aria-hidden="true" /> GPT로 바로 만들기</b><span>3~6분 · 설명란 · 고정 댓글 · 다른 채널 문안까지</span></button>
-            <button type="button" className="yp-way" onClick={() => setSend("queue")}><b>내 AI에게 맡기기</b><span>내 AI 구독으로 만들어요</span></button>
+            <button type="button" className="yp-way" onClick={() => setSend("queue")}><b>내 AI에게 맡기기 <CostTag kind="ai" /></b><span>내 AI 구독으로 만들어요</span></button>
             <button type="button" className="yp-way" onClick={() => edit({ desc: DESC_TEMPLATE })}><b>직접 쓰기</b><span>정해진 구역 순서가 들어간 칸에 바로 써요</span></button></div> : null) : <>
             <div className="yp-row-btns" style={{ margin: "0 0 6px" }}><button type="button" className="yp-btn yp-sm" onClick={() => void copy("desc", form.desc)}><Copy size={14} /> {copied === "desc" ? "복사됨" : "설명란 복사"}</button>
-              {editable ? <button type="button" className="yp-btn yp-sm" onClick={() => setSend("gpt")}><RefreshCw size={14} /> 다시 만들기</button> : null}
+              {editable && !early ? <button type="button" className="yp-btn yp-sm" onClick={() => setSend("gpt")}><RefreshCw size={14} /> 다시 만들기</button> : null}
               {form.descBy ? <span className="yp-aitag"><Sparkles size={11} aria-hidden="true" /> {draftTag(form.descBy.name, form.descBy.model)}</span> : null}</div>
             {job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(job.status?.job?.executor === "gpt" ? "gpt" : "queue")} /> : null}
             {aiDraftWaiting && editable ? <div className="yp-note yp-purple" role="status"><Sparkles size={16} className="yp-i" aria-hidden="true" /><div><b>{isGptModel(form.descBy?.model) ? "GPT 초안이 왔어요." : "AI 초안이 왔어요."}</b> 고친 설명란이 있어 바로 넣지 않았어요.

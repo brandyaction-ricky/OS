@@ -32,6 +32,7 @@
 .linear-shell .ui-v2.yp .yp-fs.yp-view{background:var(--accent-soft);color:var(--accent-2)}
 .linear-shell .ui-v2.yp button.yp-fs:not(:disabled):hover{background:var(--panel-2)}
 .linear-shell .ui-v2.yp .yp-fs:disabled{cursor:default}
+.linear-shell .ui-v2.yp .yp-fs.yp-lock,.linear-shell .ui-v2.yp .yp-pop-i.yp-lock{opacity:.6}
 .linear-shell .ui-v2.yp .yp-fl-act{display:flex;align-items:center;gap:10px;flex:none}
 .linear-shell .ui-v2.yp .yp-fl-hint{font-size:12px;color:var(--warning);font-weight:600;white-space:nowrap}
 .linear-shell .ui-v2.yp .yp-fl-hint.yp-ok{color:var(--muted);font-weight:500}
@@ -148,6 +149,8 @@
 .linear-shell .ui-v2.yp .yp-fsec-h .yp-gq{color:var(--muted);font-size:13px}
 .linear-shell .ui-v2.yp .yp-fsec-h .yp-sp{flex:1}
 .linear-shell .ui-v2.yp .yp-warn-t{color:var(--warning)}
+/* A one-line field that grows with a long sentence instead of hiding it (로건 QA 10/30: 정밀 타겟). */
+.linear-shell .ui-v2.yp .yp-autogrow{field-sizing:content;min-height:44px;resize:vertical;line-height:1.5}
 /* 업로드 1번 (로건 요청 10/30): 멘트 | 링크 | 빼기 on one line, stacked on a phone. */
 .linear-shell .ui-v2.yp .yp-links{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) auto;gap:6px;align-items:center}
 @media (max-width:640px){.linear-shell .ui-v2.yp .yp-links{grid-template-columns:minmax(0,1fr) auto}.linear-shell .ui-v2.yp .yp-links>input:first-child{grid-column:1 / -1}}

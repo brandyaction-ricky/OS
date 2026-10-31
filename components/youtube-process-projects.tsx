@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, Copy, Plus, Radar, RotateCcw, Search, Trash2, X } from "lucide-react";
-import { mayTrash, projectName, searchProjects, stepHref, TRASH_KEEP_DAYS, trashDaysLeft, type YpProject, type YpTrashed } from "@/lib/youtube-process/project";
+import { mayTrash, projectName, searchProjects, stepHref, TRASH_KEEP_DAYS, trashDaysLeft, YP_KIND_SHORT, type YpProject, type YpTrashed } from "@/lib/youtube-process/project";
 import { nextAction } from "@/lib/youtube-process/next";
 import { TopicHub } from "./topic-hub";
 import { isTopicPlatform, projectPlatform, TOPIC_PLATFORMS } from "@/lib/content-platforms";
@@ -142,8 +142,11 @@ export function YoutubeProjectsScreen() {
             const kind = platform ? TOPIC_PLATFORMS[platform].label : null;
             const done = Math.min(next.step + (next.tone === "done" ? 0 : 0.5), next.total) / next.total;
             return <div key={project.id} className="yp-mv">
-              <div className="yp-mv-m"><div className="yp-mv-th">{kind ? <span className={`yp-tag yp-pf-tag yp-pf-${platform}`}>{kind}</span> : null}<Link href={next.href} className="yp-mv-t" title={projectName(project)}>{projectName(project)}</Link></div>
-                <div className={`yp-mv-s yp-${next.tone}`}>{next.text}</div></div>
+              {/* 로건 QA 10/30: 실사 or 애니메이션 and the last change tell same-titled rows and copies apart without opening them. */}
+              <div className="yp-mv-m"><div className="yp-mv-th">{kind ? <span className={`yp-tag yp-pf-tag yp-pf-${platform}`}>{kind}</span> : null}
+                {project.yp.topic.type === "live" || project.yp.topic.type === "anim" ? <span className="yp-tag">{YP_KIND_SHORT[project.yp.topic.type]}</span> : null}
+                <Link href={next.href} className="yp-mv-t" title={projectName(project)}>{projectName(project)}</Link></div>
+                <div className={`yp-mv-s yp-${next.tone}`}>{next.text}<span className="yp-muted"> · 고친 날 {md(project.yp.contentUpdatedAt)}</span></div></div>
               <div className="yp-mv-bar"><span>{Math.min(next.step + 1, next.total)}/{next.total} · {next.stepName}</span><span className="yp-mv-track"><i className={`yp-${next.tone}`} style={{ width: `${Math.round(done * 100)}%` }} /></span></div>
               <div className="yp-mv-pd">{pd ? <><span className="yp-mv-av" aria-hidden="true">{pd.slice(0, 1)}</span>{pd}</> : <span className="yp-muted">담당 없음</span>}</div>
               <div className="yp-mv-act"><Link className={`yp-btn${next.tone === "todo" || next.tone === "fix" ? " yp-pri" : ""}`} href={next.href}>{next.button}{next.tone === "todo" || next.tone === "fix" ? <ArrowRight size={14} aria-hidden="true" /> : null}</Link>

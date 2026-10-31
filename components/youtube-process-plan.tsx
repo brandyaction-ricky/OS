@@ -210,7 +210,10 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
     : { kind: "button", label: `${confirmLabel}하고 다음으로${lines.length > 1 ? ` (${lines.length}개)` : ""}`, busy, onClick: () => void gate("confirm"),
       reason: topicMissing(form.title, { type: form.kind, target: form.target }) || (!short ? "" : !research.refs ? "참고 영상을 찾아 주세요" : !research.formula ? "공식을 고르고 주제를 정해 주세요" : "") };
   const others = projects.filter(row => row.id !== shell.id);
-  const reusableMatches = others.filter(row => projectName(row).toLocaleLowerCase().includes(reuseQuery.trim().toLocaleLowerCase()));
+  // 로건 QA 10/30: a longform's list held 숏폼 and 복사본 — only the same kind of video, without copies, newest first.
+  const family = (kind: YpKind | null | undefined) => kind === "short" || kind === "card" ? kind : "long";
+  const reusableMatches = others.filter(row => family(row.yp.topic.type) === family(form.kind) && !projectName(row).includes("(복사본)")
+    && projectName(row).toLocaleLowerCase().includes(reuseQuery.trim().toLocaleLowerCase()));
   const reusable = recentProjects(reusableMatches, reuseLimit);
   const importTopic = (source: YpProject) => {
     if (!editable || busy) return;
@@ -268,7 +271,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
           </div> : null}
         </Field>
         <Field n={3} title="정밀 타겟" question="어떤 질문을 품은 사람이 볼까요?" need rev={rev("topic.target")}>
-          <div className="yp-max720"><input className="yp-in" id="yp-topic-target" aria-label="정밀 타겟" placeholder="예) 내가 뭘 원하는지 모르겠다는 말을 자주 하는 사람" readOnly={!open("target")} value={form.target} onChange={event => edit({ target: event.target.value })} />
+          <div className="yp-max720"><textarea className="yp-in yp-autogrow" id="yp-topic-target" rows={2} aria-label="정밀 타겟" placeholder="예) 내가 뭘 원하는지 모르겠다는 말을 자주 하는 사람" readOnly={!open("target")} value={form.target} onChange={event => edit({ target: event.target.value.replace(/\n/g, " ") })} />
             {/* Owner decision 2026-10-26 (기획_절차): a situation-led target pulls the whole script into that situation's scenes. */}
             <p className="yp-hint">처한 상황(이직·퇴사)보다 그 질문을 품은 사람으로 적어요. 주제 자체가 퇴사 같은 상황이면 상황으로 적어도 돼요.</p></div>
         </Field>

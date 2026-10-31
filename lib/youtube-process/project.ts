@@ -31,6 +31,8 @@ export const YP_FLOW = ["주제", "기획안", "구성안", "제작", "최종 �
 export const YP_STAGE_INDEX: Record<YpStage, number> = { topic: 0, draft: 1, outline: 2, make: 3, review: 4, upload: 5, shorts: 6, done: 7 };
 export const YP_KIND_LABEL: Record<YpKind, string> = { live: "롱폼 실사 촬영", anim: "롱폼 애니메이션", short: "숏폼 (릴스 · 광고)", card: "카드뉴스" };
 export const YP_KIND_SHORT: Record<YpKind, string> = { live: "실사", anim: "애니메이션", short: "숏폼", card: "카드뉴스" };
+/** A person as records name them: older records kept the e-mail, which is never shown whole (로건 QA 10/30). */
+export const personName = (name?: string | null) => (name ?? "").split("@")[0];
 /**
  * The steps a project goes through (index into YP_FLOW and the name shown). A 숏폼 (owner decision 2026-10-21) has no
  * 기획안 · 구성안 — what to make and the scenes sit in 제작 — and ends with 내보내기 instead of the YouTube upload and 쇼츠.
