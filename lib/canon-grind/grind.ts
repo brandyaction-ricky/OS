@@ -1,0 +1,108 @@
+// 정본 다듬기 (카드뉴스 설계서 §3 · §9): a fixed 시험 묶음 drawn again under each 정본 version, scored on that content's 평가표, and
+// compared run by run. One loop for every kind of content; what differs per kind (the 정본, the 평가표, what a draft is and how it is
+// checked) sits in GRIND_KINDS. The rules here are read by the screen and the server; each 정본 is edited in its OS document.
+import { cardProblems, type CardDraft } from "../cardnews/formats.ts";
+import { checkShortScript, headCopyProblem } from "../youtube-process/short-script.ts";
+import type { YpCardSource } from "../youtube-process/stages.ts";
+
+export type GrindKind = "card" | "short";
+export type CardGrade = "상" | "중" | "하";
+export const CARD_GRADES: CardGrade[] = ["상", "중", "하"];
+export interface GrindCriterion { n: 1 | 2 | 3 | 4 | 5 | 6; name: string; top: string }
+export type CardCriterion = GrindCriterion["n"];
+
+/** A 숏폼 draft as the 대본 job returns it: the first screen's 헤드 카피, two first lines, the insight and the script (one line = one screen). */
+export interface ShortDraft { headCopy: string; hooks: { kind: string; text: string }[]; insight: string; text: string; formula: string }
+export type CardDraftPart = Pick<CardDraft, "format" | "slides" | "caption" | "hashtags">;
+export type BenchDraft = CardDraftPart | ShortDraft;
+
+/**
+ * Per kind: the 정본 the drafts follow, its 평가표 (six criteria × 상 · 중 · 하), the record kinds and what the automatic check counts.
+ * 카드뉴스: 카드뉴스 정본 §8. 숏폼 대본: 숏폼 대본 정본 §10 판정 검사 1~6 (1 · 2 · 3 failing = 다시 쓰기 there).
+ */
+export const GRIND_KINDS: Record<GrindKind, { label: string; canonTitle: string; criteria: GrindCriterion[]; bench: string; run: string; findings: (draft: BenchDraft) => number }> = {
+  card: { label: "카드뉴스", canonTitle: "카드뉴스 정본", bench: "yp_card_bench", run: "yp_card_bench_run", findings: draft => cardProblems(draft as CardDraftPart).blocking.length, criteria: [
+    { n: 1, name: "표지에서 멈추나", top: "누구 이야기인지 바로 보이고, 넘겨 보고 싶다" },
+    { n: 2, name: "한 장에 한 메시지", top: "장마다 하나만 말하고, 앞뒤 장이 이어진다" },
+    { n: 3, name: "원본에 충실한가 · 근거", top: "원본에 없는 사실 · 숫자가 없다. 단독은 근거가 붙어 있다" },
+    { n: 4, name: "우리 말투인가", top: "말하듯 자연스럽고 AI 같은 문장이 없다" },
+    { n: 5, name: "포맷에 맞나", top: "글자 수 안, 칸 역할대로, 장 수 범위 안" },
+    { n: 6, name: "저장 · 다음 행동", top: "저장하고 싶고, 마지막 장의 다음 행동이 분명하다" }] },
+  short: { label: "숏폼 대본", canonTitle: "숏폼 대본 정본", bench: "yp_short_bench", run: "yp_short_bench_run",
+    findings: draft => { const short = draft as ShortDraft; return checkShortScript(short.text).problems.length + (headCopyProblem(short.headCopy) ? 1 : 0); }, criteria: [
+    { n: 1, name: "첫 화면에서 멈추나", top: "소리 없이 헤드 카피만 봐도 멈추고, 첫 문장만 듣고 다음이 궁금하다" },
+    { n: 2, name: "통찰을 한 문장으로", top: "롱폼을 안 본 사람도 다 듣고 통찰을 한 문장으로 말할 수 있다" },
+    { n: 3, name: "혼자서 이해되나", top: "처음 듣는 이름 · 대상이 소개 없이 나오지 않는다" },
+    { n: 4, name: "통찰이 하나인가", top: "통찰이 딱 하나다" },
+    { n: 5, name: "「이거 완전 난데」", top: "듣는 사람이 「이거 완전 난데」 하는 문장이 있다" },
+    { n: 6, name: "끝이 제일 센가", top: "마지막 두 줄 중 하나가 이 편에서 제일 센 문장이다" }] },
+};
+export const isGrindKind = (value: unknown): value is GrindKind => value === "card" || value === "short";
+/** The 정본 §9 graduation: in a run, 80% of the drafts at 중 or better on every criterion with 상 on four, and no automatic finding. */
+export const GRADUATION = { passRate: 0.8, tops: 4 } as const;
+export const BENCH_MAX = 8;
+
+/** One 시험 원본, frozen: the text a 카드뉴스 was made from, or a 숏폼's 대본 job card as it was asked (topic · formula · 참고 영상). */
+export interface BenchItem {
+  id: string; title: string; target: string; note: string; focus: string; source: YpCardSource; from?: { projectId: string; title: string }; at: string; by: string;
+  /** 숏폼: the 대본 job card without the PD's script, drawn again as it is (the 정본 it points to is read anew each run). */
+  instructions?: string;
+}
+export interface Bench { items: BenchItem[] }
+export interface BenchScore { name: string; grades: Partial<Record<CardCriterion, CardGrade>>; notes: Partial<Record<CardCriterion, string>>; at: string }
+/** One draft of a run: key = item:format (a 숏폼 has the one format 「script」); the draft, or why GPT could not make one. */
+export interface BenchResult { key: string; itemId: string; title: string; format: string; draft?: BenchDraft; error?: string }
+export interface BenchRun {
+  id: string; canon: string; at: string; by: string; byName: string; model: string; formats: string[];
+  state: "running" | "done" | "failed"; error?: string; results: BenchResult[];
+  /** result key → scorer id → score; each person scores on their own line. */
+  scores: Record<string, Record<string, BenchScore>>;
+}
+export const resultKey = (itemId: string, format: string) => `${itemId}:${format}`;
+/** The version a 정본 calls itself: its 정본 묶음 line, else its 상태 line (v0.7), else the document version. */
+export const canonVersion = (text: string, current: number) =>
+  text.match(/정본 묶음:\s*\**\s*(v[\d.]+)/)?.[1] ?? text.match(/상태:\s*\**\s*(?:초안\s*)?(v[\d.]+)/)?.[1] ?? `doc v${current}`;
+
+const RANK: Record<CardGrade, number> = { 하: 0, 중: 1, 상: 2 };
+/** A draft's grade per criterion across everyone who scored all six: the lowest one counts (a weak point anyone saw stays seen). */
+export function mergedGrades(scores: Record<string, BenchScore> | undefined) {
+  const ns = [1, 2, 3, 4, 5, 6] as const;
+  const full = Object.values(scores ?? {}).filter(score => ns.every(n => score.grades[n]));
+  if (!full.length) return null;
+  return Object.fromEntries(ns.map(n => [n, full.map(score => score.grades[n]!).sort((a, b) => RANK[a] - RANK[b])[0]])) as Record<CardCriterion, CardGrade>;
+}
+export const passes = (grades: Record<CardCriterion, CardGrade>) => {
+  const all = Object.values(grades);
+  return !all.includes("하") && all.filter(grade => grade === "상").length >= GRADUATION.tops;
+};
+
+/** How a run did: drafts made, automatic findings, how many are scored and pass, and whether it meets the graduation. */
+export function runSummary(run: Pick<BenchRun, "results" | "scores" | "state">, kind: GrindKind) {
+  const made = run.results.filter(result => result.draft);
+  const failed = run.results.length - made.length;
+  const findings = made.reduce((sum, result) => sum + GRIND_KINDS[kind].findings(result.draft!), 0);
+  const merged = made.map(result => mergedGrades(run.scores[result.key])).filter((grades): grades is Record<CardCriterion, CardGrade> => Boolean(grades));
+  const passed = merged.filter(passes).length;
+  const passRate = merged.length ? passed / merged.length : 0;
+  const graduated = run.state === "done" && made.length > 0 && merged.length === made.length && !failed && !findings && passRate >= GRADUATION.passRate;
+  return { drafts: made.length, failed, findings, scored: merged.length, passed, passRate, graduated };
+}
+/** 정본 §9 졸업: the two newest finished runs both meet it. */
+export const graduatedTwice = (runs: BenchRun[], kind: GrindKind) => {
+  const done = runs.filter(run => run.state === "done").sort((a, b) => b.at.localeCompare(a.at)).slice(0, 2);
+  return done.length === 2 && done.every(run => runSummary(run, kind).graduated);
+};
+
+/**
+ * 고칠 점 of a run, per criterion: every 중 · 하 with its reason. A criterion flagged on two or more different drafts is a 정본 문제
+ * (카드뉴스 정본 §8); once is that draft's own problem.
+ */
+export function fixList(run: Pick<BenchRun, "results" | "scores">, kind: GrindKind) {
+  return GRIND_KINDS[kind].criteria.map(c => {
+    const notes = run.results.filter(result => result.draft).flatMap(result => Object.values(run.scores[result.key] ?? {})
+      .filter(score => score.grades[c.n] && score.grades[c.n] !== "상")
+      .map(score => ({ key: result.key, title: result.title, format: result.format, grade: score.grades[c.n]!, note: score.notes[c.n]?.trim() ?? "", by: score.name })));
+    const drafts = new Set(notes.map(note => note.key)).size;
+    return { n: c.n, name: c.name, drafts, canonIssue: drafts >= 2, notes };
+  }).filter(row => row.notes.length).sort((a, b) => b.drafts - a.drafts);
+}

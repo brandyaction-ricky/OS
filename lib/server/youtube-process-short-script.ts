@@ -232,7 +232,8 @@ export const shortScriptInputKey = (state: Pipeline) => {
 export const shortScriptQuery = (state: Pipeline) => { const { project, shortScript } = v1Stages(state); return shortScript.data.query.trim() || projectName(project); };
 
 const SCRIPT_SHAPE = `{ "formulas": [${FORMULA_SHAPE}], "use": "쓴 공식 이름", "insight": "통찰 한 줄", "headCopy": "이 숏폼 첫 화면의 헤드 카피 (20자 이하)", "hooks": [{ "kind": "반전형", "text": "첫 문장" }, { "kind": "직격형", "text": "첫 문장" }], "script": "첫 문장\\n둘째 문장\\n[관계] 비교가 있는 문장\\n…", "picked": ["실제로 본 레퍼런스 주소"], "notes": "출처 메모 · PD에게 한 줄" }`;
-export async function shortScriptCard(service: Service, state: Pipeline, leaseMinutes: number, market?: PackagingMarket, adBrief?: YpShortBrief) {
+/** fresh: the card as a first draw (no PD script, no 대표 request) — how 정본 다듬기 draws a confirmed 숏폼 again. */
+export async function shortScriptCard(service: Service, state: Pipeline, leaseMinutes: number, market?: PackagingMarket, adBrief?: YpShortBrief, fresh = false) {
   const { project, shortScript } = v1Stages(state);
   const docs = await namedProcedures(service, [SHORT_SCRIPT_CANON, TONE_CANON]);
   const from = project.yp.shortFrom;
@@ -248,8 +249,8 @@ export async function shortScriptCard(service: Service, state: Pipeline, leaseMi
     ...(chosen ? { chosen: { formula: chosen, insight: draft.insight } } : {}),
     ...(from ? { from: { longform: from.title, scene: from.scene, paragraph: from.paragraph, script: longform.slice(0, 40_000) } } : {}),
     ...refs,
-    ...(draft.text.trim() ? { pdDraft: { insight: draft.insight, script: draft.text } } : {}),
-    ...(project.yp.gates.draft.state === "changes" ? { ceoRequest: { memo: project.yp.gates.draft.memo } } : {}),
+    ...(!fresh && draft.text.trim() ? { pdDraft: { insight: draft.insight, script: draft.text } } : {}),
+    ...(!fresh && project.yp.gates.draft.state === "changes" ? { ceoRequest: { memo: project.yp.gates.draft.memo } } : {}),
   };
   return `이 작업 하나만 처리합니다. 승인 · 업로드 · 게시 · 삭제는 하지 않습니다.
 
@@ -282,12 +283,12 @@ async function longformScript(service: Service, projectId: string) {
   return narrationFromMarkdown(String((data?.[0]?.metadata?.yp as { script?: string } | undefined)?.script ?? ""));
 }
 /** The two canon texts the 정본 겹침 count compares with (a draft canon counts too; it is the text staff copy from). */
-async function canonText(service: Service) {
+export async function canonText(service: Service) {
   const { data } = await service.from("os_documents").select("title,content_md").in("title", [SHORT_SCRIPT_CANON, TONE_CANON]).neq("status", "archived");
   return (data ?? []).map(doc => String(doc.content_md ?? "")).join("\n");
 }
 
-const scriptResultSchema = z.object({
+export const scriptResultSchema = z.object({
   formulas: z.array(formulaSchema).max(5).default([]), use: z.string().trim().min(1).max(40), insight: z.string().trim().min(1).max(120), headCopy: z.string().trim().min(1).max(40),
   hooks: z.array(z.object({ kind: z.enum(["반전형", "직격형"]), text: z.string().trim().min(1).max(60) }).strict()).length(2),
   script: z.string().trim().min(1).max(3000), picked: z.array(z.string().trim().max(300)).max(5).default([]), notes: z.string().trim().max(1000).default(""),
