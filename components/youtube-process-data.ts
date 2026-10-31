@@ -1,9 +1,10 @@
 "use client";
 
+import { rankAds, type AdHistoryRow, type AdResult } from "@/lib/youtube-process/ad-results";
 import { apiRequest, ApiRequestError, listMembers, listRecords, uploadContentMedia } from "@/lib/api-client";
 import type { OsRecord } from "@/lib/record-types";
 import type { OvJob } from "@/lib/youtube-process/overview";
-import { newProjectMeta, TOPIC_FIELD_OF, topicFieldEditable, topicLines, topicMissing, trashDaysLeft, YP_MAX_LINES, type YpGate, type YpKind, type YpProject, type YpRef, type YpTrashed } from "@/lib/youtube-process/project";
+import { newProjectMeta, projectName, TOPIC_FIELD_OF, topicFieldEditable, topicLines, topicMissing, trashDaysLeft, YP_MAX_LINES, type YpGate, type YpKind, type YpProject, type YpRef, type YpTrashed } from "@/lib/youtube-process/project";
 import { applyGateAction, confirmTab, GateError, type YpApproverAction } from "@/lib/youtube-process/confirm";
 import { columnSignature, confirmPlan, draftMissing, emptyStage, outlineMissing, scriptFromPlan, scriptKey, thumbsMissing, withScriptVersion, type YpStageData, type YpStageKind, type YpStoredFormula } from "@/lib/youtube-process/stages";
 import { shortScriptMissing, type YpShortRefFetch } from "@/lib/youtube-process/short-script";
@@ -74,6 +75,9 @@ export interface YpClient {
   legacy(): Promise<YpLegacyTopic[]>;
   schedule(): Promise<YpScheduleItem[]>;
   moveDates(id: string, makeVersion: number, patch: { editDue?: string; uploadPlan?: string; why?: string }): Promise<void>;
+  /** 광고 성과 1단계: one period's numbers of an ad added (or changed, or removed), and every ad's numbers best first. */
+  saveAdResult(id: string, uploadVersion: number, change: { entry?: Omit<AdResult, "at" | "by" | "appeal" | "headCopy" | "id"> & { id?: string }; remove?: string }): Promise<{ ads: AdResult[]; version: number }>;
+  adHistory(): Promise<AdHistoryRow[]>;
   adopt(id: string): Promise<YpProject>;
   /** 영상 복제 (owner decision 2026-10-28): the same step (제작 at most), voice and video made again. */
   copy(id: string): Promise<YpProject>;
@@ -163,6 +167,8 @@ function apiClient(token: string): YpClient {
     legacy: async () => (await apiRequest<{ topics: YpLegacyTopic[] }>("/api/v1/content/youtube/legacy", { token })).topics,
     schedule: async () => (await apiRequest<{ items: YpScheduleItem[] }>("/api/v1/content/youtube/schedule", { token })).items,
     moveDates: async (id, makeVersion, patch) => { await apiRequest(`${base}/${id}/dates`, { token, method: "PATCH", body: json({ expectedVersion: makeVersion, ...patch }) }); },
+    saveAdResult: (id, uploadVersion, change) => apiRequest(`${base}/${id}/ads`, { token, method: "POST", body: json({ expectedVersion: uploadVersion, ...change }) }),
+    adHistory: async () => (await apiRequest<{ rows: AdHistoryRow[] }>("/api/v1/content/youtube/ads", { token })).rows,
     adopt: async id => (await apiRequest<{ project: YpProject }>("/api/v1/content/youtube/legacy", { token, method: "POST", body: json({ id }) })).project,
     copy: async id => (await apiRequest<{ project: YpProject }>(`${base}/${id}/copy`, { token, method: "POST", body: json({}) })).project,
     trashList: async () => (await apiRequest<{ items: (YpTrashed & { canManage: boolean })[] }>(`${base}/trash`, { token })).items,
@@ -570,6 +576,15 @@ function demoClient(): YpClient {
       return structuredClone({ project, makeVersion: make.version, editDue: make.data.editDue, uploadPlan: make.data.uploadPlan ?? "", publishAt: upload.run?.publishAt || upload.publishAt || "", log: make.data.log.filter(item => item.field).slice(0, 5),
         waiting: waiting ? { gate: waiting, requestedAt: project.yp.gates[waiting].requestedAt ?? "" } : null });
     }),
+    saveAdResult: async (id, uploadVersion, change) => {
+      const project = find(id); const stages = stagesOf(project); const upload = stages.upload;
+      checkVersion(upload.version, uploadVersion);
+      let ads = (upload.data.ads ?? []).filter(row => row.id !== change.remove);
+      if (change.entry) { const row = { ...change.entry, id: change.entry.id || String(Date.now()), at: new Date().toISOString(), by: "리키", appeal: "[예시] 결과지를 바로 써먹는 법", headCopy: "[예시] 결과지 30초 요약" }; ads = [...ads.filter(item => item.id !== row.id), row]; }
+      demoStages.set(id, { ...stages, upload: { ...upload, version: upload.version + 1, data: { ...upload.data, ads } } });
+      return { ads, version: upload.version + 1 };
+    },
+    adHistory: async () => rankAds(demoProjects().flatMap(project => (stagesOf(project).upload.data.ads ?? []).map(result => ({ projectId: project.id, title: projectName(project), result })))),
     moveDates: async (id, makeVersion, patch) => {
       const project = find(id); const stages = stagesOf(project); const make = stages.make;
       checkVersion(make.version, makeVersion);

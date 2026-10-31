@@ -1,4 +1,5 @@
 "use client";
+import { AdResultsSection } from "./youtube-process-ads";
 import { saveLatest } from "@/lib/save-latest";
 import { shortformDiagramSchema } from "@/lib/shortform-production";
 import { ShortformDiagramFields } from "./shortform-diagram-fields";
@@ -365,6 +366,7 @@ export function ShortExportScreen({ header, page }: { header: ReactNode; page: Y
         </dl>
         <p className="yp-hint">광고 문구와 연결 페이지의 약속이 맞는지 올리기 전에 한 번 더 봐요.</p>
       </YpSection> : null}
+      {project.yp.topic.purpose === "ad" || view?.brief.purpose === "ad" ? <AdResultsSection page={page} n={4} /> : null}
       {/* 카드뉴스 (설계서 2026-10-30): a confirmed 대본 also makes an Instagram 카드뉴스. */}
       {view?.brief.purpose !== "ad" && project.yp.topic.purpose !== "ad" ? <CardFromProject page={page} /> : null}
     </> : null}
