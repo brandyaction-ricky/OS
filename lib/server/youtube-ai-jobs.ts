@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { pastAdsForAi } from "@/lib/youtube-process/ad-results";
+import { adHistory } from "./youtube-ad-results";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
@@ -548,7 +550,8 @@ export async function claimStaffJob(agent: RequestActor, jobId: string, byGpt = 
     const lease = await take();
     const lists = await Promise.all((brief.purpose === "ad" ? ["shorts_proposal", "appeal_candidates"] as const : ["shorts_proposal"] as const).map(action => procedureRefs(service(), action).catch(() => [])));
     const docs = withNamed(await namedProcedures(service(), [SHORTFORM_CANON_TITLE]), lists.flat(), 8);
-    return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: shortJobCard(project, brief, docs, minutes, script) };
+    const pastAds = brief.purpose === "ad" ? pastAdsForAi(await adHistory(service()).catch(() => [])) : null;
+    return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: shortJobCard(project, brief, docs, minutes, script, pastAds) };
   }
   if (m.task === "retitle") {
     const state = await currentRetitleInput(job);
