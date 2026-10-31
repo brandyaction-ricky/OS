@@ -6,6 +6,8 @@ export interface ChannelConnection {
   accountType: string;
   channelId?: string;
   analyticsConnected?: boolean;
+  /** CTA 일괄 관리 (2026-10-31): the connection may change uploaded videos' descriptions. */
+  manageConnected?: boolean;
   teamShared: boolean;
   status: string;
   connectedAt: string;

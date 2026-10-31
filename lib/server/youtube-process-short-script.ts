@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
+import { pastAdsForAi } from "@/lib/youtube-process/ad-results";
+import { adHistory } from "./youtube-ad-results";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
@@ -243,9 +245,12 @@ export async function shortScriptCard(service: Service, state: Pipeline, leaseMi
   // 주제 확정 (owner 2026-10-28): the formula the PD fixed the topic with, from the 주제 step's run or the 공식 창고.
   const chosen = draft.formula.trim() ? [...(draft.research?.formulas ?? []), ...(draft.ai?.formulas ?? []), ...await readShortFormulas(service)].find(item => item.name === draft.formula.trim()) : undefined;
   const ad = project.yp.topic.purpose === "ad";
+  // 광고 성과 1단계 (로건 QA 10/30): an ad's script reads which earlier ads paid back.
+  const pastAds = ad ? pastAdsForAi(await adHistory(service).catch(() => [])) : null;
   const inputs = {
     topic: projectName(project), audience: project.yp.topic.target, note: project.yp.topic.note, ...(ad ? { purpose: "광고" } : {}),
     ...(ad && adBrief ? { brief: { product: adBrief.product, audience: adBrief.audience, goal: adBrief.goal, landingUrl: adBrief.landingUrl, evidence: adBrief.evidence, appeal: adBrief.appeal } } : {}),
+    ...(pastAds ? { pastAds } : {}),
     ...(chosen ? { chosen: { formula: chosen, insight: draft.insight } } : {}),
     ...(from ? { from: { longform: from.title, scene: from.scene, paragraph: from.paragraph, script: longform.slice(0, 40_000) } } : {}),
     ...refs,
@@ -263,7 +268,7 @@ ${chosen ? `1. 공식: chosen.formula는 PD가 주제 단계에서 참고 영상
 3. 공식 뽑기(§2-3): ${DRAW_FORMULAS}`}
 4. 대본(§3~§9): 고른 공식에 이 주제의 장면을 넣어 우리 말로 새로 씁니다. headCopy는 이 숏폼 첫 3초 화면 맨 위 큰 글자(${SHORT_SCRIPT.head}자 이하, 첫 문장과 같지 않아도 됨)입니다. 한 줄 = 한 문장 = 화면 한 장. 첫 줄은 hooks 중 하나와 같게. 화면의 80% 이상이 도식이 되므로(§7) 첫 줄과 마지막 줄 사이는 그림이 되는 말(비교 · 순서 · 변화 · 선택 · 쌓이는 항목 · 질문)로 쓰고, 그런 줄 앞에 [관계], 인물이 처음 나오는 줄은 [사람]을 붙입니다.${from ? " 실제 사례 · 숫자는 from.script(롱폼 원고)에 있는 것만 씁니다." : ""}
 5. 기계 검사(§10)를 OS가 다시 셉니다: 전체 ${SHORT_SCRIPT.min}~${SHORT_SCRIPT.max}자(길게 쓸 때는 ${SHORT_SCRIPT.max60}자까지), 첫 문장 · 두 훅 ${SHORT_SCRIPT.first}자 이하, ${SHORT_SCRIPT.hard}자 넘는 줄 0개, ${SHORT_SCRIPT.line}자 넘는 줄 ${SHORT_SCRIPT.longLines}개까지, 바깥 지시어 · 「당신 · 여러분」 · 인사 · 예고 0건, 레퍼런스 제목 · 대본과 정본에서 10자 넘게 같은 구간 0건. 걸리면 고칠 점이 돌아옵니다.
-6. 판정 검사(§10 1~6)는 새 대화에서 대본만 보고 답해 notes에 한 줄로 남깁니다.${ad ? `\n7. 광고: ${AD_NOTE} brief(광고 브리프)에 적힌 상품 · 구매 이유 · 근거 · 할 행동 · 연결 페이지에 맞춰 쓰고, brief에 없는 효과 · 수치 · 후기를 만들지 않습니다.` : ""}
+6. 판정 검사(§10 1~6)는 새 대화에서 대본만 보고 답해 notes에 한 줄로 남깁니다.${ad ? `\n7. 광고: ${AD_NOTE} brief(광고 브리프)에 적힌 상품 · 구매 이유 · 근거 · 할 행동 · 연결 페이지에 맞춰 쓰고, brief에 없는 효과 · 수치 · 후기를 만들지 않습니다. pastAds(지난 광고 성과)가 있으면 best의 구매 이유 · 헤드 카피 방향을 참고하고 weak와 같은 방향은 피합니다. 숫자는 판단 근거로만 쓰고 문구를 그대로 베끼지 않습니다.` : ""}
 
 ## 먼저 끝까지 열 문서
 ${docLines(docs, [SHORT_SCRIPT_CANON, TONE_CANON])}
