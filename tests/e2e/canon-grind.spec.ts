@@ -26,6 +26,8 @@ test("SEO 칼럼 정본 다듬기: the column page and its image prompts beside 
   await page.goto("/content/column-canon");
   await expect(page.getByRole("heading", { name: "SEO 칼럼 정본 다듬기" })).toBeVisible();
   await expect(page.getByText("지금 정본: SEO 칼럼 만드는 절차 (정본) doc v2")).toBeVisible();
+  // 대표 decision 2026-10-31: the person who uploads the column scores it and proposes the 정본 change.
+  await expect(page.getByText("칼럼을 올리는 작업자가 OS의 SEO 칼럼 만드는 절차 (정본)에 변경 제안을 보내요.", { exact: false })).toBeVisible();
   await page.locator(".yp-grind-cell").first().click();
   const dialog = page.getByRole("dialog", { name: "평가표" });
   await expect(dialog.frameLocator("iframe.yp-grind-col").getByRole("heading", { level: 1 })).toContainText("연봉 보고 옮겼는데 또 힘들다면");

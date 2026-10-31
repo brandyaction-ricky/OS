@@ -29,7 +29,7 @@ const SUB: Partial<Record<YoutubeV1Screen | "shorts", string>> = {
   "card-canon": "같은 시험 묶음을 지금 정본으로 다시 뽑고, 평가표로 채점해 정본 버전끼리 비교해요.",
   "short-canon": "대본을 확정한 숏폼을 지금 정본으로 다시 쓰고, 정본 판정 검사로 채점해 정본 버전끼리 비교해요.",
   "threads-canon": "확정한 스레드 주제를 지금 정본으로 다시 쓰고, 정본의 검수 관문으로 채점해 정본 버전끼리 비교해요.",
-  "column-canon": "원고를 확정한 롱폼을 지금 정본으로 SEO 칼럼으로 다시 쓰고, 평가표로 채점해 정본 버전끼리 비교해요.",
+  "column-canon": "원고를 확정한 롱폼을 지금 정본으로 SEO 칼럼으로 다시 써요. 칼럼을 올리는 작업자가 평가표로 채점하고 정본을 다듬어요.",
 };
 
 const TITLES: Record<YoutubeV1Screen | "shorts", string> = { overview: "한눈에 보기", projects: "내 영상", plan: "기획", make: "제작", "final-check": "최종 검토", upload: "업로드", shorts: "쇼츠 · 칼럼", schedule: "콘텐츠 일정", confirm: "컨펌", links: "링크관리", "voice-dictionary": "음성 사전", "card-canon": "카드뉴스 정본 다듬기", "short-canon": "숏폼 대본 정본 다듬기", "threads-canon": "스레드 정본 다듬기", "column-canon": "SEO 칼럼 정본 다듬기" };
