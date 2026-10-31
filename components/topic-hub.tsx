@@ -41,17 +41,17 @@ export function TopicHub() {
     <p className={`yp-pf-bar yp-pf-${platform}`}><b>{info.refs}</b><span>반응도 기준 · {info.bar}</span></p>
     {platform === "longform" ? <YoutubeDiscoverScreen bare />
       : platform === "threads" ? <ContentAutomationV07 page="references" embedded />
-      : platform === "card" ? <CardStart />
-      : <ShortStart key={platform} platform={platform} />}
+      : platform === "card" ? <CardStart initial={params.get("q") ?? ""} />
+      : <ShortStart key={platform} platform={platform} initial={params.get("q") ?? ""} />}
   </div>;
 }
 
 /** 숏폼 · 릴스 and 광고: a 초안 키워드 (+ a link) becomes a new 숏폼 at 주제, where its references, formulas and 주제 후보 are found. */
-function ShortStart({ platform }: { platform: "short" | "ad" }) {
+function ShortStart({ platform, initial = "" }: { platform: "short" | "ad"; initial?: string }) {
   const { accessToken, demo, profile } = useSession();
   const client = useMemo(() => youtubeProcessClient(accessToken, demo), [accessToken, demo]);
   const router = useRouter();
-  const [keyword, setKeyword] = useState("");
+  const [keyword, setKeyword] = useState(initial);
   const [link, setLink] = useState("");
   const [target, setTarget] = useState("");
   const [busy, setBusy] = useState(false);

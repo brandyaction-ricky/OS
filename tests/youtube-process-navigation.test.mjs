@@ -53,7 +53,8 @@ test("side menu by what is made (owner 2026-10-29, A안): 공통 + 롱폼 · 숏
   const ids = stages.map(stage => stage.id);
   assert.deepEqual(ids.slice(0, 7), ["content", "yt-longform", "yt-short", "yt-ad", "yt-card", "threads", "automation"]);
   assert.deepEqual(stages.map(stage => stage.label).slice(0, 7), ["공통", "롱폼 유튜브", "숏폼 · 릴스", "광고", "카드뉴스", "스레드", "자동화 관리"]);
-  assert.deepEqual(stages[0].pages.map(page => page.label), ["주제 찾기", "스케줄", "성과", "링크관리"]);
+  // 한눈에 보기 (리키 관제실 시안, owner decision 2026-10-31) leads 공통.
+  assert.deepEqual(stages[0].pages.map(page => page.label), ["한눈에 보기", "주제 찾기", "스케줄", "성과", "링크관리"]);
   const threads = stages.find(stage => stage.id === "threads");
   assert.equal(threads.pages[0].label, "스레드 글감 모으기", "레퍼런스 수집 says what it collects");
   assert.equal(threads.pages[0].href, "/automation/references");

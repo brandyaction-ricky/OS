@@ -79,6 +79,10 @@
 .linear-shell.shell-v2 .nav-group-count { margin-left: auto; font-size: 12px; color: var(--muted); }
 /* 대표 메뉴: the number is the videos waiting for 컨펌 (2026-10-25), warm while any wait. */
 .linear-shell.shell-v2 .nav-group-count.is-alert { min-width: 18px; padding: 0 6px; border-radius: 999px; background: var(--warning-soft); color: var(--warning); font-weight: 700; text-align: center; }
+.linear-shell.shell-v2 .nav-group-count.is-ai { min-width: 18px; padding: 0 6px; border-radius: 999px; background: var(--purple-soft); color: var(--purple); font-weight: 700; text-align: center; }
+.linear-shell.shell-v2 .nav-group-work { display: inline-flex; gap: 4px; margin-left: auto; }
+.linear-shell.shell-v2 .nav-group-work .nav-group-count { margin-left: 0; }
+.linear-shell.shell-v2 .nav-entry-badge { margin-left: auto; padding: 0 6px; border-radius: 999px; background: var(--warning-soft); color: var(--warning); font-size: 11px; font-weight: 700; }
 .linear-shell.shell-v2 .nav-alert-dot { width: 7px; height: 7px; border-radius: 4px; background: var(--warning); display: inline-block; margin-left: 2px; }
 
 /* 메뉴 항목 */

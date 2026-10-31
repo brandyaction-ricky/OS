@@ -88,6 +88,10 @@ export default async function GenericPage({ params, searchParams }: GenericPageP
   if(href==="/content/production") return <ContentProductionWorkspace showPlanningHandoff={contentPlanningHandoffEnabled} showJevAssist={contentJevAssistEnabled} showTopicJevAssist={contentTopicJevAssistEnabled}/>;
   if(href==="/organization/schedule")return <WorkspaceTabHub hub="schedule"/>;
   if(href==="/organization/leave")return <WorkspaceTabHub hub="schedule" initialTab="leave"/>;
+  // Owner decision 2026-10-31 (스타일 점검 E5): with v1 on for everyone, the old step screens that v1 fully replaced open the v1 screen
+  // that does the same job. 발행·업로드 and 유튜브 관리 stay: the home cells still use their 게시 확인 · 댓글.
+  const replaced: Record<string, string> = { "/content/topics": "/content/projects?view=discover", "/content/scripts": "/content/projects", "/content/video": "/content/projects", "/content/packages": "/content/projects" };
+  if (replaced[href] && youtubeV1Mode() === "all") redirect(replaced[href]);
   if (href === "/content/topics") return <ContentTopicsWorkspace showPlanningHandoff={contentPlanningHandoffEnabled} showTopicJevAssist={contentTopicJevAssistEnabled} />;
   if (href === "/content/scripts") return <ContentStepWorkspace step="scripts" showPlanningHandoff={contentPlanningHandoffEnabled} />;
   if (href === "/content/video") return <ContentVideoWorkspace />;
