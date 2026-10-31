@@ -25,6 +25,7 @@
 :root {
   --platform-instagram: #d9467a;
   --platform-youtube: #e5484d;
+  --platform-card: #d9822b;
   --ui-font: Pretendard, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
 }
 
