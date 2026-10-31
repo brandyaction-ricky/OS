@@ -1,5 +1,6 @@
 "use client";
 
+import { ctaPlan, type CtaVideo } from "@/lib/youtube-process/cta";
 import { rankAds, type AdHistoryRow, type AdResult } from "@/lib/youtube-process/ad-results";
 import { apiRequest, ApiRequestError, listMembers, listRecords, uploadContentMedia } from "@/lib/api-client";
 import type { OsRecord } from "@/lib/record-types";
@@ -15,6 +16,13 @@ import { CardError, cardsMissing, nextCards, type CardsPatch } from "@/lib/cardn
 import { emptyCardDraft, type CardDraft } from "@/lib/cardnews/formats";
 import { cardSourceProjectReady, projectCardSources, type CardSourceChoice } from "@/lib/cardnews/sources";
 
+/** What the CTA screen shows of one change (lib/server/youtube-cta.ts summary). */
+export interface CtaChangeView { id: string; at: string; by: string; find: string; replace: string; undoneAt: string | null; done: number; undone: number; failed: { videoId: string; error: string }[] }
+const demoCta: { videos: CtaVideo[]; history: CtaChangeView[] } = { history: [], videos: [
+  { id: "demoVid0001", title: "[예시] 연봉 보고 옮겼는데 또 힘들다면", publishedAt: "2026-10-20T09:00:00Z", description: "소개\n-----\n⬇️ 내 기질 진단 받기\nhttps://myinlab.co.kr/r/abc\n-----\n[타임라인]\n00:00 시작" },
+  { id: "demoVid0002", title: "[예시] 일이 안 맞을 때 먼저 볼 것", publishedAt: "2026-10-26T09:00:00Z", description: "소개\n-----\n⬇️ 내 기질 진단 받기\nhttps://myinlab.co.kr/r/abc\n이어서 보면 좋을 영상\nhttps://youtu.be/demo" },
+  { id: "demoVid0003", title: "[예시] 숏폼 · 다른 링크", publishedAt: "2026-10-28T09:00:00Z", description: "전체 영상 보기 ▶ https://youtu.be/demo" },
+] };
 export interface YpMember { id: string; name: string }
 export interface YpTopicInput { title?: string; kind?: YpKind | null; target?: string; note?: string; refs?: YpRef[]; purpose?: "ad" | null; assigneeId?: string | null }
 export interface YpStageView<K extends YpStageKind = YpStageKind> { id: string | null; version: number; data: YpStageData[K] }
@@ -78,6 +86,10 @@ export interface YpClient {
   /** 광고 성과 1단계: one period's numbers of an ad added (or changed, or removed), and every ad's numbers best first. */
   saveAdResult(id: string, uploadVersion: number, change: { entry?: Omit<AdResult, "at" | "by" | "appeal" | "headCopy" | "id"> & { id?: string }; remove?: string }): Promise<{ ads: AdResult[]; version: number }>;
   adHistory(): Promise<AdHistoryRow[]>;
+  /** CTA 일괄 관리: the past changes, and with `videos` the channel's uploads; a change applied or undone. */
+  cta(ownerId: string | null, videos: boolean): Promise<{ history: CtaChangeView[]; videos?: CtaVideo[] }>;
+  ctaApply(input: { ownerId?: string; find: string; replace: string; videoIds: string[] }): Promise<{ change: CtaChangeView }>;
+  ctaUndo(input: { ownerId?: string; changeId: string }): Promise<{ change: CtaChangeView }>;
   adopt(id: string): Promise<YpProject>;
   /** 영상 복제 (owner decision 2026-10-28): the same step (제작 at most), voice and video made again. */
   copy(id: string): Promise<YpProject>;
@@ -169,6 +181,9 @@ function apiClient(token: string): YpClient {
     moveDates: async (id, makeVersion, patch) => { await apiRequest(`${base}/${id}/dates`, { token, method: "PATCH", body: json({ expectedVersion: makeVersion, ...patch }) }); },
     saveAdResult: (id, uploadVersion, change) => apiRequest(`${base}/${id}/ads`, { token, method: "POST", body: json({ expectedVersion: uploadVersion, ...change }) }),
     adHistory: async () => (await apiRequest<{ rows: AdHistoryRow[] }>("/api/v1/content/youtube/ads", { token })).rows,
+    cta: (ownerId, videos) => apiRequest(`/api/v1/content/youtube/cta?${new URLSearchParams({ ...(ownerId ? { ownerId } : {}), ...(videos ? { videos: "1" } : {}) })}`, { token }),
+    ctaApply: input => apiRequest("/api/v1/content/youtube/cta", { token, method: "POST", body: json({ action: "apply", ...input }) }),
+    ctaUndo: input => apiRequest("/api/v1/content/youtube/cta", { token, method: "POST", body: json({ action: "undo", ...input }) }),
     adopt: async id => (await apiRequest<{ project: YpProject }>("/api/v1/content/youtube/legacy", { token, method: "POST", body: json({ id }) })).project,
     copy: async id => (await apiRequest<{ project: YpProject }>(`${base}/${id}/copy`, { token, method: "POST", body: json({}) })).project,
     trashList: async () => (await apiRequest<{ items: (YpTrashed & { canManage: boolean })[] }>(`${base}/trash`, { token })).items,
@@ -584,6 +599,14 @@ function demoClient(): YpClient {
       demoStages.set(id, { ...stages, upload: { ...upload, version: upload.version + 1, data: { ...upload.data, ads } } });
       return { ads, version: upload.version + 1 };
     },
+    cta: async (_ownerId, videos) => ({ history: demoCta.history, ...(videos ? { videos: demoCta.videos } : {}) }),
+    ctaApply: async input => {
+      const items = input.videoIds.map(id => { const video = demoCta.videos.find(row => row.id === id)!; const plan = ctaPlan(video.description, input.find, input.replace);
+        if ("next" in plan && plan.next !== undefined) video.description = plan.next; return { videoId: id, error: "next" in plan ? "" : plan.problem, ok: "next" in plan }; });
+      const change = { id: `cta-${Date.now()}`, at: new Date().toISOString(), by: "리키", find: input.find, replace: input.replace, undoneAt: null, done: items.filter(row => row.ok).length, undone: 0, failed: items.filter(row => !row.ok).map(row => ({ videoId: row.videoId, error: row.error })) };
+      demoCta.history = [change, ...demoCta.history]; return { change };
+    },
+    ctaUndo: async () => { throw demoError(409, "DEMO", "데모에서는 되돌리지 않아요."); },
     adHistory: async () => rankAds(demoProjects().flatMap(project => (stagesOf(project).upload.data.ads ?? []).map(result => ({ projectId: project.id, title: projectName(project), result })))),
     moveDates: async (id, makeVersion, patch) => {
       const project = find(id); const stages = stagesOf(project); const make = stages.make;
