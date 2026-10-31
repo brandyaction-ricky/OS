@@ -119,7 +119,7 @@ export function YoutubeOverviewScreen() {
           {rows.filter(row => row.state === "decide").map(row => { const project = row.gate ? projectOf(row.id) : undefined;
             // 리키 관제실 시안 v0.1: what it is and since when, the title, a one-line hint, then numbered choices.
             return <article key={row.id} className={`yp-ov-dc${selected === row.id ? " yp-on" : ""}`}>
-              <span className="yp-ov-kd">{row.now}</span><b className="yp-ov-dt">{row.title}</b><span className="yp-ov-meta">{TOPIC_PLATFORMS[row.channel].label} · {row.stage}{row.assigneeId ? ` · ${who(row.assigneeId)}` : ""}</span>
+              <span className="yp-ov-kd">{row.now.split(" · ")[0]}{row.now.includes(" · ") ? <span> · {row.now.split(" · ").slice(1).join(" · ")}</span> : null}</span><b className="yp-ov-dt">{row.title}</b><span className="yp-ov-meta">{TOPIC_PLATFORMS[row.channel].label} · {row.stage}{row.assigneeId ? ` · ${who(row.assigneeId)}` : ""}</span>
               <p className="yp-ov-hint">{project ? nextAction(project).text : "다섯 가지를 직접 확인하고 발행해요"}</p>
               {project && row.gate && data?.canConfirm && client ? <ConfirmActions list project={project} gate={row.gate} client={client} onDone={() => void load()} />
                 : <div className="yp-cf-opts"><Link className="yp-cf-opt" href={row.href}><span aria-hidden="true">1</span>{row.channel === "threads" ? "최종 확인 열기" : "컨펌하러 가기"}</Link></div>}

@@ -1324,17 +1324,18 @@
 .linear-shell .ui-v2.yp .yp-ov-ph h3{margin:0;font-size:14px}
 .linear-shell .ui-v2.yp .yp-ov-ph small{color:var(--muted);font-size:12px}
 .linear-shell .ui-v2.yp .yp-ov-k{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:12px}
-.linear-shell .ui-v2.yp .yp-ov-dc{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:12px;border:1px solid var(--warning);border-radius:10px;background:var(--card)}
-.linear-shell .ui-v2.yp .yp-ov-kd{color:var(--warning);font-size:12px;font-weight:700}
+.linear-shell .ui-v2.yp .yp-ov-dc{display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:12px;border:1px solid color-mix(in srgb,var(--warning) 40%,var(--line));border-radius:10px;background:var(--card)}
+.linear-shell .ui-v2.yp .yp-ov-kd{color:var(--warning);font-size:12px;font-weight:800}
+.linear-shell .ui-v2.yp .yp-ov-kd span{color:var(--muted);font-weight:500}
 .linear-shell .ui-v2.yp .yp-ov-dt{font-size:14px}
-.linear-shell .ui-v2.yp .yp-ov-hint{width:100%;margin:2px 0;padding:8px 10px;border-radius:6px;background:var(--panel-2);color:var(--text-2);font-size:12px}
+.linear-shell .ui-v2.yp .yp-ov-hint{width:100%;margin:0;padding:8px 10px;border-radius:8px;background:var(--panel-3);color:var(--text-2);font-size:12px}
 .linear-shell .ui-v2.yp .yp-ov-dc .yp-confirm-form{width:100%}
-.linear-shell .ui-v2.yp .yp-ov-open{font-size:12px;text-decoration:underline}
+.linear-shell .ui-v2.yp .yp-ov-open{font-size:12px;font-weight:700;text-decoration:underline;text-underline-offset:3px}
 /* Numbered choices (ConfirmActions list) — the 시안's 「1 컨펌 · 2 · 3」 buttons. */
 .linear-shell .ui-v2.yp .yp-cf-opts{display:flex;flex-direction:column;gap:6px;width:100%}
-.linear-shell .ui-v2.yp .yp-cf-opt{display:flex;align-items:center;gap:10px;width:100%;min-height:40px;padding:0 12px;border:1px solid var(--line);border-radius:6px;background:var(--panel-2);color:var(--text);font-size:13px;font-weight:600;text-align:left}
-.linear-shell .ui-v2.yp .yp-cf-opt:hover:not(:disabled),.linear-shell .ui-v2.yp .yp-cf-opt[aria-expanded=true]{border-color:var(--accent);background:var(--card)}
-.linear-shell .ui-v2.yp .yp-cf-opt>span{display:inline-grid;place-items:center;flex:none;width:22px;height:22px;border-radius:50%;background:var(--card);color:var(--text-2);font-size:12px}
+.linear-shell .ui-v2.yp .yp-cf-opt{display:flex;align-items:center;gap:10px;width:100%;min-height:40px;padding:0 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel-2);color:var(--text);font-size:13px;font-weight:700;text-align:left}
+.linear-shell .ui-v2.yp .yp-cf-opt:hover:not(:disabled),.linear-shell .ui-v2.yp .yp-cf-opt[aria-expanded=true]{border-color:var(--accent-2);background:var(--surface-hover)}
+.linear-shell .ui-v2.yp .yp-cf-opt>span{display:inline-grid;place-items:center;flex:none;width:22px;height:22px;border-radius:6px;background:var(--accent-soft);color:var(--accent-2);font-size:12px}
 .linear-shell .ui-v2.yp .yp-ov-nowbox{display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
 .linear-shell .ui-v2.yp .yp-ov-nowbox[data-s=ai]{border-color:var(--purple)}
 .linear-shell .ui-v2.yp .yp-ov-nowbox[data-s=blocked]{border-color:var(--danger)}
