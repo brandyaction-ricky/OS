@@ -78,6 +78,10 @@
 .yp-grind-script b { font-size: 13px; }
 .yp-grind-short { display: grid; gap: 10px; }
 .yp-grind-lines { margin: 0; padding-left: 22px; display: grid; gap: 3px; font-size: 14px; }
+/* 스레드: the first post in a comparison cell, the whole chain in the 평가표. */
+.yp-grind-post { white-space: pre-wrap; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+.yp-grind-posts { margin: 0; padding-left: 20px; display: grid; gap: 12px; font-size: 14px; line-height: 1.6; }
+.yp-grind-posts p { margin: 2px 0 0; white-space: pre-wrap; }
 
 /* Card usability: browsing, structure controls and shared post text stay separate. */
 .yp-source-picker { margin: 0 0 14px; min-width: 0; }

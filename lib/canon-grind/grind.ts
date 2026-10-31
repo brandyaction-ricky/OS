@@ -4,8 +4,9 @@
 import { cardProblems, type CardDraft } from "../cardnews/formats.ts";
 import { checkShortScript, headCopyProblem } from "../youtube-process/short-script.ts";
 import type { YpCardSource } from "../youtube-process/stages.ts";
+import { threadsPostsProblem } from "../threads-posts.ts";
 
-export type GrindKind = "card" | "short";
+export type GrindKind = "card" | "short" | "threads";
 export type CardGrade = "상" | "중" | "하";
 export const CARD_GRADES: CardGrade[] = ["상", "중", "하"];
 export interface GrindCriterion { n: 1 | 2 | 3 | 4 | 5 | 6; name: string; top: string }
@@ -13,12 +14,17 @@ export type CardCriterion = GrindCriterion["n"];
 
 /** A 숏폼 draft as the 대본 job returns it: the first screen's 헤드 카피, two first lines, the insight and the script (one line = one screen). */
 export interface ShortDraft { headCopy: string; hooks: { kind: string; text: string }[]; insight: string; text: string; formula: string }
+/** A 스레드 글타래 as the 집필 job returns it: 본문, 관점 댓글, (적용 대댓글), (공개 출처), each one post. */
+export interface ThreadsDraft { posts: string[] }
 export type CardDraftPart = Pick<CardDraft, "format" | "slides" | "caption" | "hashtags">;
-export type BenchDraft = CardDraftPart | ShortDraft;
+export type BenchDraft = CardDraftPart | ShortDraft | ThreadsDraft;
+/** A public post must not carry an OS address (스레드 정본 §1 · 부록 B: 공개 posts에 내부 OS 링크를 넣지 않는다). */
+export const internalLinks = (posts: string[]) => posts.filter(post => /brandyaction-os\.vercel\.app/i.test(post)).length;
 
 /**
  * Per kind: the 정본 the drafts follow, its 평가표 (six criteria × 상 · 중 · 하), the record kinds and what the automatic check counts.
  * 카드뉴스: 카드뉴스 정본 §8. 숏폼 대본: 숏폼 대본 정본 §10 판정 검사 1~6 (1 · 2 · 3 failing = 다시 쓰기 there).
+ * 스레드: 쓰레드 자동화 운영 정본 §7 교정 · 검수의 관문 여섯, 상 = §4 후보 심사와 §7 「실제로 남길 증거」.
  */
 export const GRIND_KINDS: Record<GrindKind, { label: string; canonTitle: string; criteria: GrindCriterion[]; bench: string; run: string; findings: (draft: BenchDraft) => number }> = {
   card: { label: "카드뉴스", canonTitle: "카드뉴스 정본", bench: "yp_card_bench", run: "yp_card_bench_run", findings: draft => cardProblems(draft as CardDraftPart).blocking.length, criteria: [
@@ -36,8 +42,16 @@ export const GRIND_KINDS: Record<GrindKind, { label: string; canonTitle: string;
     { n: 4, name: "통찰이 하나인가", top: "통찰이 딱 하나다" },
     { n: 5, name: "「이거 완전 난데」", top: "듣는 사람이 「이거 완전 난데」 하는 문장이 있다" },
     { n: 6, name: "끝이 제일 센가", top: "마지막 두 줄 중 하나가 이 편에서 제일 센 문장이다" }] },
+  threads: { label: "스레드", canonTitle: "쓰레드 자동화 운영 정본 — 안저 · Aside × OS", bench: "yp_threads_bench", run: "yp_threads_bench_run",
+    findings: draft => { const posts = (draft as ThreadsDraft).posts; return (threadsPostsProblem(posts, 1) ? 1 : 0) + internalLinks(posts); }, criteria: [
+    { n: 1, name: "주제", top: "업계 말을 몰라도 이해되고, 독자가 알고 싶은 질문이 분명하다" },
+    { n: 2, name: "첫 줄과 본문", top: "첫 줄에 주제가 보이되 답이 뻔하지 않고, 다음 문장이 실제 장면 · 사실로 받는다" },
+    { n: 3, name: "관점의 답", top: "첫 질문에 직접 답한다. 「사람마다 다르다」 말고 새 구별 · 이유 · 조건이 있다" },
+    { n: 4, name: "적용", top: "독자가 자기 권한 안에서 할 행동과 달라질 판단이 있다" },
+    { n: 5, name: "근거 · 의미", top: "주장마다 출처가 있고 사실 · 해석 · 예시가 구분되며, 쉽게 풀면서 뜻이 바뀌지 않았다" },
+    { n: 6, name: "읽기 · 형식", top: "글마다 새 내용이 있고 추상어는 풀어 썼으며, 500자 · 순서를 지켰다" }] },
 };
-export const isGrindKind = (value: unknown): value is GrindKind => value === "card" || value === "short";
+export const isGrindKind = (value: unknown): value is GrindKind => value === "card" || value === "short" || value === "threads";
 /** The 정본 §9 graduation: in a run, 80% of the drafts at 중 or better on every criterion with 상 on four, and no automatic finding. */
 export const GRADUATION = { passRate: 0.8, tops: 4 } as const;
 export const BENCH_MAX = 8;
@@ -45,12 +59,12 @@ export const BENCH_MAX = 8;
 /** One 시험 원본, frozen: the text a 카드뉴스 was made from, or a 숏폼's 대본 job card as it was asked (topic · formula · 참고 영상). */
 export interface BenchItem {
   id: string; title: string; target: string; note: string; focus: string; source: YpCardSource; from?: { projectId: string; title: string }; at: string; by: string;
-  /** 숏폼: the 대본 job card without the PD's script, drawn again as it is (the 정본 it points to is read anew each run). */
+  /** 숏폼: the 대본 job card without the PD's script; 스레드: the 집필 card with the topic's 재료. Drawn again as it is (the 정본 it points to is read anew each run). */
   instructions?: string;
 }
 export interface Bench { items: BenchItem[] }
 export interface BenchScore { name: string; grades: Partial<Record<CardCriterion, CardGrade>>; notes: Partial<Record<CardCriterion, string>>; at: string }
-/** One draft of a run: key = item:format (a 숏폼 has the one format 「script」); the draft, or why GPT could not make one. */
+/** One draft of a run: key = item:format (a 숏폼 has the one format 「script」, a 스레드 「posts」); the draft, or why GPT could not make one. */
 export interface BenchResult { key: string; itemId: string; title: string; format: string; draft?: BenchDraft; error?: string }
 export interface BenchRun {
   id: string; canon: string; at: string; by: string; byName: string; model: string; formats: string[];
@@ -59,9 +73,9 @@ export interface BenchRun {
   scores: Record<string, Record<string, BenchScore>>;
 }
 export const resultKey = (itemId: string, format: string) => `${itemId}:${format}`;
-/** The version a 정본 calls itself: its 정본 묶음 line, else its 상태 line (v0.7), else the document version. */
+/** The version a 정본 calls itself: its 정본 묶음 line, else its 상태 line (v0.7), else its 운영 기준 line (스레드), else the document version. */
 export const canonVersion = (text: string, current: number) =>
-  text.match(/정본 묶음:\s*\**\s*(v[\d.]+)/)?.[1] ?? text.match(/상태:\s*\**\s*(?:초안\s*)?(v[\d.]+)/)?.[1] ?? `doc v${current}`;
+  text.match(/정본 묶음:\s*\**\s*(v[\d.]+)/)?.[1] ?? text.match(/상태:\s*\**\s*(?:초안\s*)?(v[\d.]+)/)?.[1] ?? text.match(/^운영 기준\s*(v[\d.]+)/m)?.[1] ?? `doc v${current}`;
 
 const RANK: Record<CardGrade, number> = { 하: 0, 중: 1, 상: 2 };
 /** A draft's grade per criterion across everyone who scored all six: the lowest one counts (a weak point anyone saw stays seen). */

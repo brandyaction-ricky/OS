@@ -59,8 +59,10 @@ test("side menu by what is made (owner 2026-10-29, A안): 공통 + 롱폼 · 숏
   assert.equal(threads.pages[0].href, "/automation/references");
   // Every old address is still in the menu exactly once (bookmarks, guides and per-address menu permissions keep working).
   const before = NAV_STAGES.filter(stage => stage.id === "automation").flatMap(stage => stage.pages.map(page => page.href)).sort();
-  const after = stages.filter(stage => ["threads", "automation"].includes(stage.id)).flatMap(stage => stage.pages.map(page => page.href)).sort();
+  const after = stages.filter(stage => ["threads", "automation"].includes(stage.id)).flatMap(stage => stage.pages.map(page => page.href))
+    .filter(href => href !== "/content/threads-canon").sort();
   assert.deepEqual(after, before);
+  assert.equal(threads.pages.at(-1).href, "/content/threads-canon", "스레드 정본 다듬기 closes the 스레드 menu");
   for (const stage of stages.slice(0, 4)) for (const page of stage.pages) assert.ok(!page.href.includes("?") || page.href.startsWith("/content/projects?"), page.href);
   const p = query => new URLSearchParams(query);
   assert.equal(youtubeV1StageId(stages, "/content/projects", p("platform=short"), "content"), "yt-short");
