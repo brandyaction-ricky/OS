@@ -62,6 +62,9 @@
   .linear-shell .ui-v2.yp .yp-grind-dlg-form { padding: 12px; }
   .linear-shell .ui-v2.yp .yp-grind-dlg-draft { padding: 12px; border-right: 0; border-bottom: 2px solid var(--line); font-size: 13px; }
   .linear-shell .ui-v2.yp .yp-grind-dlg-draft .yp-grind-lines { font-size: 13px; }
+  /* A column is a long page: it gets more of the height and the whole width (the 564px owner pane left it 166px tall). */
+  .linear-shell .ui-v2.yp .yp-grind-dlg-b:has(.yp-grind-dlg-col) { grid-template-rows: minmax(0, 60fr) minmax(0, 40fr); }
+  .linear-shell .ui-v2.yp .yp-grind-dlg-col { padding: 8px; }
 }
 .linear-shell .ui-v2.yp .yp-grind-form { display: grid; gap: 10px; margin: 14px 0; }
 .linear-shell .ui-v2.yp .yp-grind-crit { display: grid; grid-template-columns: minmax(180px, 1.2fr) auto minmax(200px, 2fr); gap: 10px; align-items: center; }
