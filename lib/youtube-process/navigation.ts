@@ -17,6 +17,8 @@ export const CARD_CANON_PAGE: NavPage = { label: "정본 다듬기", href: "/con
 export const SHORT_CANON_PAGE: NavPage = { label: "정본 다듬기", href: "/content/short-canon", icon: SlidersHorizontal, aliases: ["숏폼 대본 정본", "숏폼 평가표", "숏폼 시험 묶음"], ready: true };
 /** And for 스레드 (the third kind), at the end of the 스레드 menu. */
 export const THREADS_CANON_PAGE: NavPage = { label: "정본 다듬기", href: "/content/threads-canon", icon: SlidersHorizontal, aliases: ["스레드 정본", "스레드 평가표", "스레드 시험 묶음"], ready: true };
+/** And for the SEO 칼럼 a 롱폼 ends with, in the 롱폼 menu (named for the 칼럼: the 롱폼 원고 gets its own later). */
+export const COLUMN_CANON_PAGE: NavPage = { label: "칼럼 정본 다듬기", href: "/content/column-canon", icon: SlidersHorizontal, aliases: ["SEO 칼럼 정본", "칼럼 평가표", "칼럼 시험 묶음"], ready: true };
 export const YOUTUBE_V1_STEP_PAGES: NavPage[] = [
   { label: "기획", href: "/content/plan", navHref: "/content/projects", icon: PenLine, aliases: ["주제", "기획안", "구성안"], ready: true },
   { label: "제작", href: "/content/make", navHref: "/content/projects", icon: Film, aliases: ["최종본 올리기"], ready: true },
@@ -42,7 +44,7 @@ const platformStage = (id: string, label: string, page: string, platform: string
   return { id, label, icon, href, pages: [{ label: page, href, icon: LayoutGrid, aliases: ["내 영상", label], ready: true }] };
 };
 export const YOUTUBE_V1_PLATFORM_STAGES: NavStage[] = [
-  platformStage("yt-longform", "롱폼 유튜브", "내 롱폼 영상", "longform", Youtube),
+  { ...platformStage("yt-longform", "롱폼 유튜브", "내 롱폼 영상", "longform", Youtube), pages: [...platformStage("yt-longform", "롱폼 유튜브", "내 롱폼 영상", "longform", Youtube).pages, COLUMN_CANON_PAGE] },
   { ...platformStage("yt-short", "숏폼 · 릴스", "내 숏폼 영상", "short", Smartphone), pages: [...platformStage("yt-short", "숏폼 · 릴스", "내 숏폼 영상", "short", Smartphone).pages, SHORT_CANON_PAGE] },
   platformStage("yt-ad", "광고", "내 광고 영상", "ad", Megaphone),
   // 정본 다듬기 (정본 §9) sits beside the list: the same 시험 묶음 drawn under each 정본 version and scored.
@@ -99,6 +101,7 @@ export const YOUTUBE_V1_SCREENS = {
   "/content/card-canon": "card-canon",
   "/content/short-canon": "short-canon",
   "/content/threads-canon": "threads-canon",
+  "/content/column-canon": "column-canon",
   "/content/voice-dictionary": "voice-dictionary",
 } as const;
 export type YoutubeV1Screen = (typeof YOUTUBE_V1_SCREENS)[keyof typeof YOUTUBE_V1_SCREENS];

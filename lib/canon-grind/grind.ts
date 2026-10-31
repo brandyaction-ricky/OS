@@ -5,8 +5,9 @@ import { cardProblems, type CardDraft } from "../cardnews/formats.ts";
 import { checkShortScript, headCopyProblem } from "../youtube-process/short-script.ts";
 import type { YpCardSource } from "../youtube-process/stages.ts";
 import { threadsPostsProblem } from "../threads-posts.ts";
+import { checkColumnHtml } from "../seo-column.ts";
 
-export type GrindKind = "card" | "short" | "threads";
+export type GrindKind = "card" | "short" | "threads" | "column";
 export type CardGrade = "상" | "중" | "하";
 export const CARD_GRADES: CardGrade[] = ["상", "중", "하"];
 export interface GrindCriterion { n: 1 | 2 | 3 | 4 | 5 | 6; name: string; top: string }
@@ -16,8 +17,10 @@ export type CardCriterion = GrindCriterion["n"];
 export interface ShortDraft { headCopy: string; hooks: { kind: string; text: string }[]; insight: string; text: string; formula: string }
 /** A 스레드 글타래 as the 집필 job returns it: 본문, 관점 댓글, (적용 대댓글), (공개 출처), each one post. */
 export interface ThreadsDraft { posts: string[] }
+/** An SEO 칼럼 as the 칼럼 job returns it: one HTML document in the OS class contract (lib/seo-column.ts). */
+export interface ColumnDraft { html: string }
 export type CardDraftPart = Pick<CardDraft, "format" | "slides" | "caption" | "hashtags">;
-export type BenchDraft = CardDraftPart | ShortDraft | ThreadsDraft;
+export type BenchDraft = CardDraftPart | ShortDraft | ThreadsDraft | ColumnDraft;
 /** A public post must not carry an OS address (스레드 정본 §1 · 부록 B: 공개 posts에 내부 OS 링크를 넣지 않는다). */
 export const internalLinks = (posts: string[]) => posts.filter(post => /brandyaction-os\.vercel\.app/i.test(post)).length;
 
@@ -25,6 +28,7 @@ export const internalLinks = (posts: string[]) => posts.filter(post => /brandyac
  * Per kind: the 정본 the drafts follow, its 평가표 (six criteria × 상 · 중 · 하), the record kinds and what the automatic check counts.
  * 카드뉴스: 카드뉴스 정본 §8. 숏폼 대본: 숏폼 대본 정본 §10 판정 검사 1~6 (1 · 2 · 3 failing = 다시 쓰기 there).
  * 스레드: 쓰레드 자동화 운영 정본 §7 교정 · 검수의 관문 여섯, 상 = §4 후보 심사와 §7 「실제로 남길 증거」.
+ * SEO 칼럼: 「SEO 칼럼 만드는 절차」에 평가표가 없어 §2 세 가지 최적화 · §3 톤 · §4 구성 · §5 이미지 · §6 하지 말 것에서 여섯을 뽑았다.
  */
 export const GRIND_KINDS: Record<GrindKind, { label: string; canonTitle: string; criteria: GrindCriterion[]; bench: string; run: string; findings: (draft: BenchDraft) => number }> = {
   card: { label: "카드뉴스", canonTitle: "카드뉴스 정본", bench: "yp_card_bench", run: "yp_card_bench_run", findings: draft => cardProblems(draft as CardDraftPart).blocking.length, criteria: [
@@ -50,8 +54,16 @@ export const GRIND_KINDS: Record<GrindKind, { label: string; canonTitle: string;
     { n: 4, name: "적용", top: "독자가 자기 권한 안에서 할 행동과 달라질 판단이 있다" },
     { n: 5, name: "근거 · 의미", top: "주장마다 출처가 있고 사실 · 해석 · 예시가 구분되며, 쉽게 풀면서 뜻이 바뀌지 않았다" },
     { n: 6, name: "읽기 · 형식", top: "글마다 새 내용이 있고 추상어는 풀어 썼으며, 500자 · 순서를 지켰다" }] },
+  column: { label: "SEO 칼럼", canonTitle: "SEO 칼럼 만드는 절차 (정본)", bench: "yp_column_bench", run: "yp_column_bench_run",
+    findings: draft => { const { unsafe, issues } = checkColumnHtml((draft as ColumnDraft).html); return unsafe.length + issues.length; }, criteria: [
+    { n: 1, name: "검색 질문에 바로 답하나", top: "제목 · 3줄 요약 · 첫 문단만 읽어도 검색한 질문의 답이 나온다" },
+    { n: 2, name: "검색되는 말인가", top: "제목 · 소제목 · 키워드가 사람들이 실제로 찾는 말이고, 과장 · 낚시가 없다" },
+    { n: 3, name: "원고에 충실한가 · 근거", top: "원고에 없는 사실 · 통계 · 사례가 없고, 단정마다 원고의 근거가 있다" },
+    { n: 4, name: "읽는 글인가", top: "대표 말투는 살아 있고 구어체 반복 · 군더더기가 없어, 30대 직장인이 끝까지 읽는다" },
+    { n: 5, name: "AI가 인용하기 좋은가", top: "정의 · 단정 문장 · 목록 · 표와 h2 · h3 위계가 또렷해, 문단째 인용할 수 있다" },
+    { n: 6, name: "이미지 · FAQ", top: "이미지 자리가 그 대목을 보여 주고 프롬프트 여섯 요소를 갖췄으며, FAQ가 독자가 실제로 물을 질문에 답한다" }] },
 };
-export const isGrindKind = (value: unknown): value is GrindKind => value === "card" || value === "short" || value === "threads";
+export const isGrindKind = (value: unknown): value is GrindKind => value === "card" || value === "short" || value === "threads" || value === "column";
 /** The 정본 §9 graduation: in a run, 80% of the drafts at 중 or better on every criterion with 상 on four, and no automatic finding. */
 export const GRADUATION = { passRate: 0.8, tops: 4 } as const;
 export const BENCH_MAX = 8;
@@ -59,12 +71,12 @@ export const BENCH_MAX = 8;
 /** One 시험 원본, frozen: the text a 카드뉴스 was made from, or a 숏폼's 대본 job card as it was asked (topic · formula · 참고 영상). */
 export interface BenchItem {
   id: string; title: string; target: string; note: string; focus: string; source: YpCardSource; from?: { projectId: string; title: string }; at: string; by: string;
-  /** 숏폼: the 대본 job card without the PD's script; 스레드: the 집필 card with the topic's 재료. Drawn again as it is (the 정본 it points to is read anew each run). */
+  /** 숏폼: the 대본 job card without the PD's script; 스레드: the 집필 card with the topic's 재료; SEO 칼럼: the 칼럼 job card with the confirmed 원고. Drawn again as it is (the 정본 it points to is read anew each run). */
   instructions?: string;
 }
 export interface Bench { items: BenchItem[] }
 export interface BenchScore { name: string; grades: Partial<Record<CardCriterion, CardGrade>>; notes: Partial<Record<CardCriterion, string>>; at: string }
-/** One draft of a run: key = item:format (a 숏폼 has the one format 「script」, a 스레드 「posts」); the draft, or why GPT could not make one. */
+/** One draft of a run: key = item:format (a 숏폼 has the one format 「script」, a 스레드 「posts」, an SEO 칼럼 「html」); the draft, or why GPT could not make one. */
 export interface BenchResult { key: string; itemId: string; title: string; format: string; draft?: BenchDraft; error?: string }
 export interface BenchRun {
   id: string; canon: string; at: string; by: string; byName: string; model: string; formats: string[];

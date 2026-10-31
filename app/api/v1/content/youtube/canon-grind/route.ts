@@ -11,7 +11,7 @@ export const maxDuration = 800;
 const headers = { "cache-control": "private, no-store" };
 const kindOf = (request: Request) => grindKindSchema.parse(new URL(request.url).searchParams.get("kind") ?? "card");
 
-/** 정본 다듬기 (?kind=card | short): the 시험 묶음, the runs under each 정본 version and their scores. */
+/** 정본 다듬기 (?kind=card | short | threads | column): the 시험 묶음, the runs under each 정본 version and their scores. */
 export async function GET(request: Request) {
   try {
     const actor = await youtubeActor(request);

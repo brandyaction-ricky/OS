@@ -14,5 +14,6 @@ export const YOUTUBE_V1_GUIDES: Record<string, PageGuideDefinition> = {
   "/content/overview": { steps: ["위 「확인 필요」를 눌러 고를 것을 오른쪽에서 봐요", "보라색 줄은 AI가 일하는 중, 빨간 줄은 막힌 일이에요", "줄을 누르면 지금 상태와 화면 열기가 나와요"], next: "/content/projects" },
   "/content/card-canon": { steps: ["시험 묶음에 원본 3~5개를 넣어요", "[이 정본으로 다시 뽑기]로 지금 정본의 초안을 받아요", "칸을 눌러 평가표로 채점하고, 고칠 점을 보고 정본을 고쳐요"], next: "/content/projects?platform=card" },
   "/content/threads-canon": { steps: ["내가 확정한 스레드 주제를 시험 묶음에 3~5개 넣어요 (넣은 주제의 재료는 팀에 보여요)", "[이 정본으로 다시 뽑기]로 지금 정본의 글타래를 받아요", "칸을 눌러 정본의 검수 관문 여섯 가지로 채점하고, 고칠 점을 보고 정본을 고쳐요"], next: "/automation/topics" },
+  "/content/column-canon": { steps: ["원고를 확정한 롱폼을 시험 묶음에 3~5개 넣어요", "[이 정본으로 다시 뽑기]로 지금 정본의 SEO 칼럼을 받아요", "칸을 눌러 평가표 여섯 가지로 채점하고, 고칠 점을 보고 정본을 고쳐요"], next: "/content/projects?platform=longform" },
   "/content/short-canon": { steps: ["대본을 확정한 숏폼을 시험 묶음에 3~5개 넣어요", "[이 정본으로 다시 뽑기]로 지금 정본의 대본을 받아요", "칸을 눌러 정본 판정 검사 여섯 가지로 채점하고, 고칠 점을 보고 정본을 고쳐요"], next: "/content/projects?platform=short" },
 };

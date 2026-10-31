@@ -36,7 +36,7 @@ import {
   Receipt,
 } from "lucide-react";
 import { STAFF_FINANCE_MENUS } from "./finance/access.ts";
-import { CARD_CANON_PAGE, OVERVIEW_PAGE, SHORT_CANON_PAGE, THREADS_CANON_PAGE, YOUTUBE_V1_CEO_STAGE, YOUTUBE_V1_CONFIRM_PAGE, YOUTUBE_V1_HREFS, YOUTUBE_V1_PAGES, YOUTUBE_V1_STEP_PAGES } from "./youtube-process/navigation.ts";
+import { CARD_CANON_PAGE, COLUMN_CANON_PAGE, OVERVIEW_PAGE, SHORT_CANON_PAGE, THREADS_CANON_PAGE, YOUTUBE_V1_CEO_STAGE, YOUTUBE_V1_CONFIRM_PAGE, YOUTUBE_V1_HREFS, YOUTUBE_V1_PAGES, YOUTUBE_V1_STEP_PAGES } from "./youtube-process/navigation.ts";
 export { YOUTUBE_V1_HREFS };
 
 export interface NavPage {
@@ -177,7 +177,7 @@ export function findPage(path: string): NavPage {
     return { ...page, href: alias, navHref: page.href };
   }
   return [...pages].sort((a, b) => b.href.length - a.href.length).find(page => matchesPath(pathname, page.href))
-    ?? [...YOUTUBE_V1_PAGES, ...YOUTUBE_V1_STEP_PAGES, YOUTUBE_V1_CONFIRM_PAGE, CARD_CANON_PAGE, SHORT_CANON_PAGE, THREADS_CANON_PAGE, OVERVIEW_PAGE].find(page => matchesPath(pathname, page.href)) ?? HOME_PAGE;
+    ?? [...YOUTUBE_V1_PAGES, ...YOUTUBE_V1_STEP_PAGES, YOUTUBE_V1_CONFIRM_PAGE, CARD_CANON_PAGE, SHORT_CANON_PAGE, THREADS_CANON_PAGE, COLUMN_CANON_PAGE, OVERVIEW_PAGE].find(page => matchesPath(pathname, page.href)) ?? HOME_PAGE;
 }
 export function findStage(pathname: string) {
   const page = findPage(pathname);
