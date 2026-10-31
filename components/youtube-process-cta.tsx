@@ -53,11 +53,11 @@ export function CtaBulkScreen() {
 
   if (channel === undefined) return <p className="yp-hint" role="status">불러오는 중이에요…</p>;
   if (!channel) return <p className="yp-hint">유튜브 채널이 연결되지 않았어요. <Link className="yp-lnk" href="/settings/account">내 계정 › 채널 연결</Link>에서 연결해요.</p>;
-  return <div style={{ display: "grid", gap: 12 }}>
-    <section className="yp-card"><div className="yp-card-b" style={{ display: "grid", gap: 10 }}>
-      <p className="yp-hint" style={{ margin: 0 }}>진단 이름 · 링크 · 멘트가 바뀌면, 「{channel.accountName}」에 올린 영상 설명란에서 옛 말을 찾아 한 번에 바꿔요. 고정 댓글 · 최종 화면은 유튜브가 앱으로 바꾸지 못하게 해서 직접 고쳐야 해요.</p>
+  return <div className="yp-stack12">
+    <section className="yp-card"><div className="yp-card-b yp-stack10">
+      <p className="yp-hint yp-m0">진단 이름 · 링크 · 멘트가 바뀌면, 「{channel.accountName}」에 올린 영상 설명란에서 옛 말을 찾아 한 번에 바꿔요. 고정 댓글 · 최종 화면은 유튜브가 앱으로 바꾸지 못하게 해서 직접 고쳐야 해요.</p>
       {channel.manageConnected === false ? <p className="yp-note yp-warn" role="status">유튜브 연결에 「영상 관리」 권한이 없어요. 회사 채널을 연결한 분이 <Link className="yp-lnk" href="/settings/account">내 계정 › 채널 연결</Link>에서 「다시 연결」을 눌러 새 권한을 허용하면 바꿀 수 있어요. 찾기 · 미리보기는 지금도 돼요.</p> : null}
-      <div className="yp-links" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)" }}>
+      <div className="yp-links yp-two">
         <input className="yp-in" value={find} maxLength={500} placeholder="찾을 말 (예: 옛 진단 링크)" aria-label="찾을 말" onChange={event => { setFind(event.target.value); setOff(new Set()); setDone(null); }} />
         <input className="yp-in" value={replace} maxLength={1000} placeholder="바꿀 말 (비우면 지워요)" aria-label="바꿀 말" onChange={event => { setReplace(event.target.value); setDone(null); }} /></div>
       <div className="yp-row-btns"><button type="button" className="yp-btn yp-sm" disabled={busy === "load"} onClick={() => void load(true)}>{busy === "load" ? "불러오는 중…" : videos ? "영상 다시 불러오기" : "올린 영상 불러오기 (최근 150개)"}</button>
@@ -66,14 +66,14 @@ export function CtaBulkScreen() {
       {done ? <p className="yp-note yp-ok" role="status">영상 {done.done}개를 바꿨어요.{done.failed.length ? ` 못 바꾼 영상 ${done.failed.length}개: ${done.failed.map(row => row.error).filter(Boolean).slice(0, 2).join(" · ")}` : ""}</p> : null}
     </div></section>
     {rows.length ? <section className="yp-card"><div className="yp-card-h">바뀔 영상 {picked.length} / {rows.length}{rows.length > CTA_MAX_VIDEOS ? ` (한 번에 ${CTA_MAX_VIDEOS}개까지)` : ""}</div>
-      <ul className="yp-hist yp-cta-list">{rows.map(row => <li key={row.id}><label style={{ display: "flex", gap: 8, alignItems: "flex-start", minWidth: 0 }}>
+      <ul className="yp-hist yp-cta-list">{rows.map(row => <li key={row.id}><label className="yp-cta-pick">
         <input type="checkbox" checked={!off.has(row.id)} onChange={event => setOff(set => { const next = new Set(set); if (event.target.checked) next.delete(row.id); else next.add(row.id); return next; })} />
-        <span style={{ minWidth: 0 }}><b>{row.title}</b> <small className="yp-muted">· {row.count}곳</small><br /><small className="yp-muted">{row.before}</small><br /><small>{row.after}</small></span></label></li>)}</ul>
+        <span className="yp-min0"><b>{row.title}</b> <small className="yp-muted">· {row.count}곳</small><br /><small className="yp-muted">{row.before}</small><br /><small>{row.after}</small></span></label></li>)}</ul>
       <div className="yp-card-b yp-row-btns"><button type="button" className="yp-btn yp-pri" disabled={!picked.length || Boolean(busy) || channel.manageConnected === false} onClick={() => void apply()}>
         {busy === "apply" ? "바꾸는 중…" : `고른 영상 ${picked.length}개 설명란 바꾸기`}</button><span className="yp-hint">유튜브 한도 약 {ctaQuota(picked.length).toLocaleString("ko-KR")} (하루 10,000)</span></div></section> : null}
     <section className="yp-card"><div className="yp-card-h">바꾼 기록</div><div className="yp-card-b">
-      {history.length ? <ul className="yp-hist">{history.map(change => <li key={change.id} style={{ alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <span style={{ flex: "1 1 260px", minWidth: 0 }}>「{change.find}」 → 「{change.replace || "(지움)"}」<br /><small className="yp-muted">{when(change.at)} · {change.by} · 영상 {change.done}개{change.undoneAt ? ` · 되돌림 ${change.undone}개` : ""}{change.failed.length ? ` · 못 바꿈 ${change.failed.length}개` : ""}</small></span>
+      {history.length ? <ul className="yp-hist">{history.map(change => <li key={change.id} className="yp-ctarow">
+        <span className="yp-flex260">「{change.find}」 → 「{change.replace || "(지움)"}」<br /><small className="yp-muted">{when(change.at)} · {change.by} · 영상 {change.done}개{change.undoneAt ? ` · 되돌림 ${change.undone}개` : ""}{change.failed.length ? ` · 못 바꿈 ${change.failed.length}개` : ""}</small></span>
         {!change.undoneAt && change.done ? <button type="button" className="yp-btn yp-sm" disabled={Boolean(busy) || channel.manageConnected === false} onClick={() => void undo(change)}>{busy === change.id ? "되돌리는 중…" : "되돌리기"}</button> : null}</li>)}</ul>
         : <p className="yp-pempty">아직 바꾼 기록이 없어요.</p>}</div></section>
   </div>;
