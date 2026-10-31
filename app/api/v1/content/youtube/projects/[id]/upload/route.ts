@@ -3,12 +3,12 @@ import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { youtubeActor } from "@/lib/server/youtube-process";
 import {
-  clipUploadCompleteSchema, clipUploadSessionSchema, completeClipUpload, completeYoutubeUpload, startClipUpload, startYoutubeUpload, uploadCompleteSchema, uploadOrigin, uploadSessionSchema,
+  clipUploadCompleteSchema, clipUploadSessionSchema, completeClipUpload, completeYoutubeUpload, startClipUpload, startYoutubeUpload, uploadCompleteSchema, uploadOrigin, uploadSessionSchema, uploadStatusSchema, youtubeProcessing,
 } from "@/lib/server/youtube-process-upload";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-const actionSchema = z.object({ action: z.enum(["session", "complete", "clip-session", "clip-complete"]) }).passthrough();
+const actionSchema = z.object({ action: z.enum(["session", "complete", "status", "clip-session", "clip-complete"]) }).passthrough();
 
 /** S7 [업로드] (and a 쇼츠 clip's): open YouTube's upload session, then record the uploaded video. */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -18,6 +18,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const { action, ...rest } = actionSchema.parse(await parseJson(request, 8_000));
     const result = action === "session" ? await startYoutubeUpload(actor, id, uploadSessionSchema.parse(rest), uploadOrigin(request))
       : action === "complete" ? await completeYoutubeUpload(actor, id, uploadCompleteSchema.parse(rest))
+      : action === "status" ? await youtubeProcessing(actor, id, uploadStatusSchema.parse(rest))
       : action === "clip-session" ? await startClipUpload(actor, id, clipUploadSessionSchema.parse(rest), uploadOrigin(request))
       : await completeClipUpload(actor, id, clipUploadCompleteSchema.parse(rest));
     return NextResponse.json(result, { headers: { "cache-control": "private, no-store" } });

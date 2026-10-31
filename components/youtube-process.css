@@ -148,6 +148,22 @@
 .linear-shell .ui-v2.yp .yp-fsec-h .yp-gq{color:var(--muted);font-size:13px}
 .linear-shell .ui-v2.yp .yp-fsec-h .yp-sp{flex:1}
 .linear-shell .ui-v2.yp .yp-warn-t{color:var(--warning)}
+/* 업로드 1번 (로건 요청 10/30): 멘트 | 링크 | 빼기 on one line, stacked on a phone. */
+.linear-shell .ui-v2.yp .yp-links{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) auto;gap:6px;align-items:center}
+@media (max-width:640px){.linear-shell .ui-v2.yp .yp-links{grid-template-columns:minmax(0,1fr) auto}.linear-shell .ui-v2.yp .yp-links>input:first-child{grid-column:1 / -1}}
+.linear-shell .ui-v2.yp .yp-gauge{flex-basis:100%;display:grid;gap:4px;margin-top:10px}
+.linear-shell .ui-v2.yp .yp-gauge progress{width:100%;height:8px;accent-color:var(--accent)}
+.linear-shell .ui-v2.yp .yp-gauge small{color:var(--text-2);font-size:12px}
+/* 업로드 4번 최종 화면 (로건 요청 10/30): the end screen as YouTube lays it out — video left, diagnosis link right — then the values. */
+.linear-shell .ui-v2.yp .yp-endscreen{position:relative;aspect-ratio:16/9;max-width:420px;border-radius:8px;background:var(--media-bg);display:flex;align-items:center;justify-content:center;gap:6%;padding:0 8%;margin-bottom:10px}
+.linear-shell .ui-v2.yp .yp-es-video{width:46%;aspect-ratio:16/9;border-radius:4px;background:var(--media-shadow) center/cover no-repeat;border:1px solid var(--media-muted);display:flex;align-items:center;justify-content:center;color:var(--media-muted);font-size:12px}
+.linear-shell .ui-v2.yp .yp-es-link{width:30%;display:grid;justify-items:center;gap:4px;text-align:center;color:var(--media-text)}
+.linear-shell .ui-v2.yp .yp-es-img{width:58%;aspect-ratio:1;border-radius:50%;background:var(--media-shadow) center/cover no-repeat;border:1px solid var(--media-muted)}
+.linear-shell .ui-v2.yp .yp-es-link b{font-size:12px;line-height:1.3}
+.linear-shell .ui-v2.yp .yp-es-link small{font-size:11px;color:var(--media-muted)}
+.linear-shell .ui-v2.yp .yp-es-rows{list-style:none;margin:0 0 8px;padding:0;display:grid;gap:6px}
+.linear-shell .ui-v2.yp .yp-es-rows li{display:grid;grid-template-columns:84px minmax(0,1fr) auto;gap:8px;align-items:center;font-size:13px}
+.linear-shell .ui-v2.yp .yp-es-v{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .linear-shell .ui-v2.yp .yp-fsec-h .yp-gwarn{flex:1 1 0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--warning);font-size:13px}
 .linear-shell .ui-v2.yp .yp-fsec-b{padding:10px 16px 16px}
 .linear-shell .ui-v2.yp .yp-need{font-size:12px;font-weight:700;color:var(--danger);background:var(--danger-soft);border-radius:10px;padding:0 7px;min-height:20px;display:inline-flex;align-items:center}

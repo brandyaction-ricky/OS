@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { confirmPlan, descChecks, diagnosisLink, shortLinkProblem, utmBase, utmUrl, draftMissing, emptyStage, hiddenTagsOf, lengthEstimate, outlineMissing, slotOf, specOption, stageData, thumbFilled, thumbsMissing, withScriptVersion } from "../lib/youtube-process/stages.ts";
+import { confirmPlan, descChecks, diagnosisLink, linksMissing, publishAtProblem, withLinks, shortLinkProblem, utmBase, utmUrl, draftMissing, emptyStage, hiddenTagsOf, lengthEstimate, outlineMissing, slotOf, specOption, stageData, thumbFilled, thumbsMissing, withScriptVersion } from "../lib/youtube-process/stages.ts";
 import { applyGateAction, editableFields } from "../lib/youtube-process/confirm.ts";
 import { newProjectMeta } from "../lib/youtube-process/project.ts";
 
@@ -48,6 +48,21 @@ test("제작 finishes with thumbnails A · B; 설명란 checks are advisory and 
   const old = descChecks(desc.replace("같은 일인데 왜 나만 지칠까요? 그 이유를 세 칸으로 나눠 봐요.\n-----\n", "").replace("3\n-----\n[인용", "3\n4\n5\n-----\n[인용").replace(", 직장인, 이직, 퇴사, 일", ""), { srt: null, utm: { short: "", next: "" } });
   assert.deepEqual([old[0].ok, old[3].ok, old[7].ok], [false, false, false]);
   assert.equal(descChecks(desc.replace("내 강점 진단 받기", "무료 진단 받기"), { srt: null, utm: { short: "", next: "" } })[4].ok, false);
+  // 로건 요청 10/30: the 이어서 볼 영상 and 다른 유입처 go in under the 진단 링크, each once, and count as known links.
+  const linkUtm = { cat: "키", dest: "진단", camp: "jindan_report", short: "", next: "https://youtu.be/abcdefghijk", nextNote: "다음 편 보기", others: [{ note: "PPT는 카페에서 받아 가세요", url: "https://cafe.naver.com/x/1" }, { note: "", url: "not a link" }] };
+  assert.equal(linksMissing(desc, linkUtm).length, 2);
+  const linked = withLinks(desc, linkUtm);
+  assert.match(linked, /utm_source=youtube\n다음 편 보기\nhttps:\/\/youtu\.be\/abcdefghijk\nPPT는 카페에서 받아 가세요\nhttps:\/\/cafe\.naver\.com\/x\/1\n-----\n\[타임라인\]/);
+  assert.equal(withLinks(linked, linkUtm), linked);
+  assert.equal(descChecks(linked, { srt: null, utm: linkUtm })[5].ok, true);
+  assert.match(withLinks("소개\n-----\n[히든 태그]\n강점", linkUtm), /https:\/\/cafe\.naver\.com\/x\/1\n-----\n\[히든 태그\]/);
+  // 예약: a time already past, or closer than 10 minutes, is refused before anything is sent.
+  assert.equal(publishAtProblem(null), "");
+  assert.notEqual(publishAtProblem("2026-10-31T09:05:00.000Z", Date.parse("2026-10-31T09:00:00.000Z")), "");
+  assert.equal(publishAtProblem("2026-10-31T10:00:00.000Z", Date.parse("2026-10-31T09:00:00.000Z")), "");
+  // 정본 v1.4 (2026-10-31): 「미제공」「불확실」 never pass; a line with only what is known does.
+  assert.equal(descChecks(desc.replace("(2026, 2026-01)", "(조사 시점 미제공) 불확실"), { srt: null, utm: { short: "", next: "" } })[6].ok, false);
+  assert.equal(descChecks(desc.replace(" (2026, 2026-01)", ""), { srt: null, utm: { short: "", next: "" } })[6].ok, true);
   // 로건 피드백 10/26-10 · 11: a YouTube address under the 진단 CTA fails, also when it was pasted into the 단축 링크 field.
   const youtube = "https://youtu.be/abcdefghijk";
   const withYoutube = desc.replace("https://www.myinlab.co.kr/services/n6?utm_source=youtube", youtube);

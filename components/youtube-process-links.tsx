@@ -1,22 +1,24 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { Copy, Link2 } from "lucide-react";
+import { Copy, ImagePlus, Link2 } from "lucide-react";
 import { apiRequest } from "@/lib/api-client";
 import { useSession } from "./session-provider";
 import { errorMessage } from "./youtube-process-data";
 import { UtmLinkSection } from "./link-manager-utm";
+import { ENDSCREEN_CARD_DEFAULT, ENDSCREEN_IMAGE_MAX, type EndscreenCard } from "@/lib/youtube-process/endscreen-card";
 
 interface ShortLink { key: string; url: string; target: string; label: string; createdAt: string }
 
 /** 링크관리 (기능요청서 2026-10-28): UTM 링크 만들기 + 링크 대장 first; the plain 단축 링크 (owner decision 2026-10-26) stays as it was. */
 export function YoutubeLinksScreen() {
-  const [mode, setMode] = useState<"utm" | "short">("utm");
+  const [mode, setMode] = useState<"utm" | "short" | "card">("utm");
   return <>
     <div className="yp-seg2" role="group" aria-label="링크 만들기 방식">
       <button type="button" className={mode === "utm" ? "yp-on" : ""} aria-pressed={mode === "utm"} onClick={() => setMode("utm")}>UTM 링크 만들기</button>
       <button type="button" className={mode === "short" ? "yp-on" : ""} aria-pressed={mode === "short"} onClick={() => setMode("short")}>단축링크만 만들기</button>
+      <button type="button" className={mode === "card" ? "yp-on" : ""} aria-pressed={mode === "card"} onClick={() => setMode("card")}>최종 화면 진단 카드</button>
     </div>
-    {mode === "utm" ? <UtmLinkSection /> : <ShortLinkOnly />}
+    {mode === "utm" ? <UtmLinkSection /> : mode === "short" ? <ShortLinkOnly /> : <EndscreenCardEditor />}
   </>;
 }
 
@@ -62,4 +64,45 @@ function ShortLinkOnly() {
           <span className="yp-hint" style={{ wordBreak: "break-all" }}>{item.target}</span></li>)}</ul>}
     </div></section>
   </>;
+}
+
+/** 최종 화면 진단 카드 (로건 요청 10/30): one place for the diagnosis link element; every 업로드 screen shows it to put in Studio. */
+function EndscreenCardEditor() {
+  const { accessToken, demo } = useSession();
+  const [version, setVersion] = useState<number | null>(null);
+  const [form, setForm] = useState<EndscreenCard>(ENDSCREEN_CARD_DEFAULT);
+  const [busy, setBusy] = useState(false), [error, setError] = useState(""), [saved, setSaved] = useState(false);
+  useEffect(() => {
+    if (demo || !accessToken) { setVersion(0); return; }
+    apiRequest<{ card: EndscreenCard; version: number }>("/api/v1/content/youtube/endscreen-card", { token: accessToken })
+      .then(result => { setForm(result.card); setVersion(result.version); }, reason => setError(errorMessage(reason)));
+  }, [accessToken, demo]);
+  const pick = (file: File | undefined) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => { const image = String(reader.result ?? ""); if (image.length > ENDSCREEN_IMAGE_MAX) setError("300KB 이하 이미지를 올려 주세요."); else { setError(""); setSaved(false); setForm(value => ({ ...value, image })); } };
+    reader.readAsDataURL(file);
+  };
+  const save = async () => {
+    if (version === null || !accessToken) return;
+    setBusy(true); setError("");
+    try { const result = await apiRequest<{ card: EndscreenCard; version: number }>("/api/v1/content/youtube/endscreen-card", { method: "PUT", token: accessToken, body: JSON.stringify({ ...form, expectedVersion: version }) }); setForm(result.card); setVersion(result.version); setSaved(true); }
+    catch (reason) { setError(errorMessage(reason)); } finally { setBusy(false); }
+  };
+  const set = (patch: Partial<EndscreenCard>) => { setSaved(false); setForm(value => ({ ...value, ...patch })); };
+  if (version === null) return error ? <p className="yp-errline" role="alert">{error}</p> : <p className="yp-hint" role="status">불러오는 중이에요…</p>;
+  return <form className="yp-card yp-confirm-form" onSubmit={event => { event.preventDefault(); void save(); }}>
+    <p className="yp-hint" style={{ margin: 0 }}>영상마다 최종 화면 오른쪽에 거는 진단 링크예요. 유튜브는 최종 화면을 API로 받지 않아서, 업로드 화면 4번에 이 값이 보이고 스튜디오에서 넣어요.</p>
+    <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+      {/* eslint-disable-next-line @next/next/no-img-element -- an inline data URL the person just chose */}
+      {form.image ? <img src={form.image} alt="진단 썸네일" width={96} height={96} style={{ borderRadius: 8, objectFit: "cover", border: "1px solid var(--line)" }} /> : <span className="yp-hint">이미지 없음</span>}
+      <label className="yp-btn yp-sm" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><ImagePlus size={14} aria-hidden="true" /> 진단 썸네일 고르기<input type="file" hidden accept="image/png,image/jpeg,image/webp" onChange={event => { pick(event.target.files?.[0]); event.target.value = ""; }} /></label>
+      <span className="yp-hint">정사각형 · 300KB 이하</span></div>
+    <label>맞춤 메시지 (진단명)<input className="yp-in" maxLength={60} value={form.name} onChange={event => set({ name: event.target.value })} placeholder="예) 브랜디액션 기질진단 받아보기" /></label>
+    <label>클릭 유도문<input className="yp-in" maxLength={30} value={form.cta} onChange={event => set({ cta: event.target.value })} placeholder="자세히 알아보기" /></label>
+    <label>링크 보낼 곳 (선택)<input className="yp-in" type="url" maxLength={500} value={form.link} onChange={event => set({ link: event.target.value.trim() })} placeholder="비우면 영상마다 업로드 1번의 진단 링크를 써요" /></label>
+    <div><button type="submit" className="yp-btn yp-pri" disabled={busy || demo}>{busy ? "저장하는 중…" : "저장"}</button>
+      {demo ? <span className="yp-hint"> 데모에서는 저장하지 않아요.</span> : saved ? <span className="yp-hint" role="status"> 저장했어요.</span> : null}</div>
+    {error ? <div className="yp-errline" role="alert">{error}</div> : null}
+  </form>;
 }

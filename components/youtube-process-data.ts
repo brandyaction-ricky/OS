@@ -33,7 +33,7 @@ export interface YpFeedbackView {
   doneBy?: string; doneAt?: string; confirmedBy?: string; confirmedAt?: string; deleted?: boolean; editedAt?: string; marks?: FeedbackMark[]; files?: FeedbackFile[];
 }
 export type YpFeedbackInput = Partial<Pick<YpFeedbackView, "t" | "range" | "text" | "kind" | "sug" | "reaction" | "marks" | "files">> & Pick<YpFeedbackView, "target" | "ver">;
-export interface YpScheduleItem { project: YpProject; makeVersion: number; editDue: string; uploadPlan: string; log: { at: string; by: string; from: string; to: string; why: string; field?: string }[]; waiting: { gate: YpGate; requestedAt: string } | null }
+export interface YpScheduleItem { project: YpProject; makeVersion: number; editDue: string; uploadPlan: string; publishAt?: string; log: { at: string; by: string; from: string; to: string; why: string; field?: string }[]; waiting: { gate: YpGate; requestedAt: string } | null }
 export interface YpLegacyTopic { id: string; title: string; updatedAt: string; step: string; assigneeId: string | null }
 export type YpAssetKind = "plan_thumb" | "thumb" | "final" | "srt" | "column";
 export interface YpClient {
@@ -59,6 +59,7 @@ export interface YpClient {
   feedbackFileUrl(id: string, path: string): Promise<string>;
   uploadSession(id: string, input: { fileName: string; fileSize: number; mimeType: string; connectionOwnerId?: string }): Promise<{ uploadUrl: string; finalV: number }>;
   uploadComplete(id: string, input: { videoId: string; connectionOwnerId?: string }): Promise<{ videoId: string; videoUrl: string; thumbnail: string }>;
+  uploadStatus(id: string, input: { connectionOwnerId?: string }): Promise<{ processing: string; percent: number | null; privacy: string; publishAt: string | null }>;
   /** The 대표's decision on a waiting step, or a note on one the PD confirmed (note · memo). */
   confirm(id: string, gate: YpGate, action: YpApproverAction | "note", expectedVersion: number, extra?: YpConfirmExtra): Promise<YpProject>;
   confirmList(tab: "self" | "wait" | "done" | "hold" | "shorts"): Promise<{ project: YpProject; gate: YpGate }[]>;
@@ -144,6 +145,7 @@ function apiClient(token: string): YpClient {
     feedbackFileUrl: async (id, path) => (await apiRequest<{ url: string }>(`${base}/${id}/feedback?file=${encodeURIComponent(path)}`, { token })).url,
     uploadSession: (id, input) => apiRequest(`${base}/${id}/upload`, { token, method: "POST", body: json({ action: "session", ...input }) }),
     uploadComplete: (id, input) => apiRequest(`${base}/${id}/upload`, { token, method: "POST", body: json({ action: "complete", ...input }) }),
+    uploadStatus: (id, input) => apiRequest(`${base}/${id}/upload`, { token, method: "POST", body: json({ action: "status", ...input }) }),
     confirm: async (id, gate, action, expectedVersion, extra = {}) => (await apiRequest<{ project: YpProject }>(`/api/v1/content/youtube/confirm/${id}/${gate}`, { token, method: "POST", body: json({ action, expectedVersion, ...extra }) })).project,
     confirmList: async tab => (await apiRequest<{ items: { project: YpProject; gate: YpGate }[] }>(`/api/v1/content/youtube/confirm?tab=${tab}`, { token })).items,
     shorts: async (id, expectedVersion, input) => (await apiRequest<{ project: YpProject }>(`${base}/${id}/shorts`, { token, method: "POST", body: json({ ...input, expectedVersion }) })).project,
@@ -519,6 +521,7 @@ function demoClient(): YpClient {
     },
     uploadSession: async () => { throw demoError(409, "DEMO", "데모에서는 유튜브에 올리지 않아요."); },
     uploadComplete: async () => { throw demoError(409, "DEMO", "데모에서는 유튜브에 올리지 않아요."); },
+    uploadStatus: async () => ({ processing: "succeeded", percent: 100, privacy: "private", publishAt: null }),
     confirm: async (id, gateName, action, expectedVersion, extra = {}) => {
       const project = find(id);
       checkVersion(project.version, expectedVersion);
@@ -541,7 +544,8 @@ function demoClient(): YpClient {
     schedule: async () => demoProjects().map(project => {
       const make = stagesOf(project).make;
       const waiting = (["topic", "draft", "review"] as const).find(gate => project.yp.gates[gate].state === "wait");
-      return structuredClone({ project, makeVersion: make.version, editDue: make.data.editDue, uploadPlan: make.data.uploadPlan ?? "", log: make.data.log.filter(item => item.field).slice(0, 5),
+      const upload = stagesOf(project).upload.data;
+      return structuredClone({ project, makeVersion: make.version, editDue: make.data.editDue, uploadPlan: make.data.uploadPlan ?? "", publishAt: upload.run?.publishAt || upload.publishAt || "", log: make.data.log.filter(item => item.field).slice(0, 5),
         waiting: waiting ? { gate: waiting, requestedAt: project.yp.gates[waiting].requestedAt ?? "" } : null });
     }),
     moveDates: async (id, makeVersion, patch) => {

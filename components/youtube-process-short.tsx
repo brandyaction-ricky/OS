@@ -430,7 +430,7 @@ function ShortYoutube({ page, last }: { page: YpPage; last: YpFinalView | null }
         <textarea className="yp-in" rows={5} value={form.desc} maxLength={5000} onChange={event => edit({ desc: event.target.value })} onBlur={() => { if (dirty) void save(); }} /></label>
       <div className="yp-savebar">
         <label className="yp-lbl" style={{ margin: 0 }}>공개 범위 <select className="yp-in" value={form.privacy} onChange={event => { const privacy = event.target.value as typeof form.privacy; edit({ privacy }); void save({ ...form, privacy }); }}>
-          <option value="private">비공개</option><option value="unlisted">일부 공개</option></select></label>
+          <option value="private">비공개</option><option value="unlisted">일부 공개</option><option value="public">공개</option></select></label>
         {channels.length > 1 ? <select className="yp-in" value={owner} onChange={event => setOwner(event.target.value)} aria-label="유튜브 채널">{channels.map(row => <option key={row.ownerId} value={row.ownerId}>{row.accountName}</option>)}</select>
           : channels[0] ? <span className="yp-muted">채널: {channels[0].accountName}</span> : null}
         <span className="yp-sp" />

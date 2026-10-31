@@ -72,7 +72,9 @@ export interface YpRedo extends Partial<YpPatterns> {
 export interface YpRedoPick { text: string; sub?: string; hook: string; pattern?: number; why: string }
 export interface YpUpload {
   /** url: where the 진단 링크 goes (owner decision 2026-10-26: the MYIN mall); missing = 정밀 진단. */
-  utm: { cat: string; dest: string; camp: string; next: string; short: string; url?: string };
+  utm: { cat: string; dest: string; camp: string; next: string; short: string; url?: string;
+    /** 로건 요청 10/30: the line said above the 이어서 볼 영상 link, and other places to send viewers (카페 · PPT …) with their own line. */
+    nextNote?: string; others?: { note: string; url: string }[] };
   srt: { path: string; name: string } | null;
   desc: string; pinned: string; hiddenTags: string[];
   descBy: { userId: string; name: string; model: string; jobId: string; at: string; draft: string; title?: string } | null;
@@ -82,8 +84,12 @@ export interface YpUpload {
   pinnedDraft?: string;
   /** The same AI pass's copy for other channels and the upload checklist (the earlier 유튜브 관리 kit). */
   extras?: { kakao: string; cafe: string; post: string; checklist: string[]; checked: number[] };
-  privacy: "private" | "unlisted";
-  run: { at: string; by: string; status: "done" | "failed"; videoId?: string; videoUrl?: string; finalV?: number; thumbnail?: "ok" | "fail" | "skip"; error?: string } | null;
+  privacy: "private" | "unlisted" | "public";
+  /** 예약 (로건 요청 10/30): goes up private and YouTube makes it public at this time. */
+  publishAt?: string | null;
+  run: { at: string; by: string; status: "done" | "failed"; videoId?: string; videoUrl?: string; finalV?: number; thumbnail?: "ok" | "fail" | "skip"; error?: string;
+    /** What YouTube reports after the upload: a project not yet audited by YouTube can only upload private. */
+    privacy?: string; publishAt?: string } | null;
 }
 /** One SEO 칼럼 (owner request 2026-10-25): the staff AI's HTML from the 구성안 원고 (lib/seo-column.ts), and what fills its image places. */
 export interface YpColumnItem {
@@ -341,7 +347,26 @@ export const shortLinkProblem = (short: string) => isYoutubeLink(short) ? "단�
 /** The 진단 링크 the description and pinned comment carry: the 단축 링크, else the UTM address. */
 export const diagnosisLink = (utm: YpUpload["utm"], code?: string) => shortLink(utm) || utmUrl(utm, code);
 export function pinnedDraft(utm: YpUpload["utm"]) {
-  return `[질문 한 줄]\n⬇️ [진단 CTA 한 줄]\n${shortLink(utm) || "[진단 단축 링크]"}\n이어서 보면 좋을 영상 보러가기\n${utm.next || "[이어서 볼 영상 링크 — 1번에 붙여넣기]"}`;
+  return `[질문 한 줄]\n⬇️ [진단 CTA 한 줄]\n${shortLink(utm) || "[진단 단축 링크]"}\n${utm.nextNote?.trim() || "이어서 보면 좋을 영상 보러가기"}\n${utm.next || "[이어서 볼 영상 링크 — 1번에 붙여넣기]"}`;
+}
+/** The 이어서 볼 영상 and 다른 유입처 links of 1번, each with its line, that the description must carry. */
+export const linkRows = (utm: YpUpload["utm"]) => [{ note: utm.nextNote?.trim() || "이어서 보면 좋을 영상", url: utm.next.trim() }, ...(utm.others ?? []).map(row => ({ note: row.note.trim(), url: row.url.trim() }))]
+  .filter(row => /^https?:\/\/\S+$/.test(row.url));
+/** 예약 (로건 요청 10/30): YouTube takes a publish time only while it is still ahead; 10 minutes leave room for the upload itself. */
+export const publishAtProblem = (publishAt: string | null | undefined, now = Date.now()) =>
+  publishAt && !(Date.parse(publishAt) >= now + 10 * 60_000) ? "예약 시각이 지났거나 10분도 안 남았어요. 5. 공개 범위에서 시각을 다시 정해 주세요." : "";
+/** The links of 1번 the description does not have yet. */
+export const linksMissing = (desc: string, utm: YpUpload["utm"]) => linkRows(utm).filter(row => !desc.includes(row.url));
+/** Puts the missing links (line, then address) at the end of the ⬇️ 진단 CTA part, so they always reach YouTube (로건 요청 10/30). */
+export function withLinks(desc: string, utm: YpUpload["utm"]) {
+  const missing = linksMissing(desc, utm);
+  if (!missing.length) return desc;
+  const lines = desc.split("\n"), block = missing.flatMap(row => row.note ? [row.note, row.url] : [row.url]);
+  const cta = lines.findIndex(line => line.trim().startsWith("⬇️"));
+  const tags = lines.findIndex(line => line.trim() === "[히든 태그]");
+  const end = cta >= 0 ? lines.findIndex((line, i) => i > cta && line.trim().startsWith("-----")) : tags > 0 && lines[tags - 1].trim().startsWith("-----") ? tags - 1 : -1;
+  if (end < 0) return [...lines, ...block].join("\n");
+  return [...lines.slice(0, end), ...block, ...lines.slice(end)].join("\n");
 }
 /** Lines under a [구역] heading up to the next ----- (시안 secOf). */
 function section(text: string, key: string) {
@@ -358,6 +383,7 @@ function section(text: string, key: string) {
 export const DESC_TEMPLATE = "\n-----\n#\n-----\n⬇️ \n-----\n[타임라인]\n00:00 \n-----\n[설명문 본문]\n\n-----\n[인용 및 출처]\n- \n-----\n[히든 태그]\n";
 /** A description counts as written once it has something beyond that layout (usability QA 2026-10-25: the bare layout passed). */
 export const descWritten = (text: string) => text.split("\n").some(line => { const t = line.trim(); return Boolean(t) && !/^(#|-+|⬇️|00:00|\[[^\]]+\])$/.test(t); });
+const SOURCE_MARK = /미제공|불확실|확인 필요/;
 export function descChecks(text: string, upload: Pick<YpUpload, "srt" | "utm">) {
   // 정본 §1: the description opens with a 1–2 line introduction (what shows before 더보기), then the hashtags and the sections.
   const first = text.split("\n").map(line => line.trim()).find(Boolean) ?? "";
@@ -372,7 +398,8 @@ export function descChecks(text: string, upload: Pick<YpUpload, "srt" | "utm">) 
   const links = text.match(/https?:\/\/\S+/g) ?? [];
   const short = shortLink(upload.utm);
   const base = utmBase(upload.utm);
-  const fake = links.filter(link => !link.startsWith(base) && !(short && link.startsWith(short)) && !(upload.utm.next && link.startsWith(upload.utm.next)));
+  const known = linkRows(upload.utm).map(row => row.url);
+  const fake = links.filter(link => !link.startsWith(base) && !(short && link.startsWith(short)) && !known.some(url => link.startsWith(url)));
   // 로건 피드백 10/26-11: the link under the ⬇️ 진단 CTA must be the UTM address or its short link — a youtu.be there passed before.
   const lines = text.split("\n");
   const ctaAt = lines.findIndex(line => line.trim().startsWith("⬇️"));
@@ -388,7 +415,9 @@ export function descChecks(text: string, upload: Pick<YpUpload, "srt" | "utm">) 
     !links.length ? { ok: true, text: "링크는 자리표시예요 (지어낸 링크 없음)" }
       : !diagnosisOk ? { ok: false, text: "진단 CTA 아래 링크가 UTM 주소(또는 그 단축 링크)가 아니에요" }
       : { ok: !fake.length, text: fake.length ? `확인 안 된 링크가 있어요: ${fake[0]}` : "진단 링크가 UTM 주소예요" },
-    { ok: sources.every(line => line.includes("/") && (/불확실|확인 필요/.test(line) || /\(.*\d/.test(line))), text: sources.every(line => line.includes("/") && (/불확실|확인 필요/.test(line) || /\(.*\d/.test(line))) ? "출처 형식 · 확인 안 된 것에 '불확실' 표시" : "출처에 기준 시점이 없거나 '불확실' 표시가 빠졌어요" },
+    // 정본 §1-2 (v1.4, 2026-10-31): only what is known; 「미제공」「불확실」 never reach the viewer — unchecked sources leave the description.
+    sources.some(line => SOURCE_MARK.test(line)) ? { ok: false, text: "출처에 「미제공」「불확실」 같은 말이 있어요. 모르는 칸은 빼고, 확인 못 한 출처는 지워 주세요" }
+      : { ok: sources.every(line => line.includes("/")), text: sources.every(line => line.includes("/")) ? "출처가 「내용 / 종류 / 기관」 형식이에요" : "출처를 「내용 / 종류 / 기관 (시점)」 형식으로 써 주세요" },
     { ok: tags.length >= 6 && tags.length <= 12, text: tags.length >= 6 && tags.length <= 12 ? `히든 태그 ${tags.length}개예요` : `히든 태그가 ${tags.length}개예요 (6~12개)` },
   ];
 }

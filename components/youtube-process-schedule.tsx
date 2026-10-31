@@ -11,7 +11,7 @@ const WD = "일월화수목금토";
 const iso = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 const md2 = (date: string) => { const at = new Date(`${date}T00:00:00`); return `${at.getMonth() + 1}/${at.getDate()} (${WD[at.getDay()]})`; };
 const dayDiff = (date: string) => Math.round((Date.parse(`${date}T00:00:00`) - new Date(new Date().toDateString()).getTime()) / 86_400_000);
-type Kind = "up" | "ed" | "cf";
+type Kind = "up" | "ed" | "cf" | "pub";
 interface Ev { item: YpScheduleItem; kind: Kind; date: string; label: string }
 
 /** S9 스케줄 (4-9): every project's 편집 완료 · 업로드 (예상) · 컨펌 대기 on a week or month calendar; drag a date to move it. */
@@ -49,6 +49,8 @@ export function YoutubeScheduleScreen({ header }: { header: ReactNode }) {
   const shown = (items ?? []).filter(item => (pd === "all" || item.project.assigneeId === pd) && (stage === "all" || String(YP_STAGE_INDEX[item.project.yp.stage]) === stage) && item.project.yp.stage !== "done");
   const events: Ev[] = shown.flatMap(item => [
     ...(item.uploadPlan ? [{ item, kind: "up" as const, date: item.uploadPlan, label: "업로드 예상일" }] : []),
+    // 공개 예약 (로건 요청 10/30): set on 업로드 › 5. 공개 범위, not moved here.
+    ...(item.publishAt ? [{ item, kind: "pub" as const, date: iso(new Date(item.publishAt)), label: `공개 예약 ${new Date(item.publishAt).toTimeString().slice(0, 5)}` }] : []),
     ...(item.editDue && ["topic", "draft", "outline", "make"].includes(item.project.yp.stage) ? [{ item, kind: "ed" as const, date: item.editDue, label: "편집 완료일" }] : []),
     ...(showConfirm && item.waiting?.requestedAt ? [{ item, kind: "cf" as const, date: item.waiting.requestedAt.slice(0, 10), label: `${gateName(item.waiting.gate, item.project.yp.topic.type)} 대기` }] : []),
   ]);
@@ -73,8 +75,8 @@ export function YoutubeScheduleScreen({ header }: { header: ReactNode }) {
   };
   const open = (item: YpScheduleItem) => { setSelected(""); setEditing(item); setForm({ editDue: item.editDue, uploadPlan: item.uploadPlan, why: "" }); dialog.current?.showModal(); };
   const chip = (event: Ev) => {
-    const draggable = event.kind !== "cf";
-    return <button key={`${event.item.project.id}-${event.kind}`} type="button" className={`yp-ev yp-${event.kind}`} draggable={draggable && !busy} disabled={busy} aria-label={`${projectName(event.item.project)} · ${event.label}`} title={`${projectName(event.item.project)} · ${event.label}${draggable ? " · 끌어서 날짜 옮기기" : ""}`}
+    const draggable = event.kind === "up" || event.kind === "ed";
+    return <button key={`${event.item.project.id}-${event.kind}`} type="button" className={`yp-ev yp-${event.kind === "pub" ? "up" : event.kind}`} draggable={draggable && !busy} disabled={busy} aria-label={`${projectName(event.item.project)} · ${event.label}`} title={`${projectName(event.item.project)} · ${event.label}${draggable ? " · 끌어서 날짜 옮기기" : ""}`}
       onDragStart={evt => { evt.dataTransfer.setData("text/plain", JSON.stringify({ id: event.item.project.id, kind: event.kind })); }}
       onClick={() => draggable ? open(event.item) : window.location.assign(projectHref(event.item.project))}>{projectName(event.item.project)}</button>;
   };
@@ -121,8 +123,8 @@ export function YoutubeScheduleScreen({ header }: { header: ReactNode }) {
             {[...list].sort((a, b) => a.kind === "up" ? -1 : b.kind === "up" ? 1 : 0).map(chip)}</div>; })}
       </div></div>
       <div className="yp-slist">{picked && <button type="button" className="yp-btn yp-pri" onClick={() => open(picked)}>선택한 콘텐츠 날짜 지정</button>}{[...new Set(periodEvents.map(event => event.date))].sort().map(date => <div key={date}><div className="yp-sday">{md2(date)}{date === today ? <span className="yp-tag yp-acc">오늘</span> : null}</div>
-        {periodEvents.filter(event => event.date === date).map(event => <button key={`${event.item.project.id}-${event.kind}`} type="button" className="yp-sit" style={{ width: "100%", textAlign: "left" }} onClick={() => event.kind === "cf" ? window.location.assign(projectHref(event.item.project)) : open(event.item)}>
-          <span className={`yp-tag${event.kind === "up" ? " yp-acc" : event.kind === "cf" ? " yp-warn" : ""}`}>{event.label}</span><span style={{ flex: 1, minWidth: 0 }}>{projectName(event.item.project)}</span></button>)}</div>)}
+        {periodEvents.filter(event => event.date === date).map(event => <button key={`${event.item.project.id}-${event.kind}`} type="button" className="yp-sit" style={{ width: "100%", textAlign: "left" }} onClick={() => event.kind === "cf" || event.kind === "pub" ? window.location.assign(projectHref(event.item.project)) : open(event.item)}>
+          <span className={`yp-tag${event.kind === "up" || event.kind === "pub" ? " yp-acc" : event.kind === "cf" ? " yp-warn" : ""}`}>{event.label}</span><span style={{ flex: 1, minWidth: 0 }}>{projectName(event.item.project)}</span></button>)}</div>)}
         {!periodEvents.length ? <p className="yp-hint">이 기간에 일정이 없어요.</p> : null}</div>
       </div></div>
       <details className="yp-schedule-status"><summary>전체 진행 현황 {shown.length}개</summary>
