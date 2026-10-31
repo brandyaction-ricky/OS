@@ -23,8 +23,8 @@ export const MCP_TOOLS = [
   },
   {
     name: "process_youtube_ai_job",
-    description: "유튜브 AI 작업을 claim으로 가져가 받은 지시대로 결과 JSON을 만든 뒤 complete(job_id, lease, model, result)로 제출합니다. OS가 형식을 검사해 틀린 곳을 돌려주면 고쳐 다시 complete 합니다. 처리할 수 없으면 fail에 reason을 적습니다. 승인·업로드·게시는 하지 않습니다.",
-    inputSchema: {type:"object",properties:{action:{type:"string",enum:["claim","complete","fail"]},job_id:{type:"string",format:"uuid"},lease:{type:"string",format:"uuid"},model:{type:"string"},result:{type:"object"},reason:{type:"string"}},required:["action","job_id"],additionalProperties:false},
+    description: "유튜브 AI 작업을 claim으로 가져가 받은 지시대로 결과 JSON을 만든 뒤 complete(job_id, lease, model, result, report)로 제출합니다. report는 사람이 먼저 읽는 결론 한 줄 · 한 일 · 근거 · 정본 점검입니다. OS가 형식을 검사해 틀린 곳을 돌려주면 고쳐 다시 complete 합니다. 처리할 수 없으면 fail에 reason을 적습니다. 승인·업로드·게시는 하지 않습니다.",
+    inputSchema: {type:"object",properties:{action:{type:"string",enum:["claim","complete","fail"]},job_id:{type:"string",format:"uuid"},lease:{type:"string",format:"uuid"},model:{type:"string"},result:{type:"object"},report:{type:"object",properties:{conclusion:{type:"string"},did:{type:"array",items:{type:"string"}},evidence:{type:"array",items:{type:"string"}},canon:{type:"string"}},required:["conclusion"],additionalProperties:false},reason:{type:"string"}},required:["action","job_id"],additionalProperties:false},
     annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false},
   },
   {
@@ -348,8 +348,8 @@ export async function callMcpTool(request: ToolRequest, organizationId: string, 
     return fetchApi("/api/v1/content/youtube-automation/ai-jobs/worker");
   }
   if(request.name==="process_youtube_ai_job"){
-    const input=z.object({action:z.enum(["claim","complete","fail"]),job_id:documentId,lease:documentId.optional(),model:z.string().trim().min(1).max(100).optional(),result:z.record(z.unknown()).optional(),reason:z.string().trim().min(1).max(1000).optional()}).strict().parse(args);
-    return fetchApi("/api/v1/content/youtube-automation/ai-jobs/worker",{method:"POST",body:JSON.stringify({action:input.action,jobId:input.job_id,lease:input.lease,model:input.model,result:input.result,reason:input.reason})});
+    const input=z.object({action:z.enum(["claim","complete","fail"]),job_id:documentId,lease:documentId.optional(),model:z.string().trim().min(1).max(100).optional(),result:z.record(z.unknown()).optional(),report:z.record(z.unknown()).optional(),reason:z.string().trim().min(1).max(1000).optional()}).strict().parse(args);
+    return fetchApi("/api/v1/content/youtube-automation/ai-jobs/worker",{method:"POST",body:JSON.stringify({action:input.action,jobId:input.job_id,lease:input.lease,model:input.model,result:input.result,report:input.report,reason:input.reason})});
   }
   if (request.name === "list_record_versions") {
     const input = getRecordArgs.parse(args);

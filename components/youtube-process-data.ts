@@ -50,6 +50,8 @@ export interface YpClient {
   list(): Promise<YpProject[]>;
   /** 한눈에 보기: the videos, the open staff-AI jobs on them, and whether I confirm. */
   overview(): Promise<{ projects: YpProject[]; jobs: OvJob[]; canConfirm: boolean }>;
+  /** 채택 on 한눈에 보기: an AI result is taken and leaves the list. */
+  adoptJob(jobId: string): Promise<void>;
   get(id: string): Promise<YpProject>;
   bundle(id: string): Promise<YpBundle>;
   create(input: YpTopicInput): Promise<YpProject>;
@@ -136,6 +138,7 @@ function apiClient(token: string): YpClient {
     demo: false,
     list: async () => (await apiRequest<{ projects: YpProject[] }>(base, { token })).projects,
     overview: () => apiRequest("/api/v1/content/youtube/overview", { token }),
+    adoptJob: async jobId => { await apiRequest("/api/v1/content/youtube/overview", { token, method: "POST", body: json({ jobId }) }); },
     get: async id => (await apiRequest<YpBundle>(`${base}/${id}`, { token })).project,
     bundle: id => apiRequest<YpBundle>(`${base}/${id}`, { token }),
     create: async input => (await apiRequest<{ project: YpProject }>(base, { token, method: "POST", body: json(input) })).project,
@@ -337,6 +340,7 @@ const demoShorts = new Map<string, YpShortView>();
 const demoShort = (project: YpProject): YpShortView => demoShorts.get(project.id) ?? { id: `demo-short-${project.id}`, version: 1, scenes: [], aiScenes: null, appeals: [], ai: null, images: {}, render: null,
   brief: { purpose: project.yp.topic.purpose === "ad" ? "ad" : "organic", duration: 30, product: "", audience: project.yp.topic.target, goal: "", landingUrl: "", evidence: "", appeal: "" } };
 const demoFinals = new Map<string, YpFinalView[]>();
+const demoAdopted = new Set<string>();
 const demoFeedback = new Map<string, YpFeedbackView[]>();
 const demoFiles = new Map<string, string>();
 /** The demo has no 영상 만드는 컴퓨터: [찾기] returns two example references at once (no images). */
@@ -407,16 +411,20 @@ function demoClient(): YpClient {
   return {
     demo: true,
     list: async () => structuredClone(demoProjects()),
-    // One AI job running on the first video in 제작 and one stopped on a 기획안, so the screen shows every group.
+    // One AI job running on the first video in 제작, one stopped on a 기획안 and one result that arrived on a 구성안, so the screen shows every group.
     overview: async () => {
       const projects = structuredClone(demoProjects()), at = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
       const making = projects.find(row => row.yp.stage === "make"), planning = projects.find(row => row.yp.stage === "draft" && row.yp.gates.draft.state === "none");
+      const outlining = projects.find(row => row.yp.stage === "outline");
       const jobs: OvJob[] = [
         ...(making ? [{ sourceId: making.id, task: "마이인 기획표(장면 · 비유 · 자료 후보)", status: "active" as const, requestedAt: at(9), claimedAt: at(4), failReason: null }] : []),
         ...(planning ? [{ sourceId: planning.id, task: "기획안(제목 · 썸네일 문구 · 영상 흐름)", status: "blocked" as const, requestedAt: at(50), claimedAt: at(48), failReason: "참고 영상 주소를 열지 못했어요" }] : []),
+        ...(outlining && !demoAdopted.has("demo-job-arrived") ? [{ id: "demo-job-arrived", ownerId: DEMO_ME, sourceId: outlining.id, task: "원고(축 · 설계 · 초안 · 검수)", status: "done" as const, requestedAt: at(70), claimedAt: at(66), failReason: null, doneAt: at(12),
+          report: { conclusion: "[예시] 초안 한 편 완성 · 고칠 곳 2군데만 보면 돼요", did: ["[예시] 축 3개 중 '퇴근 뒤 1시간'으로 설계", "[예시] 초안 9분 분량", "[예시] 관문 1 검사 두 번 돌림"], evidence: ["[예시] 원고 공정 정본 §2", "[예시] 참고 영상 3편 대본"], canon: "[예시] 관문 1 통과 · '여러분' 2곳 바꿈" } }] : []),
       ];
       return { projects, jobs, canConfirm: true };
     },
+    adoptJob: async jobId => { demoAdopted.add(jobId); },
     get: async id => structuredClone(find(id)),
     bundle: async id => { const project = find(id); return structuredClone({ project, stages: stagesOf(project), finals: demoFinals.get(id) ?? [] }); },
     create: async input => structuredClone(add(input.title ?? "", input)),

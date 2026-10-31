@@ -1349,5 +1349,11 @@
   .linear-shell .ui-v2.yp .yp-ov-cmd .yp-btn{grid-column:1/-1;min-height:40px}
   .linear-shell .ui-v2.yp .yp-ov-cmd .yp-in{min-height:40px}
 }
+/* 한눈에 보기 P2 결론 먼저: the AI's one line first, then what it did, sources and the 정본 check. */
+.linear-shell .ui-v2.yp .yp-ov-rep{display:flex;flex-direction:column;gap:8px;width:100%;padding:10px;border-radius:8px;background:var(--panel-3);color:var(--text-2);font-size:12px}
+.linear-shell .ui-v2.yp .yp-ov-concl{margin:0;color:var(--text);font-size:14px;font-weight:700;line-height:1.45}
+.linear-shell .ui-v2.yp .yp-ov-rep ul{margin:4px 0 0;padding-left:16px}
+.linear-shell .ui-v2.yp .yp-ov-rep p{margin:4px 0 0}
+.linear-shell .ui-v2.yp .yp-ov-rep .yp-ov-concl{margin:0}
 
 }

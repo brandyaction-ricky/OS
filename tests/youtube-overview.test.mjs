@@ -64,3 +64,23 @@ test("오늘 내린 결정 lists today's decisions (Korean day), newest first", 
   const held = project("k", "short", "topic", { gates: { topic: { state: "hold", round: 1, decidedAt: ago(10), reason: "보류" } } });
   assert.deepEqual(decisionsToday([today, yesterday, held], NOW).map(item => item.what), ["주제 확정 → 보류", "주제 컨펌 → 컨펌 (PD)"]);
 });
+
+// 시안 P2 결론 먼저: a result that came with a report waits on whoever sent the job or the PD, until taken or moved past.
+test("an AI result with a report is the sender's or PD's decision and drops out once the video moves on", () => {
+  const report = { conclusion: "제목 후보 3개, A가 공식에 가장 가까워요", did: ["참고 영상 12개 읽음"], evidence: ["패키징 정본"] };
+  const arrived = (sourceId, ownerId, doneAt = ago(30)) => ({ id: `job-${sourceId}`, ownerId, sourceId, task: "기획안", status: "done", requestedAt: ago(60), claimedAt: ago(50), failReason: null, doneAt, report });
+  const projects = [
+    project("p", "live", "outline", { assigneeId: "pd" }),
+    project("q", "live", "outline", { assigneeId: "pd", gates: { topic: { state: "ok", round: 1, decidedAt: ago(10) } } }),
+    project("r", "live", "outline", { assigneeId: "pd" }),
+  ];
+  const jobs = [arrived("p", "me"), arrived("q", "me"), arrived("r", "other"), { sourceId: "r", task: "원고", status: "active", requestedAt: ago(5), claimedAt: ago(3), failReason: null }];
+  const mine = overviewRows(projects, jobs, { id: "me", canConfirm: true }, NOW).rows;
+  // q's topic was decided after the result came, so it is old news; r's newer open job wins over its older result.
+  assert.deepEqual(mine.map(row => [row.id, row.state]), [["p", "decide"], ["r", "ai"], ["q", "human"]]);
+  assert.equal(mine[0].now, "AI 결과 도착 · 기획안");
+  assert.equal(mine[0].job.report.conclusion, report.conclusion);
+  const someone = overviewRows([projects[0]], [arrived("p", "other")], { id: "boss", canConfirm: true }, NOW).rows;
+  assert.deepEqual(someone.map(row => [row.state, row.now]), [["human", "AI 결과 도착 · 기획안 · 담당자 확인 중"]]);
+  assert.equal(overviewRows([projects[0]], [arrived("p", "other")], { id: "pd", canConfirm: false }, NOW).rows[0].state, "decide");
+});
