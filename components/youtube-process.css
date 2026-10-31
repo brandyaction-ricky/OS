@@ -157,6 +157,11 @@
 .linear-shell .ui-v2.yp .yp-notices>summary{cursor:pointer;padding:6px 8px;color:var(--text-2)}
 .linear-shell .ui-v2.yp .yp-th-scr{position:absolute;left:7%;right:7%;bottom:8%;font-size:11px;line-height:1.35;color:var(--media-muted);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .linear-shell .ui-v2.yp .yp-ref-th{flex:none;width:96px;aspect-ratio:16/9;border-radius:4px;background:var(--panel-2) center/cover no-repeat}
+.linear-shell .ui-v2.yp .yp-changes{margin:8px 0 0;font-size:13px}
+.linear-shell .ui-v2.yp .yp-changes>summary{cursor:pointer;color:var(--text-2)}
+.linear-shell .ui-v2.yp .yp-changes ul{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:4px;max-height:220px;overflow:auto}
+.linear-shell .ui-v2.yp .yp-changes li{display:flex;gap:8px;align-items:baseline;min-width:0}
+.linear-shell .ui-v2.yp .yp-changes li>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-2)}
 .linear-shell .ui-v2.yp .yp-paras{list-style:none;margin:0;padding:0 10px 6px;display:grid;gap:4px;max-height:360px;overflow:auto;font-size:13px}
 .linear-shell .ui-v2.yp .yp-paras li{display:grid;grid-template-columns:28px 46px minmax(0,1fr);gap:6px;align-items:baseline}
 .linear-shell .ui-v2.yp .yp-paras time{color:var(--muted);font-variant-numeric:tabular-nums}

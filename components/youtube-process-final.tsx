@@ -13,6 +13,7 @@ import { ApiRequestError } from "@/lib/api-client";
 import { feedbackNotice, compareTime, FEEDBACK_FILES_PER_ITEM, FEEDBACK_FILTER_LABEL, feedbackClosed, feedbackMatches, type FeedbackAction, type FeedbackFile, type FeedbackFilter, type FeedbackMark } from "@/lib/youtube-process/feedback";
 import { YtCard } from "./youtube-process-media";
 import { VoiceFeedbackBox } from "./youtube-process-voice-feedback";
+import { alignVersions, mapTime, srtCues, type Anchor, type VersionChange } from "@/lib/youtube-process/compare";
 
 const fmt = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 const KINDS = ["제목", "썸네일 문구", "이미지 연출", "기타"];
@@ -49,6 +50,10 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
   const [compareVer, setCompareVer] = useState<number | null>(null);  // N07
   const [offset, setOffset] = useState(0);
   const [srcB, setSrcB] = useState<string | null>(null);
+  // 로건 QA 10/30: B follows A by the two versions' shared subtitle lines; without subtitles, by the 맞춤점 a person pins.
+  const [align, setAlign] = useState<{ anchors: Anchor[]; changes: VersionChange[] } | null>(null);
+  const [pins, setPins] = useState<Anchor[]>([]);
+  const hold = useRef<number | null>(null);
   // 로건 QA 10/30 (흰 화면): until a video has its first picture the frame says it is loading, and #t=0.1 makes browsers draw that picture.
   const [drawn, setDrawn] = useState<Record<string, boolean>>({});
   const [safe, setSafe] = useState(false);
@@ -105,13 +110,27 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
     return () => { active = false; };
   }, [client, projectId, finalBKey]);
   useEffect(() => {
+    let active = true;
+    const a = shownFinal.current, b = shownB.current;
+    setAlign(null); setPins([]);
+    if (!client || !a || !b) return;
+    void Promise.all([client.finalSrt(a), client.finalSrt(b)]).then(([srtA, srtB]) => {
+      if (active && srtA && srtB) setAlign(alignVersions(srtCues(srtA), srtCues(srtB)));
+    }, () => undefined);
+    return () => { active = false; };
+  }, [client, finalKey, finalBKey]);
+  useEffect(() => {
     const b = videoB.current;
     if (!b || compareVer === null) return;
-    const target = compareTime(time, offset, b.duration);
+    // A 바뀐 곳 opened from the list shows each side's own start until it plays or A moves.
+    if (playing) hold.current = null;
+    else if (hold.current !== null && Math.abs(time - hold.current) < 0.05) return;
+    const anchors = align?.anchors.length ? align.anchors : pins;
+    const target = anchors.length ? mapTime(time, anchors, offset, b.duration) : compareTime(time, offset, b.duration);
     if (Math.abs(b.currentTime - target) > 0.3) b.currentTime = target;
     if (playing && b.paused) void b.play().catch(() => undefined);
     if (!playing && !b.paused) b.pause();
-  }, [time, offset, playing, compareVer]);
+  }, [time, offset, playing, compareVer, align, pins]);
   useEffect(() => {
     if (!focusId || focused.current === focusId) return;
     const item = items.find(row => row.id === focusId);
@@ -238,11 +257,20 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
                 ? <button type="button" className="yp-cb" onClick={() => setCompareVer(finals.filter(item => item.v !== ver).at(-1)?.v ?? null)}><Columns2 size={14} /> 버전 비교</button>
                 : <><label className="yp-vsel">B <select value={compareVer} onChange={event => setCompareVer(Number(event.target.value))} aria-label="비교할 버전">
                     {[...finals].reverse().filter(item => item.v !== ver).map(item => <option key={item.v} value={item.v}>v{item.v}</option>)}</select></label>
-                  <label className="yp-vsel" title="컷 길이가 다르면 B를 몇 초 앞뒤로 맞춰요">B 시간 보정 <input className="yp-in" type="number" step={0.5} value={offset} onChange={event => setOffset(Number(event.target.value) || 0)} style={{ width: 64 }} aria-label="B 시간 보정(초)" />초</label>
+                  {align?.anchors.length ? <span className="yp-vsel" title="두 버전 자막에서 같은 문장끼리 맞춰, 구간마다 B를 따로 맞춰요">B 자동 맞춤 · 같은 문장 {align.anchors.length}개</span> : null}
+                  <label className="yp-vsel" title="B를 몇 초 더 앞뒤로 밀어요">{align?.anchors.length ? "B 더 밀기" : "B 시간 보정"} <input className="yp-in" type="number" step={0.5} value={offset} onChange={event => setOffset(Number(event.target.value) || 0)} style={{ width: 64 }} aria-label="B 시간 보정(초)" />초</label>
+                  {!align?.anchors.length ? <button type="button" className="yp-cb" title="A와 B가 같은 장면에 있을 때 누르면, 그 지점을 기준으로 앞뒤를 따로 맞춰요"
+                    onClick={() => { const b = videoB.current; if (b) { setPins(list => [...list.filter(([at]) => Math.abs(at - time) > 0.5), [time, b.currentTime]]); setOffset(0); } }}>여기를 맞춤점으로{pins.length ? ` (${pins.length})` : ""}</button> : null}
+                  {pins.length && !align?.anchors.length ? <button type="button" className="yp-cb" onClick={() => setPins([])}>맞춤점 지우기</button> : null}
                   <button type="button" className="yp-cb" onClick={() => { setCompareVer(null); setOffset(0); }}>비교 끄기</button></> : null}
               <span style={{ flex: 1 }} />
               {project.yp.stage === "review" ? <Link className="yp-cb" href={`/content/make?project=${encodeURIComponent(project.id)}`}><Upload size={14} /> 제작에서 새 버전 올리기</Link> : null}
               <button type="button" className="yp-cb" onClick={exportList}><Download size={14} /> 편집용 목록 내려받기</button></div>
+            {/* 로건 QA 10/30: what changed between the versions, found from their subtitles instead of watching both through. */}
+            {compareVer !== null && align?.changes.length ? <details className="yp-changes" open><summary>바뀐 곳 {align.changes.length}개 <span className="yp-muted">(자막 기준 · 누르면 두 영상이 그 자리로 가요)</span></summary>
+              <ul>{align.changes.map(change => <li key={`${change.a[0]}-${change.b[0]}`}><button type="button" className="yp-lnk" onClick={() => {
+                video.current?.pause(); videoB.current?.pause(); hold.current = change.a[0]; seek(change.a[0]); if (videoB.current) videoB.current.currentTime = change.b[0];
+              }}>A {fmt(change.a[0])} · B {fmt(change.b[0])}</button> <span>{change.bText ? `B 「${change.bText.slice(0, 60)}${change.bText.length > 60 ? "…" : ""}」` : ""}{change.aText ? `${change.bText ? " · " : ""}A에만 「${change.aText.slice(0, 40)}${change.aText.length > 40 ? "…" : ""}」` : ""}</span></li>)}</ul></details> : null}
           </> : <div className="yp-tview2" style={{ padding: 12, display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))" }}>
             {SLOTS.filter(slot => confirmed?.[slot]).map(slot => <button key={slot} type="button" className={`yp-abc${thumbTarget === slot ? " yp-on" : ""}`} style={{ textAlign: "left" }} onClick={() => setThumbTarget(slot)}>
               <div className="yp-abc-h"><span className={`yp-ltag${slot === "C" ? " yp-c" : ""}`}>{slot}</span>{finalPair(plan, make, slot)?.changed ? <span className="yp-tag yp-warn">컨펌본과 다름</span> : null}</div>

@@ -51,6 +51,8 @@ export interface YpClient {
   uploadAsset(id: string, kind: YpAssetKind, file: File, onProgress?: (percent: number) => void): Promise<{ path: string; name: string; bytes: number }>;
   assetUrl(id: string, path: string): Promise<string>;
   finalUrl(id: string, final: YpFinalView): Promise<string | null>;
+  /** A render-PC version's subtitles (SRT text), for lining up two versions; null for an uploaded file. */
+  finalSrt(final: YpFinalView): Promise<string | null>;
   feedback(id: string): Promise<YpFeedbackView[]>;
   addFeedback(id: string, input: YpFeedbackInput): Promise<YpFeedbackView>;
   actFeedback(id: string, itemId: string, expectedVersion: number, action: FeedbackAction, text?: string, replyId?: string): Promise<YpFeedbackView>;
@@ -129,6 +131,11 @@ function apiClient(token: string): YpClient {
       return { path: upload.path, name: file.name, bytes: file.size };
     },
     assetUrl,
+    finalSrt: async final => {
+      if (final.source !== "myin" || !final.runId) return null;
+      const url = (await apiRequest<{ srt: string | null }>(`/api/v1/content/youtube-automation/myin?outputs=${final.runId}`, { token })).srt;
+      return url ? await fetch(url).then(response => response.ok ? response.text() : null, () => null) : null;
+    },
     finalUrl: async (id, final) => final.source === "short" && final.runId ? shortVideoUrl(id, final.runId)
       : final.runId ? (await apiRequest<{ video: string | null }>(`/api/v1/content/youtube-automation/myin?outputs=${final.runId}`, { token })).video
       : final.path ? assetUrl(id, final.path) : null,
@@ -489,6 +496,7 @@ function demoClient(): YpClient {
     },
     assetUrl: async (_id, path) => demoFiles.get(path) ?? "",
     finalUrl: async (_id, final) => final.path ? demoFiles.get(final.path) ?? null : null,
+    finalSrt: async () => null,
     feedback: async id => structuredClone(demoFeedback.get(id) ?? []),
     addFeedback: async (id, input) => {
       const item: YpFeedbackView = { id: crypto.randomUUID(), version: 1, text: input.text ?? "", who: "리키", whoId: DEMO_ME, at: new Date().toISOString(), target: input.target, ver: input.ver,
