@@ -1,4 +1,4 @@
-.linear-shell .ui-v2.ca-v07{padding:20px 24px 48px;color:var(--text);background:var(--bg);font-size:13px;line-height:1.55;min-width:0}
+.linear-shell .ui-v2.ca-v07{padding:0 0 48px;color:var(--text);background:var(--bg);font-size:13px;line-height:1.55;min-width:0}
 .linear-shell .ui-v2.ca-v07 *{box-sizing:border-box;min-width:0}
 .linear-shell .ui-v2.ca-v07 h1{font-size:22px;line-height:1.35;margin:4px 0}
 .linear-shell .ui-v2.ca-v07 .ca-v07-title{display:flex;align-items:center;gap:8px}
@@ -10,15 +10,19 @@
 .linear-shell .ui-v2.ca-v07 a{color:var(--accent-2);text-decoration:none}
 .linear-shell .ui-v2.ca-v07 a:hover{text-decoration:underline}
 .linear-shell .ui-v2.ca-v07 button,.linear-shell .ui-v2.ca-v07 input,.linear-shell .ui-v2.ca-v07 select,.linear-shell .ui-v2.ca-v07 textarea{font:inherit}
-.linear-shell .ui-v2.ca-v07 button{cursor:pointer;border:1px solid var(--line);border-radius:6px;background:var(--panel-2);color:var(--text);padding:7px 10px;min-height:32px}
+.linear-shell .ui-v2.ca-v07 button{cursor:pointer;border:1px solid var(--line);border-radius:6px;background:var(--panel-2);color:var(--text);padding:5px 10px;min-height:32px}
 .linear-shell .ui-v2.ca-v07 button.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .linear-shell .ui-v2.ca-v07 button:disabled{opacity:.52;cursor:not-allowed}
-.linear-shell .ui-v2.ca-v07 input:not([type=checkbox]),.linear-shell .ui-v2.ca-v07 select,.linear-shell .ui-v2.ca-v07 textarea{width:100%;border:1px solid var(--line);border-radius:6px;background:var(--panel-2);color:var(--text);padding:8px 10px}
+.linear-shell .ui-v2.ca-v07 input:not([type=checkbox]),.linear-shell .ui-v2.ca-v07 select,.linear-shell .ui-v2.ca-v07 textarea{width:100%;border:1px solid var(--line);border-radius:6px;background:var(--panel-2);color:var(--text);padding:5px 10px}
 .linear-shell .ui-v2.ca-v07 textarea{resize:vertical;min-height:80px}
 .linear-shell .ui-v2.ca-v07 label{display:grid;gap:5px;color:var(--text-2);font-weight:600}
 .linear-shell .ui-v2.ca-v07 pre{max-height:260px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
 .linear-shell .ui-v2.ca-v07 :focus-visible{outline:2px solid var(--accent-2);outline-offset:2px}
+/* 스타일 점검 P2: the title starts where every other screen's does; the workspace line sits under it. */
 .linear-shell .ui-v2.ca-v07 .ca-v07-head{padding-bottom:14px}
+.linear-shell .ui-v2.ca-v07 .ca-v07-head>div{display:flex;flex-direction:column}
+.linear-shell .ui-v2.ca-v07 .ca-v07-head .ca-v07-eyebrow{order:1}
+.linear-shell .ui-v2.ca-v07 .ca-v07-head>div>p{order:2}
 .linear-shell .ui-v2.ca-v07 .ca-v07-eyebrow{color:var(--muted);font-size:12px}
 .linear-shell .ui-v2.ca-v07 .ca-v07-guide{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 14px;background:var(--accent-soft);border:1px solid var(--line);border-radius:8px;margin-bottom:16px}
 .linear-shell .ui-v2.ca-v07 .ca-v07-guide>span{display:flex;flex-wrap:wrap;gap:8px;color:var(--text-2)}
