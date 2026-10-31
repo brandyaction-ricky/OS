@@ -6,6 +6,8 @@ import { assertActiveChannelOwner, assertConnectionAccess, auditChannelAction, t
 export const YOUTUBE_UPLOAD_SCOPE = "https://www.googleapis.com/auth/youtube.upload";
 export const YOUTUBE_READ_SCOPE = "https://www.googleapis.com/auth/youtube.readonly";
 export const YOUTUBE_ANALYTICS_SCOPE = "https://www.googleapis.com/auth/yt-analytics.readonly";
+/** 영상 관리 (CTA 일괄 관리, 2026-10-31): change an uploaded video's description. */
+export const YOUTUBE_MANAGE_SCOPE = "https://www.googleapis.com/auth/youtube.force-ssl";
 export const YOUTUBE_OAUTH_COOKIE = "bos_youtube_oauth";
 
 export type YoutubeStoredConnection = {
@@ -100,7 +102,7 @@ export function buildYoutubeAuthorizationUrl(state: string) {
   const params = new URLSearchParams({
     client_id: required("YOUTUBE_CLIENT_ID"), redirect_uri: youtubeRedirectUri(), response_type: "code",
     access_type: "offline", include_granted_scopes: "true", prompt: "consent select_account",
-    scope: `${YOUTUBE_UPLOAD_SCOPE} ${YOUTUBE_READ_SCOPE} ${YOUTUBE_ANALYTICS_SCOPE}`, state,
+    scope: `${YOUTUBE_UPLOAD_SCOPE} ${YOUTUBE_READ_SCOPE} ${YOUTUBE_ANALYTICS_SCOPE} ${YOUTUBE_MANAGE_SCOPE}`, state,
   });
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
 }
