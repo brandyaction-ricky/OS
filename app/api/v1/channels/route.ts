@@ -4,7 +4,7 @@ import { authenticateRequest } from "@/lib/server/auth";
 import { canUseConnection } from "@/lib/server/channel-access";
 import { publicMetaConnection, metaMode, type MetaConnection } from "@/lib/server/meta-oauth";
 import { createServiceSupabase } from "@/lib/supabase/server";
-import { YOUTUBE_ANALYTICS_SCOPE } from "@/lib/server/youtube-oauth";
+import { YOUTUBE_ANALYTICS_SCOPE, YOUTUBE_MANAGE_SCOPE } from "@/lib/server/youtube-oauth";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
@@ -23,7 +23,7 @@ export async function GET(request: Request) {
     ]);
     if (youtube.error || meta.error) throw new ApiError(503, "CHANNEL_SCHEMA_REQUIRED", "계정별 채널 연결 저장소가 아직 준비되지 않았습니다.");
     const connections = [
-      ...(youtube.data ?? []).filter(visible).map(row => ({ platform: "youtube", ownerId: row.owner_id, accountName: row.channel_title, accountType: "YOUTUBE", channelId: row.channel_id, analyticsConnected: String(row.scope ?? "").split(/\s+/).includes(YOUTUBE_ANALYTICS_SCOPE), teamShared: row.team_shared, status: "connected", connectedAt: row.connected_at, expiresAt: null, expiresSoon: false, lastSuccessAt: null, lastErrorCode: null, mock: false })),
+      ...(youtube.data ?? []).filter(visible).map(row => ({ platform: "youtube", ownerId: row.owner_id, accountName: row.channel_title, accountType: "YOUTUBE", channelId: row.channel_id, analyticsConnected: String(row.scope ?? "").split(/\s+/).includes(YOUTUBE_ANALYTICS_SCOPE), manageConnected: String(row.scope ?? "").split(/\s+/).includes(YOUTUBE_MANAGE_SCOPE), teamShared: row.team_shared, status: "connected", connectedAt: row.connected_at, expiresAt: null, expiresSoon: false, lastSuccessAt: null, lastErrorCode: null, mock: false })),
       ...((meta.data ?? []) as MetaConnection[]).filter(visible).map(publicMetaConnection),
     ];
     return NextResponse.json({ connections, mode: metaMode() }, { headers: { "Cache-Control": "no-store" } });
