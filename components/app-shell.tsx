@@ -335,10 +335,12 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
           </button>
           {profileOpen ? <div ref={profileMenuRef} id={profileMenuId} className="profile-menu" role="dialog" aria-label="내 계정" tabIndex={-1}>
             <strong>{profile?.displayName}</strong><span>{profile?.email}</span><span className="role-badge">{roleLabel(profile?.role ?? "member")}</span>
-            <Link href="/settings/account" onClick={()=>setProfileOpen(false)}><UserRound size={15} /> 내 계정 · 채널 연결</Link>
-            {hrEnabled && canOpenMenu(profile, "/hr/my-leave", menuAccess.allowed) ? <Link href="/hr/my-leave" onClick={()=>setProfileOpen(false)}><UserRound size={15} /> 내 휴가</Link> : null}
-            <button onClick={() => { setMenuGuide(true); setProfileOpen(false); setMobileOpen(false); }}><CircleHelp size={15} /> 메뉴 안내 다시 보기</button>
-            {!demo ? <><button onClick={() => { setPasswordOpen(true); setProfileOpen(false); setMobileOpen(false); }}><KeyRound size={15} /> 비밀번호 변경</button><button onClick={signOut}><LogOut size={15} /> 로그아웃</button></> : null}
+            <div className="profile-menu-actions">
+              <Link className="profile-menu-action" href="/settings/account" onClick={()=>setProfileOpen(false)}><UserRound size={15} /><span>내 계정 · 채널 연결</span></Link>
+              {hrEnabled && canOpenMenu(profile, "/hr/my-leave", menuAccess.allowed) ? <Link className="profile-menu-action" href="/hr/my-leave" onClick={()=>setProfileOpen(false)}><UserRound size={15} /><span>내 휴가</span></Link> : null}
+              <button className="profile-menu-action" onClick={() => { setMenuGuide(true); setProfileOpen(false); setMobileOpen(false); }}><CircleHelp size={15} /><span>메뉴 안내 다시 보기</span></button>
+              {!demo ? <><button className="profile-menu-action" onClick={() => { setPasswordOpen(true); setProfileOpen(false); setMobileOpen(false); }}><KeyRound size={15} /><span>비밀번호 변경</span></button><button className="profile-menu-action" onClick={signOut}><LogOut size={15} /><span>로그아웃</span></button></> : null}
+            </div>
           </div> : null}
         </div>
       </aside>
