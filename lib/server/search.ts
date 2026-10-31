@@ -100,6 +100,10 @@ export async function searchDocuments(actor: RequestActor, input: SearchInput): 
 
   if(input.quick)return {results:await visiblePageResults(actor, await fallbackDocuments(actor,input,statuses)),degraded:false};
   const normalizedQuery = keywordQueryText(input.query);
+  // An AI key's own drafts never enter the vector RPC (service client). Look only at those, and while the RPC runs: re-reading every
+  // shared document here took 2.3 s on Production (2026-10-31) and timed out under concurrent AI searches (supplement_failed).
+  const includeAgentDrafts = actor.type === "agent" && statuses.includes("draft");
+  const ownDrafts = includeAgentDrafts ? fallbackDocuments(actor, input, ["draft"]).catch(() => null) : null;
   let embedding: string | null = null;
   let degraded = false;
   const degradationReasons: SearchDegradation[] = [];
@@ -152,10 +156,12 @@ export async function searchDocuments(actor: RequestActor, input: SearchInput): 
   if (degraded) results = results.filter((result) => hasLexicalEvidence(result, input.query));
   const sharedActor = actor; // Supplemental reads retain the requesting user’s RLS scope.
   let sharedKeyword: SearchResult[] = [];
-  const includeAgentDrafts = actor.type === "agent" && statuses.includes("draft");
-  if (results.length < input.topK || includeAgentDrafts) {
+  if (results.length < input.topK) {
     try { sharedKeyword = await fallbackDocuments(sharedActor, input, statuses); }
     catch (error) { if (!results.length) throw error; degraded = true; degradationReasons.push("supplement_failed"); }
+  } else if (ownDrafts) {
+    const drafts = await ownDrafts;
+    if (drafts) sharedKeyword = drafts; else { degraded = true; degradationReasons.push("supplement_failed"); }
   }
   if (!results.length) results = sharedKeyword;
   else {
