@@ -46,8 +46,9 @@ function splitFilters(expression) {
 }
 function matches(row, expression) {
   if (expression.startsWith("and(")) return splitFilters(expression.slice(4, -1)).every(part => matches(row, part));
-  const [, field, op, value] = expression.match(/^([\w_]+)\.(eq|ilike)\.(.*)$/) ?? [];
+  const [, field, op, value] = expression.match(/^([\w_]+)\.(eq|ilike|in)\.(.*)$/) ?? [];
   assert.ok(field, `Unsupported fixture filter: ${expression}`);
+  if (op === "in") return value.slice(1, -1).split(",").includes(row[field]);
   return op === "eq" ? row[field] === value : String(row[field] ?? "").toLowerCase().includes(value.replaceAll("%", "").toLowerCase());
 }
 async function fixture(documents, options = {}) {
@@ -140,10 +141,10 @@ test("actual MCP adapter → authentication → detail → hydrated policy reads
     assert.ok(f.writes.every(write => write.table === "os_agent_keys" && Object.keys(write.value).join() === "last_used_at"));
   }
 });
-test("detail denies other owners, human/imported notes, archived/review drafts and meeting privacy", async () => {
+test("detail denies other owners, human/imported notes, archived drafts and meeting privacy", async () => {
   for (const overrides of [
     { owner_id: other }, { source: "wiki" }, { source: "manual" }, { source: "obsidian_vault" }, { source: undefined },
-    { status: "archived", archived_from_status: "draft" }, { status: "review" }, { status: "reviewed" }, { meeting_record_id: uuid(99) },
+    { status: "archived", archived_from_status: "draft" }, { meeting_record_id: uuid(99) },
   ]) {
     const doc = draft(10, overrides), f = await fixture([doc]);
     const response = await f.detail.GET(new Request(`http://localhost/api/v1/knowledge-documents?organizationId=${org}&documentId=${doc.id}`, { headers: { authorization: `Bearer ${token}` } }));
@@ -168,6 +169,15 @@ test("partner, inactive/expired/revoked key, inactive owner and missing read sco
     const doc = draft(10), f = await fixture([doc], options);
     assert.equal((await f.call("get_document", { document_id: doc.id })).isError, true);
   }
+});
+// 대표 결정 2026-10-31 (e9cab82b): a teammate's 검토 요청 / 검토 완료 document is found and opened like a team-shared one.
+test("MCP search and detail reach another owner's review-stage documents", async () => {
+  const docs = [draft(10, { owner_id: other, source: "wiki", status: "review" }), draft(11, { owner_id: other, source: "wiki", status: "reviewed" })];
+  const f = await fixture(docs);
+  const result = await f.call("search_knowledge", { query: "needle" });
+  assert.deepEqual(JSON.parse(result.content[0].text).results.map(row => row.documentId).sort(), [uuid(10), uuid(11)]);
+  assert.ok(f.rpcCalls.every(call => call.args.p_statuses.includes("review") && call.args.p_statuses.includes("reviewed")));
+  for (const doc of docs) assert.notEqual((await f.call("get_document", { document_id: doc.id })).isError, true, doc.status);
 });
 test("MCP search finds own draft and never leaks another owner's draft or human note", async () => {
   const docs = [draft(10), draft(11, { owner_id: other }), draft(12, { source: "wiki" }), draft(13, { source: "obsidian_vault" }), draft(14, { status: "archived", archived_from_status: "draft" })];
