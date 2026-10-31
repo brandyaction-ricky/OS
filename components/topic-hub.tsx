@@ -1,4 +1,5 @@
 "use client";
+import { AdHistoryCard } from "./youtube-process-ads";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -94,6 +95,7 @@ function ShortStart({ platform }: { platform: "short" | "ad" }) {
             target="_blank" rel="noreferrer">메타 광고 라이브러리에서 보기 ↗</a> : null}</div>
       </div>
     </form>
+    {ad ? <AdHistoryCard client={client} /> : null}
     <section className="yp-card" style={{ marginTop: 14 }}><div className="yp-card-h">주제를 찾는 중인 {ad ? "광고" : "숏폼"} {projects ? open.length : ""}</div>
       <div className="yp-card-b">{projects === null ? <p className="yp-hint" role="status">불러오는 중이에요…</p>
         : open.length ? <ul className="yp-hist">{open.map(project => <li key={project.id} style={{ alignItems: "center", gap: 10 }}>
