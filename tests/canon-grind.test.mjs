@@ -59,9 +59,21 @@ test("숏폼 대본: its 평가표 is the 정본 §10 판정 검사, and the aut
   assert.equal(runSummary(runShort, "short").graduated, true);
 });
 
+test("스레드: its 평가표 is the 정본 §7 관문 여섯; the automatic check is the post limit and no OS address in a public post", () => {
+  assert.deepEqual(GRIND_KINDS.threads.criteria.map(c => c.name), ["주제", "첫 줄과 본문", "관점의 답", "적용", "근거 · 의미", "읽기 · 형식"]);
+  const ok = { posts: ["본문", "관점 댓글", "적용 대댓글"] };
+  assert.equal(GRIND_KINDS.threads.findings(ok), 0);
+  assert.equal(GRIND_KINDS.threads.findings({ posts: ["가".repeat(501)] }), 1, "a post over 500 letters");
+  assert.equal(GRIND_KINDS.threads.findings({ posts: [] }), 1, "no post at all");
+  assert.equal(GRIND_KINDS.threads.findings({ posts: ["본문", "https://brandyaction-os.vercel.app/knowledge?document=x"] }), 1, "an OS address in a public post");
+  const run = { state: "done", results: [{ key: "a:posts", itemId: "a", title: "a", format: "posts", draft: ok }], scores: { "a:posts": { p: score("p", all("상")) } } };
+  assert.equal(runSummary(run, "threads").graduated, true);
+});
+
 test("a 정본's version: its 정본 묶음 line, else its 상태 line, else the document version", () => {
   assert.equal(canonVersion("> **정본 묶음: v0.1 (2026-10-30).**", 3), "v0.1");
   assert.equal(canonVersion("> 상태: v0.7 (2026-10-29, 대표 승인).", 8), "v0.7");
   assert.equal(canonVersion("> 상태: 초안 v0.2", 2), "v0.2");
+  assert.equal(canonVersion("집필 입력 계약: threads_editorial_v1\n\n# 쓰레드 자동화 운영 정본\n\n운영 기준 v5.9 · 2026-10-29", 22), "v5.9");
   assert.equal(canonVersion("본문만", 5), "doc v5");
 });

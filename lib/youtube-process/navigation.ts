@@ -15,6 +15,8 @@ export const YOUTUBE_V1_PAGES: NavPage[] = [
 export const CARD_CANON_PAGE: NavPage = { label: "정본 다듬기", href: "/content/card-canon", icon: SlidersHorizontal, aliases: ["카드뉴스 정본", "평가표", "시험 묶음", "정본 그라인딩"], ready: true };
 /** The same for 숏폼 대본 (설계서 §9: the second kind after 카드뉴스). */
 export const SHORT_CANON_PAGE: NavPage = { label: "정본 다듬기", href: "/content/short-canon", icon: SlidersHorizontal, aliases: ["숏폼 대본 정본", "숏폼 평가표", "숏폼 시험 묶음"], ready: true };
+/** And for 스레드 (the third kind), at the end of the 스레드 menu. */
+export const THREADS_CANON_PAGE: NavPage = { label: "정본 다듬기", href: "/content/threads-canon", icon: SlidersHorizontal, aliases: ["스레드 정본", "스레드 평가표", "스레드 시험 묶음"], ready: true };
 export const YOUTUBE_V1_STEP_PAGES: NavPage[] = [
   { label: "기획", href: "/content/plan", navHref: "/content/projects", icon: PenLine, aliases: ["주제", "기획안", "구성안"], ready: true },
   { label: "제작", href: "/content/make", navHref: "/content/projects", icon: Film, aliases: ["최종본 올리기"], ready: true },
@@ -60,7 +62,7 @@ export function youtubeV1Stages(stages: NavStage[]): NavStage[] {
     const threads = Object.keys(THREADS_FLOW).map(href => stage.pages.find(page => page.href === href)).filter((page): page is NavPage => Boolean(page))
       .map(page => ({ ...page, label: THREADS_FLOW[page.href], processNumber: page.href === "/automation/references" ? undefined : ++step, aliases: [page.label, ...(page.aliases ?? [])] }));
     const rest = stage.pages.filter(page => !THREADS_FLOW[page.href]).map(page => page.href === "/automation/shorts" ? { ...page, label: "쇼츠 (예전 자동화)", processNumber: undefined } : { ...page, processNumber: undefined });
-    return [{ ...stage, id: "threads", label: "스레드", icon: AtSign, href: threads[0]?.href ?? stage.href, pages: threads }, { ...stage, label: "자동화 관리", icon: Settings, href: rest[0]?.href ?? stage.href, pages: rest }];
+    return [{ ...stage, id: "threads", label: "스레드", icon: AtSign, href: threads[0]?.href ?? stage.href, pages: [...threads, THREADS_CANON_PAGE] }, { ...stage, label: "자동화 관리", icon: Settings, href: rest[0]?.href ?? stage.href, pages: rest }];
   });
 }
 /** Which v1 group a screen belongs to: a platform list by its ?platform=, 주제 찾기 and every step of a video under 공통. */
@@ -96,6 +98,7 @@ export const YOUTUBE_V1_SCREENS = {
   "/content/links": "links",
   "/content/card-canon": "card-canon",
   "/content/short-canon": "short-canon",
+  "/content/threads-canon": "threads-canon",
   "/content/voice-dictionary": "voice-dictionary",
 } as const;
 export type YoutubeV1Screen = (typeof YOUTUBE_V1_SCREENS)[keyof typeof YOUTUBE_V1_SCREENS];
