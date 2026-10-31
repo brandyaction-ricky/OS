@@ -874,6 +874,7 @@
   border: 0;
   background: none;
   padding: 0;
+  min-height: 24px;
   font: inherit;
   color: var(--fg);
   text-align: left;
@@ -2057,7 +2058,7 @@
 .finance-sync-form label { display: grid; gap: 6px; font-size: 12px; }
 .finance-sync-form input[type="date"] { min-height: 36px; padding: 6px 8px; border: 1px solid var(--line, #dddfe7); border-radius: 6px; background: var(--panel, white); color: var(--text, #23252d); }
 .finance-sync-form .finance-sync-confirm { display: flex; align-items: center; gap: 8px; min-height: 36px; }
-.finance-sync-progress { display: grid; gap: 6px; padding: 12px; border: 1px solid var(--border, #dddfe7); border-radius: 8px; font-size: 13px; }
+.finance-sync-progress { display: grid; gap: 6px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
 .finance-sync-progress small,.finance-sync-note { color: var(--muted, #626675); }
 .finance-sync-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .finance-sync-warning { color: #9b4411; }

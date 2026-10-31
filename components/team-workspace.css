@@ -322,7 +322,7 @@
 .linear-shell .ui-v2 .tm-root .tm-month-cell[data-outside="true"] { opacity: .4; }
 .linear-shell .ui-v2 .tm-root .tm-month-cell[data-today="true"] { border-color: var(--accent-2); }
 .linear-shell .ui-v2 .tm-root .tm-month-cell .tm-event { padding: 2px 5px; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.linear-shell .ui-v2 .tm-root .tm-month-cell .tm-more { align-self: flex-start; border: 0; background: transparent; color: var(--accent); font-size: 11px; font-weight: 700; cursor: pointer; padding: 3px 5px; }
+.linear-shell .ui-v2 .tm-root .tm-month-cell .tm-more { align-self: flex-start; border: 0; background: transparent; color: var(--accent-2); font-size: 11px; font-weight: 700; cursor: pointer; padding: 3px 5px; }
 
 /* ───── 14. 요약 숫자 (기존 .metric 사용, 4칸 격자만 새로) ───── */
 .linear-shell .ui-v2 .tm-root .tm-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }

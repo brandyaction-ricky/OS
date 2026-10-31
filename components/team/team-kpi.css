@@ -25,7 +25,7 @@
 .tm-kpi-cohort-form label { display: grid; gap: 4px; font-size: 13px; }
 .tm-kpi-cohort-form .tm-row { grid-column: 1 / -1; gap: 6px; }
 .tm-kpi-chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--line-soft); white-space: nowrap; }
-.tm-kpi-chip[data-live] { background: var(--mint); color: #062b22; }
+.tm-kpi-chip[data-live] { background: var(--mint); color: var(--bg); }
 .tm-kpi-revenue b { font-weight: 700; }
 /* One control height and look for every input, select and button in the tab */
 .tm-kpi input, .tm-kpi select { height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--text); font: inherit; font-size: 13px; }

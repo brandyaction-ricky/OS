@@ -60,7 +60,7 @@
 .linear-shell.shell-v2 .process-bar .process-step.current { background: var(--card); color: var(--text); }
 .linear-shell.shell-v2 .process-bar:has([role]) { height: auto; flex-wrap: wrap; padding-block: 8px; }
 .linear-shell.shell-v2 .guide-strip ol { display: flex; margin: 0; padding: 0; list-style: none; }
-.linear-shell.shell-v2 .guide-strip .guide-strip-close { width: auto; height: auto; min-height: 0; border: 0; background: transparent; }
+.linear-shell.shell-v2 .guide-strip .guide-strip-close { width: auto; height: auto; min-width: 24px; min-height: 24px; align-items: center; justify-content: center; border: 0; background: transparent; }
 .linear-shell.shell-v2 .guide-strip-head { flex-wrap: wrap; }
 .linear-shell .page-content.ui-v2 > * { min-width: 0; }
 .linear-shell .ui-v2 .page-header:has(.guide-strip) { display: grid; }
@@ -103,6 +103,7 @@
   .linear-shell.shell-v2 .process-bar nav { max-width: none; }
   .linear-shell.shell-v2 .guide-strip-next { margin-left: 0; }
   .linear-shell.shell-v2 .guide-strip-close { margin-left: auto; }
+  .linear-shell.shell-v2 .guide-strip .guide-strip-close { min-width: 40px; min-height: 40px; }
 }
 /* Button text that stays readable (2026-10-28, owner screenshot of 내 AI에 보내기):
    - On YouTube screens `.yp :is(button,…) { color: inherit }` outranked the filled button's white text, so dark text sat on the dark plum.

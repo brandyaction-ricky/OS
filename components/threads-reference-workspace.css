@@ -2,7 +2,7 @@
 .linear-shell .ui-v2.ca-v07 .tr-list-head h2{display:flex;align-items:center;gap:8px;margin:0}
 .linear-shell .ui-v2.ca-v07 .tr-list-head>span{color:var(--muted);font-size:12px}
 .linear-shell .ui-v2.ca-v07 .tr-quality-filters{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
-.linear-shell .ui-v2.ca-v07 .tr-quality-filters button[aria-pressed=true]{border-color:var(--accent);color:var(--accent);font-weight:600}
+.linear-shell .ui-v2.ca-v07 .tr-quality-filters button[aria-pressed=true]{border-color:var(--accent);color:var(--accent-2);font-weight:600}
 .linear-shell .ui-v2.ca-v07 .tr-comparison{display:grid;gap:12px;margin:12px 0}
 .linear-shell .ui-v2.ca-v07 .tr-reference{display:grid;grid-template-columns:minmax(0,2fr) minmax(220px,1fr);gap:18px;padding:18px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
 .linear-shell .ui-v2.ca-v07 .tr-reference.is-selected{border-color:var(--accent);box-shadow:inset 3px 0 var(--accent)}
@@ -44,10 +44,10 @@
 
 .linear-shell .ui-v2.ca-v07 .tr-pick-status{display:inline-block;margin-left:12px;font-size:13px;color:var(--muted)}
 .linear-shell .ui-v2.ca-v07 .tr-selected-guide{display:flex;align-items:center;flex-wrap:wrap;gap:10px 16px;padding:14px 16px;margin:12px 0;border:1px solid var(--accent);border-radius:10px;background:var(--card)}
-.linear-shell .ui-v2.ca-v07 .tr-selected-guide a{margin-left:auto;font-weight:700;color:var(--accent)}
+.linear-shell .ui-v2.ca-v07 .tr-selected-guide a{margin-left:auto;font-weight:700;color:var(--accent-2)}
 @media(max-width:700px){.linear-shell .ui-v2.ca-v07 .tr-pick-status{display:block;margin:6px 0 0}.linear-shell .ui-v2.ca-v07 .tr-selected-guide a{margin-left:0}}
 .linear-shell .ui-v2.ca-v07 .tr-pick .ca-v07-check{display:inline-flex;min-height:40px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;font-weight:600;cursor:pointer}
 .linear-shell .ui-v2.ca-v07 .tr-pick .ca-v07-check input{width:18px;height:18px;accent-color:var(--accent);cursor:pointer}
-.linear-shell .ui-v2.ca-v07 .tr-reference.is-selected .tr-pick .ca-v07-check{border-color:var(--accent);color:var(--accent)}
+.linear-shell .ui-v2.ca-v07 .tr-reference.is-selected .tr-pick .ca-v07-check{border-color:var(--accent);color:var(--accent-2)}
 
-.linear-shell .ui-v2.ca-v07 .tr-inline-next{display:inline-flex;align-items:center;min-height:40px;margin-left:10px;color:var(--accent);font-weight:700}
+.linear-shell .ui-v2.ca-v07 .tr-inline-next{display:inline-flex;align-items:center;min-height:40px;margin-left:10px;color:var(--accent-2);font-weight:700}
