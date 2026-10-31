@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { apiRequest } from "@/lib/api-client";
+import type { overviewCounts } from "@/lib/youtube-process/overview";
 import type { YoutubeV1Mode } from "@/lib/youtube-process/gate";
 import { useSession } from "./session-provider";
 
@@ -68,4 +69,33 @@ export function useYoutubeConfirmWaiting(enabled: boolean, path: string) {
     return () => { active = false; };
   }, [enabled, accessToken, demo, path, tick]);
   return enabled ? count : null;
+}
+
+/**
+ * 한눈에 보기 badges (리키 관제실 시안 P2: a menu number is work, not the count of pages under it): decisions and AI jobs per
+ * platform. Asked every five minutes while the window is visible and after each decision, not on every page: each ask reads the
+ * whole project list on the server, and a menu badge does not need to be fresher than that.
+ */
+type OverviewCounts = ReturnType<typeof overviewCounts>;
+export function useContentOverviewCounts(enabled: boolean) {
+  const { accessToken, demo } = useSession();
+  const [counts, setCounts] = useState<OverviewCounts | null>(null);
+  useEffect(() => {
+    if (!enabled || (!demo && !accessToken)) return;
+    let active = true;
+    const load = () => {
+      if (document.visibilityState !== "visible") return;
+      // The demo counts in the browser; both modules load only here so the shell bundle stays small.
+      const next = demo ? Promise.all([import("./youtube-process-data"), import("@/lib/youtube-process/overview")]).then(async ([data, rules]) => {
+        const { projects, jobs, canConfirm } = await data.youtubeProcessClient(null, true)!.overview();
+        return rules.overviewCounts(rules.overviewRows(projects, jobs, { id: "demo-ricky", canConfirm }).rows);
+      }) : apiRequest<{ counts: OverviewCounts }>("/api/v1/content/youtube/overview?counts=1", { token: accessToken ?? "" }).then(result => result.counts);
+      next.then(value => { if (active) setCounts(value); }, () => undefined);
+    };
+    load();
+    const timer = window.setInterval(load, 300_000);
+    window.addEventListener(YP_CONFIRM_EVENT, load);
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener(YP_CONFIRM_EVENT, load); };
+  }, [enabled, accessToken, demo]);
+  return enabled ? counts : null;
 }

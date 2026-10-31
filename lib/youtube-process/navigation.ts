@@ -1,4 +1,4 @@
-import { AtSign, BarChart3, CalendarDays, CheckCircle2, Eye, Film, GalleryHorizontal, LayoutGrid, Lightbulb, Link2, Megaphone, Mic, PenLine, Radar, Scissors, Settings, SlidersHorizontal, Smartphone, UploadCloud, Youtube } from "lucide-react";
+import { Activity, AtSign, BarChart3, CalendarDays, CheckCircle2, Eye, Film, GalleryHorizontal, LayoutGrid, Lightbulb, Link2, Megaphone, Mic, PenLine, Radar, Scissors, Settings, SlidersHorizontal, Smartphone, UploadCloud, Youtube } from "lucide-react";
 import type { NavPage, NavStage } from "../navigation";
 
 // Owner decision 2026-10-21: the side menu is 내 영상 · 스케줄 · 성과; the steps live inside a video (its progress line), so nobody
@@ -30,7 +30,10 @@ export const YOUTUBE_V1_STEP_PAGES: NavPage[] = [
 // Owner decision 2026-10-29 (메뉴 A안 「만드는 것별」): what is made decides the menu. Shared work (주제 찾기 · 스케줄 · 성과 ·
 // 링크관리) sits under 공통; each platform lists its own videos; 스레드 gets the channel-automation flow, and the rest of the old
 // automation menu becomes 자동화 관리. Addresses do not change, so bookmarks, guides and menu permissions (by address) keep working.
+/** 한눈에 보기 (리키 관제실 시안, owner decision 2026-10-31: its own menu with an everyday name, first under 공통). */
+export const OVERVIEW_PAGE: NavPage = { label: "한눈에 보기", href: "/content/overview", icon: Activity, aliases: ["관제실", "진행 현황", "확인 필요", "AI 일하는 중", "맡긴 일 현황"], ready: true };
 export const YOUTUBE_V1_COMMON_PAGES: NavPage[] = [
+  OVERVIEW_PAGE,
   { label: "주제 찾기", href: "/content/projects?view=discover", icon: Radar, aliases: ["주제", "레퍼런스", "참고 영상", "새 주제"], ready: true },
   ...YOUTUBE_V1_PAGES.slice(1),
 ];
@@ -85,6 +88,7 @@ export const YOUTUBE_V1_CEO_STAGE: NavStage = { id: "ceo", label: "대표 메뉴
 
 export const YOUTUBE_V1_SCREENS = {
   "/content/projects": "projects",
+  "/content/overview": "overview",
   "/content/plan": "plan",
   "/content/make": "make",
   "/content/final-check": "final-check",
