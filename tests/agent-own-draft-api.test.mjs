@@ -51,7 +51,7 @@ function matches(row, expression) {
   return op === "eq" ? row[field] === value : String(row[field] ?? "").toLowerCase().includes(value.replaceAll("%", "").toLowerCase());
 }
 async function fixture(documents, options = {}) {
-  const reads = [], writes = [], rpcCalls = [];
+  const reads = [], writes = [], rpcCalls = [], events = [];
   const profile = { id: owner, is_active: true, member_kind: "staff", ...options.profile };
   const tier = keyPolicy.agentKeyPolicy(options.tier ?? "read");
   const agentKey = { id: key, name: "fixture", active: true, owner_user_id: owner, organization_id: org,
@@ -69,7 +69,7 @@ async function fixture(documents, options = {}) {
       const q = {
         select(value) { fields = value; reads.push({ table, fields }); return q; },
         eq(field, value) { if (field !== "key_hash") predicates.push(row => row[field] === value); return q; },
-        in(field, values) { predicates.push(row => values.includes(row[field])); return q; },
+        in(field, values) { events.push(`${table}.${field}=${values}`); predicates.push(row => values.includes(row[field])); return q; },
         is(field, value) { predicates.push(row => row[field] === value); return q; },
         or(expression) { predicates.push(row => splitFilters(expression).some(part => matches(row, part))); return q; },
         order() { return q; }, range() { return q; }, limit(value) { limit = value; return q; }, abortSignal() { return q; },
@@ -81,7 +81,7 @@ async function fixture(documents, options = {}) {
       return q;
     },
     rpc(name, args) {
-      rpcCalls.push({ name, args });
+      rpcCalls.push({ name, args }); events.push("rpc");
       assert.equal(name, "os_search_knowledge", "Read tests must never invoke a write RPC");
       return { abortSignal: async () => options.rpcError ? { data: null, error: options.rpcError } : { data: options.rpcRows ?? [], error: null } };
     },
@@ -124,7 +124,7 @@ async function fixture(documents, options = {}) {
     const { result } = await response.json();
     return result;
   }
-  return { call, detail, reads, writes, forwarded, rpcCalls };
+  return { call, detail, reads, writes, forwarded, rpcCalls, events };
 }
 
 test("actual MCP adapter → authentication → detail → hydrated policy reads own AI draft with ID/version intact", async () => {
@@ -187,6 +187,11 @@ test("own draft participates even when the shared vector result page is full; fa
     });
     const result = await f.call("search_knowledge", { query: "needle", top_k: 1 });
     assert.deepEqual(JSON.parse(result.content[0].text).results.map(row => row.documentId), [uuid(10)]);
+    // A full vector page reads only the key owner's drafts, started before the RPC; shared documents are not re-read.
+    if (!rpcError) {
+      const statusReads = f.events.filter(event => event === "rpc" || event.startsWith("os_documents.status="));
+      assert.deepEqual(statusReads, ["os_documents.status=draft", "rpc"]);
+    }
   }
 });
 test("read-only keys gain no edit/delete permission from own-draft read eligibility", async () => {
