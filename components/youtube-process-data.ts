@@ -10,7 +10,8 @@ import { columnMeta } from "@/lib/seo-column";
 import { applyFeedback, cleanMarks, FEEDBACK_FILE_MAX, FEEDBACK_FILE_TYPES, FeedbackRuleError, type FeedbackAction, type FeedbackFile, type FeedbackMark, type FeedbackReply } from "@/lib/youtube-process/feedback";
 import { cutsFromScenes, scenesFromCuts, shortsAction, type YpShortAppeal, type YpShortBrief, type YpShortScene } from "@/lib/youtube-process/short";
 import { CardError, cardsMissing, nextCards, type CardsPatch } from "@/lib/cardnews/cards";
-import { emptyCardDraft } from "@/lib/cardnews/formats";
+import { emptyCardDraft, type CardDraft } from "@/lib/cardnews/formats";
+import { cardSourceProjectReady, projectCardSources, type CardSourceChoice } from "@/lib/cardnews/sources";
 
 export interface YpMember { id: string; name: string }
 export interface YpTopicInput { title?: string; kind?: YpKind | null; target?: string; note?: string; refs?: YpRef[]; purpose?: "ad" | null; assigneeId?: string | null }
@@ -93,6 +94,8 @@ export interface YpClient {
   fetchShortRefs(id: string): Promise<YpShortRefFetch>;
   /** A new 카드뉴스 (설계서 2026-10-30): from a topic, a finished longform · 숏폼, or an approved Threads post. */
   createCard(input: YpCardInput): Promise<YpProject>;
+  cardSources(): Promise<CardSourceChoice[]>;
+  cardCovers(ids: string[]): Promise<Record<string, CardDraft>>;
   /** The cards drawn as images now: one PNG, or every card and the caption as a ZIP. */
   cardsFile(id: string, query: { draft?: string; slide?: number; zip?: boolean }): Promise<Blob>;
   demo: boolean;
@@ -179,6 +182,8 @@ function apiClient(token: string): YpClient {
     shortRefs: async id => (await apiRequest<{ refs: YpShortRefFetch | null }>(`${base}/${id}/short-refs`, { token })).refs,
     fetchShortRefs: async id => (await apiRequest<{ refs: YpShortRefFetch }>(`${base}/${id}/short-refs`, { token, method: "POST" })).refs,
     createCard: async input => (await apiRequest<{ project: YpProject }>("/api/v1/content/youtube/cards", { token, method: "POST", body: json(input) })).project,
+    cardSources: async () => (await apiRequest<{ sources: CardSourceChoice[] }>("/api/v1/content/youtube/cards", { token })).sources,
+    cardCovers: async ids => ids.length ? (await apiRequest<{ covers: Record<string, CardDraft> }>(`/api/v1/content/youtube/cards?covers=${ids.map(encodeURIComponent).join(",")}`, { token })).covers : {},
     cardsFile: async (id, query) => {
       const params = new URLSearchParams({ ...(query.draft ? { draft: query.draft } : {}), ...(query.zip ? { zip: "1" } : { slide: String(query.slide ?? 0) }) });
       const response = await fetch(`${base}/${id}/cards?${params}`, { headers: { authorization: `Bearer ${token}` }, cache: "no-store" });
@@ -374,12 +379,21 @@ function demoClient(): YpClient {
     createCard: async input => {
       const now = new Date().toISOString();
       const from = input.from === "project" ? find(input.projectId) : null;
+      if (from && !cardSourceProjectReady(from)) throw demoError(409, "CARD_SOURCE_NOT_READY", "최종 검토 컨펌이 끝난 영상에서 카드뉴스를 만들 수 있어요.");
       const title = input.from === "none" ? input.title : from ? from.title : "[예시] 스레드 글";
       const made = add(title, { kind: "card", target: input.from === "none" ? input.target : "원본과 같아요", note: input.from === "none" ? input.note ?? "" : "" });
-      const project = put({ ...made, yp: { ...gateApply(made, "topic", "confirm", { actor: DEMO_ME, now }), ...(from ? { cardFrom: { kind: from.yp.topic.type === "short" ? "short" as const : "longform" as const, id: from.id, title: from.title } } : {}) } });
+      const project = put({ ...made, yp: { ...gateApply(made, "topic", "confirm", { actor: DEMO_ME, now }), ...(from ? { cardFrom: { kind: from.yp.topic.type === "short" ? "short" as const : "longform" as const, id: from.id, title: from.title } } : input.from === "threads" ? { cardFrom: { kind: "threads" as const, id: input.itemId, title } } : {}) } });
       demoStages.set(project.id, { ...stagesOf(project), cards: { id: null, version: 0, data: { ...emptyStage("cards", "card"), source: { kind: from ? (from.yp.topic.type === "short" ? "short" : "longform") : input.from === "threads" ? "threads" : "none", title, text: from ? "[예시] 원고" : "", at: now } } } });
       return structuredClone(project);
     },
+    cardSources: async () => [...projectCardSources(demoProjects()), { id: "demo-approved-thread", from: "threads", kind: "threads", title: "[예시] 스레드 글", updatedAt: daysAgo(0) }],
+    cardCovers: async ids => Object.fromEntries(ids.flatMap(id => {
+      const project = demoProjects().find(row => row.id === id && row.yp.topic.type === "card");
+      if (!project) return [];
+      const cards = stagesOf(project).cards.data;
+      const draft = cards.drafts.find(row => row.id === (project.yp.stage === "draft" ? cards.picked : cards.confirmed?.draftId || cards.picked)) ?? cards.drafts[0];
+      return draft ? [[id, structuredClone(draft)]] : [];
+    })),
     cardsFile: async () => { throw demoError(400, "DEMO_NO_RENDER", "연습 화면에서는 이미지를 만들지 않아요. 미리보기로 확인해 주세요."); },
     update: async (id, expectedVersion, { assigneeId, ...fields }) => {
       const project = find(id);

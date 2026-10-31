@@ -23,7 +23,7 @@ function Field({ slide, name, style, theme }: { slide: CardSlide; name: string; 
   const spec = CARD_FIELD_STYLE[`${slide.type}.${name}`];
   if (!value || !spec) return null;
   return <div data-card-field={name} style={{ display: "flex", wordBreak: "keep-all", color: theme.ink, fontSize: spec.size, fontWeight: spec.weight, lineHeight: spec.leading,
-    letterSpacing: spec.size >= 46 ? "-0.02em" : "0", maxHeight: Math.ceil(spec.size * spec.leading * spec.lines), overflow: "hidden", ...style }}>{value}</div>;
+    letterSpacing: spec.size >= 46 ? "-0.02em" : "0", whiteSpace: "pre-wrap", maxHeight: Math.ceil(spec.size * spec.leading * spec.lines), overflow: "hidden", ...style }}>{value}</div>;
 }
 const Label = ({ children, color }: { children: ReactNode; color: string }) =>
   <div style={{ display: "flex", fontSize: 28, fontWeight: 700, color, letterSpacing: "0.04em", marginBottom: 20 }}>{children}</div>;

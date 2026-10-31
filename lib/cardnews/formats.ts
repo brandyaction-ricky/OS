@@ -56,6 +56,19 @@ export function removeCardSlide(draft: CardDraft, index: number): CardDraft {
   return { ...draft, slides: draft.slides.filter((_, at) => at !== index) };
 }
 
+/** Reorder body cards without moving the cover, summary or ending outside their format. */
+export function moveCardSlide(draft: CardDraft, from: number, to: number): CardDraft {
+  if (!Number.isInteger(from) || !Number.isInteger(to) || from === to || !draft.slides[from] || !draft.slides[to]) return draft;
+  const slides = [...draft.slides];
+  slides.splice(to, 0, slides.splice(from, 1)[0]);
+  const order = CARD_FORMATS[draft.format].slides.map(spec => spec.type);
+  if (slides.some((row, at) => at > 0 && order.indexOf(row.type) < order.indexOf(slides[at - 1].type))) return draft;
+  return { ...draft, slides };
+}
+
+/** Parsing is for storage only: never replace the text in an input while someone is typing Korean. */
+export const parseCardHashtags = (text: string) => [...new Set(text.split(/[\s,#]+/u).map(tag => tag.trim()).filter(Boolean))].slice(0, 30);
+
 const letters = (value: string) => [...value].length;
 // Owner rules carried into every format: the 진단 is paid (발행 키트 정본 · 2026-10-26), and '여러분' is not our voice (말투 정본).
 const BANNED: [RegExp, string][] = [[/무료\s*(진단|검사)/, "진단은 유료예요 — ‘무료 진단’이라고 쓰지 않아요"], [/여러분/, "‘여러분’은 쓰지 않아요 (말투 정본)"]];
