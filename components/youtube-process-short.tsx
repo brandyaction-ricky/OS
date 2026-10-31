@@ -319,7 +319,7 @@ function SceneRow({ index, scene, last, remain, count, image, editable, busy, di
           <button type="button" className="yp-ib yp-xs" aria-label="아래로" disabled={last} onClick={() => onMove(index + 1)}><ArrowDown size={12} /></button>
           {count > 1 ? <button type="button" className="yp-ib yp-xs" aria-label="장면 빼기" onClick={onRemove}><X size={12} /></button> : null}</span> : null}</div>
       {diagramsEnabled || scene.diagram ? <ShortformDiagramFields value={scene.diagram} duration={last?remain:scene.seconds} disabled={!editable} onChange={diagram=>onChange({diagram,...(diagram?{assetId:undefined}:{})})}/> : null}
-      <textarea className="yp-in" rows={2} aria-label={`장면 ${index + 1} 자막`} value={scene.text} readOnly={!editable} maxLength={240} placeholder={scene.diagram?"화면 자막 (두 줄 안)":"화면 자막 (네 줄 안)"} onChange={event => onChange({ text: event.target.value })} />
+      <textarea className="yp-in" rows={2} aria-label={`장면 ${index + 1} 자막`} value={scene.text} readOnly={!editable} maxLength={240} placeholder={scene.diagram?"화면 자막 (두 줄 안 · 도식 글자를 그대로 옮기지 말고 도식에 없는 한 줄)":"화면 자막 (네 줄 안)"} onChange={event => onChange({ text: event.target.value })} />
       <input className="yp-in" aria-label={`장면 ${index + 1} 내레이션`} value={scene.voice} readOnly={!editable} maxLength={1800} placeholder="내레이션 (선택 · 1초에 6자 안팎)" onChange={event => onChange({ voice: event.target.value })} />
     </div>
     <input ref={input} type="file" hidden accept="image/png,image/jpeg,image/webp" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) onUpload(file); }} />

@@ -1,5 +1,6 @@
 "use client";
 
+import { DIAGRAM_CATALOG } from "@/lib/shortform-diagram-catalog";
 import { personName } from "@/lib/youtube-process/project";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { apiRequest, ApiRequestError } from "@/lib/api-client";
@@ -307,8 +308,10 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       </details> : null}
       {run?.sound?.report ? <details className="yt-details"><summary>자동 선곡표 (로건님 음악 매칭)</summary>
         <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, maxHeight: 360, overflow: "auto", margin: 0 }}>{run.sound.report}</pre></details> : null}
-      {outputs?.clips.length ? <div style={{ display: "grid", gap: 12 }}>{outputs.clips.map((clip) => <div key={clip.label} style={{ display: "grid", gap: 4 }}>
-        <small>{clip.label}</small>{clip.url ? <video src={clip.url} controls preload="metadata" style={short ? { width: "100%", maxWidth: 360, aspectRatio: "9 / 16", borderRadius: 8, background: "#000" } : { width: "100%", borderRadius: 8, background: "#000" }} /> : null}</div>)}</div> : null}
+      {/* 로건 QA 10/30: 29 full-width players under code names — a folded grid named by scene and diagram. */}
+      {outputs?.clips.length ? <details className="yt-details" open={run?.stage === "clips_review"}><summary>장면 미리보기 {outputs.clips.length}개</summary>
+        <div className="yt-clips">{outputs.clips.map((clip) => <div key={clip.label} style={{ display: "grid", gap: 4, minWidth: 0 }}>
+          <small title={clip.label}>{clipName(clip.label)}</small>{clip.url ? <video src={clip.url} controls preload="metadata" style={short ? { width: "100%", aspectRatio: "9 / 16", borderRadius: 8, background: "#000" } : { width: "100%", aspectRatio: "16 / 9", borderRadius: 8, background: "#000" }} /> : null}</div>)}</div></details> : null}
       {run?.stage === "clips_review" && !materials ? <div className="yt-note">
         <strong>로건, 유쓰 확인</strong>
         <label>메모 (수정 요청할 때는 필수)<textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="예) 오프닝 좋음 · 7번 빙산 장면 글자가 넘쳐요" /></label>
@@ -378,4 +381,9 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
     </Step>
     {error ? <p className="inline-alert danger" role="alert">{error}</p> : null}
   </div>;
+}
+
+/** 「2번 장면 · lib_stage_phone」 → 「2번 장면 · 무대 폰」: the catalog's name for a diagram, else the code is left out (it stays in the tooltip). */
+function clipName(label: string) {
+  return label.replace(/ · (lib_[a-z0-9_]+)/, (_, type: string) => { const name = DIAGRAM_CATALOG.find(row => row.type === type)?.name; return name ? ` · ${name}` : ""; });
 }

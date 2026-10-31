@@ -74,6 +74,8 @@ export function applyFeedback(state: FeedbackState, actor: FeedbackActor, input:
 
 /** A deleted item no longer waits for anyone; done and declined are closed as before. */
 export const feedbackClosed = (item: Pick<FeedbackState, "status" | "deleted">) => item.status !== "open" || item.deleted === true;
+/** A progress note left in the list (로건 QA 10/30: 「21번 장면 클립이 나왔어요」 counted as something to fix): kind 알림, or that wording. */
+export const feedbackNotice = (item: { kind: string; text: string }) => item.kind === "알림" || /^\d+번 장면 클립이 나왔어요/.test(item.text.trim());
 
 // ---- N01~N07 (검토 편의 기능) ----------------------------------------------------------------------------------------
 

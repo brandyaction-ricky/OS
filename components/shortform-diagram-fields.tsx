@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import type { ShortformDiagram } from "@/lib/shortform-production";
 import {DIAGRAM_CATALOG,defaultDiagram,diagramProblem,type FieldSpec,type SceneValue} from '@/lib/shortform-diagram-catalog';
 const labels:Record<string,string>={a:'첫 번째',b:'두 번째',left:'위 카드',right:'아래 카드',top:'수면 위',bottom:'수면 아래',text:'문구',name:'이름',t:'등장(초)',t0:'시작(초)',items:'항목',options:'선택지',cells:'칸',marks:'눈금',outer:'바깥',lines:'대사',causes:'원인',hidden:'숨은 내용',targets:'대상',value:'값',at:'위치(0~1)',from:'시작 값(0~1)',to:'끝 값(0~1)',pick:'강조 항목(0부터)',max:'최댓값',copy:'핵심 문장',sub:'보조 문장',em:'강조 단어',cap:'작은 제목',desc:'설명',when:'시점',q:'질문',author:'출처',lead:'도입',key:'핵심',before:'이전',after:'이후',result:'결과',center:'중심',core:'중심',who:'말하는 사람',x:'가로축',y:'세로축',count:'횟수',label:'이름',keep:'남길 항목',state:'상태',heavy:'무거운 쪽',icon:'사물',a_icon:'첫 사물',b_icon:'둘째 사물',word:'완성 문구',button:'버튼',link:'연결 문구',me:'현재 위치',flat:'처음',jump:'변화',total:'합계',total_label:'합계 제목',title:'제목',t_strike:'지우기(초)',t_pick:'강조(초)',t_copy:'문장 등장(초)',t_on:'강조(초)'};
@@ -7,6 +8,10 @@ const actions:Record<string,string>={a:'첫 문구',b:'다음 문구',break:'틀
 function label(key:string){return labels[key]??(key.startsWith('t_')?`${actions[key.slice(2)]??"동작"}(초)`:key);}
 export function ShortformDiagramFields({value,onChange,duration,disabled=false}:{value?:ShortformDiagram;onChange:(value?:ShortformDiagram)=>void;duration:number;disabled?:boolean}){
  const entry=DIAGRAM_CATALOG.find(row=>row.type===value?.type);
+ // 로건 QA 10/30: 95 diagrams in one list — a few letters narrow it (the chosen one always stays).
+ const [find,setFind]=useState('');
+ const name=(row:{type:string;name:string})=>row.type==='lib_timeline'?'세로 타임라인':row.type==='lib_two_cards'?'위아래 비교':row.name;
+ const rows=DIAGRAM_CATALOG.filter(row=>!find.trim()||row.type===value?.type||name(row).includes(find.trim()));
  const change=(path:(string|number)[],next:SceneValue)=>{
   if(!value)return;
   const scene=structuredClone(value.scene);let target=scene as Record<string,unknown>;
@@ -35,7 +40,7 @@ export function ShortformDiagramFields({value,onChange,duration,disabled=false}:
   return <label key={id}>{title}<input {...common} value={String(current??'')} maxLength={spec.max} onChange={e=>change(path,e.target.value)}/></label>;
  }
  const problem=value?diagramProblem(value.type,value.scene):null;
- return <fieldset disabled={disabled} style={{border:0,padding:0,margin:0,minWidth:0}}><label>화면 소재<select className="yp-in" aria-label="화면 소재" value={value?.type??'image'} onChange={e=>onChange(defaultDiagram(e.target.value,duration))}>
- <option value="image">이미지</option>{DIAGRAM_CATALOG.map(row=><option key={row.type} value={row.type}>{row.type==='lib_timeline'?'세로 타임라인':row.type==='lib_two_cards'?'위아래 비교':row.name}</option>)}</select></label>
+ return <fieldset disabled={disabled} style={{border:0,padding:0,margin:0,minWidth:0}}><label>화면 소재<span style={{display:'flex',gap:6}}><input className="yp-in" style={{flex:'0 1 9em'}} aria-label="화면 소재 찾기" placeholder="찾기 (예: 비교)" value={find} onChange={e=>setFind(e.target.value)}/><select className="yp-in" aria-label="화면 소재" value={value?.type??'image'} onChange={e=>onChange(defaultDiagram(e.target.value,duration))}>
+ <option value="image">이미지</option>{rows.map(row=><option key={row.type} value={row.type}>{name(row)}</option>)}</select></span>{find.trim()?<small className="yp-gq">{rows.length}개</small>:null}</label>
  {entry&&value?<><p className="yp-gq">{entry.slots}</p>{field(entry.spec,value.scene,[],'')}{problem?<p role="status">{problem}</p>:null}<p className="yp-gq">예시 문구를 원고에 맞게 고쳐 주세요. 등장 시각은 장면 시작부터 셉니다. 세로 9:16으로 제작합니다.</p></>:null}</fieldset>;
 }

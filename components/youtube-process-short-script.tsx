@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Copy, Plus, Search, Sparkles, X } from "lucide-react";
 import { editableFields } from "@/lib/youtube-process/confirm";
 import { projectName, stepHref, topicEditable, type YpProject } from "@/lib/youtube-process/project";
-import { checkShortScript, headCopyProblem, parseCount, refCounts, refCountsLine, refHostOk, refPlatform, refReaction, refTexts, SHORT_REF_BAR_TEXT, SHORT_SCRIPT, shortResearchOpen, shortScriptMissing, type YpShortRefFetch } from "@/lib/youtube-process/short-script";
+import { checkShortScript, headCopyProblem, parseCount, refCounts, refCountsLine, refHostOk, refPlatform, refReaction, refTexts, SHORT_REF_BAR_TEXT, SHORT_SCRIPT, shortResearchOpen, shortScriptMissing, shortSeconds, type YpShortRefFetch } from "@/lib/youtube-process/short-script";
 import type { YpShortFormula, YpShortRef, YpShortScript, YpShortTopicPick } from "@/lib/youtube-process/stages";
 import { GateBanner, gateAction, gateSub, hhmm, LockedStep, Subject, useGate, useLeaveGuard, useYpBundle, YpFrame, YpSection, type YpPage } from "./youtube-process-frame";
 import { AdBrief } from "./youtube-process-short";
@@ -215,7 +215,7 @@ export function ShortScriptScreen({ page, header }: { page: YpPage; header: Reac
               <b>{hook.kind}</b> {hook.text}</button>)}</div></div> : null}
         </YpSection>
 
-        <YpSection n={2} title="대본" gq="40초 동안 무슨 말을 하나요?" need>
+        <YpSection n={2} title="대본" gq={`${SHORT_SCRIPT.min}~${SHORT_SCRIPT.max}자 · 약 ${shortSeconds(SHORT_SCRIPT.min)}~${shortSeconds(SHORT_SCRIPT.max)}초 동안 무슨 말을 하나요?`} need>
           <div className="yp-field"><div className="yp-fld-h"><b>핵심 한 줄</b><span className="yp-gq">다 들은 사람이 기억할 한 문장</span></div>
             <input className="yp-in" value={form.insight} maxLength={120} readOnly={!can} placeholder="예) 지치는 건 일이 많아서가 아니라 고를 게 많아서예요" onChange={event => edit({ insight: event.target.value })} aria-label="핵심 한 줄" /></div>
           <div className="yp-field"><div className="yp-fld-h"><b>대본</b><span className="yp-gq">한 줄에 한 문장</span></div>
