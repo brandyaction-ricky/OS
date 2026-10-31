@@ -2,7 +2,7 @@
 // 정본 다듬기 (카드뉴스 정본 §9, 설계서 §9): the same 시험 묶음 drawn again under each 정본 version, scored on the 평가표, runs side by side,
 // and the 고칠 점 that point at the 정본. One screen for every kind (카드뉴스 · 숏폼 대본); each 정본 is edited in its OS document.
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { apiRequest } from "@/lib/api-client";
 import { CARD_FORMAT_IDS, CARD_FORMATS, type CardFormatId } from "@/lib/cardnews/formats";
 import { BENCH_MAX, CARD_GRADES, fixList, GRADUATION, graduatedTwice, GRIND_KINDS, mergedGrades, resultKey, runSummary,
@@ -45,8 +45,9 @@ function demoView(kind: GrindKind): GrindView {
       hooks: [{ kind: "반전형", text: "연봉 올려 옮겼는데 석 달 만에 또 지쳤다면" }, { kind: "직격형", text: "일요일 밤에 채용공고 앱을 또 열고 있다면" }],
       text: "연봉 올려 옮겼는데 석 달 만에 또 지쳤다면\n분명히 연봉은 꽤 올랐는데 말이죠\n근데 연봉이 막아 주는 건 딱 하나예요\n돈이 적어서 생기는 불만, 그거 하나요\n돈은 덜 싫게 할 뿐, 힘이 나게 하진 못해요\n지금 회사에서 내 하루, 몇 점이에요?" };
   const key = resultKey(item.id, kind === "card" ? "list" : "script");
-  return { bench: { items: [item] }, canon: { id: "demo-canon", version: kind === "card" ? "v0.1" : "v0.7" }, me: "demo-ricky", runs: [{ id: "demo-run-1", canon: kind === "card" ? "v0.1" : "v0.7", at, by: "demo-ricky", byName: "리키",
-    model: GPT_TIERS.saving.model, formats: [kind === "card" ? "list" : "script"], state: "done", results: [{ key, itemId: item.id, title: item.title, format: kind === "card" ? "list" : "script", draft }],
+  const second = { ...item, id: "demo-i2", title: "[예시] 두 번째 시험 원본" }, key2 = resultKey(second.id, kind === "card" ? "list" : "script");
+  return { bench: { items: [item, second] }, canon: { id: "demo-canon", version: kind === "card" ? "v0.1" : "v0.7" }, me: "demo-ricky", runs: [{ id: "demo-run-1", canon: kind === "card" ? "v0.1" : "v0.7", at, by: "demo-ricky", byName: "리키",
+    model: GPT_TIERS.saving.model, formats: [kind === "card" ? "list" : "script"], state: "done", results: [{ key, itemId: item.id, title: item.title, format: kind === "card" ? "list" : "script", draft }, { key: key2, itemId: second.id, title: second.title, format: kind === "card" ? "list" : "script", draft }],
     scores: { [key]: { "demo-logan": { name: "로건", grades: { 1: "상", 2: "상", 3: "중", 4: "하", 5: "상", 6: "중" }, notes: { 3: "[예시] 근거가 한 줄뿐이에요", 4: "[예시] 끝말이 딱딱해요", 6: "[예시] 마지막 줄이 약해요" }, at } } } }] };
 }
 
@@ -109,6 +110,9 @@ export function CanonGrindScreen({ kind }: { kind: GrindKind }) {
   const result = (run: BenchRun, key: string) => run.results.find(row => row.key === key);
   const openRun = open && view.runs.find(run => run.id === open.runId);
   const openResult = openRun && open ? result(openRun, open.key) : undefined;
+  const order = openRun ? openRun.results.filter(row => row.draft).map(row => row.key) : [];
+  const at = open ? order.indexOf(open.key) : -1;
+  const go = (key?: string) => setOpen(key && openRun ? { runId: openRun.id, key } : null);
   const inBench = new Set(view.bench.items.map(item => item.from?.projectId).filter(Boolean));
   const fixes = latest ? fixList(latest, kind) : [];
 
@@ -162,8 +166,9 @@ export function CanonGrindScreen({ kind }: { kind: GrindKind }) {
       </div> : <p className="yp-pempty">아직 다시 뽑은 적이 없어요.</p>}
     </YpSection>
 
-    {openRun && openResult?.draft ? <ScorePanel kind={kind} run={openRun} result={openResult} me={view.me} busy={busy === "score"} onClose={() => setOpen(null)}
-      onSave={(grades, notes) => void act("score", { action: "score", runId: openRun.id, key: openResult.key, grades, notes }).then(ok => { if (ok) setOpen(null); })} /> : null}
+    {openRun && openResult?.draft ? <ScorePanel kind={kind} run={openRun} result={openResult} me={view.me} busy={busy === "score"} error={error}
+      place={`${at + 1} / ${order.length}`} prev={order[at - 1]} next={order[at + 1]} onGo={go}
+      onSave={(grades, notes) => void act("score", { action: "score", runId: openRun.id, key: openResult.key, grades, notes }).then(ok => { if (ok) go(order[at + 1]); })} /> : null}
 
     <YpSection n={4} title="고칠 점" gq={latest ? `정본 ${latest.canon} · ${day(latest.at)} 결과에서` : "채점한 결과가 생기면 보여요"}>
       {fixes.length ? <ul className="yp-grind-fix">{fixes.map(row => <li key={row.n}>
@@ -192,33 +197,56 @@ function GrindCell({ kind, run, result, me, active, onOpen }: { kind: GrindKind;
   </button>;
 }
 
-function ScorePanel({ kind, run, result, me, busy, onClose, onSave }: { kind: GrindKind; run: BenchRun; result: BenchResult; me: string; busy: boolean; onClose: () => void;
-  onSave: (grades: Record<string, CardGrade>, notes: Record<string, string>) => void }) {
+interface PanelProps { kind: GrindKind; run: BenchRun; result: BenchResult; me: string; busy: boolean; error: string; place: string; prev?: string; next?: string;
+  onGo: (key?: string) => void; onSave: (grades: Record<string, CardGrade>, notes: Record<string, string>) => void }
+/** The 평가표 over the page: the draft on the left, the six criteria on the right, and 이전 · 다음 so a run is scored without scrolling back up. */
+function ScorePanel(props: PanelProps) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const dirty = useRef(false);
+  useEffect(() => { dialog.current?.showModal(); }, []);
+  const leave = (key?: string) => { if (!dirty.current || window.confirm("채점을 저장하지 않았어요. 그래도 넘어갈까요?")) props.onGo(key); };
+  return <dialog ref={dialog} className="yp-modal yp-grind-dlg" aria-label="평가표" onCancel={event => { event.preventDefault(); leave(); }}>
+    <ScoreBody key={`${props.run.id}:${props.result.key}`} {...props} dirty={dirty} leave={leave} />
+  </dialog>;
+}
+
+function ScoreBody({ kind, run, result, me, busy, error, place, prev, next, onSave, dirty, leave }: PanelProps & { dirty: MutableRefObject<boolean>; leave: (key?: string) => void }) {
   const mine = run.scores[result.key]?.[me];
   const [grades, setGrades] = useState<Partial<Record<CardCriterion, CardGrade>>>(mine?.grades ?? {});
   const [notes, setNotes] = useState<Partial<Record<CardCriterion, string>>>(mine?.notes ?? {});
+  dirty.current = JSON.stringify(grades) !== JSON.stringify(mine?.grades ?? {}) || JSON.stringify(notes) !== JSON.stringify(mine?.notes ?? {});
   const criteria = GRIND_KINDS[kind].criteria;
   const others = Object.entries(run.scores[result.key] ?? {}).filter(([id]) => id !== me);
   const done = criteria.every(c => grades[c.n]);
-  return <section className="yp-card yp-grind-score" aria-label="평가표">
-    <div className="yp-card-h">{result.title} · {formatName(result.format)} · 정본 {run.canon}<span className="yp-sp" /><button type="button" className="yp-btn yp-sm" onClick={onClose}>닫기</button></div>
-    <div className="yp-card-b">
-      {kind === "card" ? <>
-        <div className="yp-card-strip">{(result.draft as CardDraftPart).slides.map((_, index) => <CardPreview key={index} draft={{ ...(result.draft as CardDraftPart), id: result.key, at: run.at, by: run.byName }} index={index} width={170} />)}</div>
+  const unit = kind === "card" ? "카드뉴스" : "대본";
+  return <>
+    <div className="yp-modal-h"><span className="yp-grind-dlg-t">{result.title} · {formatName(result.format)} · 정본 {run.canon}</span><span className="yp-sp" />
+      <small className="yp-muted">{place}</small>
+      <button type="button" className="yp-btn yp-sm" disabled={!prev} onClick={() => leave(prev)}>이전 {unit}</button>
+      <button type="button" className="yp-btn yp-sm" disabled={!next} onClick={() => leave(next)}>다음 {unit}</button>
+      <button type="button" className="yp-btn yp-sm" onClick={() => leave()}>닫기</button></div>
+    <div className="yp-grind-dlg-b">
+      <div className="yp-grind-dlg-draft">{kind === "card" ? <>
+        <div className="yp-grind-slides">{(result.draft as CardDraftPart).slides.map((_, index) => <CardPreview key={index} draft={{ ...(result.draft as CardDraftPart), id: result.key, at: run.at, by: run.byName }} index={index} width={170} />)}</div>
         {(result.draft as CardDraftPart).caption ? <p className="yp-card-caption" style={{ marginTop: 10 }}>{(result.draft as CardDraftPart).caption}</p> : null}
-      </> : <ShortDraftView draft={result.draft as ShortDraft} />}
-      <div className="yp-grind-form">{criteria.map(c => <div key={c.n} className="yp-grind-crit">
-        <div><b>{c.n}. {c.name}</b><small className="yp-muted">상: {c.top}</small></div>
-        <div role="radiogroup" aria-label={c.name} className="yp-row-btns">{CARD_GRADES.map(grade => <button key={grade} type="button" role="radio" aria-checked={grades[c.n] === grade}
-          className={`yp-btn yp-sm${grades[c.n] === grade ? " yp-pri" : ""}`} onClick={() => setGrades(current => ({ ...current, [c.n]: grade }))}>{grade}</button>)}</div>
-        <input className="yp-in" value={notes[c.n] ?? ""} maxLength={300} onChange={event => { const text = event.target.value; setNotes(current => ({ ...current, [c.n]: text })); }}
-          placeholder={grades[c.n] && grades[c.n] !== "상" ? "이유 한 줄 (필수)" : "이유 한 줄"} aria-label={`${c.name} 이유`} /></div>)}</div>
-      {others.length ? <p className="yp-hint">다른 사람 채점: {others.map(([, score]) => `${score.name} (${tally(score.grades)})`).join(" · ")}</p> : null}
-      <div className="yp-row-btns"><button type="button" className="yp-btn yp-pri" disabled={busy || !done || criteria.some(c => grades[c.n] && grades[c.n] !== "상" && !notes[c.n]?.trim())}
-        onClick={() => onSave(Object.fromEntries(Object.entries(grades)) as Record<string, CardGrade>, Object.fromEntries(Object.entries(notes).filter(([, note]) => note?.trim())) as Record<string, string>)}>{busy ? "저장하는 중…" : "채점 저장"}</button>
-        {!done ? <small className="yp-muted">여섯 기준을 모두 골라요. ‘중’ · ‘하’는 이유를 한 줄 써요.</small> : null}</div>
+      </> : <ShortDraftView draft={result.draft as ShortDraft} />}</div>
+      <div className="yp-grind-dlg-form">
+        <div className="yp-grind-form">{criteria.map(c => <div key={c.n} className="yp-grind-crit">
+          <div><b>{c.n}. {c.name}</b><small className="yp-muted">상: {c.top}</small></div>
+          <div role="radiogroup" aria-label={c.name} className="yp-row-btns">{CARD_GRADES.map(grade => <button key={grade} type="button" role="radio" aria-checked={grades[c.n] === grade}
+            className={`yp-btn yp-sm${grades[c.n] === grade ? " yp-pri" : ""}`} onClick={() => setGrades(current => ({ ...current, [c.n]: grade }))}>{grade}</button>)}</div>
+          <input className="yp-in" value={notes[c.n] ?? ""} maxLength={300} onChange={event => { const text = event.target.value; setNotes(current => ({ ...current, [c.n]: text })); }}
+            placeholder={grades[c.n] && grades[c.n] !== "상" ? "이유 한 줄 (필수)" : "이유 한 줄"} aria-label={`${c.name} 이유`} /></div>)}</div>
+        {others.length ? <p className="yp-hint">다른 사람 채점: {others.map(([, score]) => `${score.name} (${tally(score.grades)})`).join(" · ")}</p> : null}
+        {error ? <div className="yp-note yp-warn" role="alert"><div>{error}</div></div> : null}
+      </div>
     </div>
-  </section>;
+    <div className="yp-modal-f">
+      {!done ? <small className="yp-muted" style={{ marginRight: "auto" }}>여섯 기준을 모두 골라요. ‘중’ · ‘하’는 이유를 한 줄 써요.</small> : null}
+      <button type="button" className="yp-btn yp-pri" disabled={busy || !done || criteria.some(c => grades[c.n] && grades[c.n] !== "상" && !notes[c.n]?.trim())}
+        onClick={() => onSave(Object.fromEntries(Object.entries(grades)) as Record<string, CardGrade>, Object.fromEntries(Object.entries(notes).filter(([, note]) => note?.trim())) as Record<string, string>)}>
+        {busy ? "저장하는 중…" : next ? `저장하고 다음 ${unit}` : "채점 저장"}</button></div>
+  </>;
 }
 
 /** A 숏폼 대본 as the 대본 step shows it: 헤드 카피, the two first lines, the insight and the script (one line = one screen). */

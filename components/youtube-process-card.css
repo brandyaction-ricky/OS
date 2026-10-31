@@ -40,7 +40,25 @@
 .yp-grind-head small, .yp-grind-row-h small { color: var(--muted, #6b6f76); }
 .yp-grind-cell { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--line, #e3e3e3); border-radius: 8px; background: none; text-align: left; font-size: 12px; cursor: pointer; }
 .yp-grind-cell.yp-on { border-color: var(--accent, #5e6ad2); box-shadow: 0 0 0 1px var(--accent, #5e6ad2); }
-.yp-grind-score { margin: 0 0 14px; }
+/* 평가표 dialog: the draft and the six criteria side by side, each scrolling on its own; the page under it stays put. */
+.linear-shell .ui-v2.yp dialog.yp-grind-dlg[open] { display: flex; flex-direction: column; width: min(1240px, calc(100% - 32px)); max-width: none; height: calc(100dvh - 48px); max-height: none; overflow: hidden; }
+.yp-grind-dlg-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.yp-grind-dlg .yp-modal-h small { white-space: nowrap; }
+.yp-grind-dlg-b { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); }
+.yp-grind-dlg-draft, .yp-grind-dlg-form { min-height: 0; overflow: auto; padding: 16px; }
+.yp-grind-dlg-draft { border-right: 1px solid var(--line-soft); }
+.yp-grind-dlg-form .yp-grind-form { margin-top: 0; }
+.yp-grind-dlg-form .yp-grind-crit { grid-template-columns: minmax(0, 1fr) auto; }
+.yp-grind-dlg-form .yp-grind-crit > input { grid-column: 1 / -1; }
+.yp-grind-slides { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 820px) {
+  .linear-shell .ui-v2.yp dialog.yp-grind-dlg[open] { height: 92dvh; }
+  .linear-shell .ui-v2.yp .yp-grind-dlg .yp-modal-h { flex-wrap: wrap; }
+  .yp-grind-dlg-t { flex-basis: 100%; white-space: normal; }
+  .yp-grind-dlg-b { display: block; overflow: auto; }
+  .yp-grind-dlg-draft, .yp-grind-dlg-form { overflow: visible; }
+  .yp-grind-dlg-draft { border-right: 0; border-bottom: 1px solid var(--line-soft); }
+}
 .yp-grind-form { display: grid; gap: 10px; margin: 14px 0; }
 .yp-grind-crit { display: grid; grid-template-columns: minmax(180px, 1.2fr) auto minmax(200px, 2fr); gap: 10px; align-items: center; }
 .yp-grind-crit > div:first-child { display: grid; gap: 2px; }
