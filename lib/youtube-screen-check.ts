@@ -35,6 +35,29 @@ export function screenPrompt(hints: string, short: boolean) {
 ${hints}`;
 }
 
+/** 카드뉴스 화면 검사 (설계서 §4-3): the confirmed cards as drawn, one image per card in order; the same kinds, schema and parser. */
+export function cardScreenPrompt(hints: string) {
+  return `인스타 카드뉴스 한 편의 카드 그림입니다. 그림이 카드 순서대로 붙어 있고, 첫 그림이 1번 카드입니다(4:5 세로, 1080 × 1350).
+
+올리기 전에 사람이 다시 봐야 할 카드만 골라 주세요. 볼 것:
+- 넘침: 글자가 칸 · 카드 밖으로 나가거나 다른 칸을 침범함
+- 겹침: 글자끼리, 글자와 장식이 겹침
+- 잘림: 글자가 잘려 끝이 안 보임
+- 빈 화면: 칸이 비어 있거나 내용 없이 틀만 있음
+- 깨진 글자: □ 같은 깨진 글자, 영어 변수 이름 · 코드가 보임
+- 글자 많음: 한 장에 글자가 너무 많아 한눈에 안 읽힘
+- 기타: 배경과 글자 색이 비슷해 읽기 어려움 등, 위에 없지만 분명히 이상한 것
+
+지킬 것
+- 확실히 보이는 것만 적습니다. 디자인 취향(색 · 글꼴 · 배치 선호)과 마지막 카드의 계정 이름 · 로고는 적지 않습니다.
+- scene에는 카드 번호를 씁니다. issue는 무엇이 어디서 문제인지 한 문장, fix는 카드 만들기에서 바꿀 것 한 문장(예: 「설명을 40자 안으로 줄여요」, 「항목을 하나 빼요」).
+- 문제가 없으면 scenes는 빈 목록입니다. note에는 전체를 한 줄로 적습니다.
+- 쉬운 한국어로 씁니다.
+
+아래는 카드마다의 종류와 글자입니다(참고용).
+${hints}`;
+}
+
 export const SCREEN_SCHEMA = { type: "object", additionalProperties: false, required: ["scenes", "note"], properties: {
   scenes: { type: "array", items: { type: "object", additionalProperties: false, required: ["scene", "kind", "issue", "fix"], properties: {
     scene: { type: "integer" }, kind: { type: "string", enum: [...SCREEN_KINDS] }, issue: { type: "string" }, fix: { type: "string" } } } },
