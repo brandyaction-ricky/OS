@@ -1,3 +1,5 @@
+@layer os.vendor, os.base, os.legacy, os.kit, os.screen;
+@layer os.legacy {
 /* 카드뉴스 (설계서 2026-10-30): previews, format picker, draft rows and the three-column editor. */
 .linear-shell .ui-v2.yp .yp-card-pv { position: relative; overflow: hidden; border-radius: 6px; box-shadow: 0 0 0 1px var(--line); flex: none; background: var(--media-text); }
 .linear-shell .ui-v2.yp .yp-card-formats { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin-bottom: 10px; }
@@ -131,4 +133,6 @@
   .linear-shell .ui-v2.yp .yp-card-catalog > li { flex-wrap: wrap; }
   .linear-shell .ui-v2.yp .yp-card-catalog > li > span { flex-basis: calc(100% - 90px)!important; }
   .linear-shell .ui-v2.yp .yp-card-tools > .yp-hint { margin-left: 0; width: 100%; }
+}
+
 }

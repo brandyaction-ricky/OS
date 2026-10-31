@@ -1,3 +1,5 @@
+@layer os.vendor, os.base, os.legacy, os.kit, os.screen;
+@layer os.legacy {
 /*
   팀 메뉴(회의·결정 · 업무 · 팀 일정 · 팀 현황) 화면 CSS — v1.0 (2026-10-11)
   넣는 곳: components/team-workspace.css
@@ -388,4 +390,6 @@
 @media (max-width: 520px) {
   .linear-shell .ui-v2 .tm-root .tm-field-grid { grid-template-columns: minmax(0, 1fr); }
   .linear-shell .ui-v2 .tm-root .tm-task-row .tm-due { display: none; }
+}
+
 }

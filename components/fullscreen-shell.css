@@ -1,3 +1,5 @@
+@layer os.vendor, os.base, os.legacy, os.kit, os.screen;
+@layer os.legacy {
 /* Adapt the supplied os-ui.css to the existing, accessible unified shell.
    Keep the existing preference keys, mobile focus trap and data components. */
 .linear-shell.shell-v2 .unified-sidebar { z-index: 35; }
@@ -114,4 +116,6 @@
 .linear-shell .ui-v2.yp :is(.primary-button, .yp-btn.yp-pri):is(:disabled, [aria-disabled="true"]),
 :is(.hr-workspace, .hr-drawer) .hr-button.primary:disabled {
   opacity: 1; background: var(--panel-3); border-color: var(--line); color: var(--muted); box-shadow: none;
+}
+
 }

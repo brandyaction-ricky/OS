@@ -1,3 +1,5 @@
+@layer os.vendor, os.base, os.legacy, os.kit, os.screen;
+@layer os.legacy {
 /* Development workspace: dense rows, restrained surfaces and a clear reading order. */
 .dev-project-navigation { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 .dev-project-navigation button { border: 1px solid var(--line); background: var(--panel); color: var(--text-2); padding: 9px 18px; font-size: 13px; }
@@ -228,3 +230,5 @@
 .dev-project-context dl { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 8px 12px; }
 .dev-project-context dt { color: var(--muted); }
 .dev-project-context dd { margin: 0; color: var(--text-2); overflow-wrap: anywhere; }
+
+}

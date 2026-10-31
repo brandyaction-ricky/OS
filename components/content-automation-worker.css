@@ -1,3 +1,5 @@
+@layer os.vendor, os.base, os.legacy, os.kit, os.screen;
+@layer os.legacy {
 .ca-worker { max-width: 960px; min-height: 100vh; margin: 0 auto; padding: 32px 24px 80px; color: var(--text); background: var(--bg); font-size: 14px; line-height: 1.6; }
 .ca-worker h1 { font-size: 28px; margin: 0 0 8px; }
 .ca-worker h2 { font-size: 19px; margin: 0 0 12px; }
@@ -17,3 +19,5 @@
 .ca-worker-actions button:disabled { opacity: .45; cursor: not-allowed; }
 .ca-worker-error { color: var(--danger); }
 @media(max-width:600px){.ca-worker{padding:18px 14px 48px}.ca-worker-rules,.ca-worker-panel{padding:16px}.ca-worker-actions button{width:100%}}
+
+}

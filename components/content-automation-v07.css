@@ -1,3 +1,5 @@
+@layer os.vendor, os.base, os.legacy, os.kit, os.screen;
+@layer os.legacy {
 .linear-shell .ui-v2.ca-v07{padding:0 0 48px;color:var(--text);background:var(--bg);font-size:13px;line-height:1.55;min-width:0}
 .linear-shell .ui-v2.ca-v07 *{box-sizing:border-box;min-width:0}
 .linear-shell .ui-v2.ca-v07 h1{font-size:22px;line-height:1.35;margin:4px 0}
@@ -186,3 +188,5 @@
 .linear-shell .ui-v2.ca-v07 .ca-v07-api-secondary{border-top:1px solid var(--line-soft);padding:14px 0;margin-top:12px;max-width:760px}
 .linear-shell .ui-v2.ca-v07 .ca-v07-api-secondary>p{margin:10px 0}
 @media(max-width:600px){.linear-shell .ui-v2.ca-v07 .ca-v07-api-publish{padding:14px}.linear-shell .ui-v2.ca-v07 .ca-v07-api-submit{width:100%}.linear-shell .ui-v2.ca-v07 .ca-v07-api-preview li{padding:10px}}
+
+}

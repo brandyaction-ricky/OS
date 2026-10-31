@@ -1,3 +1,5 @@
+@layer os.vendor, os.base, os.legacy, os.kit, os.screen;
+@layer os.legacy {
 .linear-shell .ui-v2.ca-v07 .tr-list-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:24px}
 .linear-shell .ui-v2.ca-v07 .tr-list-head h2{display:flex;align-items:center;gap:8px;margin:0}
 .linear-shell .ui-v2.ca-v07 .tr-list-head>span{color:var(--muted);font-size:12px}
@@ -51,3 +53,5 @@
 .linear-shell .ui-v2.ca-v07 .tr-reference.is-selected .tr-pick .ca-v07-check{border-color:var(--accent);color:var(--accent-2)}
 
 .linear-shell .ui-v2.ca-v07 .tr-inline-next{display:inline-flex;align-items:center;min-height:40px;margin-left:10px;color:var(--accent-2);font-weight:700}
+
+}

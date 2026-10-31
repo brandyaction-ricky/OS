@@ -1,3 +1,5 @@
+@layer os.vendor, os.base, os.legacy, os.kit, os.screen;
+@layer os.legacy {
 .linear-shell .page-content.ui-v2.screen-vault { display:flex; flex-direction:column; height:calc(100dvh - 48px); min-height:0; padding:0; overflow:hidden; }
 .screen-vault .menu-guide { display:none; }
 .screen-vault .vault-toolbar { height:48px; flex:none; display:grid; grid-template-columns:var(--knowledge-tree-width, 300px) minmax(0,1fr) auto; align-items:center; border-bottom:1px solid var(--line-soft); background:var(--panel); color:var(--text); }
@@ -306,3 +308,5 @@
 .screen-vault .vault-help .form-fields { display: block; }
 .screen-vault .vault-help dl { display: grid; grid-template-columns: auto 1fr; gap: 8px 20px; }
 @media(max-width: 600px) { .screen-vault .vault-save-status { display: none; } .screen-vault .vault-property-chips details:has(.vault-folder-chooser) { position: static; } .screen-vault .vault-property-chips .vault-folder-chooser { left: 20px; top: 100px; } }
+
+}

@@ -1,3 +1,5 @@
+@layer os.vendor, os.base, os.legacy, os.kit, os.screen;
+@layer os.legacy {
 /* Screen bodies reuse existing data and handlers; dimensions follow the supplied kit. */
 .linear-shell .ui-v2 .content-step-workspace { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .linear-shell .ui-v2 .fullscreen-stage-tabs { width: fit-content; max-width: 100%; margin: 0; flex: none; }
@@ -208,4 +210,6 @@
   .linear-shell .ui-v2.screen-topics .discovery-console .radar-filters :is(label:has(input[type="checkbox"]),small) { grid-column: 1 / -1; }
   .linear-shell .ui-v2.screen-topics .niche-summary-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
   .linear-shell .ui-v2.screen-topics .niche-summary-grid > .panel { padding: 12px; min-height: 72px; gap: 9px; }
+}
+
 }
