@@ -10,6 +10,7 @@ import { TossReadPanel } from "./toss-read-panel";
 import { TossSyncPanel } from "./toss-sync-panel";
 import { TaxInvoicePanel } from "./tax-invoice-panel";
 import { VatReference } from "./vat-reference";
+import { CompanyDocuments } from "./company-documents";
 import "./finance.css";
 
 /** A persistent, client-only adapter for the handoff's seven finance views. */
@@ -76,7 +77,8 @@ export function FinanceWorkspace() {
   }, [url]);
 
   const vatPage = pathname === "/finance/vat";
-  if (!validPage && !vatPage) return null;
+  const documentsPage = pathname === "/finance/documents";
+  if (!validPage && !vatPage && !documentsPage) return null;
   if (loading) return <p role="status">재무 접근 권한을 확인하고 있습니다.</p>;
   if (!allowed)
     return (
@@ -87,6 +89,8 @@ export function FinanceWorkspace() {
       </div></section>
     );
   // 부가세 신고 참고 자료 is its own React page; the shared ledger app is not mounted for it.
+  // 서류함 (2026-10-31) is its own React page too.
+  if (documentsPage) return <CompanyDocuments token={accessToken} demo={demo} />;
   if (vatPage) return demo ? <section className="panel empty-state" role="status"><h1>부가세 신고 참고 자료</h1><p>연습용 화면에서는 실제 결제·계산서가 없어 비어 있어요.</p></section> : <VatReference token={accessToken} />;
   return (
     <>

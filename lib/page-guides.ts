@@ -13,6 +13,7 @@ export const PAGE_GUIDES: Record<string,PageGuideDefinition> = {
   "/finance/cards": {steps:["카드별 CSV·XLSX를 가져와 열과 미리보기를 확인합니다","미분류·증빙 필요 내역에 사업·계정과목·사용 목적을 입력합니다","규칙을 관리하고 필요한 내역을 CSV로 내보냅니다"],next:"/finance/recurring"},
   "/finance/recurring": {steps:["여러 달 반복된 카드지출에서 정기 결제 후보를 확인합니다","서비스별 담당과 유지·검토·해지 상태를 정합니다","해지 상태는 모의 기록이며 실제 구독을 해지하지 않습니다"],next:"/finance/budget"},
   "/finance/vat": {steps:["사업자와 신고기간(예정·확정)이나 월을 고릅니다","증빙별 결제·취소·계산서 합계와 상세를 확인합니다","CSV·엑셀로 내려받아 세무사에게 참고 자료로 전달합니다"],next:"/finance/sales"},
+  "/finance/documents": {steps:["사업자·프로젝트·기타 중 서류를 둘 곳을 고릅니다","서류 추가로 파일 하나, 폴더 올리기로 폴더를 하위 폴더째 올립니다","폴더를 눌러 들어가 파일을 열거나 내려받습니다"],next:"/finance/overview"},
   "/finance/budget": {steps:["월별 고정비·변동비·인건비 예산을 확인합니다","자동 합산 항목과 직접 입력할 실적을 구분합니다","누락·초과를 검토하고 개요와 같은 월 순수익을 확인합니다"],next:"/finance/overview"},
   "/home": {steps:["위에서부터 기한이 빠른 일을 처리합니다","‘검토·승인’ 탭에서 내 검토 차례를 확인합니다","막힌 일은 링크를 눌러 해결 화면으로 갑니다"],next:"/content/topics"},
   "/content/topics": {steps:["매일 보는 채널을 모읍니다 — 비어 있으면 채널 탐색 사전에서 시작","‘탐색’에서 근거 영상을 연결하고 준비도 네 칸을 채웁니다","‘틈새’에서 소구점을 선택해 승인 요청한 뒤 기획으로 넘깁니다"],next:"/content/scripts"},
