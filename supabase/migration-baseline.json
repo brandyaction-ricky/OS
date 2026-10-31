@@ -968,6 +968,17 @@
         "production"
       ],
       "notes": "Additive: one nullable text column (myin/edu/company) on a service-role table; existing chats stay off. Owner approved Production on 2026-10-30 (\"DB 반영하고 349 반영해\"); applied in one transaction with its schema history row, and the owner's routing set in the same transaction (액션팀 업무 소통방 = myin, 마케팅 업무 소통방 = edu), then read back. DEV rollback-only run passed. Not applied to DEV."
+    },
+    {
+      "file": "20261031090000_knowledge_search_speed.sql",
+      "sha256": "73fd4e7cedc1c14d68b433a10e4430b4b613d88c2b54ee90922ff0ea77f14f4e",
+      "purpose": "지식 검색 속도 (37b3318d): chunk read policies as one lookup of the caller's readable documents (same rule), and the keyword threshold 0.3 → 0.5",
+      "requiresApproval": true,
+      "productionApprovedAt": "2026-10-31",
+      "appliedEnvironments": [
+        "production"
+      ],
+      "notes": "Read-only Production checks 2026-10-31: search through row rules did not finish in 58 s (owner role); without row rules 6.7 s, keyword part 3.3 s at 0.3 vs 0.6 s at 0.5. Visibility: for all 10 active members over 17,936 readable documents the two old per-row functions hid 0, so the new rule shows exactly the same chunks. Manual undo: supabase/rollback/20261031090000_knowledge_search_speed.down.sql. Owner approved Production on 2026-10-31 (\"운영에 적용\"); applied in one transaction with its schema history row and read back (history 1). After: owner-role search 13.6 s (was over 58 s), still above the app's 4 s: under row rules the keyword step skips the trigram index (<% is not leakproof) and reads every chunk (6.4 s). Not applied to DEV."
     }
   ],
   "legacyMigrations": [
