@@ -282,7 +282,33 @@ export const PLAN_FIELD_KEY: Record<"titles" | "thumbs" | "opening" | "body" | "
 export const CHARS_PER_MINUTE_V1 = 350;
 /** Spoken letters (no spaces, headings, tables or images) — the 예상 길이 count (3차 결정 12). */
 export function scriptChars(markdown: string) {
-  return narrationFromMarkdown(markdown.replace(/!\[[^\]]*\]\([^)]*\)/g, "")).replace(/\s/g, "").length;
+  // The editor writes [ ] as \[ \] — the backslashes are not letters anyone says.
+  return narrationFromMarkdown(withoutShots(markdown).replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(/\\(?=[[\]])/g, "")).replace(/\s/g, "").length;
+}
+/**
+ * 실사 촬영 콘티 (로건 QA 10/30): from [샷] · [B롤] · [인서트] to the end of its line is a shooting note, not something said; what comes
+ * before it on the line is still said (the editor puts a marker after the sentence the cursor is in). The editor may keep the bracket
+ * escaped (\[B롤]), so both read the same.
+ */
+export type ShotKind = "샷" | "B롤" | "인서트";
+const SHOT = /\\?\[(샷|B롤|인서트)\\?\]\s*(.*)$/;
+export const shotLine = (line: string) => {
+  const match = line.match(SHOT);
+  return match ? { kind: match[1] as ShotKind, text: match[2].trim(), before: line.slice(0, match.index).replace(/^\s*(?:[-*]\s+)?/, "").trim() } : null;
+};
+export const withoutShots = (markdown: string) => markdown.split("\n").map(line => shotLine(line)?.before ?? line).join("\n");
+/** The shooting notes in order, each under the spoken paragraph it follows (0 = before the first). */
+export function shotList(markdown: string) {
+  const rows: { n: number; line: string; kind: ShotKind; text: string }[] = [];
+  let n = 0, last = "";
+  for (const raw of markdown.replace(/\r/g, "").split("\n")) {
+    const line = raw.trim().replace(/\\(?=[[\]])/g, "");
+    if (!line || /^(#|!\[|---|\|)/.test(line)) continue;
+    const shot = shotLine(line);
+    if (!shot || shot.before) { n++; last = shot ? shot.before : line; }
+    if (shot) rows.push({ n, line: last, kind: shot.kind, text: shot.text });
+  }
+  return rows;
 }
 export function runtimeError(runtime: number | null) {
   if (runtime === null) return "";

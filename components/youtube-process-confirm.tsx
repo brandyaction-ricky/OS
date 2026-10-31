@@ -25,8 +25,11 @@ const days = (iso?: string) => iso ? Math.max(0, Math.floor((Date.now() - Date.p
 const RESULT: Record<string, string> = { ok: "OK", changes: "수정 요청", hold: "보류", wait: "대기" };
 const RESULT_TONE: Record<string, string> = { ok: "yp-ok", changes: "yp-warn", hold: "yp-bad" };
 
-/** OK · 수정 요청 · 보류 for a waiting gate (S10 아래 막대, S10-1, S10-2). Shared by the confirm menu and the project screen. */
-export function ConfirmActions({ project, gate, client, onDone }: { project: YpProject; gate: YpGate; client: YpClient; onDone: (next: YpProject) => void }) {
+/**
+ * OK · 수정 요청 · 보류 for a waiting gate (S10 아래 막대, S10-1, S10-2). Shared by the confirm menu and the project screen; `list` draws
+ * the three as numbered choices (한눈에 보기 확인 카드, 리키 관제실 시안 v0.1) with the same forms under them.
+ */
+export function ConfirmActions({ project, gate, client, onDone, list = false }: { project: YpProject; gate: YpGate; client: YpClient; onDone: (next: YpProject) => void; list?: boolean }) {
   const [mode, setMode] = useState<"changes" | "hold" | null>(null);
   const [fields, setFields] = useState<string[]>([]);
   const [memo, setMemo] = useState("");
@@ -42,12 +45,16 @@ export function ConfirmActions({ project, gate, client, onDone }: { project: YpP
     } catch (reason) { setError(errorMessage(reason)); } finally { setBusy(false); }
   };
   return <>
-    <div className="yp-abar">
+    {list ? <div className="yp-cf-opts" role="group" aria-label="고를 것">
+      <button type="button" className="yp-cf-opt" disabled={busy} onClick={() => void run("ok")}><span aria-hidden="true">1</span>컨펌</button>
+      <button type="button" className="yp-cf-opt" disabled={busy} aria-expanded={mode === "changes"} onClick={() => setMode(mode === "changes" ? null : "changes")}><span aria-hidden="true">2</span>수정 요청</button>
+      <button type="button" className="yp-cf-opt" disabled={busy} aria-expanded={mode === "hold"} onClick={() => setMode(mode === "hold" ? null : "hold")}><span aria-hidden="true">3</span>보류</button>
+    </div> : <div className="yp-abar">
       <span className="yp-abar-msg">{gate === "review" ? `대표 OK가 나야 ${project.yp.topic.type === "short" ? "내보내기로" : "업로드로"} 넘어가요` : "OK를 누르면 다음 단계가 바로 열려요"}</span>
       <button type="button" className="yp-btn" disabled={busy} aria-expanded={mode === "hold"} onClick={() => setMode(mode === "hold" ? null : "hold")}>보류</button>
       <button type="button" className="yp-btn" disabled={busy} aria-expanded={mode === "changes"} onClick={() => setMode(mode === "changes" ? null : "changes")}>수정 요청</button>
       <button type="button" className="yp-btn yp-pri yp-lg" disabled={busy} onClick={() => void run("ok")}><Check size={16} aria-hidden="true" />OK</button>
-    </div>
+    </div>}
     {mode === "changes" ? <form className="yp-card yp-confirm-form" onSubmit={event => { event.preventDefault(); void run("changes"); }}>
       <b>고칠 칸 (하나 이상)</b>
       {/* 로건 QA 10/30: a 숏폼 · 광고 has no 최종 썸네일 to point at. */}
