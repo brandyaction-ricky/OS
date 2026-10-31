@@ -66,7 +66,7 @@ async function fallbackDocuments(actor: RequestActor, input: SearchInput, status
     .limit(Math.min(Math.max(input.topK * 6, 24), 60));
   if (input.filters.folder) builder = builder.eq("folder", input.filters.folder);
   if (actor.type === "agent" && statuses.some((status) => status !== "canonical")) {
-    builder = builder.or(`status.eq.canonical,status.eq.team,and(status.eq.draft,owner_id.eq.${actor.ownerId},source.eq.mcp)`);
+    builder = builder.or(`status.in.(canonical,team,review,reviewed),and(status.eq.draft,owner_id.eq.${actor.ownerId},source.eq.mcp)`);
   }
   const brand = actor.brand ?? input.filters.brand;
   if (brand) builder = builder.eq("brand", brand);
@@ -118,10 +118,10 @@ export async function searchDocuments(actor: RequestActor, input: SearchInput): 
   }
 
   // The vector RPC runs through the service client for PATs. Company-canonical
-  // and team-shared rows may enter that query; personal agent-owned drafts are
+  // and shared rows (review stages too) may enter that query; personal agent-owned drafts are
   // merged through the explicitly owner-filtered keyword path below.
   const rpcStatuses = actor.type === "agent"
-    ? statuses.filter((status) => status === "canonical" || status === "team")
+    ? statuses.filter((status) => ["canonical", "team", "review", "reviewed"].includes(status))
     : statuses;
   const { data, error } = rpcStatuses.length ? await actor.supabase.rpc("os_search_knowledge", {
     p_query: normalizedQuery,

@@ -1,3 +1,5 @@
+@layer os.vendor, os.base, os.legacy, os.kit, os.screen;
+@layer os.legacy {
 /* The existing token palette is shared by both display themes. */
 .os-app.unified-shell { --nav-width: 252px; }
 .os-app.unified-shell.nav-collapsed { --nav-width: 72px; }
@@ -65,4 +67,6 @@
   .unified-shell .quick-record-link span { display: none; }
   .unified-shell .quick-record-link { padding: 7px; }
   .menu-guide { align-items: flex-start; flex-direction: column; gap: 10px; padding: 14px; }
+}
+
 }

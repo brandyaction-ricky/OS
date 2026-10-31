@@ -60,7 +60,8 @@ export function canReadDocument(actor: KnowledgeActor, doc: AccessDocument, cont
   // Same order as the database rule: before the meeting shortcut, so a link cannot bypass it.
   if (doc.status === "canonical" && doc.reader_scope !== "all" && !canReadRestrictedCanon(actor, doc, context)) return false;
   if (doc.meeting_record_id) return true;
-  if (actor.type === "agent") return actor.allowedStatuses.includes(doc.status) && ["team", "canonical"].includes(doc.status);
+  // An AI key reads the shared documents its owner reads, review stages included (대표 결정 2026-10-31, 요청 e9cab82b).
+  if (actor.type === "agent" && !(actor.allowedStatuses.includes(doc.status) && ["team", "review", "reviewed", "canonical"].includes(doc.status))) return false;
   if (doc.status === "canonical") return true;
   if (!["team", "review", "reviewed"].includes(doc.status)) return false;
   if (actor.memberKind !== "partner") return true;

@@ -1,3 +1,5 @@
+@layer os.vendor, os.base, os.legacy, os.kit, os.screen;
+@layer os.legacy {
 .development-request-quick-link {
   height: 34px;
   padding: 0 10px;
@@ -135,4 +137,6 @@
 }
 .development-notifications-badge {
   color: var(--on-accent);
+}
+
 }

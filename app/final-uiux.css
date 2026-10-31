@@ -1,3 +1,5 @@
+@layer os.vendor, os.base, os.legacy, os.kit, os.screen;
+@layer os.legacy {
 /* Final 2026-10-03 skin. Existing color tokens and display preferences remain authoritative. */
 @font-face {
   font-family: "Pretendard";
@@ -177,3 +179,5 @@ html[data-guidance="off"] .dev-page-header p { display: none; }
 .channel-metric-samples h3 { font-size:13px; }.channel-metric-samples strong { font-size:24px; }.channel-metric-samples small { font-size:11px;color:var(--muted); }
 .channel-metric-table { overflow-x:auto; }.channel-metric-table table { width:100%;font-size:12px;border-collapse:collapse; }.channel-metric-table th,.channel-metric-table td { padding:12px;text-align:left;border-bottom:1px solid var(--line-soft); }
 @media(max-width:600px){.channel-metric-samples{grid-template-columns:1fr;}.channel-metrics-panel>header{flex-direction:column;}.channel-metric-filters>label{width:100%;}}
+
+}

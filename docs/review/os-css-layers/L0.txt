@@ -1,0 +1,23 @@
+공통 CSS 구조 L0 — 감싸기만 (2026-10-31)
+기준: main d75de32c · 지시서 docs/handoff/os-common-style-20261011/00_공통CSS_개발지시서.md 2장 + 03_1031_보충.md 2장 1~4
+
+체험 빌드: NEXT_PUBLIC_DEMO_MODE=true HR_WORKSPACE_ENABLED=true TEAM_V1_ENABLED=true YOUTUBE_V1_ENABLED=true · next start (production) · 1440×900
+화면: 68개 (10/11 52개 + 보충 2장 4의 유튜브 공정 v1 등 15개 + 편집기 1) · 요소 39,502개 · 측정 실패 0
+
+1. 같은 빌드를 두 번 잼 (잡음)
+   /knowledge?tab=canon 표 머리 10 · /content/card-canon 2 · /content/confirm 1 → 너비 0.02~2px 차이 13곳
+   /content/plan · /content/packages 는 체험 데이터 목록 순서가 바뀜 (순서를 빼고 보면 0)
+
+2. L0 (모든 CSS를 @layer os.legacy 로 · 편집기 CSS 사본) vs 바꾸기 전
+   node tools/css-fingerprint.mjs out/L0.json out/base.json
+   /knowledge?tab=canon 10 · /content/card-canon 2 · /content/confirm 1 → 합계 13, 전부 1의 잡음과 같은 요소
+   편집기(vault 새 페이지) 676개 요소 차이 0
+
+결론: 잡음 말고 화면 변화 0 → L0 완료 기준 통과.
+
+같이 바꾼 것
+- tests/os-css-architecture.test.mjs: FILE_LAYER 에 새 CSS 11개 (보충 2장 1), BASELINE 을 d75de32c 에서 다시 뽑음 (보충 2장 2), STAGE "L0",
+  ROOT 를 fileURLToPath 로 (한글 폴더 경로에서 .pathname 이 퍼센트 인코딩되어 읽지 못함)
+- tests/screenshot-theme-regressions.test.mjs: styles() 를 walkRules 로 (지시서 L0 5번)
+- tests/os-style-p1.test.mjs: P1-6 이 @layer 안 규칙을 읽게, components/vendor/(패키지 원문 사본)는 검사에서 뺌
+- 빌드 경고 "No serializer registered for Warning"(globals · final-uiux · finance)은 바꾸기 전 빌드에도 같은 3개 — L0 와 무관

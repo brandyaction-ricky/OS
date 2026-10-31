@@ -30,7 +30,8 @@ export const internalLinks = (posts: string[]) => posts.filter(post => /brandyac
  * 스레드: 쓰레드 자동화 운영 정본 §7 교정 · 검수의 관문 여섯, 상 = §4 후보 심사와 §7 「실제로 남길 증거」.
  * SEO 칼럼: 「SEO 칼럼 만드는 절차」에 평가표가 없어 §2 세 가지 최적화 · §3 톤 · §4 구성 · §5 이미지 · §6 하지 말 것에서 여섯을 뽑았다.
  */
-export const GRIND_KINDS: Record<GrindKind, { label: string; canonTitle: string; criteria: GrindCriterion[]; bench: string; run: string; findings: (draft: BenchDraft) => number }> = {
+/** steward: who scores and proposes 정본 changes when it is not the 대표 (owner decision 2026-10-31: 칼럼 = the person who uploads it). */
+export const GRIND_KINDS: Record<GrindKind, { label: string; canonTitle: string; criteria: GrindCriterion[]; bench: string; run: string; findings: (draft: BenchDraft) => number; steward?: string }> = {
   card: { label: "카드뉴스", canonTitle: "카드뉴스 정본", bench: "yp_card_bench", run: "yp_card_bench_run", findings: draft => cardProblems(draft as CardDraftPart).blocking.length, criteria: [
     { n: 1, name: "표지에서 멈추나", top: "누구 이야기인지 바로 보이고, 넘겨 보고 싶다" },
     { n: 2, name: "한 장에 한 메시지", top: "장마다 하나만 말하고, 앞뒤 장이 이어진다" },
@@ -54,7 +55,7 @@ export const GRIND_KINDS: Record<GrindKind, { label: string; canonTitle: string;
     { n: 4, name: "적용", top: "독자가 자기 권한 안에서 할 행동과 달라질 판단이 있다" },
     { n: 5, name: "근거 · 의미", top: "주장마다 출처가 있고 사실 · 해석 · 예시가 구분되며, 쉽게 풀면서 뜻이 바뀌지 않았다" },
     { n: 6, name: "읽기 · 형식", top: "글마다 새 내용이 있고 추상어는 풀어 썼으며, 500자 · 순서를 지켰다" }] },
-  column: { label: "SEO 칼럼", canonTitle: "SEO 칼럼 만드는 절차 (정본)", bench: "yp_column_bench", run: "yp_column_bench_run",
+  column: { label: "SEO 칼럼", canonTitle: "SEO 칼럼 만드는 절차 (정본)", bench: "yp_column_bench", run: "yp_column_bench_run", steward: "칼럼을 올리는 작업자",
     findings: draft => { const { unsafe, issues } = checkColumnHtml((draft as ColumnDraft).html); return unsafe.length + issues.length; }, criteria: [
     { n: 1, name: "검색 질문에 바로 답하나", top: "제목 · 3줄 요약 · 첫 문단만 읽어도 검색한 질문의 답이 나온다" },
     { n: 2, name: "검색되는 말인가", top: "제목 · 소제목 · 키워드가 사람들이 실제로 찾는 말이고, 과장 · 낚시가 없다" },

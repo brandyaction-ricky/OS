@@ -216,7 +216,8 @@ export function CanonGrindScreen({ kind }: { kind: GrindKind }) {
         : <p className="yp-pempty">아직 지적이 없어요.</p>}
       <ol className="yp-grind-how">
         <li>‘정본 문제’로 표시된 지적만 골라, 정본에 넣을 문장(지금 문장 → 새 문장)을 정해요.</li>
-        <li>대표 승인을 받은 뒤 OS의 {spec.canonTitle}을 고치고, 맨 위 버전 줄을 올리고, 변경 이력에 이유를 적어요.</li>
+        {spec.steward ? <li>{spec.steward}가 OS의 {spec.canonTitle}에 {view.canon && !demo ? <Link className="yp-lnk" href={`/knowledge/canon/${view.canon.id}/propose`}>변경 제안</Link> : "변경 제안"}을 보내요. 맨 위 버전 줄을 올리고, 변경 이력에 이유를 적어요.</li>
+          : <li>대표 승인을 받은 뒤 OS의 {spec.canonTitle}을 고치고, 맨 위 버전 줄을 올리고, 변경 이력에 이유를 적어요.</li>}
         <li>여기서 같은 시험 묶음을 다시 뽑아 채점해요. 점수가 떨어지면 OS 문서의 이전 버전으로 되돌려요.</li></ol>
     </YpSection>
   </>;

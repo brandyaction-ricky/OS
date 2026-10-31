@@ -1,3 +1,5 @@
+@layer os.vendor, os.base, os.legacy, os.kit, os.screen;
+@layer os.legacy {
 /* Brandy OS application skin inspired by Linear's compact product workspace. */
 .linear-shell {
   background: var(--bg);
@@ -254,4 +256,6 @@
     transition-duration: .01ms !important;
     animation-duration: .01ms !important;
   }
+}
+
 }

@@ -1,3 +1,5 @@
+@layer os.vendor, os.base, os.legacy, os.kit, os.screen;
+@layer os.legacy {
 /* 유튜브 공정 v1 화면 CSS — components/youtube-process.css
    만든 곳: 「유튜브 공정 UIUX v1.0 최종」 시안 CSS를 기계 변환 (2026-10-15)
    규칙 (01_스타일가이드.md · tests/youtube-process-style.test.mjs):
@@ -1353,3 +1355,5 @@
 .linear-shell .ui-v2.yp .yp-ov-rep ul{margin:4px 0 0;padding-left:16px}
 .linear-shell .ui-v2.yp .yp-ov-rep p{margin:4px 0 0}
 .linear-shell .ui-v2.yp .yp-ov-rep .yp-ov-concl{margin:0}
+
+}

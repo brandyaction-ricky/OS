@@ -1,3 +1,5 @@
+@layer os.vendor, os.base, os.legacy, os.kit, os.screen;
+@layer os.legacy {
 /* ③ 영상 제작 (components/youtube-production-steps.tsx).
    Follows the content-automation v0.7 style guide on top of the OS kit (components/os-ui.css): OS buttons, panels,
    status pills and tables first; only the step bar, banner and notes are new. Theme tokens only, text 11px and up,
@@ -68,4 +70,6 @@
   .linear-shell .ui-v2 .yt-stepbar-item { min-height: 40px; }
   .linear-shell .ui-v2 .yt-refresh { margin-left: 0; }
   .linear-shell .ui-v2 .yt-step .panel-pad-lg { padding: 12px; }
+}
+
 }

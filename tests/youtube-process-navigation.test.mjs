@@ -72,6 +72,12 @@ test("side menu by what is made (owner 2026-10-29, A안): 공통 + 롱폼 · 숏
   assert.equal(youtubeV1StageId(stages, "/automation/threads", p(""), "automation"), "threads");
   assert.equal(youtubeV1StageId(stages, "/automation/requests", p(""), "automation"), "automation");
   assert.equal(youtubeV1StageId(stages, "/content/plan", p("id=x"), "content"), "content");
+  // 정본 다듬기 opens its own group (the breadcrumb said 공통 and the group stayed folded).
+  assert.equal(youtubeV1StageId(stages, "/content/column-canon", p(""), "content"), "yt-longform");
+  assert.equal(youtubeV1StageId(stages, "/content/short-canon", p(""), "content"), "yt-short");
+  assert.equal(youtubeV1StageId(stages, "/content/card-canon", p(""), "content"), "yt-card");
+  assert.equal(youtubeV1StageId(stages, "/content/threads-canon", p(""), "content"), "threads");
+  assert.equal(youtubeV1StageId(stages, "/content/projects", p(""), "content"), "content", "내 영상 without a platform stays under 공통");
   assert.equal(youtubeV1StageId(stages, "/content/automation", p(""), "automation", "/automation/topics"), "threads", "an old alias address opens the group of the page it shows");
   assert.ok(youtubeV1EntrySelected("/content/projects?platform=ad", "/content/projects", p("platform=ad")));
   assert.ok(!youtubeV1EntrySelected("/content/projects?platform=ad", "/content/projects", p("platform=short")));

@@ -1,3 +1,5 @@
+@layer os.vendor, os.base, os.legacy, os.kit, os.screen;
+@layer os.legacy {
 /* Meeting board beside the meeting notes, and the meeting step bar */
 .linear-shell .ui-v2 .tm-root .tm-board { display: grid; gap: 10px; padding: 12px 14px; align-content: start; }
 .tm-board-tabs { display: flex; flex-wrap: wrap; }
@@ -38,3 +40,5 @@
 .linear-shell .ui-v2 .tm-root .yp-muted { color: var(--muted); }
 .linear-shell .ui-v2 .tm-root .yp-btn { display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--text); font-size: 12px; font-weight: 500; cursor: pointer; }
 .linear-shell .ui-v2 .tm-root .yp-btn.yp-pri { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+
+}
