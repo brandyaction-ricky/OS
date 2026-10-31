@@ -7,8 +7,10 @@ import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { CARD_FORMAT_IDS, type CardFormatId } from "@/lib/cardnews/formats";
+import { checkColumnHtml, cleanColumnHtml } from "@/lib/seo-column";
 import { BENCH_MAX, CARD_GRADES, canonVersion, GRIND_KINDS, internalLinks, resultKey, type Bench, type BenchItem, type BenchResult, type BenchRun, type GrindKind } from "@/lib/canon-grind/grind";
 import { THREADS_EDITORIAL_WORKFLOW } from "@/lib/threads-editorial";
+import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
 import { threadsPostsProblem } from "@/lib/threads-posts";
 import { assertThreadsReferencesSelected, THREADS_REFERENCE_KIND, THREADS_REFERENCE_WORKFLOW } from "@/lib/threads-reference";
 import { GPT_TIERS, type GptTier } from "@/lib/youtube-process/gpt-draft";
@@ -23,7 +25,7 @@ import { cardJobCard, checkCardResult, VOICE_CANON_TITLE } from "./youtube-proce
 import { cardDocs, PREFACE, unwrap } from "./youtube-gpt-jobs";
 import { getYoutubeProject } from "./youtube-process";
 import { canonText, scriptResultSchema, shortScriptCard } from "./youtube-process-short-script";
-import { displayName } from "./youtube-process-ai";
+import { columnResultSchema, displayName, v1ColumnCard } from "./youtube-process-ai";
 import { readStages } from "./youtube-process-stages";
 import { threadsInputInstructions, threadsSourceInput, type ThreadsJobInput } from "./threads-reference";
 
@@ -83,7 +85,7 @@ export async function readGrind(kind: GrindKind) {
   return { bench: benchOf(row), runs: row ? (await runRows(kind, row.id)).map(runOf) : [], canon: await canonOf(kind) };
 }
 
-export const grindKindSchema = z.enum(["card", "short", "threads"]);
+export const grindKindSchema = z.enum(["card", "short", "threads", "column"]);
 const n = z.enum(["1", "2", "3", "4", "5", "6"]);
 export const grindActionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("add"), projectId: z.string().uuid() }).strict(),
@@ -94,7 +96,7 @@ export const grindActionSchema = z.discriminatedUnion("action", [
     grades: z.record(n, z.enum(CARD_GRADES as [string, ...string[]])), notes: z.record(n, z.string().max(300)).default({}) }).strict(),
 ]);
 
-/** A content item the person can open, frozen as a 시험 원본: a 카드뉴스's text, focus and topic, or a confirmed 숏폼's 대본 job card. */
+/** A content item the person can open, frozen as a 시험 원본: a 카드뉴스's text, focus and topic, a confirmed 숏폼's 대본 job card or a 롱폼's 칼럼 job card. */
 async function itemFromProject(actor: RequestActor, kind: GrindKind, projectId: string): Promise<BenchItem> {
   if (kind === "threads") return threadsItem(actor, projectId);
   const project = await getYoutubeProject(actor, projectId);
@@ -104,6 +106,15 @@ async function itemFromProject(actor: RequestActor, kind: GrindKind, projectId: 
     if (project.yp.topic.type !== "card") throw new ApiError(400, "NOT_CARD_PROJECT", "카드뉴스만 시험 묶음에 넣을 수 있어요.");
     const cards = (await readStages(actor.supabase, project)).cards.data;
     return { ...base, focus: cards.focus, source: cards.source };
+  }
+  if (kind === "column") {
+    if (project.yp.topic.type === "short" || project.yp.topic.type === "card") throw new ApiError(400, "NOT_LONGFORM_PROJECT", "롱폼만 시험 묶음에 넣을 수 있어요.");
+    // The 원고 is confirmed from 제작 on; the 칼럼 job itself opens after 최종 검토, but the 정본 is ground on the 원고 alone.
+    if (!["make", "review", "upload", "shorts", "done"].includes(project.yp.stage)) throw new ApiError(409, "LONGFORM_SCRIPT_NOT_CONFIRMED", "원고를 확정한 롱폼만 넣을 수 있어요.");
+    if (!narrationFromMarkdown((await readStages(actor.supabase, project)).outline.data.script).trim()) throw new ApiError(409, "SCRIPT_REQUIRED", "원고가 비어 있는 롱폼이에요.");
+    // The same card the 칼럼 job gives for one column: what the 정본 alone makes of this 원고.
+    const instructions = await v1ColumnCard(service(), await readPipeline({ supabase: service() }, projectId), 30);
+    return { ...base, focus: "", source: { kind: "longform", title, text: "", at }, instructions };
   }
   if (project.yp.topic.type !== "short" || project.yp.topic.purpose === "ad") throw new ApiError(400, "NOT_SHORT_PROJECT", "광고가 아닌 숏폼만 시험 묶음에 넣을 수 있어요.");
   if (!["make", "review", "upload", "done"].includes(project.yp.stage)) throw new ApiError(409, "SHORT_NOT_CONFIRMED", "대본을 확정한 숏폼만 넣을 수 있어요.");
@@ -179,8 +190,11 @@ export async function actOnGrind(actor: RequestActor, kind: GrindKind, input: z.
     return readGrind(kind);
   }
   if (kind === "card" && !input.formats.length) throw new ApiError(400, "GRIND_FORMATS_REQUIRED", "포맷을 하나 이상 골라 주세요.");
-  return { ...(await startRun(actor, kind, kind === "card" ? input.formats : [kind === "short" ? "script" : "posts"], input.tier)), ...(await readGrind(kind)) };
+  return { ...(await startRun(actor, kind, kind === "card" ? input.formats : [ONE_FORMAT[kind]], input.tier)), ...(await readGrind(kind)) };
 }
+
+/** The one format a non-card draft has. */
+const ONE_FORMAT = { short: "script", threads: "posts", column: "html" } as const;
 
 /** 「이 정본으로 다시 뽑기」: one run record now, the GPT work after the response (several minutes). */
 async function startRun(actor: RequestActor, kind: GrindKind, formats: string[], tier: GptTier) {
@@ -241,6 +255,16 @@ function checkThreads(value: unknown) {
   return { posts: posts as string[] };
 }
 
+/** An SEO 칼럼 as the 칼럼 save checks it: one HTML document, nothing unsafe, the 정본 구성 in place. */
+function checkColumn(value: unknown) {
+  const parsed = columnResultSchema.safeParse(value);
+  if (!parsed.success || parsed.data.columns.length !== 1) throw new ApiError(422, "COLUMN_RESULT_INVALID", '{ "columns": [{ "html": "<!DOCTYPE html>…" }] } — 칼럼 1편으로 답해 주세요.');
+  const html = cleanColumnHtml(parsed.data.columns[0].html);
+  const { unsafe, issues } = checkColumnHtml(html);
+  if (unsafe.length + issues.length) throw new ApiError(422, "COLUMN_HTML_INVALID", `칼럼 검사에서 걸린 곳 ${unsafe.length + issues.length}건: ${[...unsafe, ...issues].join(" / ")}`);
+  return { html };
+}
+
 /** The 스레드 정본 is long (and its appendix holds the adopted examples), so it is pasted whole rather than cut at the usual 40,000 letters. */
 async function threadsDocs(card: string) {
   const ids = [...new Set([...card.matchAll(/doc_id: ([0-9a-f-]{36})/gi)].map(match => match[1]))];
@@ -266,8 +290,8 @@ async function drawRun(kind: GrindKind, runId: string, items: BenchItem[], forma
     if (!cardOf(item)) return failed("시험 원본에 작업 내용이 없어요. 빼고 다시 넣어 주세요.");
     const answer = await ask(tier, kind === "threads" ? await threadsDocs(cardOf(item)) : shared, cardOf(item), async value => kind === "card"
       ? checkCardResult(value, formats as CardFormatId[]).drafts.map(draft => ({ key: resultKey(item.id, draft.format), itemId: item.id, title: item.title, format: draft.format, draft }))
-      : kind === "short" ? [{ key: resultKey(item.id, "script"), itemId: item.id, title: item.title, format: "script", draft: checkShort(value, shortCanon) }]
-      : [{ key: resultKey(item.id, "posts"), itemId: item.id, title: item.title, format: "posts", draft: checkThreads(value) }]);
+      : [{ key: resultKey(item.id, ONE_FORMAT[kind]), itemId: item.id, title: item.title, format: ONE_FORMAT[kind],
+        draft: kind === "short" ? checkShort(value, shortCanon) : kind === "threads" ? checkThreads(value) : checkColumn(value) }]);
     return answer.results ?? failed(answer.error!);
   };
   let results: BenchResult[] = [], failure = "";

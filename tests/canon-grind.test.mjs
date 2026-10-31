@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { emptyCardDraft } from "../lib/cardnews/formats.ts";
 import { canonVersion, fixList, graduatedTwice, GRIND_KINDS, mergedGrades, passes, resultKey, runSummary } from "../lib/canon-grind/grind.ts";
+import { checkColumnHtml } from "../lib/seo-column.ts";
 
 // 정본 다듬기 (카드뉴스 정본 §8 · §9, 설계서 §9): the 평가표 merge, the graduation and the 고칠 점, for 카드뉴스 and 숏폼 대본.
 const all = grade => ({ 1: grade, 2: grade, 3: grade, 4: grade, 5: grade, 6: grade });
@@ -68,6 +69,15 @@ test("스레드: its 평가표 is the 정본 §7 관문 여섯; the automatic ch
   assert.equal(GRIND_KINDS.threads.findings({ posts: ["본문", "https://brandyaction-os.vercel.app/knowledge?document=x"] }), 1, "an OS address in a public post");
   const run = { state: "done", results: [{ key: "a:posts", itemId: "a", title: "a", format: "posts", draft: ok }], scores: { "a:posts": { p: score("p", all("상")) } } };
   assert.equal(runSummary(run, "threads").graduated, true);
+});
+
+test("SEO 칼럼: its 평가표 comes from the 정본 §2–§6 (it has none of its own); the automatic check is the OS column check", () => {
+  assert.equal(GRIND_KINDS.column.canonTitle, "SEO 칼럼 만드는 절차 (정본)");
+  assert.deepEqual(GRIND_KINDS.column.criteria.map(c => c.n), [1, 2, 3, 4, 5, 6]);
+  const bare = { html: "<!DOCTYPE html><html><head><title>t</title></head><body><script>x</script></body></html>" };
+  const { unsafe, issues } = checkColumnHtml(bare.html);
+  assert.ok(unsafe.length && issues.length);
+  assert.equal(GRIND_KINDS.column.findings(bare), unsafe.length + issues.length, "unsafe tags and 구성 gaps both count");
 });
 
 test("a 정본's version: its 정본 묶음 line, else its 상태 line, else the document version", () => {

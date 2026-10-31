@@ -1,13 +1,14 @@
 "use client";
 // 정본 다듬기 (카드뉴스 정본 §9, 설계서 §9): the same 시험 묶음 drawn again under each 정본 version, scored on the 평가표, runs side by side,
-// and the 고칠 점 that point at the 정본. One screen for every kind (카드뉴스 · 숏폼 대본 · 스레드); each 정본 is edited in its OS document.
+// and the 고칠 점 that point at the 정본. One screen for every kind (카드뉴스 · 숏폼 대본 · 스레드 · SEO 칼럼); each 정본 is edited in its OS document.
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { apiRequest } from "@/lib/api-client";
 import { CARD_FORMAT_IDS, CARD_FORMATS, type CardFormatId } from "@/lib/cardnews/formats";
 import { BENCH_MAX, CARD_GRADES, fixList, GRADUATION, graduatedTwice, GRIND_KINDS, mergedGrades, resultKey, runSummary,
-  type Bench, type BenchResult, type BenchRun, type CardCriterion, type CardDraftPart, type CardGrade, type GrindKind, type ShortDraft, type ThreadsDraft } from "@/lib/canon-grind/grind";
+  type Bench, type BenchResult, type BenchRun, type CardCriterion, type CardDraftPart, type CardGrade, type ColumnDraft, type GrindKind, type ShortDraft, type ThreadsDraft } from "@/lib/canon-grind/grind";
 import { tokenEstimate } from "@/lib/cost";
+import { columnMeta, columnSlots, renderColumn } from "@/lib/seo-column";
 import { GPT_TIERS, type GptTier } from "@/lib/youtube-process/gpt-draft";
 import { projectName } from "@/lib/youtube-process/project";
 import { threadsPostLength, threadsPostRole } from "@/lib/threads-posts";
@@ -26,32 +27,42 @@ const day = (iso: string) => { const date = new Date(iso); return `${date.getMon
 const SOURCE = { longform: "롱폼", short: "숏폼", threads: "스레드", none: "주제만" } as const;
 // ponytail: planning figures for the estimate shown as 「최대」 — a card answer reads the 정본 + 원본 (≈28,000) and writes 4,000 per format;
 // a 숏폼 대본 answer reads its 정본, the 말투 정본 and the 참고 영상 (≈45,000) and writes ≈3,000; a 스레드 answer reads the long 스레드 정본
-// with its adopted examples and the topic's 재료 (≈60,000) and writes ≈3,000.
+// with its adopted examples and the topic's 재료 (≈60,000) and writes ≈3,000; an SEO 칼럼 reads its 정본 and the 롱폼 원고 (≈40,000) and
+// writes one HTML document with its image prompts (≈8,000).
 const ESTIMATE: Record<GrindKind, (formats: number) => { input: number; output: number }> = {
   card: formats => ({ input: 28_000, output: 4_000 * formats }), short: () => ({ input: 45_000, output: 3_000 }), threads: () => ({ input: 60_000, output: 3_000 }),
+  column: () => ({ input: 40_000, output: 8_000 }),
 };
-const formatName = (format: string) => format === "script" ? "대본" : format === "posts" ? "글타래" : CARD_FORMATS[format as CardFormatId]?.name ?? format;
+const formatName = (format: string) => format === "script" ? "대본" : format === "posts" ? "글타래" : format === "html" ? "칼럼" : CARD_FORMATS[format as CardFormatId]?.name ?? format;
 /** What goes in, per kind: the picker's first line and the empty 시험 묶음. */
 const PICK: Record<GrindKind, { choose: string; empty: string }> = {
   card: { choose: "만든 카드뉴스에서 고르기", empty: "아직 없어요. 롱폼 · 숏폼 · 스레드 · 주제만에서 하나씩, 3~5개를 넣어요." },
   short: { choose: "대본을 확정한 숏폼에서 고르기", empty: "아직 없어요. 대본을 확정한 숏폼을 3~5개 넣어요." },
   threads: { choose: "내가 확정한 스레드 주제에서 고르기", empty: "아직 없어요. 확정한 스레드 주제를 3~5개 넣어요. 넣은 주제의 재료는 팀에 보여요." },
+  column: { choose: "원고를 확정한 롱폼에서 고르기", empty: "아직 없어요. 원고를 확정한 롱폼을 3~5개 넣어요." },
 };
+/** The longform stages whose 원고 is confirmed (from 제작 on). */
+const SCRIPT_CONFIRMED = ["make", "review", "upload", "shorts", "done"];
 /** 「상 3 · 중 2 · 하 1」: how many criteria got each grade. */
 const tally = (grades: Partial<Record<CardCriterion, CardGrade>>) => CARD_GRADES.map(grade => [grade, Object.values(grades).filter(value => value === grade).length] as const)
   .filter(([, count]) => count).map(([grade, count]) => `${grade} ${count}`).join(" · ");
 const scriptLines = (draft: ShortDraft) => draft.text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
 
+const DEMO_PROMPT = "Editorial flat vector illustration of a tired Korean office worker at a desk late in the evening, looking at a salary slip and a calendar. Centered composition, wide shot, generous negative space at top. Minimalist palette of deep navy (#0D1531) and vivid blue (#2735C8) on a light off-white background (#F7F8FF). Calm, thoughtful, professional mood, soft even lighting. 16:9 aspect ratio. No text, no words, no logos in the image.";
+const DEMO_COLUMN = `<!DOCTYPE html><html lang="ko"><head><title>[예시] 연봉 보고 옮겼는데 또 힘들다면, 다음엔 무엇부터 봐야 할까</title><meta name="description" content="[예시] 연봉을 올려 이직했는데 석 달 만에 다시 지쳤다면 연봉이 막아 주는 것과 막지 못하는 것을 나눠 봐야 해요. 다시 고를 때 먼저 볼 세 가지를 정리했어요."><meta name="keywords" content="이직, 연봉, 번아웃, 직장인, 강점"><meta name="slug" content="salary-move-still-tired"></head><body><article class="ba-article"><h1>[예시] 연봉 보고 옮겼는데 또 힘들다면</h1><figure class="ph hero" data-slot="hero" data-prompt="${DEMO_PROMPT}"><figcaption>[대표 이미지] 늦은 저녁 급여 명세서를 보는 직장인</figcaption></figure><div class="tldr"><b>3줄 요약</b><ul><li>[예시] 연봉은 불만을 줄일 뿐 힘이 나게 하진 못해요.</li><li>[예시] 다시 지쳤다면 일 · 역할 · 환경을 나눠 봐야 해요.</li><li>[예시] 다음엔 내가 힘이 나는 조건부터 적어요.</li></ul></div><p class="lead">[예시] 도입 문단이에요.</p><h2>[예시] 연봉이 막아 주는 것</h2><p>[예시] 본문</p><h2>[예시] 연봉이 막지 못하는 것</h2><p>[예시] 본문</p><h2>[예시] 다시 지치는 이유</h2><p>[예시] 본문</p><h2>[예시] 다음엔 무엇부터 볼까</h2><p>[예시] 본문</p><div class="takeaways"><div class="t">핵심 정리</div><ul><li>[예시] 하나</li><li>[예시] 둘</li><li>[예시] 셋</li></ul></div><section class="faq"><h2>자주 묻는 질문</h2><dl><dt>[예시] 연봉을 올려도 왜 지칠까요?</dt><dd>[예시] 답</dd></dl></section></article></body></html>`;
+
 /** The demo has no GPT: one example run per kind so the comparison and the 평가표 have something to show. */
 function demoView(kind: GrindKind): GrindView {
   const at = new Date().toISOString();
-  const format = kind === "card" ? "list" : kind === "short" ? "script" : "posts";
-  const item = { id: "demo-i1", title: kind === "card" ? "[예시] 월요일마다 무거운 사람의 공통점" : kind === "short" ? "[예시] 연봉 올려 옮긴 회사, 석 달 만에 또 지치는 이유" : "[예시] 칭찬받던 꼼꼼함이 문제가 될 때",
-    target: "3~7년 차 직장인", note: "", focus: "", source: { kind: kind === "card" ? "longform" as const : kind === "short" ? "short" as const : "threads" as const, title: "[예시] 원본", text: "[예시] 원고", at }, at, by: "리키" };
+  const format = kind === "card" ? "list" : kind === "short" ? "script" : kind === "threads" ? "posts" : "html";
+  const item = { id: "demo-i1", title: kind === "card" ? "[예시] 월요일마다 무거운 사람의 공통점" : kind === "short" ? "[예시] 연봉 올려 옮긴 회사, 석 달 만에 또 지치는 이유"
+    : kind === "threads" ? "[예시] 칭찬받던 꼼꼼함이 문제가 될 때" : "[예시] 연봉 보고 옮겼는데 또 힘들다면",
+    target: "3~7년 차 직장인", note: "", focus: "", source: { kind: kind === "short" ? "short" as const : kind === "threads" ? "threads" as const : "longform" as const, title: "[예시] 원본", text: "[예시] 원고", at }, at, by: "리키" };
   const draft: BenchResult["draft"] = kind === "card" ? { format: "list", caption: "[예시] 캡션", hashtags: ["직장인", "강점", "번아웃"], slides: [
     { type: "cover" as const, fields: { head: "월요일마다 무거운 사람의 공통점 3가지", sub: "쉬어도 안 풀리는 피로는 신호일 수 있어요" } },
     ...["실수가 먼저 떠올라요", "주말에도 일 생각이 나요", "내가 고른 일이 없어요"].map(title => ({ type: "item" as const, fields: { title, body: "[예시] 장면 하나와 그 뜻 한 줄" } })),
     { type: "summary" as const, fields: { line: "지친 건 양이 아니라 고를 수 없어서예요" } }, { type: "end" as const, fields: { line: "이번 주에 고를 일 하나를 적어 봐요", action: "저장해 두기" } }] }
+    : kind === "column" ? { html: DEMO_COLUMN }
     : kind === "threads" ? { posts: ["[예시] 신입 때는 꼼꼼하다는 칭찬을 들었다. 그런데 팀장이 되자 같은 꼼꼼함이 「느리다」는 말로 돌아왔다.\n왜 같은 사람의 같은 장점이 평가만 바뀌었을까.",
       "[예시] 바뀐 건 장점이 아니라 그 장점에 맡겨진 일이다. 혼자 결과물을 내던 자리에서는 빠짐없이 보는 힘이 그대로 성과였지만, 여러 사람의 일을 넘겨받는 자리에서는 다 직접 확인하려는 순간 병목이 된다.",
       "[예시] 이번 주에 직접 확인한 일 중 하나를 골라, 남에게 맡겼다면 무엇이 달라졌을지 적어 보자. 꼼꼼함을 버리라는 게 아니라, 꼼꼼함을 쓸 곳을 다시 고르는 일이다."] }
@@ -60,7 +71,7 @@ function demoView(kind: GrindKind): GrindView {
       text: "연봉 올려 옮겼는데 석 달 만에 또 지쳤다면\n분명히 연봉은 꽤 올랐는데 말이죠\n근데 연봉이 막아 주는 건 딱 하나예요\n돈이 적어서 생기는 불만, 그거 하나요\n돈은 덜 싫게 할 뿐, 힘이 나게 하진 못해요\n지금 회사에서 내 하루, 몇 점이에요?" };
   const key = resultKey(item.id, format);
   const second = { ...item, id: "demo-i2", title: "[예시] 두 번째 시험 원본" }, key2 = resultKey(second.id, format);
-  const version = kind === "card" ? "v0.1" : kind === "short" ? "v0.7" : "v5.9";
+  const version = kind === "card" ? "v0.1" : kind === "short" ? "v0.7" : kind === "threads" ? "v5.9" : "doc v2";
   return { bench: { items: [item, second] }, canon: { id: "demo-canon", version }, me: "demo-ricky", runs: [{ id: "demo-run-1", canon: version, at, by: "demo-ricky", byName: "리키",
     model: GPT_TIERS.saving.model, formats: [format], state: "done", results: [{ key, itemId: item.id, title: item.title, format, draft }, { key: key2, itemId: second.id, title: second.title, format, draft }],
     scores: { [key]: { "demo-logan": { name: "로건", grades: { 1: "상", 2: "상", 3: "중", 4: "하", 5: "상", 6: "중" }, notes: { 3: "[예시] 근거가 한 줄뿐이에요", 4: "[예시] 끝말이 딱딱해요", 6: "[예시] 마지막 줄이 약해요" }, at } } } }] };
@@ -87,7 +98,7 @@ export function CanonGrindScreen({ kind }: { kind: GrindKind }) {
   }, [accessToken, demo, kind]);
   useEffect(() => { void load(); }, [load]);
   // What may go in: 카드뉴스 any, 숏폼 only an organic one whose 대본 is confirmed, 스레드 only a 주제 the person confirmed in their own
-  // space (the server checks the same).
+  // space, SEO 칼럼 a 롱폼 whose 원고 is confirmed (the server checks the same).
   useEffect(() => {
     if (kind === "threads") {
       if (demo || !accessToken) return;
@@ -98,6 +109,7 @@ export function CanonGrindScreen({ kind }: { kind: GrindKind }) {
       return;
     }
     if (client) client.list().then(rows => setChoices(rows.filter(row => kind === "card" ? row.yp.topic.type === "card"
+      : kind === "column" ? row.yp.topic.type !== "short" && row.yp.topic.type !== "card" && SCRIPT_CONFIRMED.includes(row.yp.stage)
       : row.yp.topic.type === "short" && row.yp.topic.purpose !== "ad" && ["make", "review", "upload", "done"].includes(row.yp.stage)).map(row => ({ id: row.id, title: projectName(row) }))), () => undefined);
   }, [client, kind, demo, accessToken]);
   // While a run is drawing, look again every 20 seconds.
@@ -169,7 +181,7 @@ export function CanonGrindScreen({ kind }: { kind: GrindKind }) {
           onClick={() => void act("topic", { action: "addTopic", title: topic.title.trim(), target: topic.target.trim(), note: "" }).then(ok => { if (ok) setTopic({ title: "", target: "" }); })}>넣기</button></div> : null}
     </YpSection>
 
-    <YpSection n={2} title="이 정본으로 다시 뽑기" gq={`회사 GPT가 시험 원본을 모두 지금 정본으로 다시 써요 · 3~6분${kind === "short" ? " · 넣을 때의 주제 · 공식 · 참고 영상 그대로" : kind === "threads" ? " · 넣을 때의 재료 그대로" : ""}`}>
+    <YpSection n={2} title="이 정본으로 다시 뽑기" gq={`회사 GPT가 시험 원본을 모두 지금 정본으로 다시 써요 · 3~6분${kind === "short" ? " · 넣을 때의 주제 · 공식 · 참고 영상 그대로" : kind === "threads" ? " · 넣을 때의 재료 그대로" : kind === "column" ? " · 넣을 때의 원고 그대로" : ""}`}>
       <div className="yp-row-btns" style={{ flexWrap: "wrap", gap: 12 }}>
         {kind === "card" ? CARD_FORMAT_IDS.map(id => <label key={id} className="yp-chk"><input type="checkbox" checked={formats.includes(id)} disabled={!formats.includes(id) && formats.length >= 3}
           onChange={() => setFormats(formats.includes(id) ? formats.filter(row => row !== id) : [...formats, id])} /> {CARD_FORMATS[id].name}</label>) : null}
@@ -220,7 +232,8 @@ function GrindCell({ kind, run, result, me, active, onOpen }: { kind: GrindKind;
     {kind === "card" ? <span className="yp-card-strip">{(result.draft as CardDraftPart).slides.slice(0, 3).map((_, index) =>
       <CardPreview key={index} draft={{ ...(result.draft as CardDraftPart), id: result.key, at: run.at, by: run.byName }} index={index} width={84} />)}</span>
       : kind === "short" ? <span className="yp-grind-script"><b>{(result.draft as ShortDraft).headCopy}</b>{scriptLines(result.draft as ShortDraft).slice(0, 3).map((line, at) => <span key={at}>{line}</span>)}</span>
-      : <span className="yp-grind-script"><span className="yp-grind-post">{(result.draft as ThreadsDraft).posts[0]}</span><small className="yp-muted">글 {(result.draft as ThreadsDraft).posts.length}개</small></span>}
+      : kind === "threads" ? <span className="yp-grind-script"><span className="yp-grind-post">{(result.draft as ThreadsDraft).posts[0]}</span><small className="yp-muted">글 {(result.draft as ThreadsDraft).posts.length}개</small></span>
+      : <span className="yp-grind-script"><b>{columnMeta((result.draft as ColumnDraft).html).title}</b><span className="yp-grind-post">{columnMeta((result.draft as ColumnDraft).html).description}</span></span>}
     <small>{findings ? `자동 검사 ${findings}` : "자동 검사 통과"} · {merged ? `채점 ${tally(merged)}` : "채점 전"}{run.scores[result.key]?.[me] ? " · 내 채점 ✓" : ""}</small>
   </button>;
 }
@@ -246,7 +259,7 @@ function ScoreBody({ kind, run, result, me, busy, error, place, prev, next, onSa
   const criteria = GRIND_KINDS[kind].criteria;
   const others = Object.entries(run.scores[result.key] ?? {}).filter(([id]) => id !== me);
   const done = criteria.every(c => grades[c.n]);
-  const unit = kind === "card" ? "카드뉴스" : kind === "short" ? "대본" : "글타래";
+  const unit = kind === "card" ? "카드뉴스" : kind === "short" ? "대본" : kind === "threads" ? "글타래" : "칼럼";
   return <>
     <div className="yp-modal-h"><span className="yp-grind-dlg-t">{result.title} · {formatName(result.format)} · 정본 {run.canon}</span><span className="yp-sp" />
       <small className="yp-muted">{place}</small>
@@ -254,10 +267,11 @@ function ScoreBody({ kind, run, result, me, busy, error, place, prev, next, onSa
       <button type="button" className="yp-btn yp-sm" disabled={!next} onClick={() => leave(next)}>다음 {unit}</button>
       <button type="button" className="yp-btn yp-sm" onClick={() => leave()}>닫기</button></div>
     <div className="yp-grind-dlg-b">
-      <div className="yp-grind-dlg-draft">{kind === "card" ? <>
+      <div className={`yp-grind-dlg-draft${kind === "column" ? " yp-grind-dlg-col" : ""}`}>{kind === "card" ? <>
         <div className="yp-grind-slides">{(result.draft as CardDraftPart).slides.map((_, index) => <CardPreview key={index} draft={{ ...(result.draft as CardDraftPart), id: result.key, at: run.at, by: run.byName }} index={index} width={170} />)}</div>
         {(result.draft as CardDraftPart).caption ? <p className="yp-card-caption" style={{ marginTop: 10 }}>{(result.draft as CardDraftPart).caption}</p> : null}
-      </> : kind === "short" ? <ShortDraftView draft={result.draft as ShortDraft} /> : <ThreadsDraftView draft={result.draft as ThreadsDraft} />}</div>
+      </> : kind === "short" ? <ShortDraftView draft={result.draft as ShortDraft} /> : kind === "threads" ? <ThreadsDraftView draft={result.draft as ThreadsDraft} />
+        : <ColumnDraftView draft={result.draft as ColumnDraft} title={result.title} />}</div>
       <div className="yp-grind-dlg-form">
         <div className="yp-grind-form">{criteria.map(c => <div key={c.n} className="yp-grind-crit">
           <div><b>{c.n}. {c.name}</b><small className="yp-muted">상: {c.top}</small></div>
@@ -293,4 +307,17 @@ function ShortDraftView({ draft }: { draft: ShortDraft }) {
 function ThreadsDraftView({ draft }: { draft: ThreadsDraft }) {
   return <ol className="yp-grind-posts">{draft.posts.map((post, at) => <li key={at}>
     <small className="yp-muted">{threadsPostRole(draft.posts, at)} · {threadsPostLength(post)}자</small><p>{post}</p></li>)}</ol>;
+}
+
+/** An SEO 칼럼 as the 쇼츠 · 칼럼 step previews it (images not filled yet), with what the page hides: its search fields and image prompts. */
+function ColumnDraftView({ draft, title }: { draft: ColumnDraft; title: string }) {
+  const meta = columnMeta(draft.html), preview = useMemo(() => renderColumn(draft.html), [draft.html]);
+  return <>
+    <details className="yp-grind-col-meta"><summary>검색 정보 · 이미지 프롬프트</summary>
+      <dl className="yp-kv"><dt>제목</dt><dd>{meta.title}</dd><dt>설명</dt><dd>{meta.description} <small className="yp-muted">({meta.description.length}자)</small></dd>
+        <dt>키워드</dt><dd>{meta.keywords.join(" · ")}</dd><dt>slug</dt><dd>{meta.slug}</dd>
+        {columnSlots(draft.html).filter(slot => slot.kind !== "video").map(slot => [<dt key={`${slot.slot}-t`}>{slot.slot === "hero" ? "대표 이미지" : `이미지 ${slot.slot}`}</dt>,
+          <dd key={`${slot.slot}-d`}>{slot.caption}<br /><small className="yp-muted">{slot.prompt}</small></dd>])}</dl></details>
+    <iframe className="yp-grind-col" title={`${title} 칼럼 미리보기`} sandbox="allow-scripts allow-popups" srcDoc={preview} />
+  </>;
 }
