@@ -28,9 +28,9 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { findPage, findStage, NAV_STAGES } from "@/lib/navigation";
 import { canOpenMenu } from "@/lib/menu-access";
 import { useMenuAccess } from "./use-menu-access";
-import { useYoutubeCanConfirm, useYoutubeConfirmWaiting, useYoutubeV1Access } from "./use-youtube-confirm";
+import { useContentOverviewCounts, useYoutubeCanConfirm, useYoutubeConfirmWaiting, useYoutubeV1Access } from "./use-youtube-confirm";
 import type { YoutubeV1Mode } from "@/lib/youtube-process/gate";
-import { YOUTUBE_V1_CEO_STAGE, YOUTUBE_V1_STEP_PAGES, youtubeV1EntrySelected, youtubeV1StageId, youtubeV1Stages } from "@/lib/youtube-process/navigation";
+import { OVERVIEW_PAGE, YOUTUBE_V1_CEO_STAGE, YOUTUBE_V1_STEP_PAGES, youtubeV1EntrySelected, youtubeV1StageId, youtubeV1Stages } from "@/lib/youtube-process/navigation";
 import { fullscreenScreen } from "@/lib/fullscreen-screen";
 import { roleLabel } from "@/lib/company-settings";
 import { DevelopmentRequestDrawer } from "./development-request-drawer";
@@ -53,6 +53,7 @@ function Initials({ name }: { name: string }) {
   return <span>{name.slice(0, 1).toUpperCase()}</span>;
 }
 
+const PLATFORM_GROUP = { "yt-longform": "longform", "yt-short": "short", "yt-ad": "ad", "yt-card": "card" } as const;
 export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, youtubeV1Mode = "off" }: { children: React.ReactNode; hrEnabled?: boolean; teamV1Enabled?: boolean; youtubeV1Mode?: YoutubeV1Mode }) {
   // The server owns the rollout flag; no environment values are read in the browser.
   const youtubeV1Enabled = useYoutubeV1Access(youtubeV1Mode);
@@ -73,6 +74,9 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
   const menuAccess = useMenuAccess(profile, accessToken, demo);
   const canConfirm = useYoutubeCanConfirm(youtubeV1Enabled, accessToken, demo, profile?.role === "admin");
   const confirmWaiting = useYoutubeConfirmWaiting(Boolean(youtubeV1Enabled && canConfirm), pathname);
+  const workCounts = useContentOverviewCounts(Boolean(youtubeV1Enabled));
+  // 공통 shows all content work; each platform its own. Other groups keep their page count.
+  const workOf = (id: string) => !workCounts ? null : id === "content" ? workCounts : workCounts.by[PLATFORM_GROUP[id as keyof typeof PLATFORM_GROUP]] ?? { decide: 0, ai: 0 };
   // 유튜브 공정 v1: 대표 메뉴 on top, then the menu by what is made (owner 2026-10-29, A안); old screens stay reachable by address.
   const navStages = youtubeV1Enabled ? [...(canConfirm ? [YOUTUBE_V1_CEO_STAGE] : []), ...youtubeV1Stages(NAV_STAGES)] : NAV_STAGES;
   const activeStageId = youtubeV1Enabled ? youtubeV1StageId(navStages, pathname, params, stage.id, (page.navHref ?? page.href).split("?")[0]) : stage.id;
@@ -294,6 +298,7 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
               <Link className={`compact-group${active ? " active" : ""}`} href={item.pages[0].href} aria-label={item.label} title={item.label}><Icon size={20} /><span>{item.label}</span></Link>
               {item.id !== "home" ? <button className="nav-section-trigger nav-group" data-ui="nav-group" aria-label={groupLabel(item)} onClick={() => toggleGroup(item.id)} aria-expanded={Boolean(active || groupOpen(item.id))} aria-controls={`nav-${item.id}`}>
                 <span className="nav-chevron" data-ui="nav-chevron" aria-hidden="true">{active || groupOpen(item.id) ? "▾" : "▸"}</span><span className="nav-icon"><Icon size={16} /></span><span className="nav-group-label">{groupLabel(item)}{item.id === "settings" && serverOk === false ? <small className="state-dot waiting" title="서버 확인 실패" aria-label="서버 확인 실패" /> : null}</span>{item.id === "ceo" ? <span className={`nav-group-count${confirmWaiting ? " is-alert" : ""}`} title={`컨펌 대기 ${confirmWaiting ?? 0}개`} aria-hidden="true">{confirmWaiting ?? ""}</span>
+                  : youtubeV1Enabled && (item.id === "content" || item.id.startsWith("yt-")) ? (() => { const work = workOf(item.id); return <span className="nav-group-work" title={work ? `확인 ${work.decide} · AI ${work.ai}` : undefined} aria-hidden="true">{work?.decide ? <span className="nav-group-count is-alert">확인 {work.decide}</span> : null}{work?.ai ? <span className="nav-group-count is-ai">AI {work.ai}</span> : null}</span>; })()
                   : <span className="nav-group-count" aria-hidden="true">{item.pages.length}</span>}
               </button> : null}
               <div id={`nav-${item.id}`} className="nav-section-pages" hidden={item.id !== "home" && !active && !groupOpen(item.id)}>
@@ -305,7 +310,7 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
                     {entry.group && entry.group !== item.pages[index - 1]?.group ? <div className="temporary-nav-group">{entry.group}<small>임시 하위 메뉴</small></div> : null}
                     <div className="page-link-row">
                       <Link href={entry.href} data-ui={selected ? "nav-item-active" : item.id === "home" ? "nav-home" : "nav-item"} className={`page-link${item.id === "home" ? " nav-home" : ""}${selected ? " active" : ""}${entry.group ? " temporary-child" : ""}`} aria-current={selected ? "page" : undefined} onClick={() => setMobileOpen(false)}>
-                        {entry.processNumber ? <span className="process-number nav-step-no" aria-hidden="true">{entry.processNumber}</span> : <PageIcon size={15} />}<span>{entry.label}</span>{hrShell.badges[entry.href] ? <small aria-label={`${hrShell.badges[entry.href]}건 확인 필요`} style={{marginLeft:"auto",color:"var(--danger)"}}>{hrShell.badges[entry.href]}</small> : null}
+                        {entry.processNumber ? <span className="process-number nav-step-no" aria-hidden="true">{entry.processNumber}</span> : <PageIcon size={15} />}<span>{entry.label}</span>{hrShell.badges[entry.href] ? <small aria-label={`${hrShell.badges[entry.href]}건 확인 필요`} style={{marginLeft:"auto",color:"var(--danger)"}}>{hrShell.badges[entry.href]}</small> : null}{entry.href === OVERVIEW_PAGE.href && workCounts?.decide ? <small className="nav-entry-badge" aria-label={`확인 필요 ${workCounts.decide}개`}>확인 {workCounts.decide}</small> : null}
                       </Link>
                       {entry.children?.length ? <button type="button" className="page-submenu-toggle" aria-label={`${entry.label} 하위 메뉴`} aria-expanded={submenuOpen} aria-controls={`submenu-${item.id}-${index}`} onClick={() => setOpenSubmenus(current => ({ ...current, [entry.href]: !submenuOpen }))}><ChevronRight size={14} className={submenuOpen ? "expanded" : ""} /></button> : null}
                     </div>
