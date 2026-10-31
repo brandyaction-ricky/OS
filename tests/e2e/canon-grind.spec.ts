@@ -38,6 +38,7 @@ test("SEO 칼럼 정본 다듬기: the column page and its image prompts beside 
   await dialog.getByRole("button", { name: "저장하고 다음 칼럼" }).click();
   await expect(dialog.getByText("2 / 2")).toBeVisible();
   await dialog.getByRole("button", { name: "닫기" }).click();
-  await page.getByRole("button", { name: "롱폼 유튜브" }).click();
+  // The page opens its own group: 롱폼 유튜브 in the breadcrumb, the group unfolded.
+  await expect(page.getByRole("navigation", { name: "현재 위치" }).getByRole("link", { name: "롱폼 유튜브" })).toBeVisible();
   await expect(page.getByRole("link", { name: "칼럼 정본 다듬기" })).toHaveAttribute("href", "/content/column-canon");
 });

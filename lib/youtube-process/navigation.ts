@@ -67,7 +67,8 @@ export function youtubeV1Stages(stages: NavStage[]): NavStage[] {
     return [{ ...stage, id: "threads", label: "스레드", icon: AtSign, href: threads[0]?.href ?? stage.href, pages: [...threads, THREADS_CANON_PAGE] }, { ...stage, label: "자동화 관리", icon: Settings, href: rest[0]?.href ?? stage.href, pages: rest }];
   });
 }
-/** Which v1 group a screen belongs to: a platform list by its ?platform=, 주제 찾기 and every step of a video under 공통. */
+/** Which v1 group a screen belongs to: a platform list by its ?platform=, a page of its own (정본 다듬기) by its group, 주제 찾기 and
+ * every step of a video under 공통. */
 export function youtubeV1StageId(stages: NavStage[], pathname: string, params: URLSearchParams, fallback: string, canonical = pathname) {
   if (pathname === "/content/projects" && params.get("view") !== "discover") {
     const platform = params.get("platform");
@@ -75,7 +76,8 @@ export function youtubeV1StageId(stages: NavStage[], pathname: string, params: U
     if (match) return match.id;
   }
   const platformIds = new Set(YOUTUBE_V1_PLATFORM_STAGES.map(stage => stage.id));
-  return stages.find(stage => stage.id !== "content" && !platformIds.has(stage.id) && stage.pages.some(page => [pathname, canonical].includes(page.href.split("?")[0])))?.id ?? fallback;
+  // A platform's list (/content/projects?platform=) is matched above; only its own pages (no query) match here.
+  return stages.find(stage => stage.id !== "content" && stage.pages.some(page => !(platformIds.has(stage.id) && page.href.includes("?")) && [pathname, canonical].includes(page.href.split("?")[0])))?.id ?? fallback;
 }
 /** A menu entry with a query (주제 찾기, 내 숏폼 영상 …) is selected only when the address carries the same values. */
 export function youtubeV1EntrySelected(href: string, pathname: string, params: URLSearchParams) {
