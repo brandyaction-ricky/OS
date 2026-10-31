@@ -29,7 +29,7 @@ export const MCP_TOOLS = [
   },
   {
     name: "search_knowledge",
-    description: "브랜디 OS 회사 정본과 이 AI 소유자의 초안에서 관련 근거를 검색합니다.",
+    description: "브랜디 OS 회사 정본과 이 AI 소유자의 초안에서 관련 근거를 검색합니다. 여러 번 찾을 때는 한 번에 하나씩 부르세요(동시에 부르면 실패할 수 있어요).",
     inputSchema: {
       type: "object",
       properties: {

@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, Info, X } from "lucide-react";
 import {
-  emptyGates, parseYoutubeRef, projectHref, projectName, sameRef, recentProjects, similarProjects, stageLabel, stepHref, stepName, topicEditable, topicFieldEditable, topicLines, topicMissing,
+  emptyGates, parseYoutubeRef, projectHref, projectName, sameRef, recentProjects, similarProjects, stageLabel, stepHref, stepName, topicEditable, topicFieldEditable, topicKeywords, topicLines, topicMissing,
   YP_FLOW, YP_KIND_LABEL, YP_KIND_SHORT, YP_STAGE_INDEX, type YpKind, type YpProject, type YpRef,
 } from "@/lib/youtube-process/project";
 import { apiRequest } from "@/lib/api-client";
@@ -30,9 +30,10 @@ const hhmm = (date: Date) => `${String(date.getHours()).padStart(2, "0")}:${Stri
 const md = (iso?: string) => { if (!iso) return ""; const date = new Date(iso); return `${date.getMonth() + 1}/${date.getDate()} ${hhmm(date)}`; };
 const daysSince = (iso?: string) => iso ? Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)) : 0;
 
-function Field({ n, title, question, need, rev, children }: { n: number; title: string; question?: string; need: boolean; rev?: boolean; children: ReactNode }) {
+// 로건 QA 10/30: a warning that appears while typing sits on the heading line (one line, cut short) so the fields below never move.
+function Field({ n, title, question, need, rev, warn, children }: { n: number; title: string; question?: string; need: boolean; rev?: boolean; warn?: { text: string; node: ReactNode }; children: ReactNode }) {
   return <section className="yp-fsec">
-    <div className="yp-fsec-h"><span className="yp-n">{n}</span><b>{title}</b><span className={need ? "yp-need" : "yp-opt"}>{need ? "필수" : "선택"}</span>{question ? <span className="yp-gq">{question}</span> : null}{rev ? <span className="yp-revtag">대표가 짚은 칸</span> : null}</div>
+    <div className="yp-fsec-h"><span className="yp-n">{n}</span><b>{title}</b><span className={need ? "yp-need" : "yp-opt"}>{need ? "필수" : "선택"}</span>{warn ? <span className="yp-gwarn" role="status" title={warn.text}>{warn.node}</span> : question ? <span className="yp-gq">{question}</span> : null}{rev ? <span className="yp-revtag">대표가 짚은 칸</span> : null}</div>
     <div className="yp-fsec-b">{children}</div>
   </section>;
 }
@@ -168,9 +169,12 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
     return run;
   }, [client, form, project, router, setProject]);
 
-  const saveIfDirty = () => { if (dirty && editable) void save(); };
+  // 로건 QA 10/30: a few letters typed and left must not leave an empty video behind. A new 롱폼 is made once its three 필수 칸 are
+  // filled (or by 임시 저장 · 참고 영상 추가 · 컨펌); a 숏폼 once it has a 주제 and 숏폼 is chosen, because its 참고 영상 need the video.
+  const ready = (next: Form) => Boolean(project) || !topicMissing(next.title, { type: next.kind, target: next.target }) || (next.kind === "short" && topicLines(next.title).length > 0);
+  const saveIfDirty = () => { if (dirty && editable && ready(form)) void save(); };
   const open = (key: "title" | "kind" | "target" | "refs" | "note" | "purpose") => project ? topicFieldEditable(project, key) : projectParam === "new";
-  const editAndSave = (patch: Partial<Form>) => { editRev.current += 1; const next = { ...form, ...patch }; setForm(next); setDirty(true); void save(next); };
+  const editAndSave = (patch: Partial<Form>, make = false) => { editRev.current += 1; const next = { ...form, ...patch }; setForm(next); setDirty(true); if (make || ready(next)) void save(next); };
 
   async function gate(action: "confirm" | "request" | "cancel", reply?: string) {
     if (!client) return;
@@ -219,7 +223,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
     {loading ? null : <YoutubeFlow project={shell} view={view} action={action} />}
     <header className="page-header"><div className="page-title-group"><h1 className="page-title" data-ui="page-title">주제</h1>
       <p>{topicGate.state === "wait" ? "대표 컨펌 요청이 남아 있어요. 이제 PD가 직접 컨펌하면 다음으로 넘어가요." : topicGate.state === "changes" ? "대표 수정 요청을 반영하고 컨펌해요. 모든 칸을 고칠 수 있어요." : topicGate.state === "ok" ? `${confirmLabel}이 끝났어요. ${shell.yp.topic.type === "short" ? "대본으로" : "기획안으로"} 넘어가요.` : short ? "키워드나 링크로 참고 영상을 찾고, 공식을 뽑아 주제를 확정해요." : "주제 · 유형 · 정밀 타겟 세 칸을 채우고 컨펌해요."}</p></div>
-      <div className="header-actions yp-stool">{unsaved ? <span className="yp-stamp yp-unsaved" role="alert">저장 안 됨 · 위 안내를 봐 주세요</span> : savedAt ? <span className="yp-stamp"><i />저장됨 {savedAt}</span> : null}{editable ? <button type="button" className="yp-btn yp-sm" disabled={!dirty} onClick={() => void save()}>임시 저장</button> : null}</div></header>
+      <div className="header-actions yp-stool">{unsaved ? <span className="yp-stamp yp-unsaved" role="alert">저장 안 됨 · 위 안내를 봐 주세요</span> : savedAt ? <span className="yp-stamp"><i />저장됨 {savedAt}</span> : !project && dirty ? <span className="yp-stamp">아직 저장 전 · 필수 칸을 채우면 저장돼요</span> : null}{editable ? <button type="button" className="yp-btn yp-sm" disabled={!dirty} onClick={() => void save()}>임시 저장</button> : null}</div></header>
     {loading ? <p className="yp-hint" role="status">영상을 불러오는 중이에요…</p> : <>
       {conflict ? <div className="yp-note yp-warn" role="alert"><div>다른 사람이 먼저 고쳤어요. <button type="button" className="yp-lnk" onClick={() => void load(true)}>새로 불러오기</button> (지금 쓴 내용은 사라져요)</div></div> : null}
       {error ? <div className="yp-note yp-warn" role="alert"><div>{error}</div></div> : null}
@@ -242,10 +246,10 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
           <label>담당 PD <select className="yp-pdsel" id="yp-topic-pd" value={form.assigneeId ?? ""} onChange={event => editAndSave({ assigneeId: event.target.value || null })}>
             <option value="">정하지 않음</option>{members.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label>
         </div>
-        <Field n={1} title="주제" question={short ? "처음엔 키워드나 초안이면 돼요" : "어떤 영상을 만들까요?"} need rev={rev("topic.title")}>
+        <Field n={1} title="주제" question={short ? "처음엔 키워드나 초안이면 돼요" : "어떤 영상을 만들까요?"} need rev={rev("topic.title")}
+          warn={similar.length ? { text: `비슷한 주제가 이미 있어요: ${similar.map(projectName).join(", ")}`, node: <>비슷한 주제가 이미 있어요: {similar.map((row, index) => <span key={row.id}>{index ? ", " : ""}<Link href={stepHref(0, row.id)}><b>{projectName(row)}</b></Link> ({stageLabel(row)})</span>)}</> } : undefined}>
           <div className="yp-max720">
             <textarea className="yp-in" id="yp-topic-title" rows={2} aria-label="주제" placeholder={short ? "예) 만나고 싶은데 쉬고도 싶을 때" : "예) 하루 일이 두 개뿐인데 저녁마다 지치는 이유"} readOnly={!open("title")} value={form.title} onChange={event => edit({ title: event.target.value })} />
-            {similar.length ? <div className="yp-note yp-warn"><div>비슷한 주제가 이미 있어요: {similar.map((row, index) => <span key={row.id}>{index ? ", " : ""}<Link href={stepHref(0, row.id)}><b>{projectName(row)}</b></Link> ({stageLabel(row)})</span>)}</div></div> : null}
             {lines.length > 1 && editable ? <div className="yp-note"><Info size={16} className="yp-i" aria-hidden="true" /><div>{lines.length}줄이라 영상 {lines.length}개로 나눠 요청해요.</div></div> : null}
           </div>
         </Field>
@@ -273,7 +277,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
         {/* 롱폼 (owner 2026-10-30): 참고 영상 by keyword like the 숏폼's, then the staff AI's 공식 · 주제 후보. */}
         {short ? null : <Field n={4} title="참고 영상" question="키워드로 찾거나 유튜브 링크를 붙여 넣어요" need={false} rev={rev("topic.refs")}>
           <div className="yp-max720">
-            <TopicRefSearch initial={lines[0] ?? ""} refs={form.refs} can={open("refs")} onAdd={ref => editAndSave({ refs: [...form.refs, ref] })} />
+            <TopicRefSearch initial={lines[0] ? topicKeywords(lines[0], form.target) : ""} refs={form.refs} can={open("refs")} onAdd={ref => editAndSave({ refs: [...form.refs, ref] }, true)} />
             {form.refs.length ? <ul className="yp-open-list">{form.refs.map((ref, index) => <li key={`${ref.url}-${index}`}>
               <a href={ref.url} target="_blank" rel="noreferrer">{ref.title ?? ref.url}</a><span className="yp-sp" />
               {open("refs") ? <>
@@ -291,7 +295,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
               // 로건 피드백 10/26-3: a pasted address gets its title · channel like a 주제 찾기 reference (1 unit of YouTube quota).
               const title = demo || !accessToken ? undefined : await apiRequest<{ title: string }>(`/api/v1/content/youtube/discover?video=${ref.videoId}`, { token: accessToken })
                 .then(info => info.title, () => undefined);
-              editAndSave({ refs: [...form.refs, title ? { ...ref, title } : ref] });
+              editAndSave({ refs: [...form.refs, title ? { ...ref, title } : ref] }, true);
             }}>
               <input className="yp-in" id="yp-topic-ref" placeholder="유튜브 영상 주소 붙여 넣기" aria-label="참고 영상 주소" value={refUrl} onChange={event => setRefUrl(event.target.value)} />
               <button type="submit" className="yp-btn">추가</button>

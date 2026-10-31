@@ -123,9 +123,11 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
       <YpSection n={++n} title="진행 상태">
         <div className="yp-pstat2">{steps.map(([key, label], index) => <span key={key} style={{ display: "contents" }}>
           {index ? <span className="yp-arw" aria-hidden="true"><ChevronRight size={14} /></span> : null}
-          <button type="button" className={`yp-ps${index === statusIndex ? " yp-on" : index < statusIndex ? " yp-past" : ""}`} disabled={!editable || !data.editDue || Boolean(busy)} onClick={() => void save({ status: key }, "status")}>
-            {index < statusIndex ? "✓ " : ""}{label}<small>{data.statusAt[key] ? md(data.statusAt[key]).split(" ")[0] : ""}</small></button></span>)}</div>
-        <p className="yp-hint">최종본과 썸네일 A · B가 있으면 ‘완료’가 돼요.</p>
+          {/* 로건 QA 10/30: 「완료」 follows the uploads by itself, so it is not a button; the others say why they cannot be pressed yet. */}
+          {key === "done" ? <span className={`yp-ps${index === statusIndex ? " yp-on" : ""}`} aria-disabled="true">{label}<small>{data.statusAt[key] ? md(data.statusAt[key]).split(" ")[0] : "자동"}</small></span>
+            : <button type="button" className={`yp-ps${index === statusIndex ? " yp-on" : index < statusIndex ? " yp-past" : ""}`} disabled={!editable || !data.editDue || Boolean(busy)} onClick={() => void save({ status: key }, "status")}>
+            {index < statusIndex ? "✓ " : ""}{label}<small>{data.statusAt[key] ? md(data.statusAt[key]).split(" ")[0] : ""}</small></button>}</span>)}</div>
+        <p className="yp-hint">{editable && !data.editDue ? "위에서 편집 완료일을 먼저 정하면 상태를 바꿀 수 있어요." : "준비 · 촬영 · 편집 중은 눌러서 바꿔요. 최종본과 썸네일 A · B가 있으면 ‘완료’가 돼요."}</p>
       </YpSection>
       </>}
       {anim || short ? null : <YpSection n={++n} title="작업 자료"><div className="yp-mats">
@@ -160,7 +162,7 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
           onSave={(title, copy, reasonText) => save({ pair: { slot: fixing, title, copy, reason: reasonText } }, "pair").then(ok => { if (ok) setFixing(null); })}
           onRedo={reasonText => setRedoAsk({ slot: fixing, reason: reasonText })} /> : null}
         <p className="yp-hint">jpg · png로 올려요. 마음에 안 들면 [고치기]에서 직접 고치거나 [공식대로 다시 뽑기]로 후보를 받아요. 바꾼 칸은 최종 검토에서 대표가 확인해요.</p>
-        <SendDialog page={page} task="retitle" open={Boolean(redoAsk)} onClose={() => setRedoAsk(null)} job={redoJob} extra={redoAsk ?? undefined} queryDefault={topicKeywords(projectName(project))} />
+        <SendDialog page={page} task="retitle" open={Boolean(redoAsk)} onClose={() => setRedoAsk(null)} job={redoJob} extra={redoAsk ?? undefined} queryDefault={topicKeywords(projectName(project), project.yp.topic.target)} />
       </YpSection>}</>}
     </> : null}
   </YpFrame>;
@@ -217,7 +219,7 @@ function PairPanel({ page, slot, make, job, saving, onClose, onSave, onRedo }: {
       <button type="button" className="yp-btn" onClick={onClose}>닫기</button></div>
     {job.status?.job?.slot === slot ? <div style={{ marginTop: 8 }}><JobLine job={job} onRetry={() => onRedo(reason.trim())} /></div> : null}
     {redo ? <>
-      <div className="yp-muted" style={{ fontSize: 13, margin: "16px 0 8px" }}><Sparkles size={13} aria-hidden="true" /> {redo.by}의 Claude가 공식대로 뽑은 후보{redo.market ? ` · 참고 영상: 「${redo.market.query}」 시장 영상 ${redo.market.count}편 (조회수 5만+ · 구독자 대비 조회수 순)` : ""} · 하나씩 눌러 위 칸에 넣어요</div>
+      <div className="yp-muted" style={{ fontSize: 13, margin: "16px 0 8px" }}><Sparkles size={13} aria-hidden="true" /> {redo.by}의 Claude가 공식대로 뽑은 후보{redo.market ? ` · 참고 영상: 「${redo.market.query}」 시장 영상 ${redo.market.count}편 (조회수 5만+ · 구독자 대비 조회수 순)` : ""} · 하나씩 눌러 위 칸에 넣어요{redo.market?.off ? <b className="yp-warn-t"> · 찾은 영상이 주제와 동떨어져 보여요. 검색어를 바꿔 다시 맡겨 보세요.</b> : null}</div>
       <div className="yp-g2" style={{ gap: 16, alignItems: "start" }}>
         {([["title", "제목", redo.titles], ["copy", "썸네일 문구", redo.copies]] as const).map(([field, name, list]) => <div key={field}>
           <b style={{ fontSize: 15 }}>{name} 후보 {list.length}개</b>

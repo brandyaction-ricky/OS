@@ -153,6 +153,9 @@ export function refMatchesQuery(query: string, title: string) {
   const seen = new Set(words(title).flatMap(keys));
   return asked.filter(wordKeys => wordKeys.some(key => seen.has(key))).length >= Math.min(2, asked.length);
 }
+/** 로건 QA 10/30: most found videos share no word with the topic's own search words — the line that says 「검색어를 바꿔 보세요」. */
+export const marketOff = (keywords: string, titles: string[]) =>
+  titles.length > 0 && titles.filter(title => keywords.split(/\s+/).some(word => word && refMatchesQuery(word, title))).length * 3 < titles.length;
 /**
  * A count as a page shows it — 「12.5만」, 「12만5천」, 「1천만」, 「10,000회」, 「1.2M」 — as a number; anything it cannot read is null.
  * 천 adds inside a group and 만 · 억 close one (1천만 = 1,000 × 10,000).

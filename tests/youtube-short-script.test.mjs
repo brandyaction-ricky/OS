@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { scenesFromScript, checkShortScript, headCopyProblem, parseCount, refCounts, refCountsLine, refHostOk, refMatchesQuery, refPlatform, refReaction, refTexts, scriptLines, shortResearchOpen, shortScriptMissing, shortTopicPickProblems, spokenScript } from "../lib/youtube-process/short-script.ts";
+import { scenesFromScript, checkShortScript, headCopyProblem, parseCount, refCounts, refCountsLine, refHostOk, marketOff, refMatchesQuery, refPlatform, refReaction, refTexts, scriptLines, shortResearchOpen, shortScriptMissing, shortTopicPickProblems, spokenScript } from "../lib/youtube-process/short-script.ts";
 import { emptyGates } from "../lib/youtube-process/project.ts";
 
 // 숏폼 대본 정본 §10 기계 검사 (owner direction 2026-10-28): the OS counts these when the staff AI submits and before the PD's 대본 확정.
@@ -145,4 +145,11 @@ test("a confirmed 대본 becomes scenes in order, each saying its line, at most 
   assert.equal(long.length, 15);
   assert.equal(long[0].text, "줄 1 줄 2");
   assert.deepEqual(scenesFromScript("", 30), []);
+});
+
+// 로건 QA 10/30: a 롱폼 market search that came back with 귤 · 결혼 · 아기 videos says 「검색어를 바꿔 보세요」.
+test("a market search is off when most found titles share no word with the topic's search words", () => {
+  assert.equal(marketOff("저녁 지치는 직장인", ["귤은 하루에 두 개만", "하루에 두 커플이 결혼하면", "심하루 아기 브이로그"]), true);
+  assert.equal(marketOff("저녁 지치는 직장인", ["직장인이 저녁마다 지치는 진짜 이유", "퇴근하고 지치는 사람", "귤은 하루에 두 개만"]), false);
+  assert.equal(marketOff("저녁 지치는 직장인", []), false);
 });

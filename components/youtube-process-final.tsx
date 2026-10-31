@@ -49,6 +49,9 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
   const [compareVer, setCompareVer] = useState<number | null>(null);  // N07
   const [offset, setOffset] = useState(0);
   const [srcB, setSrcB] = useState<string | null>(null);
+  // 로건 QA 10/30 (흰 화면): until a video has its first picture the frame says it is loading, and #t=0.1 makes browsers draw that picture.
+  const [drawn, setDrawn] = useState<Record<string, boolean>>({});
+  const loadingCover = (url: string | null) => url && !drawn[url] ? <div className="yp-muted" role="status" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", color: "var(--media-muted)", background: "var(--media-bg)", pointerEvents: "none" }}>영상을 불러오는 중이에요…</div> : null;
   const videoB = useRef<HTMLVideoElement>(null);
   const focusId = useSearchParams().get("feedback");             // N03: a notice opens its item
   const focused = useRef<string | null>(null);
@@ -198,14 +201,16 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
           {view === "video" ? <>
             <div className={compareVer !== null ? "yp-compare" : undefined}>
             <div className={`yp-frame${short ? " yp-vert" : ""}`} onClick={toggle} role="button" tabIndex={0} aria-label={playing ? "멈추고 쓰기" : "재생"} onKeyDown={event => { if (event.key === " " || event.key.toLowerCase() === "f") { event.preventDefault(); toggle(); } }}>
-              {src ? <video ref={video} src={src} preload="metadata" style={{ width: "100%", height: "100%", display: "block" }} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
+              {src ? <video ref={video} src={`${src}#t=0.1`} preload="metadata" style={{ width: "100%", height: "100%", display: "block" }} onLoadedData={() => setDrawn(map => ({ ...map, [src]: true }))} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
                 onTimeUpdate={event => setTime(event.currentTarget.currentTime)} onLoadedMetadata={event => { setDuration(event.currentTarget.duration); event.currentTarget.playbackRate = rate; }} />
                 : <div className="yp-muted" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", color: "var(--media-muted)" }}>{final ? "영상을 불러오는 중이에요…" : "아직 최종본이 없어요"}</div>}
+              {loadingCover(src)}
               <span className={`yp-badge${playing ? "" : " yp-pz"}`}>{compareVer !== null ? `A · v${ver} · ` : ""}{playing ? "재생 중" : `멈춤 · ${fmt(time)}`}{old ? ` · v${ver} 이전 버전` : ""}</span>
               <MarksLayer marks={frameMarks} tool={tool} onAdd={mark => setDraftMarks(list => [...list, mark].slice(0, 20))} />
             </div>
             {compareVer !== null ? <div className="yp-cside"><span className="yp-clabel">B · v{compareVer}{offset ? ` · ${offset > 0 ? "+" : ""}${offset}초` : ""}</span>
-              {srcB ? <video ref={videoB} src={srcB} preload="metadata" muted onLoadedMetadata={event => { event.currentTarget.playbackRate = rate; event.currentTarget.currentTime = compareTime(time, offset, event.currentTarget.duration); }} />
+              {loadingCover(srcB)}
+              {srcB ? <video ref={videoB} src={`${srcB}#t=0.1`} preload="metadata" muted onLoadedData={() => setDrawn(map => ({ ...map, [srcB]: true }))} onLoadedMetadata={event => { event.currentTarget.playbackRate = rate; event.currentTarget.currentTime = compareTime(time, offset, event.currentTarget.duration); }} />
                 : <div className="yp-muted" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", color: "var(--media-muted)" }}>영상을 불러오는 중이에요…</div>}</div> : null}
             </div>
             <div className="yp-ctrl"><button type="button" className="yp-cb" aria-label={playing ? "멈춤" : "재생"} onClick={toggle}>{playing ? <Pause size={16} /> : <Play size={16} />}</button>

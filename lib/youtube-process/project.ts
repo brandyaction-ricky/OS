@@ -87,13 +87,33 @@ export const mayTrash = (project: Pick<YpProject, "ownerId" | "assigneeId">, who
 
 /** Project name = first topic line (4-2); stays as the record title. */
 export const projectName = (project: Pick<YpProject, "title">) => topicLines(project.title)[0] ?? "새 영상";
+// Words that say nothing about the topic on their own (로건 QA 10/30: 「하루 일이 두」 found 귤 · 결혼 · 아기 videos).
+// ponytail: a word list and endings, not a Korean parser — the PD still sees and changes the words, and 「검색어를 바꿔 보세요」 catches a miss.
+const PLAIN = new Set(["하루", "오늘", "매일", "자꾸", "계속", "정말", "너무", "진짜", "그냥", "아주", "가장", "제일", "요즘", "이런", "그런", "저런", "어떤", "무엇",
+  "해야", "하는", "있는", "없는", "되는", "같은", "같은데", "같다", "이유", "방법", "때문", "우리", "사람", "모든", "다른", "지금", "이제", "바로", "먼저", "아직", "많이",
+  "조금", "없이", "위해", "대한", "하고", "하면", "해도", "아니라", "아닌", "아니다", "사이", "싶은", "싶은데", "싶을", "싶다", "할까", "할지", "좋은", "좋다",
+  "아니에요", "아니야", "뭔지", "모를", "모르는", "이렇게", "어떻게", "일이", "일을", "일은", "일도", "일에"]);
+const TAIL = /(을|를|이|가|의|에|에서|에게|한테|으로|로|도|만|마다|까지|부터|와|과|랑|이랑|처럼|보다|뿐인데|인데|뿐)$/u;
+const DOING = /(하는|해야|해서|하고|하면|하기|하며|하던|했던|한다|해요|할|한|해)$/u; // 고민하는 → 고민, 이직해야 → 이직
+const VERB = /(고|은|을|다|면|서|게|까|데|요|며|도록|던)$/u;
+const stem = (word: string, tail: RegExp) => { const cut = word.replace(tail, ""); return [...cut].length > 1 ? cut : word.length - cut.length > 1 ? "" : word; };
+/** The words of a sentence that carry its meaning, nouns first, then the 「…는」 situation (지치는 · 미루는), then other verb forms. */
+export function topicWords(text: string) {
+  const words = text.normalize("NFC").replace(/\[[^\]]*\]/g, " ").split(/[^0-9A-Za-z가-힣]+/).map(word => stem(stem(word, TAIL), DOING))
+    .filter(word => [...word].length > 1 && (!/\d/.test(word) || /^\d+대$/.test(word)) && !PLAIN.has(word));
+  return { nouns: words.filter(word => !word.endsWith("는") && !VERB.test(word)), doing: words.filter(word => word.endsWith("는")), verbs: words.filter(word => !word.endsWith("는") && VERB.test(word)) };
+}
 /**
- * The search words a topic sentence starts with (로건 QA 10/30: the whole sentence as the YouTube search found nothing): [tags] and
- * quotes dropped, up to the first stop, three words, an object · topic particle off a longer word. The PD can still change them.
+ * The YouTube search words for a topic (로건 QA 10/30): two words that carry the sentence's meaning — its nouns, its 「…는」 situation,
+ * else the 정밀 타겟's nouns — and the 정밀 타겟's last word, who it is for (「…3~7년 차 직장인」 → 직장인): 「저녁 지치는 직장인」, not the
+ * sentence's first three words. The PD can still change them.
  */
-export function topicKeywords(title: string) {
-  const words = title.replace(/\[[^\]]*\]|[「」『』"“”‘’]/g, " ").split(/[?!.,…]/)[0].trim().split(/\s+/).filter(Boolean).slice(0, 3);
-  return words.map(word => word.length > 1 ? word.replace(/(을|를|은|는|의|에서|으로)$/u, "") : word).join(" ").slice(0, 60);
+export function topicKeywords(title: string, target = "") {
+  const head = topicWords(title), them = topicWords(target), who = them.nouns.at(-1);
+  const pick = [...new Set([...head.nouns, ...head.doing, ...them.nouns.slice(0, -1), ...head.verbs])].filter(word => word !== who);
+  const strong = pick.filter(word => !head.verbs.includes(word));
+  const words = who ? [...pick.slice(0, 2), who] : (strong.length > 1 ? strong : pick).slice(0, 3);
+  return (words.length ? words : title.replace(/\[[^\]]*\]/g, " ").trim().split(/\s+/).slice(0, 3)).join(" ").slice(0, 60);
 }
 
 /** Some topic field can change: while writing, on hold, or the fields ticked in 수정 요청 (8-1, editableFields). */

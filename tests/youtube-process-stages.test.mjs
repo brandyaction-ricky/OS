@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { confirmPlan, descChecks, diagnosisLink, shortLinkProblem, utmBase, utmUrl, draftMissing, emptyStage, hiddenTagsOf, lengthEstimate, outlineMissing, slotOf, thumbsMissing, withScriptVersion } from "../lib/youtube-process/stages.ts";
+import { confirmPlan, descChecks, diagnosisLink, shortLinkProblem, utmBase, utmUrl, draftMissing, emptyStage, hiddenTagsOf, lengthEstimate, outlineMissing, slotOf, specOption, stageData, thumbFilled, thumbsMissing, withScriptVersion } from "../lib/youtube-process/stages.ts";
 import { applyGateAction, editableFields } from "../lib/youtube-process/confirm.ts";
 import { newProjectMeta } from "../lib/youtube-process/project.ts";
 
@@ -143,4 +143,22 @@ test("the bare description layout is not a description; any real line is", async
   assert.equal(descWritten(DESC_TEMPLATE), false);
   assert.equal(descWritten(DESC_TEMPLATE.replace("[설명문 본문]\n", "[설명문 본문]\n퇴근 후 2시간을 나누는 법\n")), true);
   assert.equal(descWritten("#강점 #성격"), true);
+});
+
+// 로건 다시 요청 10/30: one 「(기본)」 in the 프레임 list; an older 「30fps (기본)」 shows as 「30fps」; a new 애니 opens at 60fps.
+test("spec values saved under an older label show as today's option", () => {
+  assert.equal(specOption("anim", "fps", "30fps (기본)"), "30fps");
+  assert.equal(specOption("anim", "fps", "60fps (기본)"), "60fps (기본)");
+  assert.equal(specOption("anim", "res", "4K (선명 · 기본)"), "4K (선명)");
+  assert.equal(specOption("live", "fps", "60fps"), "60fps");
+  assert.equal(specOption("anim", "fps", "12fps"), "12fps");
+  assert.equal(stageData("outline", undefined, "anim").spec.fps, "60fps (기본)");
+});
+
+// 로건 QA 10/30: looking at the 「이미지」 tab of a written card must not empty it.
+test("a thumbnail card is filled by its words or its image", () => {
+  assert.equal(thumbFilled({ mode: "img", copy: "퇴근 후 3분", screen: "" }), true);
+  assert.equal(thumbFilled({ mode: "img", copy: "", screen: "", path: "a.png" }), true);
+  assert.equal(thumbFilled({ mode: "text", copy: " ", screen: "" }), false);
+  assert.equal(thumbFilled(null), false);
 });

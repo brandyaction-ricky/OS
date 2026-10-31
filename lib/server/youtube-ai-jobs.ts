@@ -30,7 +30,7 @@ import { namedProcedures, procedureRefs, SHORTFORM_CANON_TITLE, withNamed } from
 import { checkNicheResult, NICHE_BOARD_ID, nicheBoardRecord, nicheInputKey, nicheJobCard, nichePool, saveNicheBoard } from "./youtube-niche";
 import { doneShortRefs } from "./youtube-process-short-refs";
 import { assertShortFormulaInputs, assertShortScriptInputs, assertShortTopicsInputs, saveShortFormula, saveShortScript, saveShortTopics, shortFormulaCard, shortFormulaInputKey, shortScriptCard, shortScriptInputKey, shortScriptQuery, shortTopicsCard, shortTopicsInputKey } from "./youtube-process-short-script";
-import { refMatchesQuery } from "@/lib/youtube-process/short-script";
+import { marketOff, refMatchesQuery } from "@/lib/youtube-process/short-script";
 import { assertTopicFormulaInputs, saveTopicFormula, topicFormulaCard, topicFormulaInputKey } from "./youtube-process-topic-research";
 import type { NicheVideo } from "@/lib/youtube-process/discover";
 import type { GptTier } from "@/lib/youtube-process/gpt-draft";
@@ -148,7 +148,7 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
   let taskName: string = TASK_NAME[input.task];
   let note = "";
   let pool: NicheVideo[] | undefined;
-  let marketFor: { query: string; short: boolean } | undefined;
+  let marketFor: { query: string; short: boolean; topic?: string } | undefined;
   if (input.task === "niche") {
     if (input.sourceId !== NICHE_BOARD_ID) throw new ApiError(404, "NICHE_BOARD_NOT_FOUND", "틈새 판을 찾지 못했어요.");
     pool = await nichePool(service());
@@ -167,7 +167,7 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
     if (!isYoutubeV1(state.source)) throw new ApiError(409, "NOT_YOUTUBE_PROJECT", "유튜브 공정 프로젝트에서만 보낼 수 있어요.");
     assertV1PlanInputs(state);
     source = state.source; title = jobTitle(state); inputKey = v1PlanInputKey(state);
-    const { project } = v1Stages(state); marketFor = { query: input.query || topicKeywords(projectName(project)), short: project.yp.topic.type === "short" };
+    const { project } = v1Stages(state); const topic = topicKeywords(projectName(project), project.yp.topic.target); marketFor = { query: input.query || topic, short: project.yp.topic.type === "short", topic };
   } else if (input.task === "shorts") {
     const state = await readPipeline(actor, input.sourceId);
     if (!isYoutubeV1(state.source)) throw new ApiError(409, "NOT_YOUTUBE_PROJECT", "유튜브 공정 프로젝트에서만 보낼 수 있어요.");
@@ -185,7 +185,7 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
     if (!isYoutubeV1(state.source)) throw new ApiError(409, "NOT_YOUTUBE_PROJECT", "유튜브 공정 프로젝트에서만 보낼 수 있어요.");
     assertV1RetitleInputs(state, input.slot);
     source = state.source; title = jobTitle(state); inputKey = v1RetitleInputKey(state, input.slot, input.reason);
-    const { project } = v1Stages(state); marketFor = { query: input.query || topicKeywords(projectName(project)), short: project.yp.topic.type === "short" };
+    const { project } = v1Stages(state); const topic = topicKeywords(projectName(project), project.yp.topic.target); marketFor = { query: input.query || topic, short: project.yp.topic.type === "short", topic };
   } else if (input.task === "short") {
     const state = await readPipeline(actor, input.sourceId);
     if (!isYoutubeV1(state.source)) throw new ApiError(409, "NOT_YOUTUBE_PROJECT", "유튜브 공정 프로젝트에서만 보낼 수 있어요.");
@@ -215,10 +215,10 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
     if (!isYoutubeV1(state.source)) throw new ApiError(409, "NOT_YOUTUBE_PROJECT", "유튜브 공정 프로젝트에서만 보낼 수 있어요.");
     assertTopicFormulaInputs(state);
     const { project } = v1Stages(state);
-    const query = input.query || (project.title.trim() ? projectName(project) : "");
+    const topic = project.title.trim() ? topicKeywords(projectName(project), project.yp.topic.target) : "", query = input.query || topic;
     if (!query && !project.yp.topic.refs.length) throw new ApiError(409, "TOPIC_FORMULA_EMPTY", "초안 주제를 쓰거나 참고 영상을 넣어 주세요.");
     source = state.source; title = jobTitle(state); inputKey = topicFormulaInputKey(state);
-    if (query) marketFor = { query, short: false };
+    if (query) marketFor = { query, short: false, ...(topic ? { topic } : {}) };
   } else if (input.task === "short-script") {
     const state = await readPipeline(actor, input.sourceId);
     if (!isYoutubeV1(state.source)) throw new ApiError(409, "NOT_YOUTUBE_PROJECT", "유튜브 공정 프로젝트에서만 보낼 수 있어요.");
@@ -262,7 +262,9 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
   const now = new Date().toISOString();
   // ponytail: one search (~102 units) per new job; cache by query like the 주제 찾기 search if the daily quota gets tight.
   const market: PackagingMarket | undefined = marketFor ? await packagingReferences(marketFor.query, marketFor.short)
-    .then(refs => ({ query: marketFor!.query, at: now, refs: packagingPick(refs, marketFor!.short).filter(ref => !marketFor!.short || refMatchesQuery(marketFor!.query, ref.title)) }))
+    .then(refs => packagingPick(refs, marketFor!.short).filter(ref => !marketFor!.short || refMatchesQuery(marketFor!.query, ref.title)))
+    // 로건 QA 10/30: the 롱폼 search shown against the topic's own words, so a PD sees 「검색어를 바꿔 보세요」 instead of 귤 · 아기 videos.
+    .then(refs => ({ query: marketFor!.query, at: now, refs, ...(marketFor!.topic && marketOff(marketFor!.topic, refs.map(ref => ref.title)) ? { off: true } : {}) }))
     .catch((error: unknown) => ({ query: marketFor!.query, at: now, refs: [], error: error instanceof ApiError ? error.message : "유튜브 검색을 하지 못했어요." })) : undefined;
   const metadata: JobMeta = { kind: STAFF_AI_JOB_KIND, task: input.task, sourceId: input.sourceId, inputKey, requestedAt: now, ...(market ? { market } : {}),
     ...(input.task === "scene-plan" ? { templateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION } : input.task === "storyboard" ? { myinRunId }
