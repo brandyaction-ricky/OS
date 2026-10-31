@@ -40,7 +40,7 @@
 .screen-vault .vault-tree-top button:hover,.screen-vault .vault-tree-top button[aria-pressed=true] { background:var(--surface-hover); color:var(--text); }
 .screen-vault .vault-workspace .folder-tree-item { display:flex; align-items:center; }
 .screen-vault .vault-workspace .folder-tree-item .folder-tree-row { flex:1; min-width:0; width:auto; margin-left:0; grid-template-columns:17px minmax(0,1fr) auto; padding-right:36px; }
-.screen-vault .vault-workspace .vault-folder-expand { width:19px; height:27px; flex:none; display:grid; place-items:center; border:0; border-radius:5px; background:transparent; color:var(--muted); }
+.screen-vault .vault-workspace .vault-folder-expand { width:24px; height:28px; flex:none; display:grid; place-items:center; border:0; border-radius:6px; background:transparent; color:var(--muted); }
 .screen-vault .vault-workspace .vault-folder-expand:hover { background:var(--surface-hover); color:var(--text); }
 .screen-vault .vault-workspace .knowledge-tree-scroll .folder-row { height:30px; min-height:30px; }
 .screen-vault .vault-workspace .editor-pane { background:var(--bg); }
@@ -89,7 +89,7 @@
 .screen-vault .vault-folder-tools > :is(button,select) { min-height:30px; }
 .screen-vault .vault-folder-tools > select { width:auto; max-width:130px; padding:4px 7px; font-size:12px; }
 .screen-vault .vault-view-switch { display:flex; align-items:center; margin-left:auto; padding:3px; border:1px solid var(--line-soft); border-radius:8px; gap:2px; }
-.screen-vault .vault-view-switch button { display:flex; align-items:center; gap:5px; padding:4px 7px; border:0; border-radius:5px; background:transparent; color:var(--muted); font-size:12px; cursor:pointer; }
+.screen-vault .vault-view-switch button { display:flex; align-items:center; gap:5px; min-height:28px; padding:4px 8px; border:0; border-radius:6px; background:transparent; color:var(--muted); font-size:12px; cursor:pointer; }
 .screen-vault .vault-view-switch button[aria-pressed=true] { background:var(--surface-hover); color:var(--text); }
 .screen-vault .vault-folder-table-wrap { width:100%; overflow:auto; border:1px solid var(--line-soft); border-radius:10px; }
 .screen-vault .vault-folder-table { width:100%; min-width:660px; border-collapse:collapse; table-layout:fixed; text-align:left; }
@@ -108,7 +108,7 @@
 .screen-vault .vault-item-name strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; }
 .screen-vault .vault-folder-table :is(.vault-item-muted,.vault-folder-kind) { color:var(--muted); font-size:11.5px; }
 .screen-vault .vault-folder-table .status-pill { border-radius:99px; }
-.screen-vault .vault-row-more { display:grid; place-items:center; width:25px; height:27px; border:0; border-radius:5px; background:transparent; color:var(--muted); cursor:pointer; }
+.screen-vault .vault-row-more { display:grid; place-items:center; width:28px; height:28px; border:0; border-radius:6px; background:transparent; color:var(--muted); cursor:pointer; }
 .screen-vault .vault-row-more:hover { background:var(--panel); color:var(--text); }
 .screen-vault .vault-folder-table .vault-folder-empty { padding:25px 14px; color:var(--muted); text-align:center; }
 .screen-vault .vault-folder-selection { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:0 0 10px; font-size:12px; }
