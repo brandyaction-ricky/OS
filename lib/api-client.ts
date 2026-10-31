@@ -56,6 +56,10 @@ async function sharedRead<T>(path: string, token: string | null): Promise<T> {
   }
 }
 
+/** Set by a 유튜브 공정 step screen of a project someone else runs: asked before each change, false stops it. Null everywhere else. */
+let editGuard: ((path: string) => boolean) | null = null;
+export const setEditGuard = (guard: typeof editGuard) => { editGuard = guard; };
+
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const headers = new Headers(options.headers);
   headers.set("accept", "application/json");
@@ -63,6 +67,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   if (options.token) headers.set("authorization", `Bearer ${options.token}`);
 
   const mutation = !["GET", "HEAD"].includes((options.method ?? "GET").toUpperCase());
+  if (mutation && editGuard && !editGuard(path)) throw new ApiRequestError("고치지 않았어요. 담당자에게 메모로 남겨 주세요.", "EDIT_DECLINED", 403);
   if (mutation) { pendingWrites += 1; writeEpoch += 1; pendingReads.clear(); recentReads.clear(); }
   const startedEpoch = writeEpoch;
   try {

@@ -1,10 +1,11 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, Check, ChevronDown, ChevronUp, Clock, Info, PauseCircle } from "lucide-react";
 import { canReopen, editedSinceDecision, GATE_FIELDS, gateName } from "@/lib/youtube-process/confirm";
-import { projectHref, projectName, stepHref, stepName, YP_FLOW, YP_KIND_LABEL, YP_STAGE_INDEX, type YpGate, type YpProject } from "@/lib/youtube-process/project";
+import { mayTrash, projectHref, projectName, stepHref, stepName, YP_FLOW, YP_KIND_LABEL, YP_STAGE_INDEX, type YpGate, type YpProject } from "@/lib/youtube-process/project";
+import { setEditGuard } from "@/lib/api-client";
 import { useSession } from "./session-provider";
 import { useYoutubeCanConfirm, YP_CONFIRM_EVENT } from "./use-youtube-confirm";
 import { ConfirmActions } from "./youtube-process-confirm";
@@ -23,12 +24,35 @@ export function useYpBundle() {
   const params = useSearchParams();
   const id = params.get("project");
   const { accessToken, demo, profile } = useSession();
-  const client = useMemo(() => youtubeProcessClient(accessToken, demo), [accessToken, demo]);
-  const canConfirm = useYoutubeCanConfirm(true, accessToken, demo, profile?.role === "admin");
   const [bundle, setBundle] = useState<YpBundle | null>(null);
   const [members, setMembers] = useState<YpMember[]>([]);
   const [error, setError] = useState("");
   const [conflict, setConflict] = useState(false);
+  // 대표 결정 2026-10-31 (로건 QA 41a8387c): someone who is not 만든 사람 · 담당 PD · 대표 (the 휴지통 rule) is asked once per project
+  // before the first change — typing on the step, or any save, AI 보내기 or 영상 만들기 call for it. 메모 (feedback) stays free.
+  const ask = useRef<() => boolean>(() => true);
+  useEffect(() => {
+    ask.current = () => {
+      const project = bundle?.project;
+      if (!project || EDIT_OK.has(project.id) || mayTrash(project, profile?.id, profile?.role === "admin")) return true;
+      const name = members.find(member => member.id === (project.assigneeId ?? project.ownerId))?.name;
+      if (!window.confirm(`${name ? `${name}님이` : "다른 사람이"} 맡은 영상이에요. 그래도 고칠까요?`)) return false;
+      EDIT_OK.add(project.id);
+      return true;
+    };
+  }, [bundle?.project, members, profile]);
+  useEffect(() => {
+    if (!id) return;
+    const onInput = (event: InputEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest(".yp") && !target.closest("[data-yp-free]") && !ask.current()) event.preventDefault();
+    };
+    document.addEventListener("beforeinput", onInput, true);
+    setEditGuard(path => !(path.includes(id) || path.startsWith("/api/v1/content/youtube-automation/")) || path.includes("/feedback") || ask.current());
+    return () => { document.removeEventListener("beforeinput", onInput, true); setEditGuard(null); };
+  }, [id]);
+  const client = useMemo(() => youtubeProcessClient(accessToken, demo), [accessToken, demo]);
+  const canConfirm = useYoutubeCanConfirm(true, accessToken, demo, profile?.role === "admin");
   useEffect(() => {
     if (id) return;
     let last = "";
@@ -50,6 +74,8 @@ export function useYpBundle() {
   const fail = useCallback((reason: unknown) => { if (isConflict(reason)) setConflict(true); else setError(errorMessage(reason)); }, []);
   return { client, id, bundle, setBundle, members, reload, error, setError, conflict, fail, canConfirm, demo, accessToken, profile };
 }
+/** Projects this tab already said 「고칠게요」 to — once per project until the page reloads. */
+const EDIT_OK = new Set<string>();
 export type YpPage = ReturnType<typeof useYpBundle>;
 
 /** Warns before the tab closes or reloads while typed text is not saved yet (로건 QA 10/30: a reload 4 s after typing lost the 클로징). */
