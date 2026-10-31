@@ -1,16 +1,17 @@
 "use client";
 // 정본 다듬기 (카드뉴스 정본 §9, 설계서 §9): the same 시험 묶음 drawn again under each 정본 version, scored on the 평가표, runs side by side,
 // and the 고칠 점 that point at the 정본. One screen for every kind (카드뉴스 · 숏폼 대본 · 스레드 · SEO 칼럼); each 정본 is edited in its OS document.
+// 롱폼 원고 has a screen of its own below: its scores are the 두 번째 검수 each 원고 already got.
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { apiRequest } from "@/lib/api-client";
 import { CARD_FORMAT_IDS, CARD_FORMATS, type CardFormatId } from "@/lib/cardnews/formats";
-import { BENCH_MAX, CARD_GRADES, fixList, GRADUATION, graduatedTwice, GRIND_KINDS, mergedGrades, resultKey, runSummary,
-  type Bench, type BenchResult, type BenchRun, type CardCriterion, type CardDraftPart, type CardGrade, type ColumnDraft, type GrindKind, type ShortDraft, type ThreadsDraft } from "@/lib/canon-grind/grind";
+import { BENCH_MAX, CARD_GRADES, fixList, GRADUATION, graduatedTwice, GRIND_KINDS, mergedGrades, resultKey, runSummary, scriptBundles, scriptFixes, scriptGraduated,
+  type ScriptVerdict, type Bench, type BenchResult, type BenchRun, type CardCriterion, type CardDraftPart, type CardGrade, type ColumnDraft, type GrindKind, type ShortDraft, type ThreadsDraft } from "@/lib/canon-grind/grind";
 import { tokenEstimate } from "@/lib/cost";
 import { columnMeta, columnSlots, renderColumn } from "@/lib/seo-column";
 import { GPT_TIERS, type GptTier } from "@/lib/youtube-process/gpt-draft";
-import { projectName } from "@/lib/youtube-process/project";
+import { projectName, stepHref } from "@/lib/youtube-process/project";
 import { threadsPostLength, threadsPostRole } from "@/lib/threads-posts";
 import { checkShortScript } from "@/lib/youtube-process/short-script";
 import { CostTag, useCostConfirm } from "./cost-notice";
@@ -320,5 +321,60 @@ function ColumnDraftView({ draft, title }: { draft: ColumnDraft; title: string }
         {columnSlots(draft.html).filter(slot => slot.kind !== "video").map(slot => [<dt key={`${slot.slot}-t`}>{slot.slot === "hero" ? "대표 이미지" : `이미지 ${slot.slot}`}</dt>,
           <dd key={`${slot.slot}-d`}>{slot.caption}<br /><small className="yp-muted">{slot.prompt}</small></dd>])}</dl></details>
     <iframe className="yp-grind-col" title={`${title} 칼럼 미리보기`} sandbox="allow-scripts allow-popups" srcDoc={preview} />
+  </>;
+}
+
+interface ScriptView { verdicts: ScriptVerdict[]; canon: { id: string; version: string } | null; me: string }
+const DEMO_VERDICT = (projectId: string, title: string, at: string, bundle: string, failed: (2 | 3 | 4 | 5 | 6)[]): ScriptVerdict => ({ projectId, title, at, by: "[예시] 유쓰", bundle,
+  pass: !failed.length, gates: ([2, 3, 4, 5, 6] as const).map(gate => ({ gate, pass: !failed.includes(gate),
+    items: failed.includes(gate) ? [{ paragraph: gate * 3, quote: "[예시] 문장", grade: "상" as const, reason: `[예시] 관문 ${gate}에서 비었던 것`, fix: "" }] : [] })) });
+const DEMO_SCRIPT: ScriptView = { canon: { id: "demo", version: "v2.5" }, me: "demo", verdicts: [
+  DEMO_VERDICT("demo-1", "[예시] 연봉 보고 옮겼는데 또 힘들다면", "2026-10-30T09:23:00Z", "v2.5", [4, 5]),
+  DEMO_VERDICT("demo-2", "[예시] 해야 하는 걸 알면서도 실행을 못 하는 이유", "2026-10-30T04:58:00Z", "v2.5", [2, 5, 6]),
+  DEMO_VERDICT("demo-3", "[예시] 내가 진짜 원하는 것을 알아내는 방법", "2026-10-27T05:00:00Z", "v2.4", []),
+] };
+
+/** 롱폼 원고 정본 다듬기 (설계서 §9): nothing is drawn again — each 원고's 두 번째 검수 is its score, compared 정본 묶음 by 정본 묶음. */
+export function ScriptCanonScreen() {
+  const { accessToken, demo } = useSession();
+  const [view, setView] = useState<ScriptView | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (demo) { setView(DEMO_SCRIPT); return; }
+    if (!accessToken) return;
+    apiRequest<ScriptView>("/api/v1/content/youtube/canon-grind?kind=script", { token: accessToken }).then(setView, reason => setError(errorMessage(reason)));
+  }, [accessToken, demo]);
+  if (!view) return <>{error ? <div className="yp-note yp-warn" role="alert"><div>{error}</div></div> : <p className="yp-hint" role="status">불러오는 중이에요…</p>}</>;
+  const bundles = scriptBundles(view.verdicts);
+  const latest = bundles[0];
+  const fixes = latest ? scriptFixes(latest.scripts) : [];
+  const graduated = scriptGraduated(bundles);
+  return <>
+    <section className="yp-card yp-grind-canon"><div className="yp-card-b">
+      <b>지금 정본: 원고 공정 정본 {view.canon?.version ?? "없음"}</b>
+      {view.canon && !demo ? <Link className="yp-lnk" href={`/knowledge?document=${view.canon.id}`}>정본 열기 →</Link> : null}
+      <span className={graduated ? "yp-tag yp-ok" : "yp-tag"}>{graduated ? "졸업 기준 충족 · 다음 정본 승인 요청" : `졸업: 두 정본 묶음 연속, 원고 ${GRADUATION.passRate * 100}% 이상이 관문 2~6을 모두 통과`}</span>
+    </div></section>
+
+    <YpSection n={1} title="정본 묶음끼리 비교" gq="원고마다 받은 두 번째 검수(관문 2~6)를 모아요 · 다시 뽑지 않아 비용이 들지 않아요">
+      {bundles.length ? bundles.map(row => <div key={row.bundle} className="yp-grind-bundle">
+        <div className="yp-grind-head"><b>정본 묶음 {row.bundle}</b><small>원고 {row.scripts.length} · 통과 {row.passed} ({Math.round(row.passRate * 100)}%)</small></div>
+        <div className="yp-chips">{row.gates.map(gate => <span key={gate.gate} className={gate.failed ? "yp-tag yp-bad" : "yp-tag yp-ok"}>관문 {gate.gate} {gate.name} {row.scripts.length - gate.failed}/{row.scripts.length}</span>)}</div>
+        <ul className="yp-hist">{row.scripts.map(script => { const back = script.gates.filter(gate => !gate.pass).map(gate => gate.gate);
+          return <li key={script.projectId}><span className="yp-grow"><Link className="yp-lnk" href={stepHref(2, script.projectId)}><b>{script.title}</b></Link> <small className="yp-muted">{day(script.at)}{script.by ? ` · ${script.by}` : ""}</small></span>
+            <span className={script.pass ? "yp-tag yp-ok" : "yp-tag yp-bad"}>{script.pass ? "통과" : `반려 · 관문 ${back.join("·")}`}</span></li>; })}</ul>
+      </div>) : <p className="yp-pempty">아직 두 번째 검수를 받은 원고가 없어요. 롱폼 구성안 단계에서 두 번째 검수를 받으면 여기에 모여요.</p>}
+    </YpSection>
+
+    <YpSection n={2} title="고칠 점" gq={latest ? `정본 묶음 ${latest.bundle} 원고에서` : "판정이 생기면 보여요"}>
+      {fixes.length ? <ul className="yp-grind-fix">{fixes.map(row => <li key={row.gate}>
+        <div><b>관문 {row.gate}. {row.name}</b> <span className={row.canonIssue ? "yp-tag yp-bad" : "yp-tag"}>{row.canonIssue ? `원고 ${row.scripts}편에서 반려 · 정본 문제` : "원고 1편에서 반려 · 그 원고 문제"}</span></div>
+        <ul>{row.notes.map((note, at) => <li key={at}><span className={note.grade === "상" ? "yp-bad" : "yp-warn"}>{note.grade}</span> {note.title} · {note.paragraph}번 문단 — {note.reason}</li>)}</ul></li>)}</ul>
+        : <p className="yp-pempty">아직 지적이 없어요.</p>}
+      <ol className="yp-grind-how">
+        <li>‘정본 문제’로 표시된 관문만 골라, 원고 정본(공정 · 구조 · 말투 · 검수)에 넣을 문장(지금 문장 → 새 문장)을 정해요.</li>
+        <li>대표 승인을 받은 뒤 OS의 원고 정본을 고치고, 원고 공정 정본 맨 위 「정본 묶음」 줄을 올리고, 변경 이력에 이유를 적어요.</li>
+        <li>다음 원고들이 새 묶음으로 쌓이면 여기서 이전 묶음과 통과율을 비교해요. 떨어지면 OS 문서의 이전 버전으로 되돌려요.</li></ol>
+    </YpSection>
   </>;
 }

@@ -64,7 +64,7 @@ test("side menu by what is made (owner 2026-10-29, A안): 공통 + 롱폼 · 숏
     .filter(href => href !== "/content/threads-canon").sort();
   assert.deepEqual(after, before);
   assert.equal(threads.pages.at(-1).href, "/content/threads-canon", "스레드 정본 다듬기 closes the 스레드 menu");
-  assert.deepEqual(stages.find(stage => stage.id === "yt-longform").pages.map(page => page.href), ["/content/projects?platform=longform", "/content/column-canon"], "칼럼 정본 다듬기 sits under the 롱폼 list");
+  assert.deepEqual(stages.find(stage => stage.id === "yt-longform").pages.map(page => page.href), ["/content/projects?platform=longform", "/content/script-canon", "/content/column-canon"], "원고 · 칼럼 정본 다듬기 sit under the 롱폼 list");
   for (const stage of stages.slice(0, 4)) for (const page of stage.pages) assert.ok(!page.href.includes("?") || page.href.startsWith("/content/projects?"), page.href);
   const p = query => new URLSearchParams(query);
   assert.equal(youtubeV1StageId(stages, "/content/projects", p("platform=short"), "content"), "yt-short");
@@ -74,6 +74,7 @@ test("side menu by what is made (owner 2026-10-29, A안): 공통 + 롱폼 · 숏
   assert.equal(youtubeV1StageId(stages, "/content/plan", p("id=x"), "content"), "content");
   // 정본 다듬기 opens its own group (the breadcrumb said 공통 and the group stayed folded).
   assert.equal(youtubeV1StageId(stages, "/content/column-canon", p(""), "content"), "yt-longform");
+  assert.equal(youtubeV1StageId(stages, "/content/script-canon", p(""), "content"), "yt-longform");
   assert.equal(youtubeV1StageId(stages, "/content/short-canon", p(""), "content"), "yt-short");
   assert.equal(youtubeV1StageId(stages, "/content/card-canon", p(""), "content"), "yt-card");
   assert.equal(youtubeV1StageId(stages, "/content/threads-canon", p(""), "content"), "threads");
