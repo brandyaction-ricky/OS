@@ -157,6 +157,8 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
       </div>
       <aside className="yp-rside"><section className="yp-card"><div className="yp-card-h">참고 영상 <span className="yp-opt">선택</span></div><div className="yp-card-b">
         <ul className="yp-open-list">{[...project.yp.topic.refs.map(ref => ({ ref, own: false })), ...form.extraRefs.map(ref => ({ ref, own: true }))].map(({ ref, own }, index) => <li key={`${ref.url}-${index}`}>
+          {/* 로건 QA 10/30: a title line only — the reference's own thumbnail shows what it looked like without opening YouTube. */}
+          {(ref.videoId ?? parseYoutubeRef(ref.url)?.videoId) ? <a href={ref.url} target="_blank" rel="noreferrer" className="yp-ref-th" style={{ backgroundImage: `url(https://i.ytimg.com/vi/${ref.videoId ?? parseYoutubeRef(ref.url)?.videoId}/mqdefault.jpg)` }} aria-hidden="true" tabIndex={-1} /> : null}
           <a href={ref.url} target="_blank" rel="noreferrer">{ref.title ?? ref.url}</a><span className="yp-sp" />
           {own && can("extraRefs") ? <button type="button" className="yp-ib" aria-label="빼기" onClick={() => edit({ extraRefs: form.extraRefs.filter(row => row.url !== ref.url) }, true)}><X size={14} /></button> : null}</li>)}</ul>
         {!project.yp.topic.refs.length && !form.extraRefs.length ? <p className="yp-pempty">아직 없어요</p> : null}

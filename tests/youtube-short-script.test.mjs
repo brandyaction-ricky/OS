@@ -48,7 +48,7 @@ test("10 letters the same as a 레퍼런스 or the 정본 is copying; a shorter 
 
 test("대본 확정 needs the 통찰 한 줄, a 헤드 카피 and a script that passes, with the PD's and the fetched references counted", () => {
   const script = { query: "", refs: [], text: good, hooks: [], insight: "", formula: "", headCopy: "" };
-  assert.equal(shortScriptMissing(script), "통찰 한 줄을 써 주세요");
+  assert.equal(shortScriptMissing(script), "핵심 한 줄을 써 주세요");
   assert.equal(shortScriptMissing({ ...script, insight: "지치는 건 결정 횟수 때문" }), "첫 화면 헤드 카피를 써 주세요");
   assert.match(headCopyProblem("저녁마다 지치는 진짜 이유는 일이 아니었어요"), /20자 이하/);
   assert.equal(shortScriptMissing({ ...script, insight: "지치는 건 결정 횟수 때문", headCopy: "일은 두 개뿐인데 왜 지칠까" }), "");

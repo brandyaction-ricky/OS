@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { apiRequest } from "@/lib/api-client";
 import { Clock, Eye, Info, Sparkles } from "lucide-react";
 import { myinCleanScript } from "@/lib/myin-script";
-import { lengthEstimate, outlineMissing, runtimeError, scriptChars, SPEC_OPTIONS, specOption, type YpOutline } from "@/lib/youtube-process/stages";
+import { lengthEstimate, minSec, outlineMissing, paragraphTimes, runtimeError, scriptChars, SPEC_OPTIONS, specOption, type YpOutline } from "@/lib/youtube-process/stages";
 import { checkScriptBody } from "@/lib/youtube-script-check";
 import { KnowledgeRichEditor } from "./knowledge-rich-editor";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
@@ -97,7 +97,9 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
   const action = page.bundle ? stepAction(page, 2, project?.yp.stage === "outline" ? { kind: "button", label: "다음: 제작", reason: missing, busy: moving, onClick: () => void move() } : { kind: "status", status: "구성안 끝남" }) : null;
   const current = form?.versions.at(-1)?.v ?? 0;
   const viewing = viewV && viewV !== current ? form?.versions.find(item => item.v === viewV) ?? null : null;
-  const estimate = form ? lengthEstimate(viewing?.md ?? form.script, form.spec.runtimeMin) : null;
+  const estimate = form ? lengthEstimate(viewing?.md ?? form.script, form.spec.runtimeMin, viewing ? null : voiceSec) : null;
+  // 로건 QA 10/30: a 최종 검토 note at 00:56 had nowhere to point in 4,609 letters — each spoken paragraph with its number and time.
+  const paragraphs = form ? paragraphTimes(myinCleanScript(viewing?.md ?? form.script).spoken, viewing ? null : voiceSec) : [];
   const confirmed = page.bundle?.stages.plan.data.confirmed;
   const plan = page.bundle?.stages.plan.data;
   const anim = project?.yp.topic.type !== "live";
@@ -108,7 +110,7 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
     onSave={editable ? () => saveNow() : undefined} saveDisabled={!dirty}>
     {page.bundle && form && project ? ["topic", "draft"].includes(project.yp.stage) ? <LockedStep page={page} name="구성안" /> : <>
       {project.yp.stage === "outline" ? <GateBanner page={page} gate="draft" /> : null}
-      {project.yp.stage !== "outline" && editable && anim ? <div className="yp-note yp-warn" role="status"><Info size={16} className="yp-i" aria-hidden="true" /><div>고치면 영상을 음성부터 다시 만들어야 해요.</div></div> : null}
+      {project.yp.stage !== "outline" && editable && anim ? <div className="yp-note yp-warn" role="status"><Info size={16} className="yp-i" aria-hidden="true" /><div>원고를 한 글자라도 고치면 음성을 처음부터 다시 만들어요(음성 비용이 다시 들어요). 그 뒤 받아쓰기 · 자막, 장면 기획표, 미리보기 확인, 완성 영상도 다시 거쳐요. 이미 만든 최종본은 그대로 남아요.</div></div> : null}
       <Subject page={page} />
       <div className="yp-wrap2"><div>
         <YpSection n={1} title="영상 스펙" gq={anim ? "최종본 기준" : "촬영 · 최종본 기준"} need className="yp-compact">
@@ -139,6 +141,9 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
               onChange={markdown => { if (!viewing && markdown !== form.script) edit({ script: markdown }); }} onError={message => page.setError(message)} />
           </div>
           <p className="yp-hint"><Info size={12} aria-hidden="true" /> 마지막 20초는 최종 화면 자리로 비워 둬요.</p>
+          {paragraphs.length ? <details className="yp-card" style={{ marginTop: 8 }}><summary style={{ padding: "8px 10px", cursor: "pointer", fontSize: 13 }}>문단 번호 · {voiceSec && !viewing ? "음성 기준" : "예상"} 시각 ({paragraphs.length}문단)</summary>
+            <ol className="yp-paras">{paragraphs.map(row => <li key={row.n}><b>{row.n}</b><time>{String(Math.floor(row.at / 60)).padStart(2, "0")}:{String(Math.floor(row.at % 60)).padStart(2, "0")}</time><span>{row.text}</span></li>)}</ol>
+            <p className="yp-hint" style={{ margin: "0 10px 10px" }}>{voiceSec && !viewing ? `만든 음성 ${minSec(voiceSec)}을 글자 수로 나눈 시각이에요.` : "분당 350자로 센 시각이에요."} 최종 영상은 오프닝 · 쉼이 더해져 조금 늦어요.</p></details> : null}
           {checked.length && editable && !viewing ? <details className="yp-note yp-warn" role="status" style={{ display: "block" }}><summary style={{ cursor: "pointer" }}>원고 형식 검사에서 걸린 곳 {checked.length}건 — 고쳐야 제작·음성으로 넘어가요</summary>
             <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 13 }}>{checked.map(issue => <li key={issue}>{issue}</li>)}</ul></details> : null}
           {!viewing ? <ScriptReview2 page={page} outline={form} editable={editable} dirty={dirty} /> : null}

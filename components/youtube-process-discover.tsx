@@ -200,7 +200,8 @@ export function YoutubeDiscoverScreen({ bare = false }: { bare?: boolean }) {
               {video.viewSubscriberRatio !== null ? <span className="yp-tag">구독자의 {ratioLabel(video.viewSubscriberRatio)}</span> : null}</span>
             <div className="yp-row-btns">
               {source !== "kept" ? <button type="button" className="yp-btn yp-sm" disabled={demo || keptIds.has(video.id) || saving === video.id} onClick={() => void keep(video)}>{keptIds.has(video.id) ? "담았어요" : saving === video.id ? "담는 중…" : keepFailed[video.id] ? "다시 담기" : "틈새 재료로 담기"}</button> : null}
-              <Link className="yp-btn yp-sm yp-pri" href={newVideoHref([video])}>새 영상으로 만들기</Link></div>
+              {/* 로건 QA 10/30: the card's reason came over empty — the search words (or the video's title) start the 주제, its source the 메모. */}
+              <Link className="yp-btn yp-sm yp-pri" href={newVideoHref([video], { title: query.trim() || video.title, note: `참고 영상에서 시작: ${video.title} · ${video.channelTitle}` })}>새 영상으로 만들기</Link></div>
             {keepFailed[video.id] ? <span className="yp-errline" role="alert">담지 못했어요: {keepFailed[video.id]}</span> : null}
           </div></article>)}</div>
         : <p className="yp-pempty">{source === "kept" ? "담아 둔 영상이 없어요. 찾은 영상에서 [틈새 재료로 담기]를 눌러요." : source === "tracked" ? "매일 보는 채널에서 평소보다 크게 나온 영상이 생기면 여기에 모여요. ① 채널 모으기에서 채널을 넣어요."

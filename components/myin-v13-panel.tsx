@@ -1,5 +1,7 @@
 "use client";
 
+import { DIAGRAM_CATALOG } from "@/lib/shortform-diagram-catalog";
+import { personName } from "@/lib/youtube-process/project";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { apiRequest, ApiRequestError } from "@/lib/api-client";
 import { useSession } from "./session-provider";
@@ -211,16 +213,16 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
   return <div className="yt-steps" role="region" aria-label="마이인 영상 만들기">
     {cost.element}
     {embedded ? null : <section className="panel">
-      <header className="panel-header"><div><span className="eyebrow">마이인 형식 · 로건님 v13</span><h2>영상 만들기</h2>
-        <p>승인된 원고로 대표 목소리를 만들고, 영상 만드는 컴퓨터가 받아쓰기·자막을 만듭니다. 내 AI가 장면 기획표를 쓰고 로건, 유쓰가 기획표와 미리보기를 확인하면, 구독 대사 · 사운드를 준비한 뒤 영상 만드는 컴퓨터가 완성 영상과 한 장 정리·덱 PDF·자막 파일을 만들어 올립니다.</p></div></header>
+      <header className="panel-header"><div><span className="eyebrow">마이인 형식 · v13</span><h2>영상 만들기</h2>
+        <p>승인된 원고로 대표 목소리를 만들고, 영상 만드는 컴퓨터가 받아쓰기·자막을 만듭니다. 내 AI가 장면 기획표를 쓰고 담당자가 기획표와 미리보기를 확인하면, 구독 대사 · 사운드를 준비한 뒤 영상 만드는 컴퓨터가 완성 영상과 한 장 정리·덱 PDF·자막 파일을 만들어 올립니다.</p></div></header>
     </section>}
 
     <Step index={0} state={step1} title="음성과 받아쓰기·자막" idBase="myin-step">
-      <p>{short ? "확정한 대본을 대표 목소리로 읽고, 영상 만드는 컴퓨터가 받아쓰기와 자막을 만들어요." : "승인된 원고를 대표 목소리(drama-3)로 만들고, 영상 만드는 컴퓨터가 로건님 방식대로 다듬어 받아쓰기와 방송 자막을 만듭니다."}</p>
+      <p>{short ? "확정한 대본을 대표 목소리로 읽고, 영상 만드는 컴퓨터가 받아쓰기와 자막을 만들어요." : "승인된 원고를 대표 목소리(drama-3)로 만들고, 영상 만드는 컴퓨터가 다듬어 받아쓰기와 방송 자막을 만듭니다."}</p>
       {run?.scriptChanged ? <p className="yt-note yt-warn">{short ? "확정한 대본이 바뀌었어요. 아래 작업은 옛 대본으로 만든 것이라 더 진행되지 않아요. 새로 만들면 기획표와 미리보기 확인도 다시 거쳐요." : "구성안 원고가 바뀌었어요. 아래 작업은 옛 원고로 만든 것이라 더 진행되지 않아요. 새로 만들면 기획표와 미리보기 확인도 다시 거쳐요."}</p> : null}
       {!run || (run.status === "blocked" && !run.words) || run.scriptChanged ? <div className="yt-actions">
         <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void (async () => { if (run && !run.scriptChanged || await askVoice(voiceText ?? "", "같은 원고로 다시 누르면 들지 않아요", voiceOnPc)) await act("start", () => post("/myin", "POST", { sourceId })); })()}>{busy === "start" ? "시작하는 중…" : run?.scriptChanged ? short ? "바뀐 대본으로 음성 다시 만들기" : "바뀐 원고로 v13 음성 다시 만들기" : run ? short ? "음성 다시 시작" : "v13 음성 다시 시작" : short ? "음성 만들기" : "v13 음성 만들기"}</button>
-        <small><CostTag kind="paid" /> 같은 {short ? "대본" : "원고"}으로 다시 누르면 만든 음성을 이어 써요.</small>
+        <small><CostTag kind="paid" amount={voiceText ? voiceEstimate(voiceText, myinVoice).krw : null} /> 같은 {short ? "대본" : "원고"}으로 다시 누르면 만든 음성을 이어 써요.</small>
       </div> : null}
       {run ? <div className="yt-run">
         <div className="yt-run-head"><span className="status-pill" data-status={run.status === "blocked" && !run.words ? "failed" : run.words && !run.voiceFixes?.length ? "approved" : "scheduled"}>{run.voiceFixes?.length && run.stage === "words_pending" ? "고친 곳 다시 만드는 중" : run.words ? "받아쓰기·자막 완료" : phase}</span>
@@ -278,13 +280,13 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
             {run.stage === "storyboard_review" ? <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void act("confirm", () => post("/myin", "PATCH", { action: "review", runId: run.id, decision: "confirmed", note, place }))}>{busy === "confirm" ? "저장 중…" : "기획표 확인 완료 · 미리보기 만들기"}</button> : null}
             <button type="button" className="secondary-button" disabled={Boolean(busy) || !note.trim()} onClick={() => void act("revise", () => post("/myin", "PATCH", { action: "review", runId: run.id, decision: "revise", note }))}>수정 요청</button>
           </div>
-          {run.review?.decision === "confirmed" ? <small>{run.review.name} 확인 · {when(run.review.at)}{run.review.note ? ` · ${run.review.note}` : ""}</small> : null}
+          {run.review?.decision === "confirmed" ? <small>{personName(run.review.name)} 확인 · {when(run.review.at)}{run.review.note ? ` · ${run.review.note}` : ""}</small> : null}
         </div> : null}
       </> : null}
     </Step>
 
     <Step index={2} state={step3} title={short ? "미리보기 확인 (로건, 유쓰)" : "미리보기 확인 (도식 · 글자 · 음악 — 로건, 유쓰)"} idBase="myin-step">
-      {short ? <p>기획표 확인이 끝나면 자동으로 시작해요. 숏폼 전체를 세로 미리보기로 만들어요. 고칠 곳이 있으면 [수정 요청]을 눌러요.</p> : <p>기획표 확인이 끝나면 자동으로 시작합니다. 고른 곳(영상 만드는 컴퓨터 또는 내 컴퓨터)이 기획표의 사진을 받아 넣고(받지 못한 사진만 회색 「사진 자리」), 로건님 자동 선곡으로 장면마다 곡을 깔고, 문구 위치를 점검한 뒤 오프닝·쇼릴과 비유 장면을 720p 미리보기 영상으로 먼저 만듭니다. 고칠 곳이 있으면 [수정 요청]을 눌러요. 기획표가 메모와 함께 내 AI에게 다시 가요.</p>}
+      {short ? <p>기획표 확인이 끝나면 자동으로 시작해요. 숏폼 전체를 세로 미리보기로 만들어요. 고칠 곳이 있으면 [수정 요청]을 눌러요.</p> : <p>기획표 확인이 끝나면 자동으로 시작합니다. 고른 곳(영상 만드는 컴퓨터 또는 내 컴퓨터)이 기획표의 사진을 받아 넣고(받지 못한 사진만 회색 「사진 자리」), 자동 선곡으로 장면마다 곡을 깔고, 문구 위치를 점검한 뒤 오프닝·쇼릴과 비유 장면을 720p 미리보기 영상으로 먼저 만듭니다. 고칠 곳이 있으면 [수정 요청]을 눌러요. 기획표가 메모와 함께 내 AI에게 다시 가요.</p>}
       {run && !materials && ["prep_pending", "clips_pending"].includes(run.stage) ? <div className="yt-run"><div className="yt-run-head"><RunState run={run} /></div>
         {draftWaiting ? <div className="yt-actions"><small>만드는 곳 · {maker(run)}</small>
           {run.local ? <button type="button" className="secondary-button compact" disabled={Boolean(busy) || (Boolean(run.workingSince) && localPc?.state === "online")}
@@ -306,8 +308,10 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       </details> : null}
       {run?.sound?.report ? <details className="yt-details"><summary>자동 선곡표 (로건님 음악 매칭)</summary>
         <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, maxHeight: 360, overflow: "auto", margin: 0 }}>{run.sound.report}</pre></details> : null}
-      {outputs?.clips.length ? <div style={{ display: "grid", gap: 12 }}>{outputs.clips.map((clip) => <div key={clip.label} style={{ display: "grid", gap: 4 }}>
-        <small>{clip.label}</small>{clip.url ? <video src={clip.url} controls preload="metadata" style={short ? { width: "100%", maxWidth: 360, aspectRatio: "9 / 16", borderRadius: 8, background: "#000" } : { width: "100%", borderRadius: 8, background: "#000" }} /> : null}</div>)}</div> : null}
+      {/* 로건 QA 10/30: 29 full-width players under code names — a folded grid named by scene and diagram. */}
+      {outputs?.clips.length ? <details className="yt-details" open={run?.stage === "clips_review"}><summary>장면 미리보기 {outputs.clips.length}개</summary>
+        <div className="yt-clips">{outputs.clips.map((clip) => <div key={clip.label} style={{ display: "grid", gap: 4, minWidth: 0 }}>
+          <small title={clip.label}>{clipName(clip.label)}</small>{clip.url ? <video src={clip.url} controls preload="metadata" style={short ? { width: "100%", aspectRatio: "9 / 16", borderRadius: 8, background: "#000" } : { width: "100%", aspectRatio: "16 / 9", borderRadius: 8, background: "#000" }} /> : null}</div>)}</div></details> : null}
       {run?.stage === "clips_review" && !materials ? <div className="yt-note">
         <strong>로건, 유쓰 확인</strong>
         <label>메모 (수정 요청할 때는 필수)<textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="예) 오프닝 좋음 · 7번 빙산 장면 글자가 넘쳐요" /></label>
@@ -320,7 +324,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
           {board?.cta.length ? <CostTag kind="paid" /> : null}
           <button type="button" className="secondary-button" disabled={Boolean(busy) || !note.trim()} onClick={() => void act("revise", () => post("/myin", "PATCH", { action: "review", runId: run.id, decision: "revise", note }))}>수정 요청</button></div>
       </div> : null}
-      {run?.clipsReview ? <small>{run.clipsReview.name} 미리보기 확인 · {when(run.clipsReview.at)}{run.clipsReview.note ? ` · ${run.clipsReview.note}` : ""}</small> : null}
+      {run?.clipsReview ? <small>{personName(run.clipsReview.name)} 미리보기 확인 · {when(run.clipsReview.at)}{run.clipsReview.note ? ` · ${run.clipsReview.note}` : ""}</small> : null}
       {run && !materials && (run.stage === "prep_ready" || (run.status === "blocked" && ["prep_pending", "clips_pending"].includes(run.stage))) ? <div className="yt-actions">
         <button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => void act("prep", () => post("/myin", "PATCH", { action: "prepare", runId: run.id }))}>{busy === "prep" ? "시작하는 중…" : "미리보기 다시 준비하기"}</button>
         <small>문구 점검과 미리보기를 다시 만듭니다.</small></div> : null}
@@ -377,4 +381,9 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
     </Step>
     {error ? <p className="inline-alert danger" role="alert">{error}</p> : null}
   </div>;
+}
+
+/** 「2번 장면 · lib_stage_phone」 → 「2번 장면 · 무대 폰」: the catalog's name for a diagram, else the code is left out (it stays in the tooltip). */
+function clipName(label: string) {
+  return label.replace(/ · (lib_[a-z0-9_]+)/, (_, type: string) => { const name = DIAGRAM_CATALOG.find(row => row.type === type)?.name; return name ? ` · ${name}` : ""; });
 }

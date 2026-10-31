@@ -5,7 +5,7 @@ import type { OsRecord } from "@/lib/record-types";
 import { checkManuscript } from "@/lib/youtube-script-check";
 import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
 import { projectFromRecord, projectName } from "@/lib/youtube-process/project";
-import { diagnosisLink, finalPair, SLOTS, stageData, STAGE_RECORD, utmCode, withLinks, withScriptVersion, type YpSlot, type YpStageKind, type YpStageData } from "@/lib/youtube-process/stages";
+import { descWritten, diagnosisLink, finalPair, oneArrow, SLOTS, stageData, STAGE_RECORD, utmCode, withLinks, withScriptVersion, type YpSlot, type YpStageKind, type YpStageData } from "@/lib/youtube-process/stages";
 import type { RequestActor } from "./auth";
 import type { readPipeline } from "./content-pipeline";
 import { namedProcedures, procedureRefs, SHORTFORM_CANON_TITLE, withNamed } from "./content-generation";
@@ -122,7 +122,7 @@ export async function saveV1Script(client: { supabase: RequestActor["supabase"];
   if (check.issues.length) throw new ApiError(422, "SCRIPT_FORMAT_INVALID", `원고 형식 검사에서 걸린 곳 ${check.issues.length}건: ${check.issues.join(" / ")}`);
   const now = new Date().toISOString();
   // The head comments (축 · 출처) stay with the AI notes; the editor gets the readable 원고.
-  const md = bundle.manuscript.replace(/\r/g, "").split("\n").filter(line => !line.trim().startsWith("<!--")).join("\n").trim() + "\n";
+  const md = oneArrow(bundle.manuscript.replace(/\r/g, "").split("\n").filter(line => !line.trim().startsWith("<!--")).join("\n").trim()) + "\n";
   const by = await displayName(client.supabase, client.id, author.name);
   const outline = { ...withScriptVersion(stages.outline.data, md, by, now, "ai", author.model),
     ai: { jobId: author.jobId ?? "", model: author.model, at: now, by, materials: bundle.materials, axis: bundle.axis, design: bundle.design,
@@ -163,7 +163,8 @@ export function v1KitCardInputs(state: Pipeline) {
 export async function saveV1Kit(supabase: RequestActor["supabase"], ownerId: string, ownerName: string, state: Pipeline, result: { description: string; pinnedComment: string; tags: string[]; kakao: string; cafe: string; post: string; checklist: string[] }, author: { model: string; jobId: string }) {
   const stages = v1Stages(state);
   const current = stages.upload.data;
-  const untouched = !current.desc.trim() || (current.descBy && current.desc === current.descBy.draft);
+  // A description started from the bare layout (미리 쓰기, 로건 QA 10/30) and left empty takes the draft as an empty one would.
+  const untouched = !descWritten(current.desc) || (current.descBy && current.desc === current.descBy.draft);
   const descBy = { userId: ownerId, name: await displayName(supabase, ownerId, ownerName), model: author.model, jobId: author.jobId, at: new Date().toISOString(),
     // 로건 요청 10/30: the 이어서 볼 영상 and 다른 유입처 of 1번 go into the draft as they were written there.
     draft: withLinks(result.description, current.utm) };

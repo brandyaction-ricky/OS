@@ -10,7 +10,7 @@ import type { YpShortScene } from "./short.ts";
 export const SHORT_SCRIPT = { min: 250, max: 370, max60: 490, first: 25, line: 24, hard: 30, longLines: 3, head: 20 } as const;
 /** 숏폼 목소리는 1.25배 빠르다(대표 2026-10-29, 대본 분량은 그대로) — 렌더 PC 숏폼 패키지 short_style.json의 voice_tempo와 같은 값. */
 export const SHORT_VOICE_TEMPO = 1.25;
-const shortSeconds = (chars: number) => Math.round(chars / (CHARS_PER_MINUTE * SHORT_VOICE_TEMPO) * 60);
+export const shortSeconds = (chars: number) => Math.round(chars / (CHARS_PER_MINUTE * SHORT_VOICE_TEMPO) * 60);
 const MARK = /^\s*\[(관계|사람)\]\s*/;
 /** One line = one sentence = one screen (§6 형식); a leading [관계] or [사람] is the screen hint (§7), not spoken. */
 export function scriptLines(text: string) {
@@ -52,7 +52,7 @@ export function checkShortScript(text: string, against: { refs?: string[]; canon
   else if (chars > SHORT_SCRIPT.max60) problems.push(`전체 ${chars}자예요 — ${SHORT_SCRIPT.max60}자(약 ${shortSeconds(SHORT_SCRIPT.max60)}초)를 넘어요. 통찰이 하나인지 먼저 봐요`);
   else if (chars > SHORT_SCRIPT.max) notes.push(`${chars}자라 기본(${SHORT_SCRIPT.max}자)보다 길어요 — 약 ${shortSeconds(chars)}초`);
   if (lines[0].text.length > SHORT_SCRIPT.first) problems.push(`첫 문장이 ${lines[0].text.length}자예요 — ${SHORT_SCRIPT.first}자 이하로 써요`);
-  lines.forEach((line, index) => { if (line.text.length > SHORT_SCRIPT.hard) problems.push(`${index + 1}번째 줄이 ${line.text.length}자예요 — ${SHORT_SCRIPT.hard}자를 넘으면 둘로 나눠요`); });
+  lines.forEach((line, index) => { if (line.text.length > SHORT_SCRIPT.hard) problems.push(`${index + 1}번째 줄이 ${line.text.length}자예요 — ${SHORT_SCRIPT.hard}자를 넘으면 둘로 나눠요 (긴 상품명은 줄여 불러요)`); });
   const long = lines.filter(line => line.text.length > SHORT_SCRIPT.line).length;
   if (long > SHORT_SCRIPT.longLines) problems.push(`${SHORT_SCRIPT.line}자 넘는 줄이 ${long}개예요 — ${SHORT_SCRIPT.longLines}개까지`);
   for (const [pattern, name] of BANNED) lines.forEach((line, index) => { const hit = line.text.match(pattern)?.[0]; if (hit) problems.push(`${name} 「${hit}」 (${index + 1}번째 줄)`); });
@@ -96,7 +96,7 @@ export function shortTopicPickProblems(topics: YpShortTopicPick[], formulas: str
 
 /** The one-line reason the 대본 확정 cannot be made yet, or "" (the canon overlap is counted when the AI submits). */
 export function shortScriptMissing(script: YpShortScript, fetched?: Pick<YpShortRefFetch, "items"> | null) {
-  if (!script.insight.trim()) return "통찰 한 줄을 써 주세요";
+  if (!script.insight.trim()) return "핵심 한 줄을 써 주세요";
   return headCopyProblem(script.headCopy ?? "") || (checkShortScript(script.text, { refs: refTexts(script, fetched) }).problems[0] ?? "");
 }
 

@@ -19,7 +19,7 @@ export interface YpFeedback {
 export const feedbackCreateSchema = z.object({
   target: z.enum(["video", "A", "B", "C"]), ver: z.number().int().positive(), t: z.number().min(0).max(86_400).nullable().default(null),
   range: z.tuple([z.number().min(0), z.number().min(0)]).nullable().default(null), text: z.string().trim().max(2000).default(""),
-  kind: z.enum(["", "제목", "썸네일 문구", "이미지 연출", "기타"]).default(""), sug: z.string().trim().max(200).default(""), reaction: z.boolean().default(false),
+  kind: z.enum(["", "제목", "썸네일 문구", "이미지 연출", "기타", "알림"]).default(""), sug: z.string().trim().max(200).default(""), reaction: z.boolean().default(false),
   marks: z.array(z.unknown()).max(20).default([]),
   files: z.array(z.object({ path: z.string().max(200), name: z.string().trim().min(1).max(160), mime: z.string().max(60), size: z.number().int().positive().max(FEEDBACK_FILE_MAX) }).strict()).max(FEEDBACK_FILES_PER_ITEM).default([]),
 }).strict().refine(value => value.reaction || value.text, { message: "피드백을 써 주세요." });

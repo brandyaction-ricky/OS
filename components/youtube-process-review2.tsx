@@ -58,7 +58,7 @@ export function ScriptReview2({ page, outline, editable, dirty }: { page: Return
       <span className="yp-sp" />
       {editable ? <select className="yp-in yp-sel1" aria-label="검수 모델" value={tier} disabled={Boolean(blocked)} onChange={event => setTier(event.target.value as GptTier)}>
         {(Object.keys(GPT_TIERS) as GptTier[]).map(key => <option key={key} value={key}>{GPT_TIERS[key].label} · {modelName(GPT_TIERS[key].model)}</option>)}</select> : null}
-      {editable ? <button type="button" className="yp-btn yp-sm" disabled={Boolean(blocked)} title={blocked || undefined} onClick={() => void run()}>{label} <CostTag kind="paid" /></button> : null}
+      {editable ? <button type="button" className="yp-btn yp-sm" disabled={Boolean(blocked)} title={blocked || undefined} onClick={() => void run()}>{label} <CostTag kind="paid" amount={tokenEstimate(GPT_TIERS[tier].model, 40_000 + outline.script.length, 20_000)} upTo /></button> : null}
     </div>
     {data.state === "failed" && !waiting ? <div className="yp-card-b" style={{ fontSize: 13 }}>{data.error}</div> : null}
     {data.state === "done" ? <div className="yp-card-b" style={{ fontSize: 13, display: "grid", gap: 6 }}>

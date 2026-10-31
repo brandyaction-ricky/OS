@@ -109,7 +109,7 @@ export async function authenticateRequest(
   // and both must succeed before returning an actor; neither result is cached.
   const [profileResult, hrSession] = await Promise.all([
     supabase.from("os_profiles")
-      .select("role,team,is_active,must_change_password")
+      .select("role,team,is_active,must_change_password,display_name")
       .eq("id", userData.user.id)
       .maybeSingle(),
     hrWorkspaceEnabled() ? supabase.rpc("os_hr_session_active") : Promise.resolve(null),
@@ -127,7 +127,8 @@ export async function authenticateRequest(
   return {
     type: "user",
     id: userData.user.id,
-    name: userData.user.email ?? "구성원",
+    // The person's name where records show who did something; the e-mail only when no name is set (로건 QA 10/30: e-mails showed).
+    name: profile?.display_name || userData.user.email || "구성원",
     user: userData.user,
     role: profile?.role ?? "member",
     team: profile?.team ?? "",
