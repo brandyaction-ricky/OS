@@ -40,6 +40,11 @@ export const FULLSCREEN_ROUTES = {
   "/automation/settings": "automation-settings",
   "/knowledge": "documents",
   "/knowledge/vault": "vault",
+  // 스타일 점검 P2: the other 회사 문서 screens join the screen kit like 보관함 · 찾기.
+  "/knowledge/notes": "notes",
+  "/knowledge/canon": "canon",
+  "/knowledge/trash": "trash",
+  "/knowledge/meetings": "meetings",
   "/knowledge/graph": "links",
   "/knowledge/search": "search",
   "/knowledge/review": "review",
