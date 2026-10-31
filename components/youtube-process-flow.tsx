@@ -29,7 +29,8 @@ export function YoutubeFlow({ project, view, action }: { project: YpProject; vie
           {at ? <li className="yp-fl-sep" aria-hidden="true"><ChevronRight size={12} /></li> : null}
           <li>{index <= current
             ? <Link className={cls} href={stepHref(index, project.id)} aria-current={index === view ? "step" : undefined}>{mark}{step}{card && index < current ? <small className="yp-step-done">완료</small> : null}</Link>
-            : <button type="button" className={cls} disabled title="아직 열리지 않았어요">{mark}{step}</button>}</li>
+            // 로건 QA 10/30: a step not reached did nothing when pressed — it opens the step, which says why it is closed.
+            : <Link className={`${cls} yp-lock`} href={stepHref(index, project.id)} aria-current={index === view ? "step" : undefined} title="아직 열리지 않았어요 · 눌러서 언제 열리는지 봐요">{mark}{step}</Link>}</li>
         </Fragment>;
       })}
     </ol>
@@ -38,7 +39,7 @@ export function YoutubeFlow({ project, view, action }: { project: YpProject; vie
     </button>
     {open ? <div className="yp-pop" role="menu">{flow.map(({ index, name: step }, at) => index <= current
       ? <Link key={step} role="menuitem" className={`yp-pop-i${index === view ? " yp-on" : ""}`} href={stepHref(index, project.id)} onClick={() => setOpen(false)}>{at + 1}. {step}<small>{index < current ? "✓ 끝남" : "지금"}</small></Link>
-      : <button key={step} type="button" role="menuitem" className="yp-pop-i" disabled>{at + 1}. {step}<small>아직</small></button>)}</div> : null}
+      : <Link key={step} role="menuitem" className={`yp-pop-i yp-lock${index === view ? " yp-on" : ""}`} href={stepHref(index, project.id)} onClick={() => setOpen(false)}>{at + 1}. {step}<small>아직</small></Link>)}</div> : null}
     <div className="yp-fl-act">
       {action.kind === "status" ? <>
         <span className="yp-fl-status"><Clock size={15} className="yp-i" aria-hidden="true" />{action.status}</span>

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { confirmPlan, descChecks, diagnosisLink, linksMissing, publishAtProblem, withLinks, shortLinkProblem, utmBase, utmUrl, draftMissing, emptyStage, hiddenTagsOf, lengthEstimate, outlineMissing, slotOf, specOption, stageData, thumbFilled, thumbsMissing, withScriptVersion } from "../lib/youtube-process/stages.ts";
+import { confirmPlan, descChecks, diagnosisLink, linksMissing, oneArrow, paragraphTimes, publishAtProblem, withLinks, shortLinkProblem, utmBase, utmUrl, draftMissing, emptyStage, hiddenTagsOf, lengthEstimate, outlineMissing, slotOf, specOption, stageData, thumbFilled, thumbsMissing, withScriptVersion } from "../lib/youtube-process/stages.ts";
 import { applyGateAction, editableFields } from "../lib/youtube-process/confirm.ts";
 import { newProjectMeta } from "../lib/youtube-process/project.ts";
 
@@ -22,8 +22,17 @@ test("기획안 needs titles A · B, thumbnails A · B and the 영상 흐름; th
 
 test("예상 길이: 3,150자 · 9분은 맞고 2,000자는 약 3분 짧다 (±20%, 분당 350자)", () => {
   assert.equal(lengthEstimate(`### 오프닝\n\n${"가".repeat(3150)}\n`, 9).verdict.ok, true);
-  assert.deepEqual(lengthEstimate("가".repeat(2000), 9).verdict, { ok: false, text: "정한 러닝타임(9분)보다 약 3분 짧아요 · 내용이 필요하면 러닝타임을 고쳐요" });
+  assert.deepEqual(lengthEstimate("가".repeat(2000), 9).verdict, { ok: false, text: "정한 러닝타임(9분)보다 3분 17초 짧아요 · 내용이 필요하면 러닝타임을 고쳐요" });
+  // 로건 QA 10/30: a made voice of 13분 6초 is no longer 「맞아요」 for 12분; 20초 over still is.
+  assert.deepEqual(lengthEstimate("가".repeat(4200), 12, 786).verdict, { ok: false, text: "실제 음성이 정한 러닝타임(12분)보다 1분 6초 길어요 · 내용이 필요하면 러닝타임을 고쳐요" });
+  assert.equal(lengthEstimate("가".repeat(4200), 12, 740).verdict.ok, true);
+  assert.deepEqual(paragraphTimes(["가".repeat(10), "나".repeat(30)], 80).map(row => [row.n, row.at]), [[1, 0], [2, 20]]);
+  assert.equal(oneArrow("돈 -> 의미 → 행동"), "돈 → 의미 → 행동");
   const outline = emptyStage("outline", "live");
+  // 로건 QA 10/30: a new longform starts at its usual length (실사 10분 · 애니메이션 12분); an emptied field still asks.
+  assert.equal(outline.spec.runtimeMin, 10);
+  assert.equal(emptyStage("outline", "anim").spec.runtimeMin, 12);
+  outline.spec.runtimeMin = null;
   assert.equal(outlineMissing(outline), "러닝타임을 정해 주세요");
   outline.spec.runtimeMin = 121;
   assert.equal(outlineMissing(outline), "러닝타임은 1 ~ 120분 사이 숫자로 써 주세요");

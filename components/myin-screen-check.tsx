@@ -59,7 +59,7 @@ export function MyinScreenCheck({ runId, preparedAt, token, onScene }: { runId: 
     <div className="yt-actions">
       <select aria-label="검사 모델" value={tier} disabled={Boolean(blocked)} onChange={(event) => setTier(event.target.value as GptTier)}>
         {(Object.keys(GPT_TIERS) as GptTier[]).map((key) => <option key={key} value={key}>{GPT_TIERS[key].label} · {modelName(GPT_TIERS[key].model)}</option>)}</select>
-      <button type="button" className="secondary-button compact" disabled={Boolean(blocked)} title={blocked || undefined} onClick={() => void again()}>{current ? "다시 검사" : "검사하기"} <CostTag kind="paid" /></button>
+      <button type="button" className="secondary-button compact" disabled={Boolean(blocked)} title={blocked || undefined} onClick={() => void again()}>{current ? "다시 검사" : "검사하기"} <CostTag kind="paid" amount={tokenEstimate(GPT_TIERS[tier].model, 20_000, 8_000)} upTo /></button>
       <small>참고용이에요. 미리보기와 최종본은 막지 않아요.</small>
     </div>
     {error ? <p className="inline-alert danger" role="alert">{error}</p> : null}

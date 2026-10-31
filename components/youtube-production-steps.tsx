@@ -48,7 +48,9 @@ export function Step({ index, state, children, title, idBase = "yt-step" }: { in
   return <section id={`${idBase}-${index + 1}`} className={`panel yt-step yt-step-${state}`} aria-current={state === "current" ? "step" : undefined} aria-labelledby={`${idBase}-title-${index + 1}`}>
     <header className="panel-header"><h2 id={`${idBase}-title-${index + 1}`}><span className="yt-step-no" aria-hidden="true">{state === "done" ? "✓" : index + 1}</span>{index + 1}. {title ?? STEPS[index]}</h2>
       <span className="status-pill" data-status={pill.status}>{pill.label}</span></header>
-    <div className="panel-pad-lg yt-step-body">{children}</div>
+    {/* 로건 QA 10/30: every finished step stayed open and the step to do now sat far down — finished ones fold away. */}
+    {state === "done" ? <details className="panel-pad-lg yt-step-fold"><summary>끝난 단계 · 펼쳐 보기</summary><div className="yt-step-body">{children}</div></details>
+      : <div className="panel-pad-lg yt-step-body">{children}</div>}
   </section>;
 }
 

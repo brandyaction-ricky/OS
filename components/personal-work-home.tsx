@@ -21,6 +21,8 @@ export function PersonalWorkHome({ youtubeV1Mode = "off" }: { youtubeV1Mode?: Yo
   const params = useSearchParams();
   const tab = TABS.some(([id]) => id === params.get("tab")) ? params.get("tab") as WorkTab : "received";
   const [data, setData] = useState<WorkResponse | null>(null);
+  // Links shared before the 유튜브 screens moved still end in /home#youtube (로건 QA 10/30): send them on to 주제 찾기.
+  useEffect(() => { if (window.location.hash === "#youtube") window.location.replace("/content/projects?view=discover&platform=longform"); }, []);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   const [loading, setLoading] = useState(true);

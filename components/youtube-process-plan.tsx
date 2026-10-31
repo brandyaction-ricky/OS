@@ -9,7 +9,7 @@ import {
 } from "@/lib/youtube-process/project";
 import { apiRequest } from "@/lib/api-client";
 import { useSession } from "./session-provider";
-import { errorMessage, isConflict, youtubeProcessClient, type YpMember, type YpTopicInput } from "./youtube-process-data";
+import { errorMessage, isConflict, youtubeProcessClient, type YpClient, type YpMember, type YpTopicInput } from "./youtube-process-data";
 import { YoutubeFlow, type YpAction } from "./youtube-process-flow";
 import { GateNotes, ReopenButton, StepFooter, useLeaveGuard } from "./youtube-process-frame";
 import { ConfirmActions } from "./youtube-process-confirm";
@@ -210,7 +210,10 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
     : { kind: "button", label: `${confirmLabel}하고 다음으로${lines.length > 1 ? ` (${lines.length}개)` : ""}`, busy, onClick: () => void gate("confirm"),
       reason: topicMissing(form.title, { type: form.kind, target: form.target }) || (!short ? "" : !research.refs ? "참고 영상을 찾아 주세요" : !research.formula ? "공식을 고르고 주제를 정해 주세요" : "") };
   const others = projects.filter(row => row.id !== shell.id);
-  const reusableMatches = others.filter(row => projectName(row).toLocaleLowerCase().includes(reuseQuery.trim().toLocaleLowerCase()));
+  // 로건 QA 10/30: a longform's list held 숏폼 and 복사본 — only the same kind of video, without copies, newest first.
+  const family = (kind: YpKind | null | undefined) => kind === "short" || kind === "card" ? kind : "long";
+  const reusableMatches = others.filter(row => family(row.yp.topic.type) === family(form.kind) && !projectName(row).includes("(복사본)")
+    && projectName(row).toLocaleLowerCase().includes(reuseQuery.trim().toLocaleLowerCase()));
   const reusable = recentProjects(reusableMatches, reuseLimit);
   const importTopic = (source: YpProject) => {
     if (!editable || busy) return;
@@ -245,6 +248,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
         <div className="yp-savebar yp-topic-owner">
           <label>담당 PD <select className="yp-pdsel" id="yp-topic-pd" value={form.assigneeId ?? ""} onChange={event => editAndSave({ assigneeId: event.target.value || null })}>
             <option value="">정하지 않음</option>{members.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label>
+          {project && client ? <TopicDates client={client} id={project.id} /> : null}
         </div>
         <Field n={1} title="주제" question={short ? "처음엔 키워드나 초안이면 돼요" : "어떤 영상을 만들까요?"} need rev={rev("topic.title")}
           warn={similar.length ? { text: `비슷한 주제가 이미 있어요: ${similar.map(projectName).join(", ")}`, node: <>비슷한 주제가 이미 있어요: {similar.map((row, index) => <span key={row.id}>{index ? ", " : ""}<Link href={stepHref(0, row.id)}><b>{projectName(row)}</b></Link> ({stageLabel(row)})</span>)}</> } : undefined}>
@@ -268,7 +272,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
           </div> : null}
         </Field>
         <Field n={3} title="정밀 타겟" question="어떤 질문을 품은 사람이 볼까요?" need rev={rev("topic.target")}>
-          <div className="yp-max720"><input className="yp-in" id="yp-topic-target" aria-label="정밀 타겟" placeholder="예) 내가 뭘 원하는지 모르겠다는 말을 자주 하는 사람" readOnly={!open("target")} value={form.target} onChange={event => edit({ target: event.target.value })} />
+          <div className="yp-max720"><textarea className="yp-in yp-autogrow" id="yp-topic-target" rows={2} aria-label="정밀 타겟" placeholder="예) 내가 뭘 원하는지 모르겠다는 말을 자주 하는 사람" readOnly={!open("target")} value={form.target} onChange={event => edit({ target: event.target.value.replace(/\n/g, " ") })} />
             {/* Owner decision 2026-10-26 (기획_절차): a situation-led target pulls the whole script into that situation's scenes. */}
             <p className="yp-hint">처한 상황(이직·퇴사)보다 그 질문을 품은 사람으로 적어요. 주제 자체가 퇴사 같은 상황이면 상황으로 적어도 돼요.</p></div>
         </Field>
@@ -322,5 +326,20 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
         </section></div>
       </div> : null}
     </>}
+  </>;
+}
+
+/** 일정 at 주제 (로건 QA 10/30: PDs set the deadline when they pick the topic) — the same dates as 제작 › 일정 and 콘텐츠 일정. */
+function TopicDates({ client, id }: { client: YpClient; id: string }) {
+  const [make, setMake] = useState<{ version: number; editDue: string; uploadPlan: string } | null>(null);
+  const [error, setError] = useState("");
+  const load = useCallback(() => client.bundle(id).then(bundle => setMake({ version: bundle.stages.make.version, editDue: bundle.stages.make.data.editDue, uploadPlan: bundle.stages.make.data.uploadPlan ?? "" }), () => undefined), [client, id]);
+  useEffect(() => { void load(); }, [load]);
+  if (!make) return null;
+  const move = async (patch: { editDue?: string; uploadPlan?: string }) => { setError(""); try { await client.moveDates(id, make.version, patch); await load(); } catch (reason) { setError(errorMessage(reason)); } };
+  return <>
+    <label>편집 완료일 <input className="yp-in yp-w-auto" type="date" value={make.editDue} onChange={event => void move({ editDue: event.target.value })} /></label>
+    <label>업로드 예상일 <input className="yp-in yp-w-auto" type="date" min={make.editDue || undefined} value={make.uploadPlan} onChange={event => void move({ uploadPlan: event.target.value })} /></label>
+    {error ? <span className="yp-errline" role="alert">{error}</span> : null}
   </>;
 }

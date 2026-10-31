@@ -29,6 +29,8 @@ export function TopicHub() {
   const asked = params.get("platform");
   const platform: TopicPlatform = isTopicPlatform(asked) ? asked : "longform";
   const info = TOPIC_PLATFORMS[platform];
+  // The hub lives on /content/projects, whose tab says 「내 영상」 (로건 QA 10/30): name the tab after this screen while it is open.
+  useEffect(() => { const before = document.title; document.title = "주제 찾기 | 브랜디 OS"; return () => { document.title = before; }; }, []);
   return <div className="yp-topic-hub">
     <div className="yp-mv-head"><h1 className="page-title" data-ui="page-title">주제 찾기</h1><span style={{ flex: 1 }} /><Link className="yp-btn" href="/content/projects">← 내 영상</Link></div>
     <div className="yp-pf-tabs" role="tablist" aria-label="무엇을 만드나요">

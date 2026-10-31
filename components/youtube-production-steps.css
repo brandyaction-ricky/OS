@@ -28,6 +28,10 @@
 .linear-shell .ui-v2 .yt-step-done .yt-step-no { color: var(--mint); background: var(--mint-soft); }
 .linear-shell .ui-v2 .yt-step-current .yt-step-no { color: var(--accent-2); background: var(--accent-soft); }
 .linear-shell .ui-v2 .yt-step-body { display: grid; gap: 10px; }
+.linear-shell .ui-v2 .yt-clips { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-top: 8px; }
+.linear-shell .ui-v2 .yt-clips small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.linear-shell .ui-v2 .yt-step-fold > summary { cursor: pointer; color: var(--text-2); font-size: 13px; }
+.linear-shell .ui-v2 .yt-step-fold[open] > summary { margin-bottom: 10px; }
 .linear-shell .ui-v2 .yt-steps p { max-width: 760px; margin: 0; color: var(--text-2); word-break: keep-all; overflow-wrap: anywhere; }
 .linear-shell .ui-v2 .yt-steps small { color: var(--muted); font-size: 12px; }
 .linear-shell .ui-v2 .yt-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }

@@ -75,7 +75,7 @@ export function JobLine({ job, onRetry }: { job: ReturnType<typeof useStaffJob>;
   const seen = since(job.status?.myAi.lastUsedAt ?? null);
   if (current.status === "backlog") return <>
     <div className="yp-jobl yp-wait"><span className="yp-tag yp-acc"><Clock size={12} aria-hidden="true" /> 내 AI 대기</span><span>{seen === null ? "내 AI가 아직 연결되지 않았어요" : `내 AI 마지막 확인: ${agoLabel(seen)}. 다음 확인 때 가져가요`}</span></div>
-    {seen === null || seen > 30 ? <div className="yp-errline">[내 AI로 보내기] › 바로 시키기에서 문장을 복사해 붙여 넣어요.</div> : null}
+    {seen === null || seen > 30 ? <div className="yp-hint">[내 AI로 보내기] › 바로 시키기에서 문장을 복사해 붙여 넣어요.</div> : null}
   </>;
   if (current.status === "active") return current.issues.length
     ? <div className="yp-jobl yp-fail"><span className="yp-tag yp-bad">확인 필요</span><span>형식이 안 맞아요: {current.issues.join(" / ")} (내 AI가 고쳐서 다시 보내요)</span></div>

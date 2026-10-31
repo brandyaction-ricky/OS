@@ -262,9 +262,9 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
       {editable && project.yp.gates.review.state !== "wait" ? (job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(true)} />
         : !scenes.length ? <div className="yp-ways">
           {confirmed.trim() ? <button type="button" className="yp-way yp-rec" onClick={fromScript}><b>확정한 대본으로 채우기</b><span>대본 {scriptLines(confirmed).length}줄을 장면으로 나눠요. 이미지는 장면마다 넣어요</span></button> : null}
-          <button type="button" className={`yp-way${confirmed.trim() ? "" : " yp-rec"}`} onClick={() => setSend(true)}><b><Sparkles size={14} aria-hidden="true" /> 내 AI에게 맡기기</b><span>{ad ? "구매 이유 후보와 " : ""}장면 · 자막 · 내레이션 · 필요한 이미지를 채워 줘요 (10분쯤)</span></button>
+          <button type="button" className={`yp-way${confirmed.trim() ? "" : " yp-rec"}`} onClick={() => setSend(true)}><b><Sparkles size={14} aria-hidden="true" /> 내 AI에게 맡기기 <CostTag kind="ai" /></b><span>{ad ? "구매 이유 후보와 " : ""}장면 · 자막 · 내레이션 · 필요한 이미지를 채워 줘요 (10분쯤)</span></button>
           <button type="button" className="yp-way" onClick={() => editScenes([blank(Math.round(brief.duration / 3)), blank(Math.round(brief.duration / 3)), blank(0)], true)}><b>직접 쓰기</b><span>장면 세 개로 시작해요</span></button></div>
-        : <div className="yp-row-btns" style={{ marginBottom: 10 }}><button type="button" className="yp-btn yp-sm" onClick={() => setSend(true)}><Sparkles size={14} /> {view.ai ? "내 AI로 다시 쓰기" : "내 AI에게 맡기기"}</button>
+        : <div className="yp-row-btns" style={{ marginBottom: 10 }}><button type="button" className="yp-btn yp-sm" onClick={() => setSend(true)}><Sparkles size={14} /> {view.ai ? "내 AI로 다시 쓰기" : "내 AI에게 맡기기"} <CostTag kind="ai" /></button>
           {view.ai ? <span className="yp-aitag"><Sparkles size={11} aria-hidden="true" /> AI 초안 · {view.ai.by}</span> : null}</div>) : null}
       {view.aiScenes && editable ? <div className="yp-note yp-purple" role="status"><Sparkles size={16} className="yp-i" aria-hidden="true" /><div><b>AI 장면이 왔어요.</b> 이미 쓴 장면이 있어 바로 넣지 않았어요.
         <button type="button" className="yp-lnk" onClick={() => void save({ useAiScenes: true })}>이 초안으로 바꾸기</button>
@@ -287,7 +287,8 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
           {editable ? <button type="button" className="yp-btn" disabled={scenes.some(scene => scene.diagram) || missing.length > 0 || busy === size.aspect || working(view[size.key]) || page.demo}
             onClick={() => void make(size.aspect)}>{busy === size.aspect ? "처리 중…" : view[size.key]?.status === "done" ? `${size.again} 다시 만들기` : `${size.label} 만들기`}</button> : null}
           <RenderTag render={view[size.key]} /></Fragment>) : null}
-        {hasVoice && editable ? <CostTag kind="paid" /> : null}
+        {/* 로건 QA 10/30: one tag for three buttons read as one button's; it is the voice, paid once whichever size goes first. */}
+        {hasVoice && editable ? <CostTag kind="paid" what="음성 · 처음 한 번" amount={voiceEstimate(scenes.map(scene => scene.voice.trim()).join("\n").trim(), voice).krw} /> : null}
         {page.demo ? <span className="yp-muted" style={{ fontSize: 12 }}>데모에서는 영상을 만들지 않아요.</span> : null}</div>
       <div className="yp-row-btns" style={{ alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
         <ShortVideo page={page} final={made.vertical} />
@@ -318,7 +319,7 @@ function SceneRow({ index, scene, last, remain, count, image, editable, busy, di
           <button type="button" className="yp-ib yp-xs" aria-label="아래로" disabled={last} onClick={() => onMove(index + 1)}><ArrowDown size={12} /></button>
           {count > 1 ? <button type="button" className="yp-ib yp-xs" aria-label="장면 빼기" onClick={onRemove}><X size={12} /></button> : null}</span> : null}</div>
       {diagramsEnabled || scene.diagram ? <ShortformDiagramFields value={scene.diagram} duration={last?remain:scene.seconds} disabled={!editable} onChange={diagram=>onChange({diagram,...(diagram?{assetId:undefined}:{})})}/> : null}
-      <textarea className="yp-in" rows={2} aria-label={`장면 ${index + 1} 자막`} value={scene.text} readOnly={!editable} maxLength={240} placeholder={scene.diagram?"화면 자막 (두 줄 안)":"화면 자막 (네 줄 안)"} onChange={event => onChange({ text: event.target.value })} />
+      <textarea className="yp-in" rows={2} aria-label={`장면 ${index + 1} 자막`} value={scene.text} readOnly={!editable} maxLength={240} placeholder={scene.diagram?"화면 자막 (두 줄 안 · 도식 글자를 그대로 옮기지 말고 도식에 없는 한 줄)":"화면 자막 (네 줄 안)"} onChange={event => onChange({ text: event.target.value })} />
       <input className="yp-in" aria-label={`장면 ${index + 1} 내레이션`} value={scene.voice} readOnly={!editable} maxLength={1800} placeholder="내레이션 (선택 · 1초에 6자 안팎)" onChange={event => onChange({ voice: event.target.value })} />
     </div>
     <input ref={input} type="file" hidden accept="image/png,image/jpeg,image/webp" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) onUpload(file); }} />
