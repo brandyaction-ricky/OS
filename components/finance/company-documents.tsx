@@ -5,6 +5,7 @@ import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { createRecord, getCompanyFileUrl, listRecords, uploadCompanyFile } from "@/lib/api-client";
 import { COMPANY_FILE_TYPES, companyFileKey, companyFileViewable, subfoldersAt } from "@/lib/company-files";
 import type { OsRecord } from "@/lib/record-types";
+import { PageTitle } from "../page-title";
 
 // 재무관리 › 서류함 (요청 4954c050, 대표 결정 2026-10-31): the retired 경영지원 screen's company documents, back in the finance menu,
 // with whole folders (e.g. TIPS R&D) uploaded as they are and browsed by their own sub-folders.
@@ -92,9 +93,9 @@ export function CompanyDocuments({ token, demo }: { token: string | null; demo: 
   const here = visible.filter(item => folderOf(item) === folderPath);
   const pick = (next: "all" | Category) => { setCategory(next); setFolderPath(""); };
   return (
-    <section className="panel">
-      <div className="panel-header">
-        <div><h2>서류함</h2><p>사업자·프로젝트·기타 서류를 비공개 저장소에 보관해요. 재무 권한이 있는 사람만 봐요.</p></div>
+    <>
+      <header className="page-header">
+        <div className="page-title-group"><PageTitle /><p>사업자·프로젝트·기타 서류를 비공개 저장소에 보관해요. 재무 권한이 있는 사람만 봐요.</p></div>
         <div className="page-actions">
           <label className={`secondary-button${uploading || demo ? " disabled" : ""}`} aria-disabled={uploading || demo}>
             <Upload size={15} />폴더 올리기
@@ -102,8 +103,9 @@ export function CompanyDocuments({ token, demo }: { token: string | null; demo: 
           </label>
           <button className="primary-button" disabled={demo} onClick={() => setAdding(true)}><Plus size={15} />서류 추가</button>
         </div>
-      </div>
+      </header>
       {error ? <p className="inline-alert" role="alert">{error}</p> : null}
+      <section className="panel company-documents">
       <div className="document-folder-toolbar">
         <button className={category === "all" ? "active" : ""} onClick={() => pick("all")}>전체 서류 <b>{documents.length}</b></button>
       </div>
@@ -171,6 +173,7 @@ export function CompanyDocuments({ token, demo }: { token: string | null; demo: 
           </form>
         </div>
       ) : null}
-    </section>
+      </section>
+    </>
   );
 }
