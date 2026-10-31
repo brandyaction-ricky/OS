@@ -108,16 +108,21 @@ export function YoutubeProjectsScreen() {
     {waitingMine ? <div className="yp-note yp-warn" role="status"><div>컨펌을 기다리는 영상이 <b>{waitingMine}개</b> 있어요. <Link className="yp-lnk" href="/content/confirm">컨펌하러 가기 →</Link></div></div> : null}
     {error ? <div className="yp-note yp-warn" role="alert"><div>{error} <button type="button" className="yp-lnk" onClick={() => setAttempt(value => value + 1)}>다시 불러오기</button></div></div> : null}
     {projects === null && !error ? <p className="yp-hint" role="status">불러오는 중이에요…</p>
-      : !all.length && !legacy.length && !trashed.length ? <div className="yp-mv-empty"><b>첫 영상을 만들어 보세요</b><span className="yp-muted">주제 한 줄만 쓰면 시작돼요. 나머지는 화면이 차례로 알려 줘요.</span>
-        <button type="button" className="yp-btn yp-pri yp-lg" onClick={() => setCreating(true)}><Plus size={16} aria-hidden="true" /> 새 영상 만들기</button></div>
       : <>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+        <div className="yp-mv-filters">
           <div className="yp-seg2" role="tablist" aria-label="보기">{([["open", "진행 중"], ["mine", "내가 담당"], ["done", "끝난 영상"], ["trash", "휴지통"]] as const).map(([key, label]) =>
             <button key={key} type="button" role="tab" aria-selected={filter === key} className={filter === key ? "yp-on" : ""} onClick={() => setFilter(key)}>{label} {counts[key] + (key === "open" && (!platform || platform === "longform") ? legacy.length : 0)}</button>)}</div>
-          <span style={{ flex: 1 }} />
+          <label className="yp-platform-filter"><span>플랫폼</span><select className="yp-in" aria-label="영상 플랫폼" value={platform ?? "all"} onChange={event => {
+            const params = new URLSearchParams(search.toString());
+            if (event.target.value === "all") params.delete("platform"); else params.set("platform", event.target.value);
+            router.replace(`/content/projects${params.size ? `?${params}` : ""}`, { scroll: false });
+          }}><option value="all">전체 플랫폼</option>{(["card", "ad", "short", "longform"] as const).map(key => <option key={key} value={key}>{TOPIC_PLATFORMS[key].label}</option>)}</select></label>
+          <span className="yp-sp" />
           <div className="yp-psearch"><Search size={15} className="yp-i" aria-hidden="true" /><input className="yp-in" placeholder="영상 이름으로 찾기" aria-label="영상 검색" value={query} onChange={event => setQuery(event.target.value)} /></div>
         </div>
-        {filter === "trash" ? <div className="yp-mv-list">
+        {!projects?.length && !legacy.length && !trashed.length && !platform ? <div className="yp-mv-empty"><b>첫 영상을 만들어 보세요</b><span className="yp-muted">주제 한 줄만 쓰면 시작돼요. 나머지는 화면이 차례로 알려 줘요.</span>
+          <button type="button" className="yp-btn yp-pri yp-lg" onClick={() => setCreating(true)}><Plus size={16} aria-hidden="true" /> 새 영상 만들기</button></div>
+          : filter === "trash" ? <div className="yp-mv-list">
           <p className="yp-hint" style={{ margin: "0 0 4px" }}>지운 영상은 {TRASH_KEEP_DAYS}일 동안 여기 있어요. [복구]하면 하던 단계 그대로 돌아와요. {TRASH_KEEP_DAYS}일이 지나면 관리자가 영구 삭제할 수 있어요.</p>
           {trashedHere.filter(item => !query.trim() || projectName(item.project).toLocaleLowerCase("ko-KR").includes(query.trim().toLocaleLowerCase("ko-KR"))).map(item => { const left = trashDaysLeft(item.trash.at);
             return <div key={item.project.id} className="yp-mv">

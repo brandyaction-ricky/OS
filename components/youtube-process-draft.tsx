@@ -92,7 +92,7 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
   // A 숏폼's 기획안 place is its 대본 (숏폼 대본 정본, 2026-10-28).
   if (project?.yp.topic.type === "short") return <ShortScriptScreen page={page} header={header} />;
   // A 카드뉴스's 기획안 place is 카드 만들기 (설계서 2026-10-30).
-  if (project?.yp.topic.type === "card") return <CardMakeScreen page={page} header={header} />;
+  if (project?.yp.topic.type === "card") return <CardMakeScreen key={project.id} page={page} header={header} />;
   const missing = form ? draftMissing(form) : "";
   const action = page.bundle ? gateAction(page, "draft", 1, control, missing) : null;
   return <YpFrame page={page} view={1} action={action} header={header} title="기획안" sub={gateSub(project, "draft", "제목 A · B와 썸네일 A · B, 영상 흐름을 채우고 컨펌해요.", "기획안 컨펌이 끝났어요. 구성안으로 넘어가요.")} savedAt={savedAt}

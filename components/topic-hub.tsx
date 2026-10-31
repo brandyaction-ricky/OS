@@ -29,7 +29,7 @@ export function TopicHub() {
   const asked = params.get("platform");
   const platform: TopicPlatform = isTopicPlatform(asked) ? asked : "longform";
   const info = TOPIC_PLATFORMS[platform];
-  return <>
+  return <div className="yp-topic-hub">
     <div className="yp-mv-head"><h1 className="page-title" data-ui="page-title">주제 찾기</h1><span style={{ flex: 1 }} /><Link className="yp-btn" href="/content/projects">← 내 영상</Link></div>
     <div className="yp-pf-tabs" role="tablist" aria-label="무엇을 만드나요">
       {TOPIC_PLATFORM_ORDER.map(key => { const Icon = ICON[key]; const item = TOPIC_PLATFORMS[key];
@@ -43,7 +43,7 @@ export function TopicHub() {
       : platform === "threads" ? <ContentAutomationV07 page="references" embedded />
       : platform === "card" ? <CardStart />
       : <ShortStart key={platform} platform={platform} />}
-  </>;
+  </div>;
 }
 
 /** 숏폼 · 릴스 and 광고: a 초안 키워드 (+ a link) becomes a new 숏폼 at 주제, where its references, formulas and 주제 후보 are found. */
