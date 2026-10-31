@@ -51,6 +51,19 @@ const TASK_NAME = { "scene-plan": "화면 설계와 발음 검토", script: "원
   kit: "유튜브 발행키트(제목 · 설명 · 태그 · 챕터 · 고정 댓글)", plan: "기획안(제목 · 썸네일 문구 · 영상 흐름)", shorts: "쇼츠 구간 제안", column: "SEO 칼럼(HTML)", short: "숏폼 장면(구매 이유 · 자막 · 내레이션 · 필요한 이미지)", "short-copy": "숏폼 제목 · 설명", niche: "틈새 묶기(같은 제목 공식)", retitle: "최종 썸네일 제목 · 문구 다시 뽑기",
   "short-topics": "숏폼 주제 후보(롱폼 원고에서)", "short-formula": "숏폼 공식 · 주제 후보(참고 영상에서)", "topic-formula": "롱폼 제목 공식 · 주제 후보(참고 영상에서)", "short-script": "숏폼 대본(확정한 주제 · 공식으로)", card: "카드뉴스 초안(포맷별 카드 글 · 캡션)" } as const;
 const versionRef = z.object({ id: z.string(), version: z.number() });
+// 리키 관제실 시안 P2 「결론 먼저」: the staff AI tops its result with one line, what it did, its sources and the 정본 check, so
+// 한눈에 보기 shows the conclusion before the screen is opened. Optional: an AI whose tool list predates it still completes.
+export const jobReportSchema = z.object({
+  conclusion: z.string().trim().min(1).max(120), did: z.array(z.string().trim().min(1).max(200)).max(5).default([]),
+  evidence: z.array(z.string().trim().min(1).max(200)).max(5).default([]), canon: z.string().trim().max(300).optional(),
+}).strict();
+export type JobReport = z.infer<typeof jobReportSchema>;
+const REPORT_NOTE = `## 결론 먼저 (report)
+complete 할 때 result 옆에 report도 보내 주세요. 사람은 「한눈에 보기」에서 이것부터 읽고 고릅니다.
+- conclusion: 결론 한 줄(60자 안팎). 무엇이 나왔고 사람이 무엇을 고르면 되는지.
+- did: 한 일 1~3개.
+- evidence: 근거 · 출처 1~3개. 읽은 정본이나 자료 이름을 적습니다.
+- canon: 정본 점검 한 줄. 통과했는지, 걸린 곳이 있으면 어디인지.`;
 // 원고 공정 정본 §2 '역할'. ① 기획 has no such field yet, so the staff member picks it when sending ② to their AI.
 export const SCRIPT_ROLES = ["유입형", "전환형", "판매형"] as const;
 const jobMetaSchema = z.object({
@@ -63,6 +76,8 @@ const jobMetaSchema = z.object({
   market: z.custom<PackagingMarket>(value => Boolean(value && typeof value === "object")).optional(),
   // GPT 초안 (2026-10-29): the OS itself does the card with the company's GPT credit; no staff AI may take it.
   executor: z.literal("gpt").optional(), tier: z.enum(["precise", "saving"]).optional(),
+  // 한눈에 보기: the AI's 결론 먼저 report, and who took the result (채택) so it leaves the list.
+  report: jobReportSchema.optional(), adoptedAt: z.string().optional(), adoptedBy: z.string().optional(),
 }).passthrough();
 type JobMeta = z.infer<typeof jobMetaSchema>;
 
@@ -102,7 +117,7 @@ export const staffJobRequestSchema = z.discriminatedUnion("task", [
 export const staffJobWorkerSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("claim"), jobId: z.string().uuid() }).strict(),
   z.object({ action: z.literal("complete"), jobId: z.string().uuid(), lease: z.string().uuid(), model: z.string().trim().min(1).max(100),
-    result: z.record(z.unknown()) }).strict(),
+    result: z.record(z.unknown()), report: jobReportSchema.optional() }).strict(),
   z.object({ action: z.literal("fail"), jobId: z.string().uuid(), lease: z.string().uuid(), reason: z.string().trim().min(1).max(1000) }).strict(),
 ]);
 
@@ -295,18 +310,34 @@ export async function staffJobStatus(actor: RequestActor, sourceId: string, task
   return { job: jobs?.[0] ? publicStaffJob(jobs[0] as OsRecord) : null, myAi: { keys: keys?.length ?? 0, lastUsedAt } };
 }
 
-/** 한눈에 보기: open and recently blocked jobs on the videos this person can see (the ids come from their RLS-scoped list). */
+/**
+ * 한눈에 보기: open and recently blocked jobs on the videos this person can see (the ids come from their RLS-scoped list), and
+ * results that arrived with a 결론 먼저 report and nobody has taken yet.
+ */
 export async function openStaffJobsFor(projectIds: Set<string>) {
   if (!projectIds.size) return [];
   const since = new Date(Date.now() - 3 * 86_400_000).toISOString();
-  const { data, error } = await service().from("os_records").select("parent_id,status,metadata").eq("record_type", "ai_job").eq("metadata->>kind", STAFF_AI_JOB_KIND)
-    .or(`status.in.(backlog,active),and(status.eq.blocked,updated_at.gte."${since}")`).is("archived_at", null).order("created_at", { ascending: false }).limit(300);
+  const { data, error } = await service().from("os_records").select("id,owner_id,parent_id,status,metadata").eq("record_type", "ai_job").eq("metadata->>kind", STAFF_AI_JOB_KIND)
+    .or(`status.in.(backlog,active),and(status.in.(blocked,done),updated_at.gte."${since}")`).is("archived_at", null).order("created_at", { ascending: false }).limit(300);
   if (error) throw dbError();
-  return (data ?? []).filter(row => projectIds.has(String(row.parent_id))).map(row => {
+  return (data ?? []).filter(row => projectIds.has(String(row.parent_id)) && (row.status !== "done" || (row.metadata?.report && !row.metadata.adoptedAt))).map(row => {
     const m = row.metadata as JobMeta;
-    return { sourceId: String(row.parent_id), task: TASK_NAME[m.task] ?? m.task, status: row.status as "backlog" | "active" | "blocked",
-      requestedAt: m.requestedAt, claimedAt: m.claimedAt ?? null, failReason: m.failReason ?? null };
+    return { id: String(row.id), ownerId: String(row.owner_id), sourceId: String(row.parent_id), task: TASK_NAME[m.task] ?? m.task, status: row.status as "backlog" | "active" | "blocked" | "done",
+      requestedAt: m.requestedAt, claimedAt: m.claimedAt ?? null, failReason: m.failReason ?? null, doneAt: m.doneAt ?? null, report: m.report ?? null };
   });
+}
+
+/** 채택 on 한눈에 보기: the result is taken, so it leaves everyone's list. Only on a video this person can see. */
+export async function adoptStaffJob(actor: RequestActor, jobId: string, projectIds: Set<string>) {
+  const { data, error } = await service().from("os_records").select("*").eq("id", jobId).eq("record_type", "ai_job").eq("metadata->>kind", STAFF_AI_JOB_KIND)
+    .eq("status", "done").is("archived_at", null).maybeSingle();
+  if (error) throw dbError();
+  if (!data || !projectIds.has(String(data.parent_id))) throw new ApiError(404, "STAFF_AI_JOB_NOT_FOUND", "이 결과를 찾지 못했어요. 목록을 다시 불러와 주세요.");
+  const job = data as OsRecord;
+  const m = meta(job);
+  if (m.adoptedAt) return { adopted: true };
+  await saveJob(job, { metadata: { ...m, adoptedAt: new Date().toISOString(), adoptedBy: actor.ownerId } });
+  return { adopted: true };
 }
 
 // ── The staff AI side (agent key) ──
@@ -473,6 +504,12 @@ async function myinCardDocIds(docs = MYIN_CARD_DOCS) {
 }
 
 export async function claimStaffJob(agent: RequestActor, jobId: string, byGpt = false) {
+  const claimed = await claimJob(agent, jobId, byGpt);
+  // GPT answers one strict JSON schema, so only a staff AI gets the report note.
+  return byGpt ? claimed : { ...claimed, instructions: `${claimed.instructions}\n\n${REPORT_NOTE}` };
+}
+
+async function claimJob(agent: RequestActor, jobId: string, byGpt: boolean) {
   const job = await ownJob(agent, jobId);
   const m = meta(job);
   if (Boolean(m.executor) !== byGpt) throw new ApiError(409, "STAFF_AI_JOB_TAKEN", m.executor ? "GPT가 만드는 작업이에요." : "직원 AI에게 보낸 작업이에요.");
@@ -601,7 +638,8 @@ async function keepIssues<T>(job: OsRecord, m: JobMeta, check: () => Promise<T> 
 
 export async function completeStaffJob(agent: RequestActor, input: Extract<z.infer<typeof staffJobWorkerSchema>, { action: "complete" }>) {
   const job = await ownJob(agent, input.jobId);
-  const m = liveLease(job, input.lease);
+  // Every done save below spreads m, so the report rides along with whichever task this is.
+  const m = { ...liveLease(job, input.lease), ...(input.report ? { report: input.report } : {}) };
   if (m.task === "script") return completeScriptJob(agent, job, m, input);
   if (m.task === "niche") {
     const clusters = await keepIssues(job, m, () => checkNicheResult(input.result, jobPool(m)));

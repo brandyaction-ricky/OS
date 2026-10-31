@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ArrowUp, Bot, CheckCircle2, ChevronLeft, ChevronRight, CircleAlert, PauseCircle, UserRound } from "lucide-react";
 import { apiRequest } from "@/lib/api-client";
 import { TOPIC_PLATFORMS, type TopicPlatform } from "@/lib/content-platforms";
-import { decisionsToday, OV_STATES, overviewRows, type OvJob, type OvRow, type OvState, type OvThread } from "@/lib/youtube-process/overview";
+import { decisionsToday, OV_STATES, overviewRows, type OvJob, type OvReport, type OvRow, type OvState, type OvThread } from "@/lib/youtube-process/overview";
 import { nextAction } from "@/lib/youtube-process/next";
 import type { YpProject } from "@/lib/youtube-process/project";
 import { useSession } from "./session-provider";
@@ -24,6 +24,16 @@ const CARD_ICON = { decide: CircleAlert, ai: Bot, blocked: AlertTriangle, human:
 
 function Dot({ state }: { state: OvState | "done" }) { return <span className="yp-ov-dot" data-s={state} aria-hidden="true" />; }
 
+/** 시안 P2 결론 먼저: the AI's one line on top, then what it did, its sources and the 정본 check. */
+function Report({ report }: { report: OvReport }) {
+  return <div className="yp-ov-rep">
+    <p className="yp-ov-concl">{report.conclusion}</p>
+    {report.did.length ? <div><span className="yp-ov-k">한 일</span><ul>{report.did.slice(0, 3).map(item => <li key={item}>{item}</li>)}</ul></div> : null}
+    {report.evidence.length ? <div><span className="yp-ov-k">근거 · 출처</span><ul>{report.evidence.slice(0, 3).map(item => <li key={item}>{item}</li>)}</ul></div> : null}
+    {report.canon ? <div><span className="yp-ov-k">정본 점검</span><p>{report.canon}</p></div> : null}
+  </div>;
+}
+
 /** 한눈에 보기: every open piece of content work in one list (or board), what needs my decision on the right, and new work at the bottom. */
 export function YoutubeOverviewScreen() {
   const router = useRouter();
@@ -40,6 +50,7 @@ export function YoutubeOverviewScreen() {
   const [text, setText] = useState("");
   const [to, setTo] = useState<TopicPlatform>("longform");
   const [clock, setClock] = useState(() => Date.now());
+  const [adopting, setAdopting] = useState("");
   const load = useCallback(async () => {
     if (!client) return;
     try {
@@ -68,6 +79,11 @@ export function YoutubeOverviewScreen() {
   const projectOf = (id: string) => data?.projects.find(project => project.id === id);
   const pick = selected ? rows.find(row => row.id === selected) ?? null : null;
   const groups = OV_STATES.filter(group => only ? group.state === only : view === "board" ? group.state === "decide" || count(group.state) : group.state !== "blocked" || count("blocked"));
+  const adopt = async (jobId: string) => {
+    if (!client) return;
+    setAdopting(jobId);
+    try { await client.adoptJob(jobId); await load(); } catch (reason) { setError(errorMessage(reason)); } finally { setAdopting(""); }
+  };
   const setView = (next: "list" | "board") => { const query = new URLSearchParams(params.toString()); if (next === "list") query.delete("view"); else query.set("view", next); router.replace(`/content/overview${query.size ? `?${query}` : ""}`, { scroll: false }); };
 
   const rowButton = (row: OvRow, card = false) => <button key={row.id} type="button" className={`${card ? "yp-ov-card" : "yp-ov-row"}${selected === row.id ? " yp-on" : ""}`} data-s={row.state} onClick={() => setSelected(row.id)}>
@@ -111,19 +127,23 @@ export function YoutubeOverviewScreen() {
         {pick && pick.state !== "decide" ? <div className="yp-ov-detail">
           <div className="yp-ov-ph"><button type="button" className="yp-btn yp-sm yp-ghost" onClick={() => setSelected(null)} aria-label="확인 필요로 돌아가기"><ChevronLeft size={16} aria-hidden="true" /></button><div><h3>{pick.title}</h3><small>{TOPIC_PLATFORMS[pick.channel].label} · {pick.stage}</small></div></div>
           <div className="yp-ov-nowbox" data-s={pick.state}><span className="yp-ov-k">{OV_STATES.find(group => group.state === pick.state)?.label}</span><b>{pick.now}</b>
-            {pick.job ? <ul className="yp-ov-log"><li>{hhmm(pick.job.requestedAt)} 맡김</li>{pick.job.claimedAt ? <li>{hhmm(pick.job.claimedAt)} AI가 가져감</li> : null}{pick.job.failReason ? <li>{pick.job.failReason}</li> : null}</ul> : null}</div>
+            {pick.job ? <ul className="yp-ov-log"><li>{hhmm(pick.job.requestedAt)} 맡김</li>{pick.job.claimedAt ? <li>{hhmm(pick.job.claimedAt)} AI가 가져감</li> : null}{pick.job.doneAt ? <li>{hhmm(pick.job.doneAt)} 결과 도착</li> : null}{pick.job.failReason ? <li>{pick.job.failReason}</li> : null}</ul> : null}
+            {pick.job?.report ? <Report report={pick.job.report} /> : null}</div>
           {pick.assigneeId ? <p className="yp-ov-meta">담당 {who(pick.assigneeId)}</p> : null}
           <div><Link className="yp-btn yp-pri" href={pick.href}>{pick.state === "blocked" ? "화면에서 다시 맡기기 →" : "화면 열기 →"}</Link></div>
         </div> : <>
-          <div className="yp-ov-ph"><div><h3>확인 필요 {count("decide")}</h3><small>고르면 그 일이 이어져요 · 컨펌 · 수정 요청 · 보류</small></div></div>
-          {rows.filter(row => row.state === "decide").map(row => { const project = row.gate ? projectOf(row.id) : undefined;
+          <div className="yp-ov-ph"><div><h3>확인 필요 {count("decide")}</h3><small>고르면 그 일이 이어져요 · 컨펌 · 수정 요청 · 보류 · AI 결과 채택</small></div></div>
+          {rows.filter(row => row.state === "decide").map(row => { const arrived = row.job?.status === "done" ? row.job : null; const project = row.gate && !arrived ? projectOf(row.id) : undefined;
             // 리키 관제실 시안 v0.1: what it is and since when, the title, a one-line hint, then numbered choices.
             return <article key={row.id} className={`yp-ov-dc${selected === row.id ? " yp-on" : ""}`}>
               <span className="yp-ov-kd">{row.now.split(" · ")[0]}{row.now.includes(" · ") ? <span> · {row.now.split(" · ").slice(1).join(" · ")}</span> : null}</span><b className="yp-ov-dt">{row.title}</b><span className="yp-ov-meta">{TOPIC_PLATFORMS[row.channel].label} · {row.stage}{row.assigneeId ? ` · ${who(row.assigneeId)}` : ""}</span>
-              <p className="yp-ov-hint">{project ? nextAction(project).text : "다섯 가지를 직접 확인하고 발행해요"}</p>
-              {project && row.gate && data?.canConfirm && client ? <ConfirmActions list project={project} gate={row.gate} client={client} onDone={() => void load()} />
+              {arrived?.report ? <Report report={arrived.report} /> : <p className="yp-ov-hint">{project ? nextAction(project).text : "다섯 가지를 직접 확인하고 발행해요"}</p>}
+              {arrived?.id ? <div className="yp-cf-opts" role="group" aria-label="AI 결과">
+                  <button type="button" className="yp-cf-opt" disabled={adopting === arrived.id} onClick={() => void adopt(arrived.id!)}><span aria-hidden="true">1</span>채택</button>
+                  <Link className="yp-cf-opt" href={row.href}><span aria-hidden="true">2</span>화면에서 고치거나 다시 맡기기</Link></div>
+                : project && row.gate && data?.canConfirm && client ? <ConfirmActions list project={project} gate={row.gate} client={client} onDone={() => void load()} />
                 : <div className="yp-cf-opts"><Link className="yp-cf-opt" href={row.href}><span aria-hidden="true">1</span>{row.channel === "threads" ? "최종 확인 열기" : "컨펌하러 가기"}</Link></div>}
-              {project && data?.canConfirm ? <Link className="yp-lnk yp-ov-open" href={row.href}>열어서 보기</Link> : null}
+              {(project && data?.canConfirm) || arrived ? <Link className="yp-lnk yp-ov-open" href={row.href}>열어서 보기</Link> : null}
             </article>; })}
           {data && !count("decide") ? <p className="yp-ov-empty">지금 고를 것이 없어요</p> : null}
           <div className="yp-ov-today"><span className="yp-ov-k">오늘 내린 결정</span>

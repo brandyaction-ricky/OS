@@ -9,7 +9,7 @@ test.beforeEach(async ({ page }) => {
 test("한눈에 보기 groups open work, confirms from the panel and switches to the board", async ({ page }) => {
   await page.goto("/content/overview");
   const pane = page.getByRole("complementary", { name: "확인 필요" });
-  await expect(pane.getByRole("heading", { name: "확인 필요 1" })).toBeVisible();
+  await expect(pane.getByRole("heading", { name: "확인 필요 2" })).toBeVisible();
   await expect(page.getByRole("region", { name: "AI 일하는 중" })).toContainText("분째");
   await expect(page.getByRole("region", { name: "막힘" })).toContainText("참고 영상 주소를 열지 못했어요");
   await expect(page.getByRole("link", { name: /한눈에 보기/ }).first()).toBeVisible();
@@ -19,8 +19,14 @@ test("한눈에 보기 groups open work, confirms from the panel and switches to
   await page.getByRole("button", { name: "전체 보기" }).click();
 
   await pane.getByRole("button", { name: "컨펌", exact: true }).click();
-  await expect(pane.getByRole("heading", { name: "확인 필요 0" })).toBeVisible();
+  await expect(pane.getByRole("heading", { name: "확인 필요 1" })).toBeVisible();
   await expect(pane).toContainText("주제 컨펌 → 컨펌");
+  // 시안 P2 결론 먼저: an AI result shows its one line, what it did and the 정본 check before the screen is opened; 채택 takes it.
+  await expect(pane).toContainText("[예시] 초안 한 편 완성 · 고칠 곳 2군데만 보면 돼요");
+  await expect(pane).toContainText("정본 점검");
+  await expect(pane.getByRole("link", { name: /화면에서 고치거나 다시 맡기기/ })).toHaveAttribute("href", /project=/);
+  await pane.getByRole("button", { name: "채택", exact: true }).click();
+  await expect(pane.getByRole("heading", { name: "확인 필요 0" })).toBeVisible();
 
   await page.getByRole("button", { name: "보드" }).click();
   await expect(page).toHaveURL(/view=board/);

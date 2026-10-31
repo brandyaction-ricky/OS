@@ -25,7 +25,7 @@ test("tool calls go to the staff AI worker route with the key owner's identity",
   const fetchApi = async (path, init = {}) => { calls.push({ path, method: init.method ?? "GET", body: init.body ? JSON.parse(init.body) : null }); return { ok: true }; };
   await callMcpTool({ name: "list_youtube_ai_jobs", arguments: {} }, "org", fetchApi);
   await callMcpTool({ name: "process_youtube_ai_job", arguments: { action: "claim", job_id: job } }, "org", fetchApi);
-  await callMcpTool({ name: "process_youtube_ai_job", arguments: { action: "complete", job_id: job, lease, model: "claude-opus-5-5", result: { plan: {}, pronunciation: { ready: true, issues: [] } } } }, "org", fetchApi);
+  await callMcpTool({ name: "process_youtube_ai_job", arguments: { action: "complete", job_id: job, lease, model: "claude-opus-5-5", result: { plan: {}, pronunciation: { ready: true, issues: [] } }, report: { conclusion: "장면 12개 설계, 고칠 곳 없음" } } }, "org", fetchApi);
   assert.deepEqual(calls.map((call) => [call.path, call.method]), [
     ["/api/v1/content/youtube-automation/ai-jobs/worker", "GET"],
     ["/api/v1/content/youtube-automation/ai-jobs/worker", "POST"],
@@ -34,6 +34,8 @@ test("tool calls go to the staff AI worker route with the key owner's identity",
   assert.deepEqual(calls[1].body, { action: "claim", jobId: job });
   assert.equal(calls[2].body.lease, lease);
   assert.equal(calls[2].body.model, "claude-opus-5-5");
+  // 한눈에 보기 결론 먼저: the report goes through beside the result.
+  assert.equal(calls[2].body.report.conclusion, "장면 12개 설계, 고칠 곳 없음");
 });
 
 test("malformed tool input is refused before reaching the OS", async () => {

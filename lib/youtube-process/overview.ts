@@ -14,8 +14,13 @@ export const OV_STATES: { state: OvState; label: string; sub: string }[] = [
   { state: "human", label: "사람 작업 중", sub: "담당자 차례" },
   { state: "wait", label: "대기 · 보류", sub: "다른 사람 컨펌이나 보류" },
 ];
-/** An open staff-AI job on a video, as the overview API sends it (never the lease). */
-export interface OvJob { sourceId: string; task: string; status: "backlog" | "active" | "blocked"; requestedAt: string; claimedAt: string | null; failReason: string | null }
+/** 결론 먼저 (시안 P2): what the staff AI wrote on top of its result. */
+export interface OvReport { conclusion: string; did: string[]; evidence: string[]; canon?: string }
+/** An open staff-AI job on a video, or a result that arrived with a report and nobody took yet, as the overview API sends it (never the lease). */
+export interface OvJob {
+  sourceId: string; task: string; status: "backlog" | "active" | "blocked" | "done"; requestedAt: string; claimedAt: string | null; failReason: string | null;
+  id?: string; ownerId?: string; doneAt?: string | null; report?: OvReport | null;
+}
 /** A Threads post from the content automation list (personal records). */
 export interface OvThread { id: string; title: string; status: string; updatedAt: string }
 export interface OvRow {
@@ -34,15 +39,22 @@ export function elapsed(from: string, now: number) {
   const m = minutes(from, now);
   return m < 60 ? `${m}분째` : m < 1440 ? `${Math.floor(m / 60)}시간째` : `${Math.floor(m / 1440)}일째`;
 }
-const RANK = { active: 0, backlog: 1, blocked: 2 } as const;
+const movedOn = (project: YpProject | undefined, doneAt?: string | null) => !project || !doneAt
+  || Object.values(project.yp.gates).some(gate => (gate.requestedAt ?? "") > doneAt || (gate.decidedAt ?? "") > doneAt);
+const RANK = { active: 0, backlog: 1, blocked: 2, done: 3 } as const;
 
 /**
  * Which group each open video falls in. A waiting step is my decision when I am the approver or the video's PD (the PD confirms,
- * owner decision 2026-10-26); otherwise it waits on someone else. A blocked AI job comes first so it is not missed.
+ * owner decision 2026-10-26); otherwise it waits on someone else. A blocked AI job comes first so it is not missed. An AI result that
+ * arrived with a report is the decision of whoever sent the job or the PD, until someone takes it or the video moves on past it.
  */
 export function overviewRows(projects: YpProject[], jobs: OvJob[], me: { id: string; canConfirm: boolean }, now = Date.now(), threads: OvThread[] = []) {
   const jobOf = new Map<string, OvJob>();
-  for (const job of jobs) { const seen = jobOf.get(job.sourceId); if (!seen || RANK[job.status] < RANK[seen.status]) jobOf.set(job.sourceId, job); }
+  for (const job of jobs) {
+    // A result is old news once a step was asked for or decided after it arrived.
+    if (job.status === "done" && movedOn(projects.find(project => project.id === job.sourceId), job.doneAt)) continue;
+    const seen = jobOf.get(job.sourceId); if (!seen || RANK[job.status] < RANK[seen.status]) jobOf.set(job.sourceId, job);
+  }
   const rows: OvRow[] = [];
   let done = 0;
   for (const project of projects) {
@@ -57,6 +69,10 @@ export function overviewRows(projects: YpProject[], jobs: OvJob[], me: { id: str
     else if (gate && info?.state === "wait") {
       const mine = me.canConfirm || project.assigneeId === me.id;
       rows.push({ ...base, state: mine ? "decide" : "wait", now: `${gateName(gate, project.yp.topic.type)}${mine ? "" : " 대기"} · ${info.requestedAt ? elapsed(info.requestedAt, now) : ""}`.replace(/ · $/, ""), since: info.requestedAt ?? null });
+    }
+    else if (job?.status === "done") {
+      const mine = job.ownerId === me.id || project.assigneeId === me.id;
+      rows.push({ ...base, state: mine ? "decide" : "human", now: `AI 결과 도착 · ${job.task}${mine ? "" : " · 담당자 확인 중"}`, since: job.doneAt ?? job.requestedAt });
     }
     else if (job) rows.push({ ...base, state: "ai", now: job.status === "active" ? `${job.task} · ${elapsed(job.claimedAt ?? job.requestedAt, now)}` : `${job.task} · AI가 가져가기를 기다려요`, since: job.claimedAt ?? job.requestedAt });
     else if (next.tone === "hold") rows.push({ ...base, state: "wait", now: next.text, since: info?.decidedAt ?? null });
