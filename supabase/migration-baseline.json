@@ -985,9 +985,11 @@
       "sha256": "7cf387c3cbf654cae8e5d2e28eda4e5acbcf6e310c5b32e0fb8103b1accc1af1",
       "purpose": "경영지원 서류함 폴더째 올리기 (4954c050): os-company-files bucket limit 10 MB → 500 MB and office/한글/zip/other-file types for signed direct uploads",
       "requiresApproval": true,
-      "productionApprovedAt": null,
-      "appliedEnvironments": [],
-      "notes": "Bucket settings only (no tables, rows or policies). Read-only Production check 2026-10-31: bucket 10 MB with 5 types, 8 files; storage 7.19 GB in all. Manual undo: supabase/rollback/20261031120000_company_files_folders.down.sql. Production apply waits for the owner's OK."
+      "productionApprovedAt": "2026-10-31",
+      "appliedEnvironments": [
+        "production"
+      ],
+      "notes": "Bucket settings only (no tables, rows or policies). Read-only Production check 2026-10-31: bucket 10 MB with 5 types, 8 files; storage 7.19 GB in all. Manual undo: supabase/rollback/20261031120000_company_files_folders.down.sql. Owner approved Production on 2026-10-31 (\"재무관리 서류함 올리고\"); applied in one transaction with its schema history row and read back (limit 524288000, 17 types incl. application/x-hwp and application/octet-stream, history 1, the 8 stored files untouched). Not applied to DEV."
     }
   ],
   "legacyMigrations": [
