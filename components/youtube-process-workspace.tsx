@@ -17,9 +17,11 @@ import { ContentPerformanceDashboard } from "./content-performance-dashboard";
 import { YoutubeLinksScreen } from "./youtube-process-links";
 import { CanonGrindScreen } from "./canon-grind";
 import { YoutubeVoiceDictionaryScreen } from "./youtube-process-voice-dictionary";
+import { YoutubeOverviewScreen } from "./youtube-process-overview";
 
 // The step screens show this header only while they load, so only 스케줄 · 컨펌 carry a line under the title.
 const SUB: Partial<Record<YoutubeV1Screen | "shorts", string>> = {
+  overview: "사람이 하는 일과 AI가 하는 일을 한곳에서 봐요. 고를 것은 오른쪽에 모여요.",
   schedule: "영상별 업로드 예정일을 배치합니다. 왼쪽 목록을 달력으로 끌어 놓으세요.",
   confirm: "PD가 컨펌한 것을 보고 노트를 남겨요.",
   links: "회사 공용 선택값으로 UTM 링크를 만들어 링크 대장에 남기고, 마이인 단축 링크로 줄여요.",
@@ -28,7 +30,7 @@ const SUB: Partial<Record<YoutubeV1Screen | "shorts", string>> = {
   "short-canon": "대본을 확정한 숏폼을 지금 정본으로 다시 쓰고, 정본 판정 검사로 채점해 정본 버전끼리 비교해요.",
 };
 
-const TITLES: Record<YoutubeV1Screen | "shorts", string> = { projects: "내 영상", plan: "기획", make: "제작", "final-check": "최종 검토", upload: "업로드", shorts: "쇼츠 · 칼럼", schedule: "콘텐츠 일정", confirm: "컨펌", links: "링크관리", "voice-dictionary": "음성 사전", "card-canon": "카드뉴스 정본 다듬기", "short-canon": "숏폼 대본 정본 다듬기" };
+const TITLES: Record<YoutubeV1Screen | "shorts", string> = { overview: "한눈에 보기", projects: "내 영상", plan: "기획", make: "제작", "final-check": "최종 검토", upload: "업로드", shorts: "쇼츠 · 칼럼", schedule: "콘텐츠 일정", confirm: "컨펌", links: "링크관리", "voice-dictionary": "음성 사전", "card-canon": "카드뉴스 정본 다듬기", "short-canon": "숏폼 대본 정본 다듬기" };
 
 /** 유튜브 공정 v1 screens behind YOUTUBE_V1_ENABLED. */
 /**
@@ -39,7 +41,7 @@ function widthOf(screen: YoutubeV1Screen | "shorts" | "performance", view: strin
   if (screen === "projects") return view === "discover" ? "yp-w-l" : "yp-w-m";
   if (screen === "plan") return !view || view === "topic" ? "yp-w-m" : "";
   if (screen === "make" || screen === "links" || screen === "voice-dictionary") return "yp-w-m";
-  return screen === "final-check" || screen === "schedule" || screen === "performance" || screen === "card-canon" || screen === "short-canon" ? "yp-w-l" : "";
+  return screen === "overview" || screen === "final-check" || screen === "schedule" || screen === "performance" || screen === "card-canon" || screen === "short-canon" ? "yp-w-l" : "";
 }
 
 export function YoutubeProcessWorkspace({ screen }: { screen: YoutubeV1Screen | "shorts" | "performance" }) {
@@ -62,6 +64,7 @@ export function YoutubeProcessWorkspace({ screen }: { screen: YoutubeV1Screen | 
     {screen === "projects" || screen === "schedule" ? null : header}
     {screen === "projects" ? <YoutubeProjectsScreen />
       : screen === "schedule" ? <YoutubeScheduleScreen header={header} />
+      : screen === "overview" ? <YoutubeOverviewScreen />
       : screen === "links" ? <YoutubeLinksScreen />
       : screen === "card-canon" ? <CanonGrindScreen kind="card" />
       : screen === "short-canon" ? <CanonGrindScreen kind="short" />

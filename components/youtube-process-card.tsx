@@ -43,11 +43,11 @@ export function CardPreview({ draft, index, width, onOver }: { draft: CardDraft;
 }
 
 /** 주제 찾기 › 카드뉴스: a topic of its own (the other three ways in are buttons on a finished video or an approved Threads post). */
-export function CardStart() {
+export function CardStart({ initial = "" }: { initial?: string }) {
   const { accessToken, demo } = useSession();
   const client = useMemo(() => youtubeProcessClient(accessToken, demo), [accessToken, demo]);
   const router = useRouter();
-  const [form, setForm] = useState({ title: "", target: "", note: "" });
+  const [form, setForm] = useState({ title: initial, target: "", note: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [projects, setProjects] = useState<YpProject[] | null>(null);

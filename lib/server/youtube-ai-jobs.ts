@@ -295,6 +295,20 @@ export async function staffJobStatus(actor: RequestActor, sourceId: string, task
   return { job: jobs?.[0] ? publicStaffJob(jobs[0] as OsRecord) : null, myAi: { keys: keys?.length ?? 0, lastUsedAt } };
 }
 
+/** 한눈에 보기: open and recently blocked jobs on the videos this person can see (the ids come from their RLS-scoped list). */
+export async function openStaffJobsFor(projectIds: Set<string>) {
+  if (!projectIds.size) return [];
+  const since = new Date(Date.now() - 3 * 86_400_000).toISOString();
+  const { data, error } = await service().from("os_records").select("parent_id,status,metadata").eq("record_type", "ai_job").eq("metadata->>kind", STAFF_AI_JOB_KIND)
+    .or(`status.in.(backlog,active),and(status.eq.blocked,updated_at.gte."${since}")`).is("archived_at", null).order("created_at", { ascending: false }).limit(300);
+  if (error) throw dbError();
+  return (data ?? []).filter(row => projectIds.has(String(row.parent_id))).map(row => {
+    const m = row.metadata as JobMeta;
+    return { sourceId: String(row.parent_id), task: TASK_NAME[m.task] ?? m.task, status: row.status as "backlog" | "active" | "blocked",
+      requestedAt: m.requestedAt, claimedAt: m.claimedAt ?? null, failReason: m.failReason ?? null };
+  });
+}
+
 // ── The staff AI side (agent key) ──
 
 export async function listStaffJobs(agent: RequestActor) {
