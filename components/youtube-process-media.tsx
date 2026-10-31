@@ -25,8 +25,10 @@ export function ThumbView({ page, thumb, path, alt }: { page: YpMediaSource; thu
   const url = useAssetUrl(page, path ?? (thumb?.mode === "img" ? thumb.path : null));
   // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URLs from private storage
   if (url) return <div className="yp-thumb"><img src={url} alt={alt} style={{ width: "100%", height: "100%", objectFit: "cover" }} /></div>;
+  // 로건 QA 10/30: a 글 후보 showed only its big words on black — the picture it describes now sits under them.
   return <div className="yp-thumb yp-th-T" aria-label={alt}>
     <div className="yp-tl" style={{ left: "7%", top: "12%", right: "7%", color: "var(--media-text)" }}>{thumb?.copy || <span style={{ color: "var(--media-muted)" }}>{thumb?.screen || "화면 설명을 써 주세요"}</span>}</div>
+    {thumb?.copy && thumb.screen ? <div className="yp-th-scr">화면 · {thumb.screen}</div> : null}
   </div>;
 }
 

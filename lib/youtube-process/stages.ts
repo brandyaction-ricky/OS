@@ -188,8 +188,9 @@ const id = () => (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.ran
 // 로건 QA 10/30: animation is made at 60 fps (meeting decision; Logan's engine renders 60 fps since 2026-10-29), and each kind marks
 // only its own default — both 4K and FHD read 「기본」 before.
 export const SPEC_DEFAULT: Record<YpKind, YpOutline["spec"]> = {
-  live: { runtimeMin: null, res: "4K (선명 · 기본)", fps: "30fps (기본)", ratio: "16:9 가로 (롱폼 · 기본)" },
-  anim: { runtimeMin: null, res: "FHD 1080p (기본)", fps: "60fps (기본)", ratio: "16:9 가로 (롱폼 · 기본)" },
+  // 로건 QA 10/30: the 러닝타임 was the one field typed again every time — a new longform starts at the usual length.
+  live: { runtimeMin: 10, res: "4K (선명 · 기본)", fps: "30fps (기본)", ratio: "16:9 가로 (롱폼 · 기본)" },
+  anim: { runtimeMin: 12, res: "FHD 1080p (기본)", fps: "60fps (기본)", ratio: "16:9 가로 (롱폼 · 기본)" },
   short: { runtimeMin: null, res: "720 × 1280", fps: "30fps (기본)", ratio: "9:16 세로" },
   card: { runtimeMin: null, res: "1080 × 1350", fps: "—", ratio: "4:5 세로" },
 };
@@ -288,15 +289,30 @@ export function runtimeError(runtime: number | null) {
   return Number.isInteger(runtime) && runtime >= 1 && runtime <= 120 ? "" : "러닝타임은 1 ~ 120분 사이 숫자로 써 주세요";
 }
 /** 예상 길이 and whether it is within ±20% of the runtime. */
-export function lengthEstimate(markdown: string, runtime: number | null) {
+/** 「3분 17초」: a length in seconds as people read it. */
+export const minSec = (seconds: number) => { const s = Math.round(seconds); return s >= 60 ? `${Math.floor(s / 60)}분${s % 60 ? ` ${s % 60}초` : ""}` : `${s}초`; };
+/**
+ * The 원고's length against the 러닝타임: by its letters, or by the made voice once there is one (`voiceSec`). 로건 QA 10/30: ±20%
+ * called 13분 6초 「맞아요」 for 12분 and rounded a 9분 35초 gap to 10분 — now within 30초 (or 5%) passes and the gap is exact.
+ */
+export function lengthEstimate(markdown: string, runtime: number | null, voiceSec?: number | null) {
   const chars = scriptChars(markdown);
   const minutes = chars / CHARS_PER_MINUTE_V1;
   const label = !chars ? "—" : minutes < 1 ? `약 ${Math.round(minutes * 60)}초` : `약 ${Math.floor(minutes)}분${Math.round((minutes % 1) * 60) >= 30 ? " 30초" : ""}`;
   if (!chars || !runtime || runtimeError(runtime)) return { chars, label, verdict: null as null | { ok: boolean; text: string } };
-  const diff = (minutes - runtime) / runtime;
-  return { chars, label, verdict: Math.abs(diff) <= 0.2 ? { ok: true, text: `정한 러닝타임(${runtime}분)에 맞아요` }
-    : { ok: false, text: `정한 러닝타임(${runtime}분)보다 약 ${Math.max(1, Math.round(Math.abs(minutes - runtime)))}분 ${diff < 0 ? "짧아요" : "길어요"} · 내용이 필요하면 러닝타임을 고쳐요` } };
+  const gap = (voiceSec ?? minutes * 60) - runtime * 60, what = voiceSec ? "실제 음성이 " : "";
+  return { chars, label, verdict: Math.abs(gap) <= Math.max(30, runtime * 3) ? { ok: true, text: `${what}정한 러닝타임(${runtime}분)에 맞아요` }
+    : { ok: false, text: `${what}정한 러닝타임(${runtime}분)보다 ${minSec(Math.abs(gap))} ${gap < 0 ? "짧아요" : "길어요"} · 내용이 필요하면 러닝타임을 고쳐요` } };
 }
+/** 원고 문단 번호 · 예상 시각 (로건 QA 10/30): each spoken paragraph's start, spread over the made voice's length when there is one. */
+export function paragraphTimes(spoken: string[], voiceSec?: number | null) {
+  const sizes = spoken.map(text => text.replace(/\s/g, "").length), total = sizes.reduce((sum, size) => sum + size, 0);
+  const length = voiceSec || total / CHARS_PER_MINUTE_V1 * 60;
+  let before = 0;
+  return spoken.map((text, index) => { const at = total ? before / total * length : 0; before += sizes[index]; return { n: index + 1, at, text }; });
+}
+/** 기획안 writes →, the 원고 came with -> (로건 QA 10/30): one arrow everywhere. */
+export const oneArrow = (text: string) => text.replace(/->/g, "→");
 export function outlineMissing(outline: YpOutline) {
   if (outline.spec.runtimeMin === null) return "러닝타임을 정해 주세요";
   const error = runtimeError(outline.spec.runtimeMin);

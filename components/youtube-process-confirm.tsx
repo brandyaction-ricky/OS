@@ -50,7 +50,8 @@ export function ConfirmActions({ project, gate, client, onDone }: { project: YpP
     </div>
     {mode === "changes" ? <form className="yp-card yp-confirm-form" onSubmit={event => { event.preventDefault(); void run("changes"); }}>
       <b>고칠 칸 (하나 이상)</b>
-      <div className="yp-confirm-fields">{Object.entries(GATE_FIELDS[gate]).map(([key, label]) => <label key={key} className="yp-chk2">
+      {/* 로건 QA 10/30: a 숏폼 · 광고 has no 최종 썸네일 to point at. */}
+      <div className="yp-confirm-fields">{Object.entries(GATE_FIELDS[gate]).filter(([key]) => !(key === "make.thumbs" && project.yp.topic.type === "short")).map(([key, label]) => <label key={key} className="yp-chk2">
         <input type="checkbox" checked={fields.includes(key)} onChange={event => setFields(list => event.target.checked ? [...list, key] : list.filter(item => item !== key))} />{label}</label>)}</div>
       <label>메모 (필수)<textarea className="yp-in" id="yp-confirm-memo" rows={2} value={memo} onChange={event => setMemo(event.target.value)} placeholder="무엇을 어떻게 고치면 좋을지 써 주세요" /></label>
       <div><button type="submit" className="yp-btn yp-pri" disabled={busy || !fields.length || !memo.trim()}>수정 요청 보내기</button></div>

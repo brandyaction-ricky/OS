@@ -5,7 +5,7 @@ import type { OsRecord } from "@/lib/record-types";
 import { checkManuscript } from "@/lib/youtube-script-check";
 import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
 import { projectFromRecord, projectName } from "@/lib/youtube-process/project";
-import { descWritten, diagnosisLink, finalPair, SLOTS, stageData, STAGE_RECORD, utmCode, withLinks, withScriptVersion, type YpSlot, type YpStageKind, type YpStageData } from "@/lib/youtube-process/stages";
+import { descWritten, diagnosisLink, finalPair, oneArrow, SLOTS, stageData, STAGE_RECORD, utmCode, withLinks, withScriptVersion, type YpSlot, type YpStageKind, type YpStageData } from "@/lib/youtube-process/stages";
 import type { RequestActor } from "./auth";
 import type { readPipeline } from "./content-pipeline";
 import { namedProcedures, procedureRefs, SHORTFORM_CANON_TITLE, withNamed } from "./content-generation";
@@ -122,7 +122,7 @@ export async function saveV1Script(client: { supabase: RequestActor["supabase"];
   if (check.issues.length) throw new ApiError(422, "SCRIPT_FORMAT_INVALID", `원고 형식 검사에서 걸린 곳 ${check.issues.length}건: ${check.issues.join(" / ")}`);
   const now = new Date().toISOString();
   // The head comments (축 · 출처) stay with the AI notes; the editor gets the readable 원고.
-  const md = bundle.manuscript.replace(/\r/g, "").split("\n").filter(line => !line.trim().startsWith("<!--")).join("\n").trim() + "\n";
+  const md = oneArrow(bundle.manuscript.replace(/\r/g, "").split("\n").filter(line => !line.trim().startsWith("<!--")).join("\n").trim()) + "\n";
   const by = await displayName(client.supabase, client.id, author.name);
   const outline = { ...withScriptVersion(stages.outline.data, md, by, now, "ai", author.model),
     ai: { jobId: author.jobId ?? "", model: author.model, at: now, by, materials: bundle.materials, axis: bundle.axis, design: bundle.design,

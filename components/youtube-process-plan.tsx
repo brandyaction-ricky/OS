@@ -9,7 +9,7 @@ import {
 } from "@/lib/youtube-process/project";
 import { apiRequest } from "@/lib/api-client";
 import { useSession } from "./session-provider";
-import { errorMessage, isConflict, youtubeProcessClient, type YpMember, type YpTopicInput } from "./youtube-process-data";
+import { errorMessage, isConflict, youtubeProcessClient, type YpClient, type YpMember, type YpTopicInput } from "./youtube-process-data";
 import { YoutubeFlow, type YpAction } from "./youtube-process-flow";
 import { GateNotes, ReopenButton, StepFooter, useLeaveGuard } from "./youtube-process-frame";
 import { ConfirmActions } from "./youtube-process-confirm";
@@ -248,6 +248,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
         <div className="yp-savebar yp-topic-owner">
           <label>담당 PD <select className="yp-pdsel" id="yp-topic-pd" value={form.assigneeId ?? ""} onChange={event => editAndSave({ assigneeId: event.target.value || null })}>
             <option value="">정하지 않음</option>{members.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label>
+          {project && client ? <TopicDates client={client} id={project.id} /> : null}
         </div>
         <Field n={1} title="주제" question={short ? "처음엔 키워드나 초안이면 돼요" : "어떤 영상을 만들까요?"} need rev={rev("topic.title")}
           warn={similar.length ? { text: `비슷한 주제가 이미 있어요: ${similar.map(projectName).join(", ")}`, node: <>비슷한 주제가 이미 있어요: {similar.map((row, index) => <span key={row.id}>{index ? ", " : ""}<Link href={stepHref(0, row.id)}><b>{projectName(row)}</b></Link> ({stageLabel(row)})</span>)}</> } : undefined}>
@@ -325,5 +326,20 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
         </section></div>
       </div> : null}
     </>}
+  </>;
+}
+
+/** 일정 at 주제 (로건 QA 10/30: PDs set the deadline when they pick the topic) — the same dates as 제작 › 일정 and 콘텐츠 일정. */
+function TopicDates({ client, id }: { client: YpClient; id: string }) {
+  const [make, setMake] = useState<{ version: number; editDue: string; uploadPlan: string } | null>(null);
+  const [error, setError] = useState("");
+  const load = useCallback(() => client.bundle(id).then(bundle => setMake({ version: bundle.stages.make.version, editDue: bundle.stages.make.data.editDue, uploadPlan: bundle.stages.make.data.uploadPlan ?? "" }), () => undefined), [client, id]);
+  useEffect(() => { void load(); }, [load]);
+  if (!make) return null;
+  const move = async (patch: { editDue?: string; uploadPlan?: string }) => { setError(""); try { await client.moveDates(id, make.version, patch); await load(); } catch (reason) { setError(errorMessage(reason)); } };
+  return <>
+    <label>편집 완료일 <input className="yp-in yp-w-auto" type="date" value={make.editDue} onChange={event => void move({ editDue: event.target.value })} /></label>
+    <label>업로드 예상일 <input className="yp-in yp-w-auto" type="date" min={make.editDue || undefined} value={make.uploadPlan} onChange={event => void move({ uploadPlan: event.target.value })} /></label>
+    {error ? <span className="yp-errline" role="alert">{error}</span> : null}
   </>;
 }

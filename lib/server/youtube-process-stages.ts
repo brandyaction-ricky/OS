@@ -6,7 +6,7 @@ import type { OsRecord } from "@/lib/record-types";
 import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
 import { editableFields } from "@/lib/youtube-process/confirm";
 import { parseYoutubeRef, projectFromRecord, projectName, type YpGate, type YpKind, type YpProject } from "@/lib/youtube-process/project";
-import {
+import { oneArrow,
   confirmPlan, draftMissing, hiddenTagsOf, lateMakeOk, outlineMissing, PLAN_FIELD_KEY, scriptFromPlan, SLOTS, stageData, STAGE_RECORD, thumbsMissing, withScriptVersion,
   columnSignature, type YpColumn, type YpColumnItem, type YpColumnMyin, type YpMake, type YpOutline, type YpPlan, type YpStageKind, type YpStages, type YpUpload,
 } from "@/lib/youtube-process/stages";
@@ -144,7 +144,7 @@ function nextPlan(current: YpPlan, patch: Patch<"plan">, projectId: string): YpP
   return { ...current, ...fields, ...(aiDraft === null ? { aiDraft: undefined } : {}) };
 }
 function nextOutline(current: YpOutline, patch: Patch<"outline">, actor: RequestActor, now: string): YpOutline {
-  let outline: YpOutline = { ...current, ...(patch.spec ? { spec: patch.spec } : {}), ...(patch.script !== undefined ? { script: patch.script } : {}) };
+  let outline: YpOutline = { ...current, ...(patch.spec ? { spec: patch.spec } : {}), ...(patch.script !== undefined ? { script: oneArrow(patch.script) } : {}) };
   if (patch.restore) {
     const version = outline.versions.find(item => item.v === patch.restore);
     if (!version) throw new ApiError(404, "SCRIPT_VERSION_NOT_FOUND", "그 버전을 찾지 못했어요.");

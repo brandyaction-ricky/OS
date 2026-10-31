@@ -10,7 +10,7 @@ import { CardReviewScreen } from "./youtube-process-card";
 import type { YpFeedbackView } from "./youtube-process-data";
 import { useSession } from "./session-provider";
 import { ApiRequestError } from "@/lib/api-client";
-import { compareTime, FEEDBACK_FILES_PER_ITEM, FEEDBACK_FILTER_LABEL, feedbackClosed, feedbackMatches, type FeedbackAction, type FeedbackFile, type FeedbackFilter, type FeedbackMark } from "@/lib/youtube-process/feedback";
+import { feedbackNotice, compareTime, FEEDBACK_FILES_PER_ITEM, FEEDBACK_FILTER_LABEL, feedbackClosed, feedbackMatches, type FeedbackAction, type FeedbackFile, type FeedbackFilter, type FeedbackMark } from "@/lib/youtube-process/feedback";
 import { YtCard } from "./youtube-process-media";
 import { VoiceFeedbackBox } from "./youtube-process-voice-feedback";
 
@@ -51,6 +51,7 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
   const [srcB, setSrcB] = useState<string | null>(null);
   // 로건 QA 10/30 (흰 화면): until a video has its first picture the frame says it is loading, and #t=0.1 makes browsers draw that picture.
   const [drawn, setDrawn] = useState<Record<string, boolean>>({});
+  const [safe, setSafe] = useState(false);
   const loadingCover = (url: string | null) => url && !drawn[url] ? <div className="yp-muted" role="status" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", color: "var(--media-muted)", background: "var(--media-bg)", pointerEvents: "none" }}>영상을 불러오는 중이에요…</div> : null;
   const videoB = useRef<HTMLVideoElement>(null);
   const focusId = useSearchParams().get("feedback");             // N03: a notice opens its item
@@ -127,13 +128,14 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
   const shown = items.filter(item => view === "video" ? item.target === "video" && (item.ver === ver || (ver === latest && item.ver < latest && !closed(item))) : item.target !== "video");
   const searching = Boolean(query.trim()) || filter !== "all";
   const matched = shown.filter(item => feedbackMatches(item, query, filter));
-  const openItems = shown.filter(item => !closed(item));
-  const doneItems = shown.filter(closed);
+  const notices = shown.filter(feedbackNotice);
+  const openItems = shown.filter(item => !closed(item) && !feedbackNotice(item));
+  const doneItems = shown.filter(item => closed(item) && !feedbackNotice(item));
   // Marks on the frame: the ones being drawn, else those of the opened item while the player is at its time.
   const openedItem = items.find(item => item.id === open);
   const nearOpened = openedItem && openedItem.target === "video" && openedItem.ver === ver && Math.abs(time - (openedItem.t ?? openedItem.range?.[0] ?? 0)) < 1;
   const frameMarks = draftMarks.length || tool ? draftMarks : nearOpened ? openedItem.marks ?? [] : [];
-  const openCount = (target: "video" | "thumb") => items.filter(item => (target === "video" ? item.target === "video" : item.target !== "video") && !closed(item) && !item.reaction).length;
+  const openCount = (target: "video" | "thumb") => items.filter(item => (target === "video" ? item.target === "video" : item.target !== "video") && !closed(item) && !item.reaction && !feedbackNotice(item)).length;
 
   const seek = (seconds: number) => { if (video.current) { video.current.currentTime = seconds; setTime(seconds); } };
   const toggle = () => { const el = video.current; if (!el || tool) return; if (el.paused) { void el.play(); setRange(null); setDraftMarks([]); } else el.pause(); };
@@ -207,7 +209,10 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
               {loadingCover(src)}
               <span className={`yp-badge${playing ? "" : " yp-pz"}`}>{compareVer !== null ? `A · v${ver} · ` : ""}{playing ? "재생 중" : `멈춤 · ${fmt(time)}`}{old ? ` · v${ver} 이전 버전` : ""}</span>
               <MarksLayer marks={frameMarks} tool={tool} onAdd={mark => setDraftMarks(list => [...list, mark].slice(0, 20))} />
+              {/* 로건 QA 10/30: a 9:16 video meets the Reels · Shorts buttons and caption — the shaded parts may be covered after posting. */}
+              {short && safe ? <><span className="yp-safe yp-safe-top">위 14% · 가릴 수 있어요</span><span className="yp-safe yp-safe-bottom">아래 35% · 설명 · 버튼에 가릴 수 있어요</span></> : null}
             </div>
+            {short ? <button type="button" className="yp-btn yp-sm" style={{ marginTop: 6 }} aria-pressed={safe} onClick={() => setSafe(value => !value)}>{safe ? "세이프존 숨기기" : "세이프존 보기 (릴스 · 쇼츠)"}</button> : null}
             {compareVer !== null ? <div className="yp-cside"><span className="yp-clabel">B · v{compareVer}{offset ? ` · ${offset > 0 ? "+" : ""}${offset}초` : ""}</span>
               {loadingCover(srcB)}
               {srcB ? <video ref={videoB} src={`${srcB}#t=0.1`} preload="metadata" muted onLoadedData={() => setDrawn(map => ({ ...map, [srcB]: true }))} onLoadedMetadata={event => { event.currentTarget.playbackRate = rate; event.currentTarget.currentTime = compareTime(time, offset, event.currentTarget.duration); }} />
@@ -245,7 +250,7 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
         </div>
         <p className="yp-hint">{view === "video" ? "영상을 누르면 멈추고 그 시간에 써요. 재생 바를 끌면 구간을 골라요." : "썸네일을 누르면 그 썸네일에 피드백을 남겨요."}</p>
       </div>
-      <aside className="yp-fbp"><div className="yp-fbp-h"><b>남은 피드백 {openCount("video") + openCount("thumb")}</b><span className="yp-muted" style={{ fontSize: 12 }}>{view === "video" ? `v${ver} · 러닝타임 순서` : "A → B → C"}</span></div>
+      <aside className="yp-fbp"><div className="yp-fbp-h"><b>남은 피드백{short ? "" : view === "video" ? " · 영상" : " · 썸네일"} {openCount(view === "video" ? "video" : "thumb")}</b><span className="yp-muted" style={{ fontSize: 12 }}>{view === "video" ? `v${ver} · 러닝타임 순서` : "A → B → C"}</span></div>
         {short ? null : <div className="yp-ftabs yp-two"><button type="button" className={view === "video" ? "yp-on" : ""} onClick={() => setView("video")}>영상 <b>{openCount("video")}</b></button><button type="button" className={view === "thumb" ? "yp-on" : ""} onClick={() => setView("thumb")}>썸네일 <b>{openCount("thumb")}</b></button></div>}
         <div className="yp-fbsearch"><Search size={14} aria-hidden="true" /><input className="yp-in" value={query} onChange={event => setQuery(event.target.value)} placeholder="피드백·답글·쓴 사람 찾기" aria-label="피드백 찾기" />
           <div className="yp-seg2 yp-sm" role="group" aria-label="상태">{(Object.keys(FEEDBACK_FILTER_LABEL) as FeedbackFilter[]).map(key => <button key={key} type="button" className={filter === key ? "yp-on" : ""} aria-pressed={filter === key} onClick={() => setFilter(key)}>{FEEDBACK_FILTER_LABEL[key]}</button>)}</div></div>
@@ -257,7 +262,9 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
             onSeek={() => { if (item.target === "video") { setView("video"); seek(item.t ?? item.range?.[0] ?? 0); } else setThumbTarget(item.target as YpSlot); }} onAct={(action, value, replyId) => act(item, action, value, replyId)} onOpenFile={openFile} />)
           : <p className="yp-muted" style={{ padding: 8 }}>남은 피드백이 없어요</p>}
           {doneItems.length ? <><button type="button" className="yp-solvedbar" onClick={() => setShowDone(value => !value)}>반영됨 {doneItems.length}개 {showDone ? "▾" : "▸"}</button>
-            {showDone ? doneItems.map(item => <FeedbackItem key={item.id} item={item} open={open === item.id} latest={latest} onOpen={() => setOpen(open === item.id ? null : item.id)} onSeek={() => seek(item.t ?? 0)} onAct={(action, value, replyId) => act(item, action, value, replyId)} onOpenFile={openFile} />) : null}</> : null}</div>}
+            {showDone ? doneItems.map(item => <FeedbackItem key={item.id} item={item} open={open === item.id} latest={latest} onOpen={() => setOpen(open === item.id ? null : item.id)} onSeek={() => seek(item.t ?? 0)} onAct={(action, value, replyId) => act(item, action, value, replyId)} onOpenFile={openFile} />) : null}</> : null}
+          {notices.length ? <details className="yp-notices"><summary>진행 알림 {notices.length}개 <span className="yp-muted">(피드백 수에 세지 않아요)</span></summary>
+            {notices.map(item => <FeedbackItem key={item.id} item={item} open={open === item.id} latest={latest} onOpen={() => setOpen(open === item.id ? null : item.id)} onSeek={() => seek(item.t ?? 0)} onAct={(action, value, replyId) => act(item, action, value, replyId)} onOpenFile={openFile} />)}</details> : null}</div>}
         {project.yp.stage === "review" || project.yp.stage === "upload" ? <div className="yp-comp">
             {old ? <p className="yp-muted" style={{ margin: "0 0 6px", fontSize: 12 }}>이전 버전 v{ver}에 남겨요. <button type="button" className="yp-lnk" onClick={() => setVerSel(null)}>최신 v{latest} 보기</button></p> : null}
             <div className="yp-comp-h">{view === "video" && playing ? <span className="yp-muted">재생 중. 영상을 누르면 멈추고 시간이 붙어요</span> : <>지금 쓰기 <span className="yp-at">{stamp}</span></>}<span style={{ flex: 1 }} />

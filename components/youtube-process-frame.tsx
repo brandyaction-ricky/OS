@@ -179,13 +179,15 @@ export function Subject({ page }: { page: YpPage }) {
   const [open, setOpen] = useState(false);
   const project = page.bundle!.project;
   const pd = page.members.find(member => member.id === project.assigneeId)?.name ?? "—";
+  // 로건 QA 10/30: a 숏폼's references are kept on its 대본 step — 10 of them read 「없음」 here.
+  const refs = [...project.yp.topic.refs, ...(page.bundle!.stages.shortScript?.data.refs ?? [])].filter((ref, at, all) => all.findIndex(row => row.url === ref.url) === at);
   return <>
     <section className="yp-subj"><div className="yp-subj-m"><div className="yp-subj-k">영상 주제</div><div className="yp-subj-t">{projectName(project)}</div>
       <div className="yp-subj-meta"><span className="yp-tag">{project.yp.topic.type ? YP_KIND_LABEL[project.yp.topic.type] : "유형 없음"}</span><span>담당 PD: {pd}</span></div></div>
       <button type="button" className="yp-btn" aria-expanded={open} onClick={() => setOpen(value => !value)}>{open ? "접기" : "더 보기"} {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button></section>
     {open ? <section className="yp-card yp-more"><div className="yp-card-b"><dl className="yp-kv">
       <dt>정밀 타겟</dt><dd>{project.yp.topic.target || "—"}</dd>
-      <dt>참고 영상</dt><dd>{project.yp.topic.refs.length ? project.yp.topic.refs.map(ref => <div key={ref.url}><a href={ref.url} target="_blank" rel="noreferrer">{ref.title ?? ref.url}</a></div>) : "없음"}</dd>
+      <dt>참고 영상</dt><dd>{refs.length ? refs.map(ref => <div key={ref.url}><a href={ref.url} target="_blank" rel="noreferrer">{ref.title || ref.url}</a></div>) : "없음"}</dd>
       <dt>전달 사항</dt><dd>{project.yp.topic.note || "없음"}</dd>
       <dt>주제 화면</dt><dd><Link className="yp-lnk" href={stepHref(0, project.id)}>주제 보기 →</Link></dd></dl></div></section> : null}
   </>;
