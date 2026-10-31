@@ -9,7 +9,7 @@
 --      thousands of times. Now the caller's readable documents (os_documents' own policies, inlined on 2026-10-29) are found once
 --      and each chunk is a hash lookup. Who can read what does not change.
 --   2. os_search_knowledge: the keyword threshold 0.3 → 0.5. The embedding (HNSW) part still finds what is close in meaning.
--- No data, grant or table change. Undo: 20261031090000_knowledge_search_speed.down.sql (kept beside this file, not run).
+-- No data, grant or table change. Undo: supabase/rollback/20261031090000_knowledge_search_speed.down.sql (not run by the migration runner).
 begin;
 
 alter policy os_document_chunks_select on public.os_document_chunks

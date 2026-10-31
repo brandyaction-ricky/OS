@@ -971,7 +971,7 @@
     },
     {
       "file": "20261031090000_knowledge_search_speed.sql",
-      "sha256": "5a0cc36612df55a5fa9c962d30f02477868d5c8feb78741dc19e629f1a82c666",
+      "sha256": "73fd4e7cedc1c14d68b433a10e4430b4b613d88c2b54ee90922ff0ea77f14f4e",
       "purpose": "지식 검색 속도 (37b3318d): chunk read policies as one lookup of the caller's readable documents (same rule), and the keyword threshold 0.3 → 0.5",
       "requiresApproval": true,
       "productionApprovedAt": null,
