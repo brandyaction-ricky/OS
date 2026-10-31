@@ -662,17 +662,17 @@ export async function createYoutubeUploadSession(token: string | null, input: { 
   return apiRequest<{ uploadUrl: string; kitId: string; privacyStatus: "private" | "unlisted"; fileName: string }>("/api/v1/youtube/upload/session", { method: "POST", token, body: JSON.stringify(input) });
 }
 
-export function uploadYoutubeFile(uploadUrl: string, file: File, onProgress: (percent: number) => void) {
+export function uploadYoutubeFile(uploadUrl: string, file: File, onProgress: (percent: number, loaded: number, total: number) => void) {
   return new Promise<{ id: string }>((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open("PUT", uploadUrl); request.setRequestHeader("content-type", file.type || "video/mp4");
-    request.upload.onprogress = (event) => { if (event.lengthComputable) onProgress(Math.round(event.loaded / event.total * 100)); };
+    request.upload.onprogress = (event) => { if (event.lengthComputable) onProgress(Math.round(event.loaded / event.total * 100), event.loaded, event.total); };
     request.onerror = () => reject(new Error("YouTube로 영상 파일을 전송하지 못했습니다."));
     request.onload = () => {
       let body: { id?: string; error?: { message?: string } } = {};
       try { body = JSON.parse(request.responseText || "{}"); } catch { /* handled below */ }
       if (request.status < 200 || request.status >= 300 || !body.id) return reject(new Error(body.error?.message || `YouTube 업로드에 실패했습니다. (${request.status})`));
-      onProgress(100); resolve({ id: body.id });
+      onProgress(100, file.size, file.size); resolve({ id: body.id });
     };
     request.send(file);
   });

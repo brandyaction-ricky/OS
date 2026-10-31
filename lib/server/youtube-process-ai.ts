@@ -5,7 +5,7 @@ import type { OsRecord } from "@/lib/record-types";
 import { checkManuscript } from "@/lib/youtube-script-check";
 import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
 import { projectFromRecord, projectName } from "@/lib/youtube-process/project";
-import { diagnosisLink, finalPair, SLOTS, stageData, STAGE_RECORD, utmCode, withScriptVersion, type YpSlot, type YpStageKind, type YpStageData } from "@/lib/youtube-process/stages";
+import { diagnosisLink, finalPair, SLOTS, stageData, STAGE_RECORD, utmCode, withLinks, withScriptVersion, type YpSlot, type YpStageKind, type YpStageData } from "@/lib/youtube-process/stages";
 import type { RequestActor } from "./auth";
 import type { readPipeline } from "./content-pipeline";
 import { namedProcedures, procedureRefs, SHORTFORM_CANON_TITLE, withNamed } from "./content-generation";
@@ -154,6 +154,7 @@ export function v1KitCardInputs(state: Pipeline) {
 - description: 정본 §1 순서 그대로 — 소개 1~2줄 → 해시태그 5개 → ⬇️ 진단 CTA 한 줄 + 진단 링크 → [타임라인] → [설명문 본문](핵심 요약 3줄 이내) → [인용 및 출처] → [히든 태그](맨 마지막). 구역 사이는 ----- 한 줄.
 - [타임라인]: 정본 §3대로 5~8줄, 아래 자막 시각을 그대로 씁니다(첫 줄 00:00). 자막이 없으면 시각을 [시각]으로 둡니다. 이 화면은 챕터를 설명란 [타임라인]으로만 받으니 chapters는 빈 배열로 둡니다.
 - 링크(정본 §1-1): 진단 링크 ${diagnosisLink(utm, utmCode(stages.project.id))} · 이어서 볼 영상 ${utm.next || "(없음 — [이어서 볼 영상 링크]로 둡니다)"}
+- [인용 및 출처](정본 §1-2 v1.4): 아는 항목만 씁니다. 모르는 기관·시점은 빼고, 「미제공」「불확실」「확인 필요」는 설명란·고정 댓글에 쓰지 않습니다. 확인 못 한 출처는 설명란에서 빼고 checklist에 「출처 확인: …」으로 적습니다.
 - pinnedComment(정본 §5): 첫 줄 질문형 한 줄, 그 아래 ⬇️ 진단 CTA 한 줄 + 진단 링크, "이어서 보면 좋을 영상 보러가기" + 이어서 볼 영상 링크.
 - tags: [히든 태그]와 같은 값(정본 §4, 6~12개). title은 아래 제목 그대로 둡니다(OS가 컨펌된 제목을 씁니다).`,
   };
@@ -163,10 +164,12 @@ export async function saveV1Kit(supabase: RequestActor["supabase"], ownerId: str
   const stages = v1Stages(state);
   const current = stages.upload.data;
   const untouched = !current.desc.trim() || (current.descBy && current.desc === current.descBy.draft);
-  const descBy = { userId: ownerId, name: await displayName(supabase, ownerId, ownerName), model: author.model, jobId: author.jobId, at: new Date().toISOString(), draft: result.description };
+  const descBy = { userId: ownerId, name: await displayName(supabase, ownerId, ownerName), model: author.model, jobId: author.jobId, at: new Date().toISOString(),
+    // 로건 요청 10/30: the 이어서 볼 영상 and 다른 유입처 of 1번 go into the draft as they were written there.
+    draft: withLinks(result.description, current.utm) };
   const extras = { kakao: result.kakao, cafe: result.cafe, post: result.post, checklist: result.checklist, checked: [] as number[] };
   const upload = untouched
-    ? { ...current, desc: result.description, pinned: result.pinnedComment || current.pinned, hiddenTags: result.tags, descBy, extras }
+    ? { ...current, desc: descBy.draft, pinned: result.pinnedComment || current.pinned, hiddenTags: result.tags, descBy, extras }
     : { ...current, descBy, pinnedDraft: result.pinnedComment, extras };
   await writeStage(supabase, ownerId, state.source.team ?? "", stages.project, "upload", stages.upload, upload);
   return { replaced: Boolean(untouched) };

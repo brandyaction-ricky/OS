@@ -104,8 +104,10 @@ export const stagePatchSchemas = {
     aTitle: text(100), aReason: text(200),
     // 최종 썸네일 [고치기]: one slot's title and thumbnail copy (both empty = back to the confirmed pair).
     pair: z.object({ slot: z.enum(SLOTS), title: text(100), copy: text(80), reason: text(200) }).strict() }).partial().strict(),
-  upload: z.object({ utm: z.object({ cat: text(20), dest: text(30), camp: text(30), next: text(300), short: text(200), url: text(500).optional() }).strict(),
-    srt: z.object({ path: text(300), name: text(240) }).strict().nullable(), desc: text(5000), pinned: text(2000), privacy: z.enum(["private", "unlisted"]), title: text(100),
+  upload: z.object({ utm: z.object({ cat: text(20), dest: text(30), camp: text(30), next: text(300), short: text(200), url: text(500).optional(),
+      nextNote: text(100).optional(), others: z.array(z.object({ note: text(100), url: text(500) }).strict()).max(5).optional() }).strict(),
+    srt: z.object({ path: text(300), name: text(240) }).strict().nullable(), desc: text(5000), pinned: text(2000), privacy: z.enum(["private", "unlisted", "public"]), title: text(100),
+    publishAt: z.string().datetime().nullable(),
     checked: z.array(z.number().int().min(0).max(29)).max(30) }).partial().strict(),
   // On one column (item): its HTML edited by hand, one place filled (or emptied with neither path nor url), or the column taken out.
   // HTML without an item adds a column pasted by hand.
@@ -520,11 +522,15 @@ export async function youtubeSchedule(actor: RequestActor) {
   const { data: makes, error: makeError } = ids.length ? await actor.supabase.from("os_records").select("id,version,parent_id,metadata").in("parent_id", ids)
     .eq("record_type", "content_package").eq("metadata->>packageKind", "yp_make").is("archived_at", null) : { data: [], error: null };
   if (makeError) throw readFailed();
+  // 공개 예약 (로건 요청 10/30): only the time, not the whole 업로드 record.
+  const { data: uploads } = ids.length ? await actor.supabase.from("os_records").select("parent_id,publishAt:metadata->yp->>publishAt,sentAt:metadata->yp->run->>publishAt").in("parent_id", ids)
+    .eq("record_type", "content_package").eq("metadata->>packageKind", "yp_upload").is("archived_at", null) : { data: [] };
   return projects.map(project => {
     const record = (makes ?? []).find(row => row.parent_id === project.id);
+    const upload = (uploads ?? []).find(row => row.parent_id === project.id) as { publishAt?: string | null; sentAt?: string | null } | undefined;
     const make = stageData("make", record?.metadata?.yp, project.yp.topic.type);
     const waiting = (Object.keys(project.yp.gates) as YpGate[]).find(gate => project.yp.gates[gate].state === "wait");
-    return { project, makeVersion: record?.version ?? 0, editDue: make.editDue, uploadPlan: make.uploadPlan ?? "", log: make.log.filter(item => item.field).slice(0, 5),
+    return { project, makeVersion: record?.version ?? 0, editDue: make.editDue, uploadPlan: make.uploadPlan ?? "", publishAt: upload?.sentAt || upload?.publishAt || "", log: make.log.filter(item => item.field).slice(0, 5),
       waiting: waiting ? { gate: waiting, requestedAt: project.yp.gates[waiting].requestedAt ?? "" } : null };
   });
 }
