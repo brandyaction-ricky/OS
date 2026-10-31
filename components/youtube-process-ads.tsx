@@ -30,11 +30,11 @@ export function AdResultsSection({ page, n }: { page: YpPage; n: number }) {
     catch (reason) { setError(errorMessage(reason)); } finally { setBusy(false); }
   };
   return <YpSection n={n} title="광고 성과" gq="메타 광고 관리자 숫자를 그대로 붙여 넣어요">
-    {ads.length ? <div style={{ overflowX: "auto" }}><table className="yp-adtab"><thead><tr><th>기간</th><th>지출</th><th>CPM</th><th>CTR</th><th>3초 시청률</th><th>CPA</th><th>ROAS</th><th /></tr></thead>
+    {ads.length ? <div className="yp-scroll-x"><table className="yp-adtab"><thead><tr><th>기간</th><th>지출</th><th>CPM</th><th>CTR</th><th>3초 시청률</th><th>CPA</th><th>ROAS</th><th /></tr></thead>
       <tbody>{ads.map(row => { const m = adMetrics(row); return <tr key={row.id}><td>{row.from.slice(5)} ~ {row.to.slice(5)}{row.note ? <small className="yp-muted"> · {row.note}</small> : null}</td>
         <td>{adWon(row.spend)}</td><td>{adWon(m.cpm)}</td><td>{adPct(m.ctr)}</td><td>{adPct(m.view3s)}</td><td>{adWon(m.cpa)}</td><td><b>{ROAS(m.roas)}</b></td>
         <td><button type="button" className="yp-ib yp-xs" aria-label={`${row.from} 성과 지우기`} disabled={busy} onClick={() => { if (window.confirm("이 기간의 광고 성과를 지울까요?")) void change({ remove: row.id }); }}><X size={12} /></button></td></tr>; })}</tbody></table></div>
-      : <p className="yp-hint" style={{ marginTop: 0 }}>아직 적은 성과가 없어요. 광고를 며칠 돌린 뒤 기간별로 적어요.</p>}
+      : <p className="yp-hint yp-mt0">아직 적은 성과가 없어요. 광고를 며칠 돌린 뒤 기간별로 적어요.</p>}
     <form className="yp-adform" onSubmit={event => { event.preventDefault(); if (!missing.length) void change({ entry: { from: form.from, to: form.to, note: form.note.trim(), ...(numbers as Record<keyof AdNumbers, number>) } }); }}>
       <label>시작한 날<input className="yp-in" type="date" value={form.from} max={form.to} onChange={event => setForm(value => ({ ...value, from: event.target.value }))} /></label>
       <label>끝난 날<input className="yp-in" type="date" value={form.to} min={form.from} onChange={event => setForm(value => ({ ...value, to: event.target.value }))} /></label>
@@ -52,12 +52,12 @@ export function AdResultsSection({ page, n }: { page: YpPage; n: number }) {
 export function AdHistoryCard({ client }: { client: YpClient | null }) {
   const [rows, setRows] = useState<AdHistoryRow[] | null>(null);
   useEffect(() => { if (client) client.adHistory().then(setRows, () => setRows([])); }, [client]);
-  return <section className="yp-card" style={{ marginTop: 14 }}><div className="yp-card-h">지난 광고 성과 {rows?.length ? `${rows.length}` : ""}</div>
+  return <section className="yp-card yp-mt14"><div className="yp-card-h">지난 광고 성과 {rows?.length ? `${rows.length}` : ""}</div>
     <div className="yp-card-b">{rows === null ? <p className="yp-hint" role="status">불러오는 중이에요…</p>
-      : rows.length ? <ul className="yp-hist">{rows.slice(0, 5).map(row => { const m = adMetrics(row.result); return <li key={`${row.projectId}-${row.result.id}`} style={{ alignItems: "flex-start", gap: 10 }}>
-        <span style={{ flex: 1, minWidth: 0 }}><Link className="yp-lnk" href={stepHref(5, row.projectId)}><b>{row.title}</b></Link><br />
-          <span className="yp-muted" style={{ fontSize: 13 }}>구매 이유 {row.result.appeal || "—"} · 헤드 카피 {row.result.headCopy || "—"}</span></span>
-        <span style={{ fontSize: 13, whiteSpace: "nowrap", textAlign: "right" }}><b>ROAS {ROAS(m.roas)}</b><br /><span className="yp-muted">CPA {adWon(m.cpa)} · CTR {adPct(m.ctr)}</span></span></li>; })}</ul>
+      : rows.length ? <ul className="yp-hist">{rows.slice(0, 5).map(row => { const m = adMetrics(row.result); return <li key={`${row.projectId}-${row.result.id}`} className="yp-adrow">
+        <span className="yp-grow"><Link className="yp-lnk" href={stepHref(5, row.projectId)}><b>{row.title}</b></Link><br />
+          <span className="yp-muted yp-sub13">구매 이유 {row.result.appeal || "—"} · 헤드 카피 {row.result.headCopy || "—"}</span></span>
+        <span className="yp-adnum"><b>ROAS {ROAS(m.roas)}</b><br /><span className="yp-muted">CPA {adWon(m.cpa)} · CTR {adPct(m.ctr)}</span></span></li>; })}</ul>
       : <p className="yp-pempty">아직 적은 광고 성과가 없어요. 광고를 내보낸 뒤 내보내기 › 광고 성과에 숫자를 적어요.</p>}
       {rows?.length ? <p className="yp-hint">새 광고의 대본 · 장면 AI가 위쪽(잘 된 광고)을 참고하고 아래쪽(약한 광고)은 피해요.</p> : null}</div></section>;
 }
