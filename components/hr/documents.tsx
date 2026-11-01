@@ -102,7 +102,7 @@ export function Documents({ open }: { open: OpenDrawer }) {
                         (x) => x.hr_employee_id === e.id && x.doc_kind === kind,
                       );
                       return (
-                        <td key={kind}>
+                        <td key={kind} className="hr-document-status-cell">
                           {d ? (
                             <button
                               className="hr-row-button"

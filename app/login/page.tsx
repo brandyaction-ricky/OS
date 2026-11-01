@@ -47,7 +47,7 @@ function LoginForm() {
         <div className="brand-lockup"><span className="brand-mark large">BA</span><strong>BRANDY OS</strong></div>
         <div className="story-content">
           <span className="eyebrow accent">COMPANY OPERATING SYSTEM</span>
-          <h1>회사의 경험이<br />다음 사람의 <em>실행력</em>이 됩니다.</h1>
+          <h1>브랜드의 시작은 액션<br /><em>브랜디액션!</em></h1>
           <p>흩어진 문서와 결정을 연결하고, 회사의 정본을 근거로 누구나 더 빠르게 실행합니다.</p>
           <div className="story-points">
             <span><Sparkles size={17} /> 회사 지식 통합 검색</span>
