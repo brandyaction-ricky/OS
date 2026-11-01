@@ -1,5 +1,5 @@
 @layer os.vendor, os.base, os.legacy, os.kit, os.screen;
-@layer os.legacy {
+@layer os.screen {
 /* Meeting board beside the meeting notes, and the meeting step bar */
 .linear-shell .ui-v2 .tm-root .tm-board { display: grid; gap: 10px; padding: 12px 14px; align-content: start; }
 .tm-board-tabs { display: flex; flex-wrap: wrap; }

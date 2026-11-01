@@ -19,7 +19,7 @@ const walk = (dir, ext) => readdirSync(join(ROOT, dir)).flatMap(n => {
 const CSS_FILES = [...walk("app", /\.css$/), ...walk("components", /\.css$/)].sort();
 
 // ── 0. 단계 ── L0 PR: 모든 파일을 os.legacy 하나로 감싸기만(화면 변화 0). L1 PR부터: 아래 FILE_LAYER 표대로.
-const STAGE = "L0";
+const STAGE = "L1";
 
 // ── 1. 레이어 ──
 export const ORDER = "@layer os.vendor, os.base, os.legacy, os.kit, os.screen;";
@@ -163,10 +163,11 @@ function count(f) {
 // 기준값 다시 뽑기: OS_CSS_BASELINE=1 node --test tests/os-css-architecture.test.mjs
 if (process.env.OS_CSS_BASELINE) console.log("BASELINE " + JSON.stringify(Object.fromEntries(CSS_FILES.map(f => [f, Object.fromEntries(Object.entries(count(f)).filter(([, v]) => v))])))); 
 
-// 2026-10-31 main d75de32c 기준값 (03_1031_보충 2장 2 — 스타일 점검 P1 · P2 뒤에 다시 뽑음). 파일을 고치면 숫자를 줄여 적는다. 표에 없는 새 파일은 전부 0 이어야 한다.
+// 2026-10-31 main d75de32c 기준값 (03_1031_보충 2장 2 — 스타일 점검 P1 · P2 뒤에 다시 뽑음) · 11-01 L1 (main 916ec3a3, !important 짝 지움). 파일을 고치면 숫자를 줄여 적는다. 표에 없는 새 파일은 전부 0 이어야 한다.
 const BASELINE = {
   "app/final-uiux.css": {"important": 1, "breakOff": 4},
-  "app/globals.css": {"important": 53, "color": 2, "fontOff": 32, "breakOff": 54},
+  "app/globals.css": {"important": 49, "color": 2, "fontOff": 32, "breakOff": 54},
+  "app/os-foundation.css": {"important": 2},
   "app/share/[token]/share.css": {"color": 7},
   "app/theme-tokens.css": {"themeSel": 1},
   "components/content-automation-hub.css": {"color": 1, "breakOff": 2},
@@ -175,13 +176,13 @@ const BASELINE = {
   "components/cost-notice.css": {"breakOff": 1},
   "components/development-notifications.css": {"breakOff": 2},
   "components/development-workspace.css": {"fontOff": 6, "breakOff": 3},
-  "components/finance/finance.css": {"important": 3, "color": 9, "fontOff": 9, "breakOff": 5, "foreign": 488, "kitOverride": 31},
+  "components/finance/finance.css": {"important": 3, "color": 9, "fontOff": 9, "breakOff": 5, "foreign": 489, "kitOverride": 31},
   "components/fullscreen-content.css": {"fontOff": 1, "breakOff": 2},
   "components/fullscreen-documents.css": {"fontOff": 1, "breakOff": 1},
   "components/fullscreen-operations.css": {"fontOff": 2},
   "components/hr/hr.css": {"important": 1, "fontOff": 3, "breakOff": 1, "foreign": 15, "kitOverride": 22},
   "components/indexing-progress.css": {"breakOff": 1},
-  "components/knowledge-vault.css": {"important": 6, "color": 2, "fontOff": 7, "breakOff": 5, "foreign": 109, "kitOverride": 12},
+  "components/knowledge-vault.css": {"important": 2, "color": 2, "fontOff": 7, "breakOff": 5, "foreign": 109, "kitOverride": 12},
   "components/knowledge/workspace.css": {"important": 14, "color": 31, "fontOff": 6, "breakOff": 9, "foreign": 7, "kitOverride": 2},
   "components/linear-shell.css": {"important": 3, "fontOff": 1},
   "components/myin-sound-editor.css": {"breakOff": 1},

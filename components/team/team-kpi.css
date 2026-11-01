@@ -1,5 +1,5 @@
 @layer os.vendor, os.base, os.legacy, os.kit, os.screen;
-@layer os.legacy {
+@layer os.screen {
 /* KPI tab of 회의·결정 */
 .tm-kpi { display: grid; gap: 12px; }
 .tm-kpi-head { align-items: center; gap: 8px; }

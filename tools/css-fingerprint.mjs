@@ -8,6 +8,7 @@
 // 사용:
 //   node tools/css-fingerprint.mjs out/base.json                 바꾸기 전에 한 번
 //   node tools/css-fingerprint.mjs out/after.json out/base.json  바꾼 뒤 비교 (메뉴별 다른 요소 수 + 예시)
+//   FP_THEME=dark node tools/css-fingerprint.mjs …             어두운 테마로
 // 같은 빌드를 두 번 재도 /knowledge?tab=canon 표 칸 10개 정도는 너비가 조금 달라진다(데이터 그리기 순서) — 잡음으로 본다.
 import { chromium } from "@playwright/test";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
@@ -24,7 +25,8 @@ const ROUTES = `/home /content/topics /content/scripts /content/packages /conten
 /organization/agents /settings/connections /settings/access /settings/audit /settings/company
 /content/projects?view=discover /content/projects?platform=longform /content/projects?platform=short /content/projects?platform=ad /content/projects?platform=card
 /content/card-canon /content/schedule /content/links /content/confirm /content/plan /content/voice-dictionary /content/overview
-/automation/references /hr/my-leave /finance/vat`.split(/\s+/); // 둘째 줄부터 10/31 보충 2장 4 (유튜브 공정 v1 화면 — 체험 빌드에 YOUTUBE_V1_ENABLED=true)
+/automation/references /hr/my-leave /finance/vat
+/finance/documents /knowledge /knowledge/canon /knowledge/graph /knowledge/docs /knowledge/review /knowledge/decisions /knowledge/activity /knowledge/search /knowledge/templates`.split(/\s+/); // 둘째 줄부터 10/31 보충 2장 4 (유튜브 공정 v1 화면 — 체험 빌드에 YOUTUBE_V1_ENABLED=true) · 마지막 줄 11-01 L1 (회사 문서 하위 화면 · 재무 서류함)
 // 눌러야 나오는 화면 (편집기 등)
 const STATES = [{ name: "vault 새 페이지(편집기)", route: "/knowledge/vault", click: "새 페이지" }];
 const PROPS = ["display", "position", "width", "height", "color", "backgroundColor", "fontSize", "fontWeight", "fontFamily", "paddingTop", "paddingLeft",
@@ -36,7 +38,9 @@ const grab = P => { const out = []; document.querySelectorAll("body *").forEach(
 const [outPath, basePath] = process.argv.slice(2);
 if (!outPath) { console.error("사용: node tools/css-fingerprint.mjs <out.json> [base.json]"); process.exit(1); }
 const browser = await chromium.launch(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {}); // 설치된 브라우저 판이 다르면 PW_CHROMIUM=경로
-const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" })).newPage();
+const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" });
+if (process.env.FP_THEME) await ctx.addInitScript(t => localStorage.setItem("brandy-os-theme", t), process.env.FP_THEME); // FP_THEME=dark 로 어두운 테마를 잰다
+const page = await ctx.newPage();
 const res = {};
 for (const r of ROUTES) {
   try { await page.goto(BASE_URL + r, { waitUntil: "networkidle", timeout: 45000 }); await page.waitForTimeout(900); await page.evaluate(() => document.fonts.ready); res[r] = await page.evaluate(grab, PROPS); }

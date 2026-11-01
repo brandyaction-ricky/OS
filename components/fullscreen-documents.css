@@ -1,5 +1,5 @@
 @layer os.vendor, os.base, os.legacy, os.kit, os.screen;
-@layer os.legacy {
+@layer os.kit {
 /* D1–D3: existing editors/search/review contracts in the supplied card layout. */
 .linear-shell .ui-v2:is(.screen-documents,.screen-canon,.screen-links,.screen-search,.screen-review) { gap: 10px; }
 .linear-shell .ui-v2:is(.screen-documents,.screen-canon,.screen-links) .hub-tabs { margin: 0; order: 1; }

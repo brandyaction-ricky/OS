@@ -1,5 +1,5 @@
 @layer os.vendor, os.base, os.legacy, os.kit, os.screen;
-@layer os.legacy {
+@layer os.kit {
 /* Adapt the supplied os-ui.css to the existing, accessible unified shell.
    Keep the existing preference keys, mobile focus trap and data components. */
 .linear-shell.shell-v2 .unified-sidebar { z-index: 35; }

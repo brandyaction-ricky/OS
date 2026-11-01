@@ -1,5 +1,5 @@
 @layer os.vendor, os.base, os.legacy, os.kit, os.screen;
-@layer os.legacy {
+@layer os.screen {
 /* 유튜브 공정 v1 화면 CSS — components/youtube-process.css
    만든 곳: 「유튜브 공정 UIUX v1.0 최종」 시안 CSS를 기계 변환 (2026-10-15)
    규칙 (01_스타일가이드.md · tests/youtube-process-style.test.mjs):
@@ -11,7 +11,7 @@
    6. 이 파일은 화면 컴포넌트에서 import "./youtube-process.css" 로 불러옴 (app/layout.tsx 마지막 import 규칙은 team-workspace.css 그대로) */
 .linear-shell .ui-v2.yp{color:var(--text);font-size:13px;line-height:1.5;word-break:keep-all;overflow-wrap:anywhere;min-width:0}
 .linear-shell .ui-v2.yp h1{font-size:22px;font-weight:700;margin:0;letter-spacing:-.01em}
-.linear-shell .ui-v2.yp h2{font-size:15px;margin:0}
+.linear-shell .ui-v2.yp h2:where(:not(.panel-header h2)){font-size:15px;margin:0}
 .linear-shell .ui-v2.yp a{color:var(--accent-2);text-decoration:none}
 .linear-shell .ui-v2.yp button{cursor:pointer}
 /* 키트 단추(.primary-button · .secondary-button)는 키트 글자 크기를 그대로 쓴다 (스타일 점검 P2). */
@@ -78,6 +78,7 @@
 .linear-shell .ui-v2.yp .yp-btn.yp-ghost:hover{background:var(--surface-hover)}
 .linear-shell .ui-v2.yp .yp-btn.yp-dis-look{color:var(--muted);border-style:dashed}
 .linear-shell .ui-v2.yp .yp-btn:disabled{opacity:.6;cursor:not-allowed}
+.linear-shell .ui-v2.yp .yp-btn.yp-pri:is(:disabled,[aria-disabled="true"]){opacity:1;background:var(--panel-3);border-color:var(--line);color:var(--muted);box-shadow:none}
 .linear-shell .ui-v2.yp .yp-lnk{background:none;border:0;padding:0;color:var(--accent-2);font-size:12px;font-weight:500;cursor:pointer}
 .linear-shell .ui-v2.yp .yp-row-btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .linear-shell .ui-v2.yp .yp-ai2{display:inline-flex;align-items:center;gap:4px;min-height:20px;padding:0 7px;border-radius:10px;font-size:12px;font-weight:700;background:var(--purple-soft);color:var(--purple);white-space:nowrap;vertical-align:middle}

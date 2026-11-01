@@ -1,5 +1,5 @@
 @layer os.vendor, os.base, os.legacy, os.kit, os.screen;
-@layer os.legacy {
+@layer os.screen {
 /* ③ 영상 제작 (components/youtube-production-steps.tsx).
    Follows the content-automation v0.7 style guide on top of the OS kit (components/os-ui.css): OS buttons, panels,
    status pills and tables first; only the step bar, banner and notes are new. Theme tokens only, text 11px and up,

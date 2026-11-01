@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./theme-tokens.css";
+import "./os-foundation.css";
 import "./globals.css";
 import "../components/linear-shell.css";
 import "../components/unified-shell.css";
