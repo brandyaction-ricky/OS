@@ -82,7 +82,7 @@ export function ShortformRenderPanel({item,metadata,cutsText,assets,onMetadata,o
       <label>내 OS 롱폼 원본<select value={sourceId} onChange={event=>setSourceId(event.target.value)}>
         <option value="">완성본이 있는 원본 선택</option>{sources.map(row=><option value={row.id} key={row.id}>{row.title}</option>)}
       </select></label>
-      <button type="button" disabled={busy||!sourceId} onClick={()=>void connect()}>완성본·자막 연결</button>
+      <button className="secondary-button" type="button" disabled={busy||!sourceId} onClick={()=>void connect()}>완성본·자막 연결</button>
       {metadata.shortformSource?<p>롱폼 연결됨 · 컷의 시작·끝은 원본 영상 시각입니다. 원본 음성을 사용합니다.</p>:null}
     </>:mode==="direct"?<>
       {cuts.map((cut,index)=><label key={index}>장면 {index+1}에 사용할 내 이미지<select value={cut.assetId??""} onChange={event=>{
@@ -91,10 +91,10 @@ export function ShortformRenderPanel({item,metadata,cutsText,assets,onMetadata,o
       }}><option value="">확보한 이미지 선택</option>{assets.map(asset=><option key={asset.id} value={asset.id}>{asset.title}</option>)}</select></label>)}
       <p>720×1280 세로 영상으로 만듭니다. 사진 전체를 보존하고 여백에는 흐린 배경을 채웁니다. 가로 소재의 자막은 화면 바로 아래에 놓습니다. 내레이션이 장면보다 길면 대본을 고치도록 멈춥니다.</p>
     </>:<p>제작 방식과 조건을 먼저 선택해 주세요.</p>}
-    <div className="ca-v07-actions"><button type="button" disabled={busy||!mode} onClick={()=>void request()}>{busy?"요청 준비 중…":"확인한 구성으로 MP4 만들기"}</button>{voiceText?<CostTag kind="paid"/>:null}</div>
-    <button type="button" disabled={busy} onClick={()=>void inspect()}>제작 상태 확인</button>
+    <div className="ca-v07-actions"><button className="secondary-button" type="button" disabled={busy||!mode} onClick={()=>void request()}>{busy?"요청 준비 중…":"확인한 구성으로 MP4 만들기"}</button>{voiceText?<CostTag kind="paid"/>:null}</div>
+    <button className="secondary-button" type="button" disabled={busy} onClick={()=>void inspect()}>제작 상태 확인</button>
     {status?<p role="status">{status}</p>:null}
-    <button type="button" disabled={busy} onClick={()=>void refresh()}>카드·완성본 새로 불러오기</button>
+    <button className="secondary-button" type="button" disabled={busy} onClick={()=>void refresh()}>카드·완성본 새로 불러오기</button>
     {video?<><video controls preload="metadata" src={video} style={{width:"100%",maxHeight:480}}/><a href={video} target="_blank" rel="noreferrer">완성 MP4 열기</a></>:null}
     {error?<p role="alert">{error}</p>:null}
     {cost.element}

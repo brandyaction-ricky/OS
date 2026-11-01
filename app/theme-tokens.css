@@ -41,6 +41,10 @@
   --media-shadow: #000000;
   --rail: 64px;
   --sidebar: 240px;
+  /* 사진 위 안내선 · 꼬리표 (카드 편집 칸). 사진 위라 두 테마 모두 같은 흰색 · 검정 */
+  --canvas-guide: #ffffff;
+  --canvas-guide-ink: #111111;
+  --canvas-scrim: rgba(17, 17, 17, .6);
 }
 
 html[data-theme="light"] {

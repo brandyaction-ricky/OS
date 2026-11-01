@@ -195,12 +195,12 @@ export function ThreadsEditorialWorkspace({ collectionContext, mutate, onRouteCh
         {canonicalReady ? <small className="te-canonical">기준: <a href={safeHref(collectionContext!.canonicalUrl!)} target="_blank" rel="noopener noreferrer">{collectionContext!.canonicalTitle} · v{collectionContext!.canonicalVersion} ↗</a></small>
           : <p className="ca-v07-error" role="status">{collectionContext?.error || "인사이트·인물 분석형 집필 기준이 포함된 승인 정본을 확인하지 못했습니다. 회사 정본을 갱신한 뒤 새로고침해 주세요."}</p>}
         <p>복사한 요청문은 Aside에 붙여 넣어 실행하세요.</p>
-        <div className="ca-v07-actions"><button type="button" className="primary" disabled={!canonicalReady || busy} onClick={() => void copyRequest()}>내 AI에 보낼 후보 요청 복사</button><CostTag kind="ai"/></div>
+        <div className="ca-v07-actions"><button type="button" className="primary-button" disabled={!canonicalReady || busy} onClick={() => void copyRequest()}>내 AI에 보낼 후보 요청 복사</button><CostTag kind="ai"/></div>
       </div>
       <details className="te-import" ref={importPanel}><summary>Aside가 준비한 후보 등록</summary>
         <p>Aside가 반환한 후보 JSON을 붙여넣고 내용을 확인하세요. 지금은 후보만 저장하며 원고를 쓰거나 승인하지 않습니다.</p>
         <label>후보 결과<textarea aria-label="Aside 후보 결과" value={raw} rows={5} disabled={busy} maxLength={100000} onChange={event => { setRaw(event.target.value); setPrepared(null); setError(""); setNotice(""); }} placeholder={'{"candidates":[…]}'} /></label>
-        <button type="button" disabled={busy || !raw.trim()} onClick={() => void previewCandidates()}>내용 확인</button>
+        <button className="secondary-button" type="button" disabled={busy || !raw.trim()} onClick={() => void previewCandidates()}>내용 확인</button>
       </details>
       {prepared ? <section className="te-previews" aria-label="준비한 후보">
         <h3>후보 {prepared.length}개 · 읽고 확인하세요</h3>
@@ -210,7 +210,7 @@ export function ThreadsEditorialWorkspace({ collectionContext, mutate, onRouteCh
             <MaterialFacts material={item.candidate.editorial_material} />
           </article>)}
           <div className="te-save"><p>후보를 저장한 뒤 아래 목록에서 집필할 주제 1개를 선택합니다. 자동 선택·제작은 하지 않습니다.</p>
-            <button type="button" className="primary" disabled={busy || !canonicalReady || savedCount === prepared.length} onClick={() => void saveCandidates()}>
+            <button type="button" className="primary-button" disabled={busy || !canonicalReady || savedCount === prepared.length} onClick={() => void saveCandidates()}>
               {busy ? "후보 저장 중…" : savedCount === prepared.length ? "후보 저장 완료" : savedCount ? `남은 후보 ${prepared.length - savedCount}개 저장` : `후보 ${prepared.length}개 저장`}
             </button>{savedCount ? <a href="#topic-candidates">저장한 후보 목록으로 ↓</a> : null}
           </div>

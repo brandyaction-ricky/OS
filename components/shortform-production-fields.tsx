@@ -34,11 +34,11 @@ export function ShortformProductionFields({metadata,onChange,onAppeals}:Props){
     <label>확인된 사실·근거와 출처<textarea rows={3} placeholder="현재 상품 정보, 사용이 허용된 후기, 실제 화면과 출처를 적어 주세요." value={brief.evidence} onChange={event=>set({evidence:event.target.value})}/></label>
     <label>사용할 소재와 미확보 소재<textarea rows={3} placeholder="실제 상품 사진, 서비스 화면, 촬영 영상 등을 구분해 적어 주세요." value={brief.assets} onChange={event=>set({assets:event.target.value})}/></label>
     {brief.purpose==="ad"?<>
-      <div className="ca-v07-actions"><button type="button" onClick={onAppeals}>내 AI로 구매 이유 후보 받기</button><CostTag kind="ai"/></div>
+      <div className="ca-v07-actions"><button className="secondary-button" type="button" onClick={onAppeals}>내 AI로 구매 이유 후보 받기</button><CostTag kind="ai"/></div>
       {appeals.map((appeal,index)=><div className="ca-v07-note" key={index}>
         <strong>{appeal.title} · {appeal.basis==="evidence"?"입력 근거 기반":"검증할 가설"}</strong>
         <p>{appeal.reason}</p><p>근거: {appeal.evidence||"추가 확인 필요"}</p>
-        <button type="button" onClick={()=>set({appeal:`${appeal.title}\n${appeal.reason}\n근거: ${appeal.evidence}\n${appeal.basis==="evidence"?"입력 근거 기반":"검증할 가설"}`})}>이 구매 이유로 구성</button>
+        <button className="secondary-button" type="button" onClick={()=>set({appeal:`${appeal.title}\n${appeal.reason}\n근거: ${appeal.evidence}\n${appeal.basis==="evidence"?"입력 근거 기반":"검증할 가설"}`})}>이 구매 이유로 구성</button>
       </div>)}
       <label>선택한 구매 이유<textarea rows={3} value={brief.appeal} onChange={event=>set({appeal:event.target.value})}/></label>
       <p className="ca-v07-note">광고 문구와 실제 상품·연결 페이지의 약속을 함께 확인합니다. 후보 채택은 광고 집행 승인이 아닙니다.</p>

@@ -107,9 +107,9 @@ export function ThreadsAsideHandoff({ item, dirty, onRefresh, onJobsLoaded, jobR
       : blocked ? <div className="ca-v07-note"><strong>이전 집필 요청이 멈췄습니다.</strong><p>{String(open?.metadata.failureReason || "이전 요청을 닫고 최신 기획으로 다시 요청해 주세요.")}</p></div>
         : completed && !open ? <div className="ca-v07-note"><strong>미승인 원고가 도착했습니다.</strong><p>아래 원고를 확인해 주세요. 확인 전에는 기존 편집 원고에 자동으로 덮어쓰지 않습니다.</p><a href={`#threads-result-${completed.id}`}>도착한 원고 읽기 ↓</a></div>
           : <><p>OS가 준비한 정본·기획·근거를 Aside에 보내면 글을 씁니다. 요청문을 복사한 다음 <strong>Aside 대화창에 붙여 넣고 실행</strong>해 주세요.</p>
-            <div className="ca-v07-actions"><button type="button" className="primary" disabled={busy || loading || !loaded || dirty} onClick={() => void copyRequest()}>{busy ? "처리 중…" : "내 AI에 보낼 요청문 복사"}</button><CostTag kind="ai"/></div>
+            <div className="ca-v07-actions"><button type="button" className="primary-button" disabled={busy || loading || !loaded || dirty} onClick={() => void copyRequest()}>{busy ? "처리 중…" : "내 AI에 보낼 요청문 복사"}</button><CostTag kind="ai"/></div>
             {open ? <p className="ca-v07-aside-hint">준비된 요청이 있습니다. 다시 복사해도 같은 요청을 사용합니다.</p> : null}</>}
-    {completed && !open ? <details className="ca-v07-aside-more"><summary>다른 초안을 다시 요청하려면</summary><p>새 결과도 미승인으로 저장합니다. 현재 원고는 유지됩니다.</p><div className="ca-v07-actions"><button type="button" disabled={busy || loading || !loaded || dirty} onClick={() => void copyRequest()}>내 AI에 보낼 요청문 복사</button><CostTag kind="ai"/></div></details> : null}
+    {completed && !open ? <details className="ca-v07-aside-more"><summary>다른 초안을 다시 요청하려면</summary><p>새 결과도 미승인으로 저장합니다. 현재 원고는 유지됩니다.</p><div className="ca-v07-actions"><button className="secondary-button" type="button" disabled={busy || loading || !loaded || dirty} onClick={() => void copyRequest()}>내 AI에 보낼 요청문 복사</button><CostTag kind="ai"/></div></details> : null}
     {open ? <details className="ca-v07-aside-more" open={manualCopy || undefined}>
       <summary>집필 요청 확인</summary>
       <p>현재 작업 ID: <code>{open.id}</code></p>
@@ -123,13 +123,13 @@ export function ThreadsAsideHandoff({ item, dirty, onRefresh, onJobsLoaded, jobR
       <h3>Aside에서 받은 원고 가져오기</h3>
       <p>Aside가 이미 OS에 저장했다면 ‘진행 상태 확인’을 누르세요. 결과만 받았다면 아래에 붙여 넣으면 됩니다.</p>
       <label>Aside가 작성한 결과<textarea aria-label="Aside가 작성한 결과" rows={7} value={resultText} onChange={event => setResultText(event.target.value)} placeholder="Aside가 준 결과 블록 전체를 붙여 넣으세요." /></label>
-      <button type="button" className="primary" disabled={busy || dirty || !resultText.trim()} onClick={() => void saveResult()}>미승인 초안 저장</button>
+      <button type="button" className="primary-button" disabled={busy || dirty || !resultText.trim()} onClick={() => void saveResult()}>미승인 초안 저장</button>
       <small>본문·댓글은 저장 후 이 화면에 표시됩니다. 자동 채택·승인·발행은 하지 않습니다.</small>
     </div> : null}
-    <div className="ca-v07-actions"><button type="button" disabled={busy || dirty} onClick={() => void refresh()}>진행 상태 확인</button></div>
+    <div className="ca-v07-actions"><button className="secondary-button" type="button" disabled={busy || dirty} onClick={() => void refresh()}>진행 상태 확인</button></div>
     {open && ["backlog", "blocked"].includes(open.status) ? <details className="ca-v07-aside-more"><summary>기획이 바뀌었거나 다시 시작해야 하나요?</summary>
       <p>이전 요청을 닫은 뒤 새 요청문을 복사하세요. 아직 저장하지 않은 Aside 결과는 새 요청에 사용할 수 없습니다.</p>
-      <button type="button" disabled={busy} onClick={() => void closeRequest()}>이전 요청 닫기</button>
+      <button className="secondary-button" type="button" disabled={busy} onClick={() => void closeRequest()}>이전 요청 닫기</button>
     </details> : null}
   </section>;
 }
