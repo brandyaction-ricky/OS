@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest, summarizeMeeting, transcribeMeeting, type OsMember } from "@/lib/api-client";
-import { RecorderProgress, useSegmentedRecorder } from "@/components/meeting-recorder";
+import { RecorderProgress, type RecorderSegment } from "@/components/meeting-recorder";
+import { useMeetingRecording } from "@/components/meeting-recording-provider";
 import { matchMeetingAssignee } from "@/lib/meeting-review";
 import { downloadMarkdown, meetingFileName, meetingMarkdown } from "@/lib/meeting-markdown";
 import { kstMonth } from "@/lib/kpi";
@@ -39,6 +40,7 @@ export function CreateTeamMeeting({ token, projects, onChanged, initialBusiness 
   return <><button type="button" className="primary-button compact" onClick={() => setOpen(true)}>＋ 회의 기록</button>{open ? <div className="modal-backdrop"><section className="form-modal" role="dialog" aria-modal="true" aria-label="회의 기록 만들기"><div className="drawer-head"><h2>회의 기록 만들기</h2><button className="secondary-button compact" onClick={() => setOpen(false)}>닫기</button></div><div className="tm-modal-body"><label>회의 제목<input value={title} maxLength={240} onChange={event => setTitle(event.target.value)} /></label><label>사업 <span className="tm-required">필수</span><select value={business} onChange={event => setBusiness(event.target.value)}><option value="">사업 선택</option>{TEAM_BUSINESSES.map(item => <option key={item.key} value={item.key}>{item.label}</option>)}</select></label><label>프로젝트<select value={projectId} onChange={event => setProjectId(event.target.value)}><option value="">프로젝트 없음</option>{projects.map(project => <option key={project.id} value={project.id}>{project.title}</option>)}</select></label><label>예정 일시<input type="datetime-local" value={startsAt} onChange={event => setStartsAt(event.target.value)} /></label><label>공유<select value={visibility} onChange={event => setVisibility(event.target.value)}><option value="team">팀 공유</option><option value="attendees">참석자만</option></select></label>{error ? <p role="alert" className="tm-danger-text">{error}</p> : null}<button className="primary-button compact" disabled={busy || !business} onClick={() => void create()}>{busy ? "저장 중…" : "회의 만들기"}</button></div></section></div> : null}</>;
 }
 
+const NO_SEGMENTS: RecorderSegment[] = [];
 export function TeamMeetingDetail({ meeting, meetings, tasks, token, userId, admin, members, projects, onChanged }: { meeting: Meeting; meetings: Meeting[]; tasks: OsRecord[]; token: string; userId?: string; admin: boolean; members: OsMember[]; projects: OsRecord[]; onChanged: () => Promise<void> }) {
   const router = useRouter(), params = useSearchParams(), tab = params.get("t") ?? "sum";
   const [title, setTitle] = useState(meeting.title), [brand, setBrand] = useState(teamBusiness(meeting.brand ?? "")?.key ?? ""), [projectId, setProjectId] = useState(meeting.metadata.projectId ?? "");
@@ -46,8 +48,15 @@ export function TeamMeetingDetail({ meeting, meetings, tasks, token, userId, adm
   const [content, setContent] = useState(meeting.description ?? ""), [summary, setSummary] = useState(meeting.metadata.summary ?? "");
   const [items, setItems] = useState<MeetingItem[]>(meeting.metadata.items), [itemKind, setItemKind] = useState<MeetingItem["kind"]>("decision"), [itemText, setItemText] = useState("");
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [correction, setCorrection] = useState(""), [reason, setReason] = useState("");
-  // Long meetings: recorded in 10-minute segments, each transcribed and appended in order.
-  const recorder = useSegmentedRecorder({ token, onTranscript: text => setContent(current => [current, text].filter(Boolean).join("\n\n")) });
+  // Long meetings: recorded in 10-minute segments, each transcribed and appended in order. The recorder is app-wide,
+  // so the meeting keeps recording in other menus; this screen sees only its own meeting's recording.
+  const shared = useMeetingRecording();
+  if (!shared) throw new Error("TeamMeetingDetail must be inside MeetingRecordingProvider");
+  const mine = shared.meeting?.id === meeting.id, elsewhere = shared.recorder.recording && !mine;
+  const recorder = { ...shared.recorder, recording: mine && shared.recorder.recording, segments: mine ? shared.recorder.segments : NO_SEGMENTS,
+    start: () => shared.start({ id: meeting.id, title: meeting.title, href: `/organization/meetings?meeting=${encodeURIComponent(meeting.id)}` }) };
+  const { attach } = shared;
+  useEffect(() => attach(meeting.id, text => { setContent(current => [current, text].filter(Boolean).join("\n\n")); return true; }), [attach, meeting.id]);
   const [visibility, setVisibility] = useState<"team" | "attendees">(meeting.metadata.visibility), [attendees, setAttendees] = useState(meeting.attendees);
   // ai: the running (startedAt) or finished (done) AI pass; autoAi: run it once the last recorded segment is transcribed.
   const [notes, setNotes] = useState<MeetingNote[]>([]), [ai, setAi] = useState<{ startedAt: number; done?: string } | null>(null), [tick, setTick] = useState(0), [autoAi, setAutoAi] = useState(false);
@@ -168,11 +177,12 @@ export function TeamMeetingDetail({ meeting, meetings, tasks, token, userId, adm
   const primary = recorder.recording ? <><button type="button" className="primary-button compact" onClick={() => void stopRecording()}>■ 녹음 종료 · 자동 정리</button><CostTag kind="paid" /></>
     : hasAi ? <button type="button" className="primary-button compact" disabled={busy} onClick={() => void finishMeeting()}>회의 종료 · 검토로</button>
     : content.trim().length >= 20 ? <><button type="button" className="primary-button compact" disabled={busy} onClick={() => void askAi().then(ok => { if (ok) void extract(); })}>회의 자동 정리</button><CostTag kind="paid" /></>
-    : meeting.status === "planned" ? <><button type="button" className="primary-button compact" disabled={busy} onClick={() => void startMeeting()}>회의 시작 · 녹음</button><CostTag kind="paid" /></>
-    : <><button type="button" className="primary-button compact" disabled={busy} onClick={() => void askRecording().then(ok => { if (ok) void recorder.start(); })}>● 녹음 시작</button><CostTag kind="paid" /></>;
+    : meeting.status === "planned" ? <><button type="button" className="primary-button compact" disabled={busy || elsewhere} onClick={() => void startMeeting()}>회의 시작 · 녹음</button><CostTag kind="paid" /></>
+    : <><button type="button" className="primary-button compact" disabled={busy || elsewhere} onClick={() => void askRecording().then(ok => { if (ok) void recorder.start(); })}>● 녹음 시작</button><CostTag kind="paid" /></>;
   const selectedItems = items.filter(item => item.state !== "discarded" && item.kind === (tab === "dec" ? "decision" : tab === "task" ? "task" : "open"));
   return <><Link className="tm-back" href="/organization/meetings">← 회의 기록</Link><div className="tm-detail-head"><div className="tm-grow"><h2 className="tm-detail-title">{meeting.title}</h2><div className="tm-meeting-meta"><span>{meeting.starts_at ? new Date(meeting.starts_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }) : "일정 미정"}</span><span>{meeting.legacy ? "이전 기록" : meeting.status === "review" ? "검토 필요" : meeting.status === "done" ? "확정" : meeting.status === "active" ? "진행 중" : "예정"}</span><span>{teamBusiness(meeting.brand ?? "")?.label ?? "사업 미지정"}</span><span>참석 {meeting.attendees.length}명</span></div></div><div className="tm-row"><button type="button" className="secondary-button compact" onClick={() => downloadMarkdown(meetingFileName(title, meeting.starts_at), meetingMarkdown({ title, startsAt: meeting.starts_at, business: teamBusiness(brand)?.label, attendees, agenda, summary, transcript: content, items, nameOf: id => members.find(member => member.id === id)?.display_name ?? "구성원" }))}>MD로 내려받기</button>{meeting.legacy && meeting.status === "review" && owner ? <button className="primary-button compact" disabled={busy || !brand} onClick={() => void execute("meeting.import_legacy")}>새 기록으로 옮겨 검토</button> : null}{meeting.status === "review" && !meeting.legacy && owner ? <Link className="primary-button compact" href={`${base}&step=review`}>검토하기</Link> : null}{meeting.status === "done" && !meeting.legacy && owner ? <button type="button" className="secondary-button compact" disabled={busy} onClick={() => void shareTelegram()}>텔레그램에 올리기</button> : null}{canEdit && (meeting.status === "planned" || meeting.status === "active") ? primary : null}{owner ? <button type="button" className="secondary-button compact" disabled={busy} onClick={() => void archive()}>삭제</button> : null}</div></div>
     {error ? <div className="tm-callout" data-tone="danger" role="alert">{error}</div> : null}
+    {elsewhere ? <div className="tm-callout" role="status">다른 회의 「{shared.meeting?.title}」를 녹음 중이에요. 그 녹음을 끝내면 여기서 녹음할 수 있어요.</div> : null}
     {!meeting.legacy ? <div className="tm-steps" aria-label="회의 진행 단계">{["준비", "회의·녹음", "자동 정리", "검토", "확정"].map((label, index) => <span key={label} data-state={index < step ? "done" : index === step ? "now" : undefined}>{index < step ? "✓" : index + 1} {label}</span>)}</div> : null}
     {ai ? <p className="tm-ai-status" data-done={ai.done ? "true" : undefined} role="status">{ai.done ?? `회의를 자동으로 정리하는 중… ${Math.max(0, Math.round((tick - ai.startedAt) / 1000))}초 · 보통 1~2분 걸립니다`}</p>
       : autoAi ? <p className="tm-ai-status" role="status">마지막 녹음 구간을 글로 바꾸는 중… 끝나면 자동 정리가 바로 시작됩니다</p> : null}

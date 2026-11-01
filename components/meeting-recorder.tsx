@@ -75,6 +75,6 @@ export function RecorderProgress({recorder}:{recorder:ReturnType<typeof useSegme
     <ol>{segments.map(s=><li key={s.no} data-state={s.state}><span>{s.no}구간 · {clock(s.seconds)}</span><span>{label[s.state]}</span>
       {s.state==="failed"?<button type="button" onClick={()=>recorder.retry(s)}>다시 시도</button>:null}</li>)}
       {recording?<li data-state="recording"><span>{segments.length+1}구간</span><span>녹음 중</span></li>:null}</ol>
-    {!finished?<small>끝날 때까지 이 화면을 닫지 마세요. 10분마다 한 구간씩 전사됩니다.</small>:null}
+    {!finished?<small>다른 메뉴로 옮겨도 녹음은 이어져요. 브라우저 탭을 닫거나 새로고침하면 멈춰요. 10분마다 한 구간씩 받아써요.</small>:null}
   </div>;
 }
