@@ -277,6 +277,7 @@ html[data-guidance="off"] .guide-strip, html[data-guidance="off"] .guide-no, htm
 .linear-shell .ui-v2 .secondary-button.xs { padding: 3px 8px; font-size: 11px; }
 .linear-shell .ui-v2 .secondary-button.icon { padding: 4px 7px; display: flex; }
 .linear-shell .ui-v2 .secondary-button.danger { color: var(--danger); }
+.linear-shell .ui-v2 .secondary-button[aria-pressed="true"] { border-color: var(--accent-2); background: var(--accent-soft); color: var(--text); } /* 켜고 끄는 단추가 켜진 때 (개발 「내 요청」) */
 .linear-shell .ui-v2 :where(.primary-button, .secondary-button).with-icon { display: inline-flex; align-items: center; gap: 6px; }
 
 /* ───────────── 10. 배지 · 칩 · 점 ───────────── */
