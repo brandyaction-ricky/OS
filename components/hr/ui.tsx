@@ -16,12 +16,14 @@ export function Button({
   return (
     <button
       {...props}
-      className={`hr-button${primary ? " primary" : ""}${danger ? " danger" : ""} ${props.className || ""}`}
+      className={`hr-button ${primary ? "primary-button" : "secondary-button"}${danger ? " danger" : ""} ${props.className || ""}`}
     >
       {children}
     </button>
   );
 }
+// 공통 배지 색(공통 스타일 가이드 5장 휴가: 승인 대기 warn · 승인 ok · 반려 danger · 취소 muted)
+const PILL_TONE: Record<string, string> = { good: "ok", warn: "warn", danger: "danger", muted: "muted" };
 export function Pill({
   children,
   tone = "muted",
@@ -29,7 +31,7 @@ export function Pill({
   children: ReactNode;
   tone?: string;
 }) {
-  return <span className={`hr-pill ${tone}`}>{children}</span>;
+  return <span className="status-pill" data-tone={PILL_TONE[tone] ?? "muted"}>{children}</span>;
 }
 export function Empty({
   title,
