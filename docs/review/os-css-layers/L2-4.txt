@@ -1,0 +1,16 @@
+공통 CSS 구조 L2-4 — 재무 (2026-11-01, 일부)
+기준: main e6254f34 · 지시서 00_공통CSS_개발지시서.md 4장 4
+
+1. 이번에 한 일
+   - 토스 동기화 칸의 직접 색 5곳 → OS 토큰: var(--line, #dddfe7) 같은 대체값 4개 지움(토큰은 늘 정의됨), 경고 글자 #9b4411 → var(--warning)
+   - 검사 직접 색 9 → 4
+
+2. 남은 일 (따로 계획)
+   - 재무 화면은 lib/finance/workspace.mjs(4,978줄)가 HTML 문자열로 그린다. 접두어 밖 이름 489곳(.pill · .chip · .toolbar · .input · .seg-b …)을
+     키트(.status-pill[data-tone] · .os-chip · .os-toolbar · 기본 입력)나 fin- 이름으로 바꾸려면 그 문자열과 CSS 를 같이 고쳐야 해서 한 번에 하지 않는다
+   - 사업 색 --s1 · --s2 · --s3(파랑 · 주황 · 초록)과 인라인 style → .os-biz[data-biz]: 어느 사업이 어느 색인지 대표 확인 필요
+   - 키트 덮기 31 · 크기 단계 밖 글자 9
+   - !important 3 은 남김: [hidden] 숨김 보장 1 · 움직임 줄이기 2
+
+3. 확인
+   - npm test 1340 통과. 토큰 대체값은 화면에 영향 없음, 경고 글자색만 OS 경고색으로
