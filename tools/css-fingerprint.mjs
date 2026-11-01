@@ -26,7 +26,8 @@ const ROUTES = `/home /content/topics /content/scripts /content/packages /conten
 /content/projects?view=discover /content/projects?platform=longform /content/projects?platform=short /content/projects?platform=ad /content/projects?platform=card
 /content/card-canon /content/schedule /content/links /content/confirm /content/plan /content/voice-dictionary /content/overview
 /automation/references /hr/my-leave /finance/vat
-/finance/documents /knowledge /knowledge/canon /knowledge/graph /knowledge/docs /knowledge/review /knowledge/decisions /knowledge/activity /knowledge/search /knowledge/templates`.split(/\s+/); // 둘째 줄부터 10/31 보충 2장 4 (유튜브 공정 v1 화면 — 체험 빌드에 YOUTUBE_V1_ENABLED=true) · 마지막 줄 11-01 L1 (회사 문서 하위 화면 · 재무 서류함)
+/finance/documents /knowledge /knowledge/canon /knowledge/graph /knowledge/docs /knowledge/review /knowledge/decisions /knowledge/activity /knowledge/search /knowledge/templates
+/knowledge/doc/example-team-document /knowledge/canon/example-canonical`.split(/\s+/); // 둘째 줄부터 10/31 보충 2장 4 (유튜브 공정 v1 화면 — 체험 빌드에 YOUTUBE_V1_ENABLED=true) · 마지막 줄 11-01 L1 (회사 문서 하위 화면 · 재무 서류함)
 // 눌러야 나오는 화면 (편집기 등)
 const STATES = [{ name: "vault 새 페이지(편집기)", route: "/knowledge/vault", click: "새 페이지" }];
 const PROPS = ["display", "position", "width", "height", "color", "backgroundColor", "fontSize", "fontWeight", "fontFamily", "paddingTop", "paddingLeft",
