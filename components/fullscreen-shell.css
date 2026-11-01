@@ -72,7 +72,9 @@
 .linear-shell .ui-v2 :is(.studio-tabs, .system-status-tabs) { display: flex; gap: 2px; overflow-x: auto; border-bottom: 1px solid var(--line-soft); }
 .linear-shell .ui-v2 :is(.studio-tabs, .system-status-tabs) > a { flex: none; font-size: 13px; line-height: normal; padding: 7px 10px; min-height: 0; border: 0; border-radius: 0; background: none; color: var(--muted); }
 .linear-shell .ui-v2 :is(.studio-tabs, .system-status-tabs) > a[aria-current="page"] { border-bottom: 2px solid var(--accent); color: var(--text); font-weight: 700; }
-.linear-shell .ui-v2 :is(.primary-button, .secondary-button):not(.sm):not(.xs) { min-height: 28px; }
+/* 단추 높이 E1 (대표 10-31): 기본 32 · 작은 단추(.compact · .sm) 28 · 큰 단추 40 */
+.linear-shell .ui-v2 :is(.primary-button, .secondary-button):not(.sm):not(.xs) { min-height: 32px; }
+.linear-shell .ui-v2 :is(.primary-button, .secondary-button):is(.compact, .sm):not(.xs) { min-height: 28px; }
 @media (min-width: 821px) {
   .linear-shell.shell-v2.nav-collapsed .page-sidebar { width: 64px; padding: 12px 6px; }
   .linear-shell.shell-v2.nav-collapsed .app-main { padding-left: 64px; }

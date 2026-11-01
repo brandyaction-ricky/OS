@@ -263,7 +263,7 @@ html[data-guidance="off"] .guide-strip, html[data-guidance="off"] .guide-no, htm
 .linear-shell .ui-v2 .footnote { font-size: 11.5px; color: var(--muted); line-height: 1.5; }
 .linear-shell .ui-v2 .text-warning { color: var(--warning); font-weight: 600; }
 
-/* ───────────── 9. 버튼 (높이 28 · 둥글기 6 · 12px) ───────────── */
+/* ───────────── 9. 버튼 (높이 32 · 작은 단추 28 · 둥글기 6 · 12px — 높이는 fullscreen-shell.css) ───────────── */
 .linear-shell .ui-v2 :where(.primary-button, .secondary-button) {
   min-height: 0; font: inherit; font-size: 12px; font-weight: 400; line-height: normal; border-radius: 6px;
   white-space: nowrap; box-shadow: none; transform: none; letter-spacing: normal; cursor: pointer;
