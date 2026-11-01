@@ -101,13 +101,6 @@ export function LeaveLedger({ open }: { open: OpenDrawer }) {
           <h1>연차 원장·촉진</h1>
           <p>입사일 기준 잔여·원장과 사용 촉진 기한을 확인합니다.</p>
         </div>
-        <Button
-          primary
-          onClick={() => open({ kind: "leave" })}
-          disabled={!people.length}
-        >
-          ＋ 휴가 입력
-        </Button>
       </div>
       <Tabs
         current={tab}

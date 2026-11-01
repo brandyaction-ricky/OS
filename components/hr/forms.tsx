@@ -67,6 +67,16 @@ const titles = {
 };
 const value = (f: FormData, k: string) => String(f.get(k) || "").trim();
 const opt = (f: FormData, k: string) => value(f, k) || null;
+const leaveDescriptions: Record<LeaveType, string> = {
+  annual: "연차 차감 · 유급",
+  half_am: "0.5일 · 연차 차감 · 유급",
+  half_pm: "0.5일 · 연차 차감 · 유급",
+  sick: "차감 없음 · 취업규칙에 따름",
+  family_event: "차감 없음 · 유급(회사 규정)",
+  public_duty: "차감 없음 · 유급",
+  unpaid: "차감 없음 · 무급",
+  other: "차감 없음 · 사유 기재",
+};
 export function HrFormDrawer({
   state,
   onClose,
@@ -872,18 +882,30 @@ export function HrFormDrawer({
                   ))}
                 </select>
               </Field>
-              <Field label="구분" required>
-                <select
-                  value={leaveType}
-                  onChange={(x) => setLeaveType(x.target.value as LeaveType)}
-                >
+              <fieldset className="hr-field hr-leave-types">
+                <legend>구분 <b aria-hidden="true">*</b></legend>
+                <div className="hr-leave-type-grid">
                   {Object.entries(LEAVE_LABELS).map(([v, l]) => (
-                    <option value={v} key={v}>
-                      {l}
-                    </option>
+                    <label className="hr-leave-type-option" key={v}>
+                      <input
+                        type="radio"
+                        name="leave_type"
+                        value={v}
+                        required
+                        checked={leaveType === v}
+                        onChange={() => setLeaveType(v as LeaveType)}
+                        aria-describedby={`leave-type-description-${v}`}
+                      />
+                      <span>
+                        <span>{l}</span>
+                        <small id={`leave-type-description-${v}`}>
+                          {leaveDescriptions[v as LeaveType]}
+                        </small>
+                      </span>
+                    </label>
                   ))}
-                </select>
-              </Field>
+                </div>
+              </fieldset>
               <div className="hr-grid2">
                 <Field label="시작일" required>
                   <input

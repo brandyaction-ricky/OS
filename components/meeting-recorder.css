@@ -11,5 +11,9 @@
 .meeting-recorder-progress li[data-state=working] span:nth-child(2), .meeting-recorder-progress li[data-state=recording] span:nth-child(2) { color: var(--warning); }
 .meeting-recorder-progress li[data-state=failed] span:nth-child(2) { color: var(--danger); }
 .meeting-recorder-progress small { color: var(--text-2); }
+/* The meeting keeps recording in other menus: a small bar says so and leads back. */
+.meeting-recording-away { position: fixed; z-index: 60; right: 16px; bottom: 16px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; max-width: min(560px, calc(100vw - 32px)); padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: var(--shadow); font-size: 13px; }
+.meeting-recording-away b { color: var(--danger); }
+.meeting-recording-away a, .meeting-recording-away button { padding: 5px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); color: var(--text); font-size: 13px; cursor: pointer; }
 
 }
