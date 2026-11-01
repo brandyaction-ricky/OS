@@ -88,7 +88,7 @@ export function ThreadsApiPublication({ item, onRefresh }: Props) {
   };
 
   return <section className="ca-v07-api-publish" aria-label="Threads 공식 API 발행">
-    <header><div><span className="ca-v07-eyebrow">검수 다음 단계</span><h3>Threads에 발행</h3></div><button type="button" disabled={loading || busy} onClick={() => void read(true)}>발행 상태 확인</button></header>
+    <header><div><span className="ca-v07-eyebrow">검수 다음 단계</span><h3>Threads에 발행</h3></div><button className="secondary-button" type="button" disabled={loading || busy} onClick={() => void read(true)}>발행 상태 확인</button></header>
     <p>승인한 글을 Meta 공식 API로 올립니다. Aside는 미승인 초안 저장까지만 맡습니다.</p>
     {loading ? <p role="status">게시 계정과 발행 상태를 확인하고 있습니다…</p> : null}
     {status?.mode === "mock" && (!publication || publication.mode === "mock") ? <div className="ca-v07-note">모의 검수 모드입니다. 아래 동작은 실제 Threads에 게시하지 않습니다.</div> : null}
@@ -122,7 +122,7 @@ export function ThreadsApiPublication({ item, onRefresh }: Props) {
     {!terminal && !uncertain && !running ? <>
       <label className="ca-v07-check"><input type="checkbox" checked={confirmed} disabled={!canPublish} onChange={event => setConfirmed(event.target.checked)} />
         <span>{account ? `@${account.accountName.replace(/^@/, "")} 계정과` : "게시 계정과"} 위 원고를 직접 확인했습니다.</span></label>
-      <button type="button" className="primary ca-v07-api-submit" disabled={!canPublish || !confirmed} onClick={() => void submit()}>
+      <button type="button" className="primary-button ca-v07-api-submit" disabled={!canPublish || !confirmed} onClick={() => void submit()}>
         {busy ? "발행 결과 확인 중…" : status?.mode === "mock" ? (partialRetry ? "남은 글 모의 발행" : "모의 API 발행 확인") : partialRetry ? "확인하고 남은 글 발행" : "확인하고 Threads에 발행"}
       </button>
     </> : null}

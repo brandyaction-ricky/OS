@@ -144,7 +144,8 @@ function count(f) {
     for (const sel of r.selectors) {
       const parts = sel.split(/\s*[\s>+~]\s*/).filter(Boolean);
       const subject = parts[parts.length - 1] || "";
-      if ([...subject.matchAll(/\.([a-zA-Z][\w-]*)/g)].some(m => kitClasses.has(m[1]) && !SHELL.has(m[1]))) kitSubject = true;
+      // :not(…) 안의 키트 이름은 덮는 대상이 아니다 (L2-1: 키트 단추를 빼고 이 화면 단추에만 거는 규칙)
+      if ([...subject.replace(/:not\([^)]*\)/g, "").matchAll(/\.([a-zA-Z][\w-]*)/g)].some(m => kitClasses.has(m[1]) && !SHELL.has(m[1]))) kitSubject = true;
       if (prefixes) for (const m of sel.matchAll(/\.([a-zA-Z][\w-]*)/g)) {
         const n = m[1];
         if (!prefixes.some(p => n.startsWith(p)) && !kitClasses.has(n) && !SHELL.has(n) && !/^screen-/.test(n)) c.foreign++;
@@ -171,7 +172,7 @@ const BASELINE = {
   "app/share/[token]/share.css": {"color": 7},
   "app/theme-tokens.css": {"themeSel": 1},
   "components/content-automation-hub.css": {"color": 1, "breakOff": 2},
-  "components/content-automation-v07.css": {"color": 15, "fontOff": 2, "breakOff": 1, "foreign": 2, "kitOverride": 2},
+  "components/content-automation-v07.css": {"fontOff": 2, "breakOff": 1, "foreign": 2},
   "components/content-automation-worker.css": {"fontOff": 1, "breakOff": 1},
   "components/cost-notice.css": {"breakOff": 1},
   "components/development-notifications.css": {"breakOff": 2},
