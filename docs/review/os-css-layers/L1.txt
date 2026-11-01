@@ -1,5 +1,5 @@
 공통 CSS 구조 L1 — 층 나누기 + 공통 기반 (2026-11-01)
-기준: main 916ec3a3 · 지시서 docs/handoff/os-common-style-20261011/00_공통CSS_개발지시서.md 3장 + 03_1031_보충.md 2장 5~6
+기준: main 916ec3a3 (다시 잼: #400~#402 합친 main 4d655dc1) · 지시서 docs/handoff/os-common-style-20261011/00_공통CSS_개발지시서.md 3장 + 03_1031_보충.md 2장 5~6
 
 체험 빌드: NEXT_PUBLIC_DEMO_MODE=true HR_WORKSPACE_ENABLED=true TEAM_V1_ENABLED=true YOUTUBE_V1_ENABLED=true · next start (production) · 1440×900
 화면: 78개 (L0 68개 + 회사 문서 하위 화면 9 · 재무 서류함 1) + 편집기 1 · 밝은 테마와 어두운 테마(FP_THEME=dark) 둘 다
