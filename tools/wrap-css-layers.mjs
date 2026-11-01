@@ -27,6 +27,7 @@ const FILE_LAYER = {
   "components/fullscreen-content.css": "os.kit",
   "components/fullscreen-documents.css": "os.kit",
   "components/fullscreen-operations.css": "os.kit",
+  "components/grouped-sidebar.css": "os.kit",
   "components/team-workspace.css": "os.screen",
   "components/content-automation-v07.css": "os.screen",
   "components/content-automation-worker.css": "os.screen",

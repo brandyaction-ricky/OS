@@ -14,6 +14,7 @@ import "../components/fullscreen-shell.css";
 import "../components/fullscreen-content.css";
 import "../components/fullscreen-documents.css";
 import "../components/fullscreen-operations.css";
+import "../components/grouped-sidebar.css";
 import "../components/content-automation-hub.css";
 import "../components/cost-notice.css";
 import "../components/team-workspace.css";

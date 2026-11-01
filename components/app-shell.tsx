@@ -26,6 +26,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { findPage, findStage, NAV_STAGES } from "@/lib/navigation";
+import { groupSidebarStages, restoreSidebarGroups, toggleSidebarGroup } from "@/lib/sidebar-navigation";
 import { canOpenMenu } from "@/lib/menu-access";
 import { useMenuAccess } from "./use-menu-access";
 import { useContentOverviewCounts, useYoutubeCanConfirm, useYoutubeConfirmWaiting, useYoutubeV1Access } from "./use-youtube-confirm";
@@ -54,6 +55,7 @@ function Initials({ name }: { name: string }) {
 }
 
 const PLATFORM_GROUP = { "yt-longform": "longform", "yt-short": "short", "yt-ad": "ad", "yt-card": "card" } as const;
+const SIDEBAR_STAGE_IDS = [YOUTUBE_V1_CEO_STAGE.id, ...NAV_STAGES.map(item => item.id), ...youtubeV1Stages(NAV_STAGES).map(item => item.id)];
 export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, youtubeV1Mode = "off" }: { children: React.ReactNode; hrEnabled?: boolean; teamV1Enabled?: boolean; youtubeV1Mode?: YoutubeV1Mode }) {
   // The server owns the rollout flag; no environment values are read in the browser.
   const youtubeV1Enabled = useYoutubeV1Access(youtubeV1Mode);
@@ -101,8 +103,7 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
   const [guidanceOn, setGuidanceOn] = useState(true);
   const [collapsed, setCollapsed] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ [activeStageId]: true });
-  // 대표 메뉴 starts open: it is a single, time-sensitive entry.
-  const groupOpen = (id: string) => openGroups[id] ?? id === "ceo";
+  const groupOpen = (id: string) => Boolean(openGroups[id]);
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({});
   const [menuGuide, setMenuGuide] = useState(false);
   const [serverOk, setServerOk] = useState<boolean | null>(null);
@@ -114,10 +115,13 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
   const profileMenuId = useId();
 
   const openPalette = useCallback(() => {
+    // The palette restores focus to this visible trigger after the mobile drawer closes.
+    if (mobileOpen) mobileTriggerRef.current?.focus();
     setProfileOpen(false);
     setNotificationsOpen(false);
+    setMobileOpen(false);
     setPaletteOpen(true);
-  }, []);
+  }, [mobileOpen]);
   const closePalette = useCallback(() => setPaletteOpen(false), []);
 
   const toggleProfileMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -182,14 +186,14 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
   useEffect(() => {
     try {
       const stored = JSON.parse(window.localStorage.getItem(GROUPS_STORAGE_KEY) ?? "{}");
-      setOpenGroups({ ...Object.fromEntries([...NAV_STAGES, ...youtubeV1Stages(NAV_STAGES)].map(item => [item.id, typeof stored?.[item.id] === "boolean" ? stored[item.id] : item.id === activeStageId || (activeStageId === "home" && item.id === "content")])), [activeStageId]: true });
+      setOpenGroups(restoreSidebarGroups(SIDEBAR_STAGE_IDS, activeStageId, stored));
       setCollapsed(window.localStorage.getItem(COLLAPSED_STORAGE_KEY) === "true");
       setMenuGuide(window.localStorage.getItem(MENU_GUIDE_STORAGE_KEY) !== "seen");
-    } catch { setOpenGroups({ [activeStageId]: true }); }
+    } catch { setOpenGroups(restoreSidebarGroups(SIDEBAR_STAGE_IDS, activeStageId, null)); }
   }, [activeStageId]);
 
   const toggleGroup = (id: string) => {
-    const next = { ...openGroups, [id]: !openGroups[id] };
+    const next = toggleSidebarGroup(openGroups, id);
     setOpenGroups(next);
     try { window.localStorage.setItem(GROUPS_STORAGE_KEY, JSON.stringify(next)); } catch { /* Current view still works without storage. */ }
   };
@@ -281,7 +285,7 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
 
   return (
     <div className={`os-app linear-shell unified-shell shell-v2${collapsed ? " nav-collapsed" : ""}${pathname.startsWith("/knowledge") && knowledgeFocus ? " knowledge-focus" : ""}`}>
-      <aside ref={sidebarRef} id="main-navigation" data-ui="sidebar" className={`unified-sidebar page-sidebar${mobileOpen ? " mobile-open" : ""}`} aria-label="주요 메뉴">
+      <aside ref={sidebarRef} id="main-navigation" data-ui="sidebar" className={`unified-sidebar page-sidebar os-sidebar${mobileOpen ? " mobile-open" : ""}`} aria-label="주요 메뉴">
         <div className="unified-sidebar-head sidebar-head" data-ui="sidebar-head">
           <Link className="brand-mark" data-ui="brand-mark" href="/home" aria-label="브랜디 OS 홈">BA</Link>
           <div className="sidebar-brand brand-copy"><b>브랜디 OS</b><span>우리 팀의 작업 공간</span></div>
@@ -290,18 +294,21 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
           </button>
           <button className="icon-button mobile-only" aria-label="메뉴 닫기" onClick={() => setMobileOpen(false)}><X size={18} /></button>
         </div>
-        <nav className="unified-nav page-nav">
-          {visibleStages.map(item => {
+        <button type="button" className="os-sidebar-search" aria-label="업무 메뉴 찾기" aria-haspopup="dialog" aria-expanded={paletteOpen} onClick={openPalette}><Search size={15} /><span>업무 메뉴 찾기</span><kbd>⌘K</kbd></button>
+        <nav className="unified-nav page-nav" aria-label="업무 메뉴">
+          {groupSidebarStages(visibleStages).map(workspace => <div key={workspace.id} className="os-nav-workspace" data-workspace={workspace.id} role={workspace.label ? "group" : undefined} aria-labelledby={workspace.label ? `os-nav-${workspace.id}` : undefined}>
+          {workspace.label ? <h2 id={`os-nav-${workspace.id}`} className="os-nav-workspace-title">{workspace.label}</h2> : null}
+          {workspace.stages.map(item => {
             const Icon = item.icon;
             const active = pathname !== "/settings/account" && item.id === activeStageId;
-            return <section className={`nav-section${active ? " active" : ""}`} key={item.id}>
+            return <section className={`nav-section${active ? " active" : ""}`} data-stage={item.id} key={item.id}>
               <Link className={`compact-group${active ? " active" : ""}`} href={item.pages[0].href} aria-label={item.label} title={item.label}><Icon size={20} /><span>{item.label}</span></Link>
-              {item.id !== "home" ? <button className="nav-section-trigger nav-group" data-ui="nav-group" aria-label={groupLabel(item)} onClick={() => toggleGroup(item.id)} aria-expanded={Boolean(active || groupOpen(item.id))} aria-controls={`nav-${item.id}`}>
-                <span className="nav-chevron" data-ui="nav-chevron" aria-hidden="true">{active || groupOpen(item.id) ? "▾" : "▸"}</span><span className="nav-icon"><Icon size={16} /></span><span className="nav-group-label">{groupLabel(item)}{item.id === "settings" && serverOk === false ? <small className="state-dot waiting" title="서버 확인 실패" aria-label="서버 확인 실패" /> : null}</span>{item.id === "ceo" ? <span className={`nav-group-count${confirmWaiting ? " is-alert" : ""}`} title={`컨펌 대기 ${confirmWaiting ?? 0}개`} aria-hidden="true">{confirmWaiting ?? ""}</span>
+              {item.id !== "home" ? <button className="nav-section-trigger nav-group" data-ui="nav-group" aria-label={groupLabel(item)} onClick={() => toggleGroup(item.id)} aria-expanded={groupOpen(item.id)} aria-controls={`nav-${item.id}`}>
+                <span className="nav-chevron" data-ui="nav-chevron" aria-hidden="true"><ChevronRight size={12} className={groupOpen(item.id) ? "expanded" : ""} /></span><span className="nav-icon"><Icon size={16} /></span><span className="nav-group-label">{groupLabel(item)}{item.id === "settings" && serverOk === false ? <small className="state-dot waiting" title="서버 확인 실패" aria-label="서버 확인 실패" /> : null}</span>{item.id === "ceo" ? <span className={`nav-group-count${confirmWaiting ? " is-alert" : ""}`} title={`컨펌 대기 ${confirmWaiting ?? 0}개`} aria-hidden="true">{confirmWaiting ?? ""}</span>
                   : youtubeV1Enabled && (item.id === "content" || item.id.startsWith("yt-")) ? (() => { const work = workOf(item.id); return <span className="nav-group-work" title={work ? `확인 ${work.decide} · AI ${work.ai}` : undefined} aria-hidden="true">{work?.decide ? <span className="nav-group-count is-alert">확인 {work.decide}</span> : null}{work?.ai ? <span className="nav-group-count is-ai">AI {work.ai}</span> : null}</span>; })()
-                  : <span className="nav-group-count" aria-hidden="true">{item.pages.length}</span>}
+                  : <span className="nav-group-count" title={`하위 메뉴 ${item.pages.length}개`} aria-hidden="true">{item.pages.length}</span>}
               </button> : null}
-              <div id={`nav-${item.id}`} className="nav-section-pages" hidden={item.id !== "home" && !active && !groupOpen(item.id)}>
+              <div id={`nav-${item.id}`} className="nav-section-pages" hidden={item.id !== "home" && !groupOpen(item.id)}>
                 {item.pages.map((entry, index) => {
                   const selected = entrySelected(entry.href);
                   const submenuOpen = selected || Boolean(openSubmenus[entry.href]);
@@ -324,7 +331,7 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
                 {item.id === "automation" && canOpenMenu(profile, "/knowledge", menuAccess.allowed) ? <Link className="page-link nav-canon-link" href="/knowledge?tab=canon" onClick={() => setMobileOpen(false)}><BookOpen size={15}/><span>정본 관리 열기</span></Link> : null}
               </div>
             </section>;
-          })}
+          })}</div>)}
         </nav>
         <div className="unified-sidebar-foot sidebar-foot" data-ui="sidebar-foot">
           <button className="sidebar-request" onClick={() => { setRequestOpen(true); setMobileOpen(false); }} title="수정 요청"><MessageSquarePlus size={17} /><span>수정 요청 남기기</span></button>
