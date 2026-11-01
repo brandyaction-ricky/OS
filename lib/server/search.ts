@@ -8,6 +8,7 @@ import type { RequestActor } from "./auth";
 import { createEmbeddings, toPgVector } from "./embeddings";
 import { hasLexicalEvidence, keywordQueryText, searchTerms } from "@/lib/search-relevance";
 import { readableKnowledgePages } from "./knowledge-page-access";
+import { createServiceSupabase } from "@/lib/supabase/server";
 
 type SearchInput = z.infer<typeof searchSchema>;
 
@@ -91,6 +92,11 @@ async function fallbackDocuments(actor: RequestActor, input: SearchInput, status
   }));
 }
 
+// Drafts, archives and every supplemental read stay on the person's own client.
+function serviceClient() {
+  try { return createServiceSupabase(); } catch { return null; }
+}
+
 export const searchInternals = { searchTerms };
 
 export async function searchDocuments(actor: RequestActor, input: SearchInput): Promise<SearchOutcome> {
@@ -104,6 +110,10 @@ export async function searchDocuments(actor: RequestActor, input: SearchInput): 
   // shared document here took 2.3 s on Production (2026-10-31) and timed out under concurrent AI searches (supplement_failed).
   const includeAgentDrafts = actor.type === "agent" && statuses.includes("draft");
   const ownDrafts = includeAgentDrafts ? fallbackDocuments(actor, input, ["draft"]).catch(() => null) : null;
+  // A staff search under the person's own row rules took 12.7 s on Production (2026-11-01): the trigram and vector indexes
+  // cannot run before row rules, so every one of ~67,000 chunks was read. The candidate RPC runs on the server's connection
+  // instead (1.5 s), for shared statuses only, and every row is re-checked against the person's own access before it is used.
+  const elevated = actor.type === "user" ? serviceClient() : null;
   let embedding: string | null = null;
   let degraded = false;
   const degradationReasons: SearchDegradation[] = [];
@@ -120,13 +130,14 @@ export async function searchDocuments(actor: RequestActor, input: SearchInput): 
   // The vector RPC runs through the service client for PATs. Company-canonical
   // and shared rows (review stages too) may enter that query; personal agent-owned drafts are
   // merged through the explicitly owner-filtered keyword path below.
-  const rpcStatuses = actor.type === "agent"
+  const rpcStatuses = actor.type === "agent" || elevated
     ? statuses.filter((status) => ["canonical", "team", "review", "reviewed"].includes(status))
     : statuses;
-  const { data, error } = rpcStatuses.length ? await actor.supabase.rpc("os_search_knowledge", {
+  const { data, error } = rpcStatuses.length ? await (elevated ?? actor.supabase).rpc("os_search_knowledge", {
     p_query: normalizedQuery,
     p_embedding: embedding,
-    p_limit: input.topK,
+    // Rows the person cannot read are dropped below, so ask for a few more.
+    p_limit: elevated ? Math.min(50, input.topK * 2) : input.topK,
     p_statuses: rpcStatuses,
     p_folder: input.filters.folder || null,
     p_brand: actor.brand ?? input.filters.brand ?? null,
@@ -154,6 +165,7 @@ export async function searchDocuments(actor: RequestActor, input: SearchInput): 
   // Without embeddings, the RPC can return low-signal full-text rows for an
   // unrelated sentence. Do not present those rows as evidence to chat users.
   if (degraded) results = results.filter((result) => hasLexicalEvidence(result, input.query));
+  if (elevated) results = await visiblePageResults(actor, results);
   const sharedActor = actor; // Supplemental reads retain the requesting user’s RLS scope.
   let sharedKeyword: SearchResult[] = [];
   if (results.length < input.topK) {

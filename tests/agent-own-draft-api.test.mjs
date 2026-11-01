@@ -99,6 +99,7 @@ async function fixture(documents, options = {}) {
   const search = await load("lib/server/search.ts", { ...common,
     "@/lib/search-diagnostics": diagnostics, "@/lib/validation": validation, "@/lib/search-relevance": relevance,
     "./knowledge-page-access": pages, "./embeddings": { createEmbeddings() { throw Error("No external AI in fixture"); } },
+    "@/lib/supabase/server": { createServiceSupabase() { throw Error("AI keys already search on the service client"); } },
   });
   const apiModules = { ...common, "@/lib/server/auth": auth, "@/lib/server/organization": organization,
     "@/lib/server/document-access": documentAccess, "@/lib/server/knowledge-page-access": pages,
