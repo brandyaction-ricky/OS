@@ -1,5 +1,5 @@
 @layer os.vendor, os.base, os.legacy, os.kit, os.screen;
-@layer os.legacy {
+@layer os.kit {
 /* Screen bodies reuse existing data and handlers; dimensions follow the supplied kit. */
 .linear-shell .ui-v2 .content-step-workspace { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .linear-shell .ui-v2 .fullscreen-stage-tabs { width: fit-content; max-width: 100%; margin: 0; flex: none; }

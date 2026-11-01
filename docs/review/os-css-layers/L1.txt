@@ -1,0 +1,35 @@
+공통 CSS 구조 L1 — 층 나누기 + 공통 기반 (2026-11-01)
+기준: main 916ec3a3 (다시 잼: #400~#402 합친 main 4d655dc1) · 지시서 docs/handoff/os-common-style-20261011/00_공통CSS_개발지시서.md 3장 + 03_1031_보충.md 2장 5~6
+
+체험 빌드: NEXT_PUBLIC_DEMO_MODE=true HR_WORKSPACE_ENABLED=true TEAM_V1_ENABLED=true YOUTUBE_V1_ENABLED=true · next start (production) · 1440×900
+화면: 78개 (L0 68개 + 회사 문서 하위 화면 9 · 재무 서류함 1) + 편집기 1 · 밝은 테마와 어두운 테마(FP_THEME=dark) 둘 다
+
+1. 한 일
+   - node tools/wrap-css-layers.mjs L1 …/css/os-foundation.css → app/os-foundation.css 추가, layout.tsx 에서 theme-tokens.css 다음
+   - 층: os.kit = os-ui · fullscreen-* 5개 / os.screen = 메뉴 화면 파일(보충 2장 1 표대로, cost-notice 만 os.legacy) / 나머지 os.legacy
+   - os-foundation.css 의 --os-control-h 32 · --os-control-h-sm 28 (10-31 대표 결정 E1 단추 32/28)
+   - !important 짝 지움: globals.css .knowledge-rich-content 4곳 · knowledge-vault.css 편집기 본문 4곳 (지시서 3장 3)
+   - BASELINE 다시 뽑음 (globals important 53→49, vault 6→2, os-foundation 2 = 움직임 줄이기, finance foreign 488→489 = 아래 입력칸 한 줄)
+
+2. 층을 나누면 바뀌던 곳과 고친 방법 (지금 운영 화면 그대로 두기)
+   화면 층 파일이 이제 공통 부품(키트) 규칙을 이긴다. 전에는 선택자 높이 싸움에서 키트가 이겨 화면 파일의 값이 안 보이던 곳이다.
+   - 유튜브 화면 꺼진 주 단추(찾기 · 내 AI로 틈새 묶기 등 콘텐츠 화면 여러 곳): 키트의 꺼진 단추 모양(10-28 대표 스크린샷 고침)이 지고 진한 단추+흐림이 됨
+     → youtube-process.css 에 같은 꺼진 모양 한 줄
+   - /content/performance 표 머리 제목 13.5 → 15px: yp 제목 크기가 키트 표 머리까지 덮음 → yp h2 규칙이 .panel-header 는 건너뜀
+   - 인사 · 회사 문서 링크 색(이름표 없는 링크 = 키트 공통 링크 색 --accent-2): 화면 파일 색(inherit · --hr-muted · --kw-muted · --kw-fg)이 드러남
+     → 그 색 규칙을 :where([class], :not(.linear-shell .ui-v2 *)) 로 좁힘 (전과 같은 요소에만 걸림, 선택자 높이 그대로)
+   - 인사 · 재무 찾기 칸 글자 12 → 13px (D4): 공통 입력칸 12px 가 지게 됨 → 입력칸만 12px 한 줄 (고르기 · 긴 글 칸은 전처럼 13px)
+   - 보관함 작은 단추 28 → 30px (D5): 보관함 CSS 의 30px 가 드러남 → 단추는 빼고 고르기 칸만 30px (10-31 E1 작은 단추 28)
+   - 보관함 폴더 고르기 찾기 칸 둥글기 6 → 7: 공통 입력칸 6 이 지게 됨 → 보관함 쪽 7 을 지움
+
+3. 결과 (바꾸기 전 = 같은 main 을 따로 빌드)
+   node tools/css-fingerprint.mjs L1.json base.json  (밝은 · 어두운 테마 각각)
+   /knowledge?tab=canon 10 · /knowledge/canon 10 · /knowledge/docs 16(어두움 18) → 전부 표 칸 너비 0.2px 이하 흔들림
+   (같은 빌드를 두 번 재도 생기는 잡음 — L0.txt 1). 편집기(vault 새 페이지) 차이 0.
+   결론: 잡음 말고 화면 변화 0.
+
+4. 참고
+   - 처음엔 인사 · 재무 · 회사 문서 · 보관함을 옛 층에 두는 안도 재 봤다 → 키트가 그 메뉴 CSS 를 이겨서 더 많이 바뀜(보관함 67곳 등). 지시서대로 화면 층.
+   - 측정 요소 수가 오후 측정(36,388)이 오전(40,063)보다 적다 — 체험 데이터 쪽 차이이고 비교한 두 판은 같은 시각에 같은 수.
+   - 지시서 3장 완료 기준 표(68곳 바뀜)는 10/11 기준이다. 이번에는 그 바뀜을 L1 에서 바로 운영 값으로 맞춰서 0 이 됐다.
+     키트 쪽으로 정리(D4 · D5 · L2-2~5)는 메뉴별 L2 PR 에서 화면을 보며 한다.

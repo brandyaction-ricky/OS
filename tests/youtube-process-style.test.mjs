@@ -59,7 +59,8 @@ test("youtube css: 글자는 11px 이상", () => {
 test("youtube css: 새 클래스는 yp- 접두어만 만든다", () => {
   for (const [FILE, root] of sheets) {
     // The OS kit buttons are only referenced, to leave them their kit font (스타일 점검 P2); no new class uses their names.
-    const allowed = new Set(["linear-shell", "ui-v2", "yp", "primary-button", "secondary-button"]);
+    // panel-header too: the yp h2 size skips kit panel headers, which keep their kit size once yp sits in os.screen (공통 CSS L1).
+    const allowed = new Set(["linear-shell", "ui-v2", "yp", "primary-button", "secondary-button", "panel-header"]);
     root.walkRules(rule => {
       if (inKeyframes(rule)) return;
       for (const cls of rule.selector.matchAll(/\.([a-z][\w-]*)/gi)) {

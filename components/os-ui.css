@@ -1,5 +1,5 @@
 @layer os.vendor, os.base, os.legacy, os.kit, os.screen;
-@layer os.legacy {
+@layer os.kit {
 /*
   브랜디 OS 화면 CSS — 시안 F-1 ~ F-9 그대로 (2026-10-03, 2판)
   기준: screens/clean/*.png · screens/F?_*.html#clean. 값 출처: 시안 보드의 CSS (Pretendard로 잰 값)

@@ -1,5 +1,5 @@
 @layer os.vendor, os.base, os.legacy, os.kit, os.screen;
-@layer os.legacy {
+@layer os.screen {
 .hr-workspace,
 .hr-drawer {
   --hr-bg: var(--bg);
@@ -138,6 +138,9 @@
 }
 .hr-workspace td a {
   text-decoration: none;
+}
+/* 이름표 없는 링크는 공통 링크 색(키트 .linear-shell .ui-v2 :where(a:not([class])))을 그대로 쓴다 — 층을 나누기 전과 같은 화면 */
+.hr-workspace td a:where([class], :not(.linear-shell .ui-v2 *)) {
   color: inherit;
 }
 .hr-workspace td a:hover {
@@ -265,6 +268,7 @@
   max-width: 100%;
   min-width: 0;
 }
+.unified-shell :is(.hr-workspace, .hr-drawer) input:not([type="checkbox"]):not([type="radio"]) { font-size: 12px; } /* 입력칸은 공통 12px (D4 키트 — 운영 화면 그대로). 고르기·긴 글 칸은 13px */
 .hr-workspace input[type="checkbox"],
 .hr-drawer input[type="checkbox"] {
   width: auto;
@@ -359,10 +363,12 @@
 }
 .hr-tabs a {
   padding: 8px 12px;
-  color: var(--hr-muted);
   text-decoration: none;
   white-space: nowrap;
   font-size: 12px;
+}
+.hr-tabs a:where([class], :not(.linear-shell .ui-v2 *)) {
+  color: var(--hr-muted);
 }
 .hr-tabs a[aria-current="page"] {
   border-bottom: 2px solid var(--hr-accent);

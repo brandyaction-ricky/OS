@@ -1,5 +1,5 @@
 @layer os.vendor, os.base, os.legacy, os.kit, os.screen;
-@layer os.legacy {
+@layer os.screen {
 .te-workspace { margin-bottom: 24px; }
 .te-workspace header > p,.te-request > p,.te-import > p,.te-save > p { color: var(--muted); font-size: 14px; line-height: 1.65; }
 .te-route-cards { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; margin-top: 20px; }

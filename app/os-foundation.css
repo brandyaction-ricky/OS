@@ -1,0 +1,185 @@
+/*
+  브랜디 OS 공통 기반 — os-foundation.css (공통 스타일 가이드 v1.0 · 2026-10-11)
+
+  넣는 곳
+    app/os-foundation.css  →  app/layout.tsx 에서 "./theme-tokens.css" 바로 다음 줄에 import.
+
+  이 파일이 하는 일
+    1. 레이어 순서를 정한다 (모든 CSS 파일 첫 줄에 같은 문장을 둔다 — 공통 가이드 2장).
+    2. 색이 아닌 공통 값(글자·간격·반경·높이·층·움직임)을 --os-* 토큰으로 정한다.
+       색은 app/theme-tokens.css 토큰만 쓴다. 여기서 색 값을 만들지 않는다.
+    3. 브라우저 기본값 중 규칙을 깨는 것 하나를 고친다 (small 이 11px 밑으로 내려감).
+    4. 메뉴마다 따로 만들던 작은 공통 부품을 키트에 더한다 (.os-* · .status-pill[data-tone]).
+       팀 메뉴(.tm-*)에서 검증된 모양을 옮긴 것이다.
+
+  레이어 (뒤로 갈수록 이긴다. 선택자 높이와 상관없다)
+    os.vendor  패키지 CSS (@mdxeditor 등) — 가장 약함
+    os.base    브라우저 기본값 보정 · 토큰 — 어떤 OS 규칙에도 진다
+    os.legacy  지금 CSS 전부 (globals.css 등) — 1단계에서 감싸기만 하고 고치지 않는다
+    os.kit     공통 부품 (components/os-ui.css · fullscreen-*.css · 이 파일의 부품)
+    os.screen  메뉴 화면 파일 (접두어 .{메뉴}-* 만)
+  색 토큰 파일(app/theme-tokens.css)은 레이어 밖에 둔다 → 어떤 레이어도 색 토큰을 덮지 못한다.
+*/
+@layer os.vendor, os.base, os.legacy, os.kit, os.screen;
+
+/* ───────────── 1. 토큰 (색 아님) ───────────── */
+@layer os.base {
+  :root {
+    /* 글자 — 이 단계 밖의 크기를 새로 만들지 않는다 (11px 미만 금지) */
+    --os-text-caption: 11px;     /* 배지 · 칩 · 도움말 · 작은 글 */
+    --os-text-label: 11.5px;     /* 표 머리 · 지표 이름 */
+    --os-text-meta: 12px;        /* 보조 글 · 단추 · 입력 · 표 칸 */
+    --os-text-strong-sm: 12.5px; /* 목록 제목 · 표 제목 칸 */
+    --os-text-body: 13px;        /* 본문 */
+    --os-text-card: 14px;        /* 카드 제목 */
+    --os-text-section: 15px;     /* 묶음 제목 */
+    --os-text-detail: 18px;      /* 상세 · 서랍 제목 */
+    --os-text-metric-sm: 20px;   /* 지표 숫자(작게) */
+    --os-text-page: 22px;        /* 화면 제목 h1 */
+    --os-text-metric: 24px;      /* 지표 숫자 */
+    --os-weight-regular: 400;
+    --os-weight-medium: 500;
+    --os-weight-semibold: 600;
+    --os-weight-bold: 700;
+    --os-leading-tight: 1.35;
+    --os-leading-body: 1.5;
+
+    /* 간격 — 4px 바탕 */
+    --os-space-1: 2px;
+    --os-space-2: 4px;
+    --os-space-3: 6px;
+    --os-space-4: 8px;
+    --os-space-5: 10px;
+    --os-space-6: 12px;
+    --os-space-7: 14px;
+    --os-space-8: 16px;
+    --os-space-9: 20px;
+    --os-space-10: 24px;
+    --os-space-11: 32px;
+    --os-page-pad-x: 24px;       /* 본문 좌우 여백 (820px 이하 16px) */
+    --os-page-gap: 10px;         /* 본문 묶음 사이 */
+
+    /* 둥글기 */
+    --os-radius-xs: 4px;         /* 배지 · 꼬리표 */
+    --os-radius-sm: 6px;         /* 단추 · 입력 · 분절 · 일정 칩 */
+    --os-radius-md: 8px;         /* 안쪽 상자 · 업무 카드 */
+    --os-radius-lg: 10px;        /* 패널 · 카드 · 지표 · 알림 띠 · 빈 상태 */
+    --os-radius-xl: 14px;        /* 창(form-modal) */
+    --os-radius-pill: 999px;     /* 칩 · 사람 동그라미 */
+
+    /* 누르는 것 높이 */
+    --os-control-h-sm: 24px;     /* 작은 단추 · 칩 */
+    --os-control-h: 28px;        /* 단추 · 분절 */
+    --os-input-h: 32px;          /* 입력칸 · select */
+    --os-touch-h: 40px;          /* 820px 이하 누름 높이 */
+
+    /* 층 (지금 OS 값 [확인 globals.css · unified-shell.css]) */
+    --os-z-sticky: 20;
+    --os-z-sidebar: 35;
+    --os-z-dropdown: 60;
+    --os-z-drawer: 80;
+    --os-z-modal: 100;
+    --os-z-toast: 110;
+
+    /* 움직임 */
+    --os-motion-fast: 120ms;
+    --os-motion: 160ms;
+    --os-ease: cubic-bezier(.2, 0, 0, 1);
+  }
+
+  /* 브라우저 기본 small = 0.83em → 13px 본문에서 10.8px. [확인 운영 /organization/agents 26곳]
+     글자 크기 시험(tests/final-style.test.mjs)은 CSS 선언만 보므로 이것을 못 잡는다. */
+  .page-content small { font-size: max(var(--os-text-caption), calc(1em / 1.2)); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .page-content *, .page-content *::before, .page-content *::after { transition-duration: 0s !important; animation-duration: 0s !important; }
+  }
+}
+
+/* ───────────── 2. 키트에 더하는 공통 부품 ─────────────
+   선택자는 낮게(클래스 1~2개) 둔다 — 레이어가 우선순위를 정하므로 .linear-shell .ui-v2 를 앞에 붙이지 않는다. */
+@layer os.kit {
+  /* 2.1 상태 배지 색 — data-tone 8가지. 모양(크기·여백)은 os-ui.css 의 .status-pill 그대로.
+         지금 data-status 값도 그대로 동작한다. 새 화면은 data-tone 을 쓴다 (공통 가이드 5장 대응표). */
+  .status-pill[data-tone="neutral"]  { background: var(--panel-3);      color: var(--text-2); }
+  .status-pill[data-tone="progress"] { background: var(--accent-soft);  color: var(--accent-2); }
+  .status-pill[data-tone="info"]     { background: var(--cyan-soft);    color: var(--cyan); }
+  .status-pill[data-tone="wait"]     { background: var(--purple-soft);  color: var(--purple); }
+  .status-pill[data-tone="warn"]     { background: var(--warning-soft); color: var(--warning); }
+  .status-pill[data-tone="ok"]       { background: var(--mint-soft);    color: var(--mint); }
+  .status-pill[data-tone="danger"]   { background: var(--danger-soft);  color: var(--danger); }
+  .status-pill[data-tone="muted"]    { background: var(--panel-3);      color: var(--muted); }
+  .os-dot { width: 8px; height: 8px; border-radius: var(--os-radius-pill); flex: none; display: inline-block; background: var(--muted); }
+  .os-dot[data-tone="progress"] { background: var(--accent-2); }
+  .os-dot[data-tone="info"]     { background: var(--cyan); }
+  .os-dot[data-tone="wait"]     { background: var(--purple); }
+  .os-dot[data-tone="warn"]     { background: var(--warning); }
+  .os-dot[data-tone="ok"]       { background: var(--mint); }
+  .os-dot[data-tone="danger"]   { background: var(--danger); }
+
+  /* 2.2 도구 줄 · 필터 칩 · 찾기 칸 (팀 .tm-toolbar · .tm-chip · .tm-search 에서) */
+  .os-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--os-space-4); min-width: 0; }
+  .os-toolbar > .os-spacer { flex: 1; }
+  .os-chip {
+    display: inline-flex; align-items: center; gap: var(--os-space-3); min-height: var(--os-control-h-sm);
+    padding: 3px 10px; border: 1px solid var(--line); border-radius: var(--os-radius-pill); background: var(--card);
+    color: var(--text-2); font: inherit; font-size: var(--os-text-meta); line-height: normal; white-space: nowrap; text-decoration: none; cursor: pointer;
+  }
+  .os-chip:hover { background: var(--surface-hover); }
+  .os-chip :is(b, .os-count) { font-weight: var(--os-weight-bold); color: var(--text); }
+  .os-chip:is([aria-pressed="true"], [aria-current="page"]) { background: var(--accent-soft); border-color: var(--accent-2); color: var(--accent-2); }
+  .os-chip:is([aria-pressed="true"], [aria-current="page"]) :is(b, .os-count) { color: var(--accent-2); }
+  .os-search {
+    display: inline-flex; align-items: center; gap: var(--os-space-3); min-width: 200px; max-width: 320px; flex: 1;
+    height: var(--os-input-h); padding: 0 10px; border: 1px solid var(--line); border-radius: var(--os-radius-sm); background: var(--card); color: var(--muted);
+  }
+  .os-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; color: var(--text); font: inherit; font-size: var(--os-text-meta); min-height: 0; padding: 0; }
+
+  /* 2.3 알림 띠 (팀 .tm-callout 에서) — data-tone = info · warn · danger · ok */
+  .os-callout {
+    display: flex; align-items: flex-start; gap: var(--os-space-5); padding: 10px 12px;
+    border: 1px solid var(--line-soft); border-radius: var(--os-radius-lg); background: var(--panel-2); color: var(--text); font-size: var(--os-text-meta);
+  }
+  .os-callout[data-tone="info"]   { background: var(--accent-soft);  border-color: transparent; }
+  .os-callout[data-tone="warn"]   { background: var(--warning-soft); border-color: transparent; }
+  .os-callout[data-tone="danger"] { background: var(--danger-soft);  border-color: transparent; }
+  .os-callout[data-tone="ok"]     { background: var(--mint-soft);    border-color: transparent; }
+  .os-callout > svg { flex: none; margin-top: 1px; color: var(--muted); }
+  .os-callout[data-tone="info"] > svg   { color: var(--accent-2); }
+  .os-callout[data-tone="warn"] > svg   { color: var(--warning); }
+  .os-callout[data-tone="danger"] > svg { color: var(--danger); }
+  .os-callout[data-tone="ok"] > svg     { color: var(--mint); }
+  .os-callout-body { flex: 1; min-width: 0; display: grid; gap: 2px; }
+  .os-callout-body strong { font-size: var(--os-text-body); font-weight: var(--os-weight-bold); }
+  .os-callout-body small { color: var(--text-2); font-size: var(--os-text-meta); }
+  .os-callout-actions { display: flex; flex-wrap: wrap; gap: var(--os-space-3); flex: none; }
+
+  /* 2.4 묶음 머리 · 이름-값 목록 */
+  .os-section-head { display: flex; align-items: baseline; gap: var(--os-space-3); margin: 0; font-size: var(--os-text-body); font-weight: var(--os-weight-bold); color: var(--text); }
+  .os-section-head .os-count { font-size: var(--os-text-meta); font-weight: var(--os-weight-regular); color: var(--muted); }
+  .os-section-head[data-tone="danger"] { color: var(--danger); }
+  .os-kv { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 6px 12px; margin: 0; font-size: var(--os-text-meta); }
+  .os-kv dt { color: var(--muted); }
+  .os-kv dd { margin: 0; min-width: 0; color: var(--text-2); overflow-wrap: anywhere; }
+
+  /* 2.5 사람 동그라미 · 사업 점 · 기한 */
+  .os-avatar {
+    display: inline-grid; place-items: center; width: 22px; height: 22px; flex: none; border-radius: var(--os-radius-pill);
+    background: var(--panel-3); color: var(--text-2); font-size: var(--os-text-caption); font-weight: var(--os-weight-bold); line-height: 1;
+  }
+  .os-avatar[data-tone="1"] { background: var(--accent-soft);  color: var(--accent-2); }
+  .os-avatar[data-tone="2"] { background: var(--mint-soft);    color: var(--mint); }
+  .os-avatar[data-tone="3"] { background: var(--warning-soft); color: var(--warning); }
+  .os-avatar[data-tone="4"] { background: var(--purple-soft);  color: var(--purple); }
+  .os-avatar[data-tone="5"] { background: var(--cyan-soft);    color: var(--cyan); }
+  .os-avatar[data-tone="6"] { background: var(--danger-soft);  color: var(--danger); }
+  .os-biz { display: inline-flex; align-items: center; gap: 5px; font-size: var(--os-text-meta); color: var(--text-2); white-space: nowrap; }
+  .os-biz::before { content: ""; width: 7px; height: 7px; border-radius: 2px; flex: none; background: var(--muted); }
+  .os-biz[data-biz="myin"]::before    { background: var(--cyan); }
+  .os-biz[data-biz="edu"]::before     { background: var(--mint); }
+  .os-biz[data-biz="company"]::before { background: var(--purple); }
+  .os-due { font-size: var(--os-text-meta); color: var(--text-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .os-due[data-state="over"] { color: var(--danger); font-weight: var(--os-weight-semibold); }
+  .os-due[data-state="soon"] { color: var(--warning); font-weight: var(--os-weight-semibold); }
+  .os-due[data-state="none"] { color: var(--muted); }
+}

@@ -1,5 +1,5 @@
 @layer os.vendor, os.base, os.legacy, os.kit, os.screen;
-@layer os.legacy {
+@layer os.screen {
 .finance-toss-panel { margin-bottom: 16px; }
 .finance-toss-panel > summary { padding: 14px 16px; cursor: pointer; font-weight: 600; }
 .finance-toss-body { padding: 0 16px 16px; display: grid; gap: 12px; }
@@ -592,6 +592,7 @@
   min-height: 72px;
   resize: vertical;
 }
+.unified-shell .finance-workspace input.input:not([type="checkbox"]):not([type="radio"]) { font-size: 12px; } /* 찾기·입력칸은 공통 12px (D4 키트 — 운영 화면 그대로). 고르기·긴 글 칸은 13px */
 .page-content .finance-workspace .input.err {
   border-color: var(--bad);
 }
