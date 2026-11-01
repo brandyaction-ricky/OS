@@ -112,7 +112,8 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
           if (page.client && project && plan) void page.client.saveStage(project.id, "plan", plan.version, { ...draft, aiDraft: null }).then(result => { page.setBundle(current => current ? { ...current, project: result.project, stages: { ...current.stages, plan: result.stage } } : current); setDirty(false); }, page.fail); }}>이 초안으로 바꾸기</button>
         <details><summary>초안 보기</summary><div style={{ fontSize: 13 }}><b>제목</b><ol>{form.aiDraft.titles.map(title => <li key={title.id}>{title.text}</li>)}</ol>
           <b>썸네일</b><ol>{form.aiDraft.thumbs.map(thumb => <li key={thumb.id}>{thumb.copy} — {thumb.screen}</li>)}</ol>
-          <b>오프닝</b><p>{form.aiDraft.opening}</p><b>본론</b><p style={{ whiteSpace: "pre-wrap" }}>{form.aiDraft.body}</p><b>클로징</b><p>{form.aiDraft.closing}</p></div></details></div></div> : null}
+          <b>오프닝</b><p>{form.aiDraft.opening}</p><b>본론</b><p style={{ whiteSpace: "pre-wrap" }}>{form.aiDraft.body}</p><b>클로징</b><p>{form.aiDraft.closing}</p>
+          {form.aiDraft.stats?.length ? <><b>공식 통계</b><ul>{form.aiDraft.stats.map(stat => <li key={stat.sourceUrl + stat.fact}>{stat.fact} ({stat.period})</li>)}</ul></> : null}</div></details></div></div> : null}
       <div className="yp-wrap2"><div>
         <YpSection n={1} title="제목 · 썸네일" gq="어떻게 클릭하게 만드나요?" need rev={rev("draft.tt")}>
           {form.ai?.patterns ? <details className="yp-card" style={{ padding: "8px 12px", marginBottom: 10 }}><summary style={{ cursor: "pointer", fontSize: 13 }}><Sparkles size={12} aria-hidden="true" /> AI가 뽑은 제목 · 썸네일 공식 보기 (시장 참고 영상에서 반복된 말)</summary>
@@ -166,7 +167,13 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
           if ([...project.yp.topic.refs, ...form.extraRefs].some(row => sameRef(row, ref))) { page.setError("이미 있는 참고 영상이에요."); return; }
           setRefUrl(""); edit({ extraRefs: [...form.extraRefs, ref] }, true); }}>
           <input className="yp-in" placeholder="유튜브 영상 주소" aria-label="참고 영상 주소" value={refUrl} onChange={event => setRefUrl(event.target.value)} /><button type="submit" className="yp-btn">추가</button></form> : null}
-      </div></section></aside></div>
+      </div></section>
+      {/* 대표 결정 2026-11-01: the AI's KOSIS figures; the ones the PD keeps go into the 원고 and the 설명란 출처 as written. */}
+      {form.stats?.length ? <section className="yp-card"><div className="yp-card-h">공식 통계 <span className="yp-opt">KOSIS</span></div><div className="yp-card-b">
+        <ul className="yp-open-list">{form.stats.map((stat, index) => <li key={`${stat.sourceUrl}-${index}`}>
+          <a href={stat.sourceUrl} target="_blank" rel="noreferrer" title={`${stat.organization} 「${stat.table}」`}>{stat.fact}</a><span className="yp-muted">{stat.period}</span><span className="yp-sp" />
+          {can("stats") ? <button type="button" className="yp-ib" aria-label="통계 빼기" onClick={() => edit({ stats: form.stats!.filter((_, at) => at !== index) }, true)}><X size={14} /></button> : null}</li>)}</ul>
+      </div></section> : null}</aside></div>
       <SendDialog page={page} task="plan" open={send} onClose={() => setSend(false)} job={job} queryDefault={project ? topicKeywords(projectName(project), project.yp.topic.target) : undefined} />
     </div> : null}
   </YpFrame>;

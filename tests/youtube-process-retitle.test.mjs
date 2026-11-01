@@ -191,3 +191,27 @@ test("the video goes out with the edited A title and copy", () => {
   assert.equal(ai.v1KitCardInputs(edited).thumbnailCopy, "일이 싫은 걸까");
   assert.equal(ai.v1Title(ai.v1Stages(state("make"))), "퇴사 전에 이것부터");
 });
+
+// 대표 결정 2026-11-01: the 기획안 asks the staff AI for KOSIS figures; the ones the PD keeps reach the 원고 and the 설명란 출처.
+test("the 기획안 asks for up to three KOSIS figures with their table link and hands the kept ones to the 원고 and the 설명란", async () => {
+  const card = await ai.v1PlanCard({}, state("draft"), 45, market);
+  assert.match(card, /query_statistics로 정밀 타겟/);
+  assert.match(card, /"stats": \[\{ "fact"/);
+  const stat = { fact: "청년층 첫 일자리 평균 근속기간은 1년 6개월이다", value: "18", unit: "개월", period: "2025", table: "첫 일자리 근속기간", organization: "국가데이터처",
+    sourceUrl: "https://kosis.kr/statHtml/statHtml.do?orgId=101&tblId=DT_1" };
+  const plan = { titles: ["이런 경우엔 퇴사 말고 자리부터 바꾸세요", "퇴사가 고민될 때 판단하는 순서", "퇴사하고 싶다면 이거 보고 결정하세요"], thumbs: [{ screen: "s", copy: "퇴사 전 네 칸" }, { screen: "s", copy: "회사만 바꾸지 마세요" }],
+    opening: "o", body: "b", closing: "c", note: "", ...patterns };
+  await assert.rejects(ai.saveV1Plan(supabase, "owner", state("draft"), { ...plan, stats: [{ ...stat, sourceUrl: "https://example.com/stat" }] }, author, market),
+    (error) => error.code === "PLAN_RESULT_INVALID");
+  await assert.rejects(ai.saveV1Plan(supabase, "owner", state("draft"), { ...plan, stats: [stat, stat, stat, stat] }, author, market), (error) => error.code === "PLAN_RESULT_INVALID");
+  await ai.saveV1Plan(supabase, "owner", state("draft"), plan, author, market);
+  assert.deepEqual(plain(written.data.stats), [], "no figure found is an empty list, not a failure");
+  await ai.saveV1Plan(supabase, "owner", state("draft"), { ...plan, stats: [stat] }, author, market);
+  assert.equal(written.data.stats[0].sourceUrl, stat.sourceUrl);
+  const kept = state("make");
+  kept.records.find(row => row.id === "plan").metadata.yp.stats = [stat];
+  assert.equal(ai.v1ScriptCardInputs(kept, { targetMinutes: 10, role: "r", targetChars: 3500 }).inputs.officialStats[0].fact, stat.fact);
+  assert.notEqual(ai.v1ScriptInputKey(kept), ai.v1ScriptInputKey(state("make")), "a kept or removed figure is a new 원고 input");
+  assert.match(ai.v1KitCardInputs(kept).rules, /국가데이터처 · 「첫 일자리 근속기간」\(2025\)/);
+  assert.doesNotMatch(ai.v1KitCardInputs(state("make")).rules, /기획안 공식 통계/);
+});

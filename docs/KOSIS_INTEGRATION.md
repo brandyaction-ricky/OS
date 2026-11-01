@@ -16,6 +16,10 @@ The existing remote OS MCP exposes query_statistics with the same inputs. Connec
 
 Search returns candidate tables, not verified numerical claims. Check ITM, PRD, UNIT and SOURCE metadata before fetching values. Keep each value with its period, unit, dimensions, source URL and retrieval time; distinguish population-level observations from interpretations about individual motivations. Data missing/suppression symbols are preserved as strings or null, never silently coerced to zero. Empty responses mean no returned records, not zero measured people.
 
+## 기획안 use (owner decision 2026-11-01)
+
+The YouTube 기획안 staff-AI job asks for 0–3 figures through query_statistics (search → metadata → data) and returns them as `stats` (fact, value, unit, period, table, organization, KOSIS sourceUrl). The PD sees them in the 기획안's 「공식 통계」 card and can remove any. The kept ones go to the 원고 job as `officialStats` (numbers only from these, with their period) and to the 발행키트 job, which lists the ones the 원고 used under [인용 및 출처]. Without a key the tool answers KOSIS_NOT_CONFIGURED and the job leaves `stats` empty.
+
 ## Limits and credentials
 
 Requests use fixed HTTPS endpoints with redirects refused and 15-second timeouts. Responses are bounded at 1 MB and 1,000 rows; oversized results fail instead of silently truncating. Search returns a page of up to 20 results. Successful queries are cached for 10 minutes in a bounded process-local cache; timestamps retain the original retrieval time. A process-local 20 outbound requests/minute cap is a best-effort guard, not a distributed quota guarantee. KOSIS provider limits across instances still apply. Provider exceptions and API errors are sanitized because request URLs contain the key. Do not log upstream URLs or submit private documents or personal information as search terms.
