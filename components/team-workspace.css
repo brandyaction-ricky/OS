@@ -35,12 +35,11 @@
 .linear-shell .ui-v2 .tm-root .tm-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .linear-shell .ui-v2 .tm-root .tm-stack { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .linear-shell .ui-v2 .tm-root .tm-grow { flex: 1; min-width: 0; }
-.linear-shell .ui-v2 .tm-root .tm-spacer { flex: 1; }
 .linear-shell .ui-v2 .tm-root .tm-end { display: flex; justify-content: flex-end; gap: 6px; }
 .linear-shell .ui-v2 .tm-root .tm-gap-top { margin-top: 8px; }
 .linear-shell .ui-v2 .tm-root .tm-detail-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; }
 .linear-shell .ui-v2 .tm-root .tm-detail-title { margin: 6px 0 2px; font-size: 18px; font-weight: 700; line-height: 1.4; color: var(--text); }
-.linear-shell .ui-v2 .tm-root .tm-drawer-title { font-size: 17px; font-weight: 700; line-height: 1.4; color: var(--text); }
+.linear-shell .ui-v2 .tm-root .tm-drawer-title { font-size: 18px; font-weight: 700; line-height: 1.4; color: var(--text); }
 .linear-shell .ui-v2 .tm-root .tm-label { margin-bottom: 5px; font-size: 12px; color: var(--text-2); }
 .linear-shell .ui-v2 .tm-root .tm-wide-button { width: 100%; justify-content: center; }
 
@@ -59,63 +58,18 @@
 .linear-shell .ui-v2 .tm-root .tm-tab-count[data-tone="warn"] { background: var(--warning-soft); color: var(--warning); }
 
 /* ───── 1. 도구 줄 · 필터 칩 ───── */
-.linear-shell .ui-v2 .tm-root .tm-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.linear-shell .ui-v2 .tm-root .tm-chip {
-  display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 12px; line-height: normal;
-  padding: 4px 10px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); color: var(--text-2);
-  cursor: pointer; white-space: nowrap; text-decoration: none;
-}
-.linear-shell .ui-v2 .tm-root .tm-chip:hover { background: var(--surface-hover); }
-.linear-shell .ui-v2 .tm-root .tm-chip[aria-pressed="true"],
-.linear-shell .ui-v2 .tm-root .tm-chip[aria-current="page"] { background: var(--accent-soft); border-color: var(--accent-2); color: var(--accent-2); font-weight: 700; }
-.linear-shell .ui-v2 .tm-root .tm-chip b { font-weight: 700; color: inherit; }
-.linear-shell .ui-v2 .tm-root .tm-search {
-  display: inline-flex; align-items: center; gap: 6px; min-width: 220px; padding: 0 8px; border: 1px solid var(--line);
-  border-radius: 6px; background: var(--card); color: var(--muted);
-}
-.linear-shell .ui-v2 .tm-root .tm-search input { border: 0; background: none; min-height: 30px; padding: 0; font-size: 12px; color: var(--text); flex: 1; outline: none; }
 
 /* ───── 2. 알림 띠 (.inline-alert 는 경고 색이 없어 새로 만듦 — globals.css:173) ───── */
-.linear-shell .ui-v2 .tm-root .tm-callout {
-  display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
-  background: var(--panel-2); color: var(--text); font-size: 12.5px; line-height: 1.5;
-}
-.linear-shell .ui-v2 .tm-root .tm-callout > svg { flex: none; margin-top: 2px; color: var(--accent-2); }
-.linear-shell .ui-v2 .tm-root .tm-callout[data-tone="warn"] { background: var(--warning-soft); }
-.linear-shell .ui-v2 .tm-root .tm-callout[data-tone="warn"] > svg { color: var(--warning); }
-.linear-shell .ui-v2 .tm-root .tm-callout[data-tone="info"] { background: var(--accent-soft); }
-.linear-shell .ui-v2 .tm-root .tm-callout[data-tone="danger"] { background: var(--danger-soft); }
-.linear-shell .ui-v2 .tm-root .tm-callout[data-tone="danger"] > svg { color: var(--danger); }
-.linear-shell .ui-v2 .tm-root .tm-callout-body { flex: 1; min-width: 0; }
-.linear-shell .ui-v2 .tm-root .tm-callout-body strong { font-weight: 700; }
-.linear-shell .ui-v2 .tm-root .tm-callout-body small { display: block; font-size: 12px; color: var(--text-2); margin-top: 2px; }
-.linear-shell .ui-v2 .tm-root .tm-callout-actions { display: flex; gap: 6px; flex: none; align-self: center; }
 
 /* ───── 3. 묶음 제목 ───── */
-.linear-shell .ui-v2 .tm-root .tm-section-head { display: flex; align-items: center; gap: 6px; margin: 6px 0 0; font-size: 12px; font-weight: 700; color: var(--text-2); }
-.linear-shell .ui-v2 .tm-root .tm-section-head .tm-count { font-weight: 400; color: var(--muted); }
-.linear-shell .ui-v2 .tm-root .tm-section-head[data-tone="danger"] { color: var(--danger); }
 
 /* ───── 4. 사업 표시 · 사람 동그라미 ───── */
-.linear-shell .ui-v2 .tm-root .tm-biz { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-2); white-space: nowrap; }
-.linear-shell .ui-v2 .tm-root .tm-biz::before { content: ""; width: 7px; height: 7px; border-radius: 2px; background: var(--muted); flex: none; }
-.linear-shell .ui-v2 .tm-root .tm-biz[data-biz="myin"]::before { background: var(--cyan); }
-.linear-shell .ui-v2 .tm-root .tm-biz[data-biz="edu"]::before { background: var(--mint); }
-.linear-shell .ui-v2 .tm-root .tm-biz[data-biz="company"]::before { background: var(--purple); }
-.linear-shell .ui-v2 .tm-root .tm-biz .tm-project { color: var(--muted); }
-.linear-shell .ui-v2 .tm-root .tm-avatar {
-  width: 20px; height: 20px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; flex: none;
-  font-size: 11px; font-weight: 700; background: var(--panel-3); color: var(--text-2);
-}
-.linear-shell .ui-v2 .tm-root .tm-avatar[data-tone="1"] { background: var(--accent-soft); color: var(--accent-2); }
-.linear-shell .ui-v2 .tm-root .tm-avatar[data-tone="2"] { background: var(--mint-soft); color: var(--mint); }
-.linear-shell .ui-v2 .tm-root .tm-avatar[data-tone="3"] { background: var(--warning-soft); color: var(--warning); }
-.linear-shell .ui-v2 .tm-root .tm-avatar[data-tone="4"] { background: var(--purple-soft); color: var(--purple); }
-.linear-shell .ui-v2 .tm-root .tm-avatar[data-tone="5"] { background: var(--cyan-soft); color: var(--cyan); }
-.linear-shell .ui-v2 .tm-root .tm-avatar[data-tone="6"] { background: var(--danger-soft); color: var(--danger); }
+.linear-shell .ui-v2 .tm-root .os-biz .tm-project { color: var(--muted); }
+/* 키트 찾기 칸은 도구 줄(가로) 안에서 늘어나게 되어 있다 — 팀 화면은 세로로 쌓는 틀 바로 안이라 늘이지 않고 한 줄을 다 쓴다 */
+.linear-shell .ui-v2 .tm-root > .os-search { flex: none; max-width: none; }
 .linear-shell .ui-v2 .tm-root .tm-avatars { display: inline-flex; }
-.linear-shell .ui-v2 .tm-root .tm-avatars .tm-avatar { margin-left: -5px; box-shadow: 0 0 0 2px var(--card); }
-.linear-shell .ui-v2 .tm-root .tm-avatars .tm-avatar:first-child { margin-left: 0; }
+.linear-shell .ui-v2 .tm-root .tm-avatars .os-avatar { margin-left: -5px; box-shadow: 0 0 0 2px var(--card); }
+.linear-shell .ui-v2 .tm-root .tm-avatars .os-avatar:first-child { margin-left: 0; }
 .linear-shell .ui-v2 .tm-root .tm-person { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-2); white-space: nowrap; }
 
 /* ───── 5. 회의 기록 목록 ───── */
@@ -145,9 +99,6 @@
 .linear-shell .ui-v2 .tm-root .tm-side-section { padding: 12px 14px; }
 .linear-shell .ui-v2 .tm-root .tm-side-section + .tm-side-section { border-top: 1px solid var(--line-soft); }
 .linear-shell .ui-v2 .tm-root .tm-side-section h3 { margin: 0 0 8px; font-size: 12px; font-weight: 700; color: var(--text-2); }
-.linear-shell .ui-v2 .tm-root .tm-kv { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 8px 10px; margin: 0; font-size: 12.5px; }
-.linear-shell .ui-v2 .tm-root .tm-kv dt { color: var(--muted); }
-.linear-shell .ui-v2 .tm-root .tm-kv dd { margin: 0; color: var(--text-2); min-width: 0; }
 .linear-shell .ui-v2 .tm-root .tm-bullets { margin: 0; padding-left: 18px; color: var(--text-2); font-size: 13px; line-height: 1.6; }
 .linear-shell .ui-v2 .tm-root .tm-bullets li + li { margin-top: 3px; }
 .linear-shell .ui-v2 .tm-root .tm-progress { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--panel-3); }
@@ -222,10 +173,6 @@
 }
 .linear-shell .ui-v2 .tm-root .tm-check:hover { border-color: var(--mint); color: var(--mint); }
 .linear-shell .ui-v2 .tm-root .tm-check[aria-checked="true"] { background: var(--mint); border-color: var(--mint); color: var(--bg); }  /* --on-accent(흰색)는 다크 민트 위 대비 1.7 → --bg (다크 11.6 / 라이트 6.0) */
-.linear-shell .ui-v2 .tm-root .tm-due { font-size: 12px; color: var(--text-2); white-space: nowrap; }
-.linear-shell .ui-v2 .tm-root .tm-due[data-state="over"] { color: var(--danger); font-weight: 600; }
-.linear-shell .ui-v2 .tm-root .tm-due[data-state="soon"] { color: var(--warning); }
-.linear-shell .ui-v2 .tm-root .tm-due[data-state="none"] { color: var(--muted); }
 .linear-shell .ui-v2 .tm-root .tm-source { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); white-space: nowrap; }
 .linear-shell .ui-v2 .tm-root .tm-blocked-reason {
   display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--danger); background: var(--danger-soft);
@@ -242,7 +189,6 @@
 .linear-shell .ui-v2 .tm-root .tm-column > header {
   min-height: 0; display: flex; align-items: center; gap: 7px; padding: 3px 4px 6px; border: 0; font-size: 12px; font-weight: 700;
 }
-.linear-shell .ui-v2 .tm-root .tm-column > header .tm-count { font-weight: 400; color: var(--muted); }
 .linear-shell .ui-v2 .tm-root .tm-column[data-drop-target="true"] { border-color: var(--accent); background: var(--accent-soft); }
 .linear-shell .ui-v2 .tm-root .tm-col-dot { width: 8px; height: 8px; border-radius: 4px; flex: none; background: var(--muted); }
 .linear-shell .ui-v2 .tm-root .tm-col-dot[data-status="active"] { background: var(--accent-2); }
@@ -265,7 +211,7 @@
   display: flex; align-items: center; gap: 6px; padding: 8px 12px; font-size: 12px; color: var(--muted);
   background: var(--panel-2); border-bottom: 1px solid var(--line-soft);
 }
-.linear-shell .ui-v2 .tm-root .tm-inbox-group-head .tm-count { margin-left: auto; }
+.linear-shell .ui-v2 .tm-root .tm-inbox-group-head .os-count { margin-left: auto; }
 .linear-shell .ui-v2 .tm-root .tm-inbox-row { display: flex; align-items: flex-start; gap: 10px; padding: 11px 12px; border-bottom: 1px solid var(--line-soft); }
 .linear-shell .ui-v2 .tm-root .tm-inbox-row:last-child { border-bottom: 0; }
 .linear-shell .ui-v2 .tm-root .tm-inbox-row input[type="checkbox"] { margin-top: 3px; }
@@ -278,7 +224,6 @@
 
 /* ───── 12. 다음 회의 준비 ───── */
 .linear-shell .ui-v2 .tm-root .tm-prep-section { margin-bottom: 10px; }
-.linear-shell .ui-v2 .tm-root .tm-prep-section > .card-head .tm-count { color: var(--muted); font-weight: 400; }
 .linear-shell .ui-v2 .tm-root .tm-prep-row { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-bottom: 1px solid var(--line-soft); }
 .linear-shell .ui-v2 .tm-root .tm-prep-row:last-child { border-bottom: 0; }
 .linear-shell .ui-v2 .tm-root .tm-agenda { margin: 8px 0 12px; padding-left: 18px; color: var(--text-2); font-size: 12.5px; line-height: 1.55; }
@@ -343,7 +288,7 @@
 /* ───── 16. 서랍 · 창 (기존 .record-drawer · .form-modal 에 덧붙임) ───── */
 .linear-shell .ui-v2 .tm-root .record-drawer.tm-drawer { width: min(520px, 100vw); gap: 14px; }
 .linear-shell .ui-v2 .tm-root .tm-drawer .drawer-head { align-items: center; gap: 8px; margin: 0; padding-bottom: 12px; }
-.linear-shell .ui-v2 .tm-root .tm-drawer .drawer-head h2 { margin: 0; font-size: 17px; line-height: 1.4; }
+.linear-shell .ui-v2 .tm-root .tm-drawer .drawer-head h2 { margin: 0; font-size: 18px; line-height: 1.4; }
 .linear-shell .ui-v2 .tm-root .tm-field-grid { display: grid; grid-template-columns: 84px minmax(0, 1fr); align-items: center; gap: 9px 12px; }
 .linear-shell .ui-v2 .tm-root .tm-field-grid > span { font-size: 12px; color: var(--muted); }
 .linear-shell .ui-v2 .tm-root .tm-field-grid :is(select, input) { width: 100%; }
@@ -360,7 +305,6 @@
 .linear-shell .ui-v2 .tm-root .form-modal .tm-required { color: var(--danger); }
 .linear-shell .ui-v2 .tm-root .form-modal .tm-hint { font-size: 11.5px; color: var(--muted); }
 .linear-shell .ui-v2 .tm-root .tm-people-pick { display: flex; flex-wrap: wrap; gap: 6px; }
-.linear-shell .ui-v2 .tm-root .tm-people-pick .tm-chip { padding-left: 4px; }
 .linear-shell .ui-v2 .tm-root .tm-compare { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .linear-shell .ui-v2 .tm-root .tm-compare > [aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .linear-shell .ui-v2 .tm-root .tm-choice-list { display: grid; gap: 8px; }
@@ -383,13 +327,13 @@
   .linear-shell .ui-v2 .tm-root .tm-week { grid-template-columns: repeat(7, minmax(108px, 1fr)); overflow-x: auto; }
   .linear-shell .ui-v2 .tm-root .task-board { grid-template-columns: repeat(5, minmax(200px, 1fr)); }
   .linear-shell .ui-v2 .tm-root .tm-compare { grid-template-columns: minmax(0, 1fr); }
-  .linear-shell .ui-v2 .tm-root .tm-search { min-width: 0; flex: 1 1 100%; }
+  .linear-shell .ui-v2 .tm-root .os-search { min-width: 0; flex: 1 1 100%; }
   .linear-shell .ui-v2 .tm-root .tm-inbox-row { flex-wrap: wrap; }
   .linear-shell .ui-v2 .tm-root .tm-inbox-actions { width: 100%; padding-left: 26px; }
 }
 @media (max-width: 520px) {
   .linear-shell .ui-v2 .tm-root .tm-field-grid { grid-template-columns: minmax(0, 1fr); }
-  .linear-shell .ui-v2 .tm-root .tm-task-row .tm-due { display: none; }
+  .linear-shell .ui-v2 .tm-root .tm-task-row .os-due { display: none; }
 }
 
 }
