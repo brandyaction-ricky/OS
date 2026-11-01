@@ -28,6 +28,7 @@ test("four workspace headings preserve the existing authorized routes and nested
   const nested = stages.flatMap(stage => stage.pages.flatMap(p => p.children ?? []).map(p => p.href));
   const childLinks = await sidebar.locator(".page-sublink").evaluateAll(links => links.map(link => link.getAttribute("href")));
   expect(childLinks.sort()).toEqual(nested.sort());
+  expect(await sidebar.locator(".nav-group-label").evaluateAll(labels => labels.filter(label => label.scrollWidth > label.clientWidth).map(label => label.textContent))).toEqual([]);
   await expect(sidebar.getByRole("button", { name: "회사 문서", exact: true })).toHaveAttribute("aria-expanded", "true");
   await expect(sidebar.locator('a.page-link[href="/knowledge/vault"]')).toHaveAttribute("aria-current", "page");
 });
