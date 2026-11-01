@@ -69,17 +69,29 @@ test('imports compare normalized content and never reject different content sole
   for(const path of ['../Note.md','/Note.md','Folder/../Note.md','Folder//Note.md'])assert.throws(()=>importing.normalizeImportPath(path));
 });
 
-function searchModule({rpcRows=[],rpcError=null,fallbackRows=[],fallbackError=null,embeddingError=null,configured=false,visibleIds=null}={}){
+function searchModule({rpcRows=[],rpcError=null,fallbackRows=[],fallbackError=null,embeddingError=null,configured=false,visibleIds=null,service=null}={}){
   let fallbackCalls=0;
   let accessIds=[];
   const builder={select(){return this;},in(field,ids){if(field==='id')accessIds=ids;return this;},or(){return this;},order(){return this;},limit(){return this;},eq(){return this;},abortSignal(signal){assert.ok(signal);fallbackCalls++;return Promise.resolve({data:fallbackRows,error:fallbackError});},then(resolve){return Promise.resolve({data:accessIds.map(id=>({id,owner_id:'owner',status:'canonical'})),error:null}).then(resolve);}};
   const db={from:()=>builder,rpc:()=>({abortSignal(signal){assert.ok(signal);return Promise.resolve({data:rpcRows,error:rpcError});}})};
-  const loaded=moduleFor('lib/server/search.ts',{'@/lib/http':http,'@/lib/search-diagnostics':diagnostics,'@/lib/search-relevance':relevance,'./knowledge-page-access':{readableKnowledgePages:async(_actor,rows)=>new Set(rows.filter(row=>!visibleIds||visibleIds.includes(row.id)).map(row=>row.id))},'./embeddings':{createEmbeddings:async(_text,timeout)=>{assert.equal(timeout,3000);if(embeddingError)throw embeddingError;return [[1]];},toPgVector:()=> '[1]'}},{process:{env:configured?{OPENAI_API_KEY:'synthetic'}:{}}});
-  return {run:(mode='hybrid',topK=2)=>loaded.searchDocuments({type:'user',id:'owner',allowedStatuses:['canonical'],supabase:db},{query:'target',mode,topK,filters:{statuses:['canonical']}}),calls:()=>fallbackCalls};
+  const loaded=moduleFor('lib/server/search.ts',{'@/lib/supabase/server':{createServiceSupabase:()=>{if(!service)throw Error('SUPABASE_SERVICE_CONFIG_MISSING');return service;}},'@/lib/http':http,'@/lib/search-diagnostics':diagnostics,'@/lib/search-relevance':relevance,'./knowledge-page-access':{readableKnowledgePages:async(_actor,rows)=>new Set(rows.filter(row=>!visibleIds||visibleIds.includes(row.id)).map(row=>row.id))},'./embeddings':{createEmbeddings:async(_text,timeout)=>{assert.equal(timeout,3000);if(embeddingError)throw embeddingError;return [[1]];},toPgVector:()=> '[1]'}},{process:{env:configured?{OPENAI_API_KEY:'synthetic'}:{}}});
+  return {run:(mode='hybrid',topK=2,statuses=['canonical'])=>loaded.searchDocuments({type:'user',id:'owner',allowedStatuses:statuses,supabase:db},{query:'target',mode,topK,filters:{statuses}}),calls:()=>fallbackCalls};
 }
 const resultRow={document_id:'one',title:'target',chunk_text:'target result',status:'canonical',score:0.9};
 test('full keyword results avoid an unnecessary fallback query',async()=>{
   const search=searchModule({rpcRows:[resultRow]});const result=await search.run('keyword',1);assert.equal(result.results.length,1);assert.equal(search.calls(),0);assert.equal(result.degraded,false);
+});
+// 2026-11-01: a staff search under row rules read every chunk (12.7 s on Production); candidates now come from the server connection.
+test('staff candidates come from the server connection for shared statuses only, and only readable documents are shown',async()=>{
+  const calls=[];
+  const service={from(){throw Error('documents are read on the person\'s own client');},rpc:(name,args)=>{calls.push({name,args});return {abortSignal:async()=>({data:[{...resultRow,document_id:'readable'},{...resultRow,document_id:'restricted'}],error:null})};}};
+  const search=searchModule({service,visibleIds:['readable'],rpcError:{code:'XX000',message:'the person\'s own client must not run the RPC'}});
+  const result=await search.run('keyword',1,['canonical','draft']);
+  assert.deepEqual(calls.map(call=>call.name),['os_search_knowledge']);
+  assert.equal(JSON.stringify(calls[0].args.p_statuses),'["canonical"]','drafts never enter the server-side candidates');
+  assert.equal(calls[0].args.p_limit,2,'a few extra rows make up for the ones the person cannot read');
+  assert.equal(JSON.stringify(result.results.map(row=>row.documentId)),'["readable"]');
+  assert.equal(result.degraded,false);
 });
 test('search excludes a child page when ancestor access denies it',async()=>{
   const hidden=searchModule({rpcRows:[resultRow],visibleIds:[]});
