@@ -13,6 +13,7 @@ import { ApiRequestError } from "@/lib/api-client";
 import { feedbackNotice, compareTime, FEEDBACK_FILES_PER_ITEM, FEEDBACK_FILTER_LABEL, feedbackClosed, feedbackMatches, type FeedbackAction, type FeedbackFile, type FeedbackFilter, type FeedbackMark } from "@/lib/youtube-process/feedback";
 import { YtCard, YtLookPicker } from "./youtube-process-media";
 import { VoiceFeedbackBox } from "./youtube-process-voice-feedback";
+import { ReviewersBar } from "./youtube-process-reviewers";
 import { alignVersions, mapTime, srtCues, type Anchor, type VersionChange } from "@/lib/youtube-process/compare";
 
 const fmt = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
@@ -213,6 +214,7 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
       <GateBanner page={page} gate="review" okExtra={project.yp.stage === "upload" ? <> · <Link className="yp-lnk" href={stepHref(5, project.id)}>{short ? "내보내기로" : "업로드로"} →</Link></> : null} />
       <ReplyForm control={control} />
       <Subject page={page} />
+      {short ? null : <ReviewersBar page={page} />}
       <div className="yp-rvbar"><span style={{ flex: 1 }} />
         <button type="button" className="yp-btn yp-sm yp-pc-only" onClick={() => setHidePanel(value => !value)}>{hidePanel ? "피드백 보이기" : "피드백 숨기기"}</button>
         <div className="yp-seg2 yp-sm yp-pc-only" role="group" aria-label="플레이어 크기"><button type="button" className={size === "s" ? "yp-on" : ""} onClick={() => setSize("s")}>작게</button><button type="button" className={size === "l" ? "yp-on" : ""} onClick={() => setSize("l")}>크게</button></div></div>

@@ -274,6 +274,13 @@
 .linear-shell .ui-v2.yp .yp-ytm .yp-yt-av{width:30px;height:30px}
 .linear-shell .ui-v2.yp .yp-ytm .yp-yt-t{font-size:13px}
 .linear-shell .ui-v2.yp .yp-yt.yp-big{width:520px}
+/* 검토 담당 (유쓰 요청 8/8) */
+.linear-shell .ui-v2.yp .yp-revw{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin:0 0 10px;font-size:13px}
+.linear-shell .ui-v2.yp .yp-revw-p{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:6px;background:var(--panel-2);color:var(--text-2)}
+.linear-shell .ui-v2.yp .yp-revw-p.yp-done{background:var(--mint-soft);color:var(--mint)}
+.linear-shell .ui-v2.yp .yp-revw-ed{flex-basis:100%;display:grid;gap:6px;padding:10px;border:1px solid var(--line-soft);border-radius:10px;background:var(--card)}
+.linear-shell .ui-v2.yp .yp-revw-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.linear-shell .ui-v2.yp .yp-revw-row .yp-in{width:auto;flex:1 1 140px}
 /* 작게 보기 (유쓰 요청 6/8): PC 검색 결과 줄, 시청 화면 옆 추천 목록 */
 .linear-shell .ui-v2.yp .yp-yt.yp-yt-search,.linear-shell .ui-v2.yp .yp-yt.yp-yt-side{display:flex;gap:12px;align-items:flex-start}
 .linear-shell .ui-v2.yp .yp-yt.yp-yt-search{width:560px}
