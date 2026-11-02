@@ -642,6 +642,9 @@
 }
 
 /* pills */
+.page-content .finance-workspace .status-pill > [aria-hidden] { /* 배지 앞 기호(✓ ! ✕)와 글자 사이 */
+  margin-right: 3px;
+}
 .page-content .finance-workspace .fin-bz {
   display: inline-flex;
   align-items: center;
