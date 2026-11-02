@@ -366,8 +366,10 @@ export interface ApiCredit { configured: boolean; credit: number; start: string;
 export async function getOpenAiCredit(token: string | null) {
   return apiRequest<ApiCredit>("/api/v1/connections/openai-credit", { token });
 }
+/** Claude API spend: this month (from the 1st, UTC) and the last 30 days. */
+export interface ClaudeSpend { configured: boolean; month: string; spent?: number; spent30?: number; daily?: { day: string; usd: number }[] }
 export async function getAnthropicCost(token: string | null) {
-  return apiRequest<ApiCredit>("/api/v1/connections/anthropic-cost", { token });
+  return apiRequest<ClaudeSpend>("/api/v1/connections/anthropic-cost", { token });
 }
 export async function testConnection(token: string | null, service: string) {
   return apiRequest<{ ok: boolean; checks: import("./connection-status").ConnectionCheck[] }>("/api/v1/connections", { token, method: "POST", body: JSON.stringify({ service }) });
