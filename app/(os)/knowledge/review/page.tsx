@@ -1,6 +1,7 @@
 import { findPage } from "@/lib/navigation";
 import { KnowledgeReview } from "@/components/knowledge/canon";
+import { KnowledgeReady } from "@/components/knowledge/ui";
 
 export const metadata = { title: `${findPage("/knowledge/review").label} | 브랜디 OS` };
 
-export default function ReviewPage() { return <KnowledgeReview />; }
+export default function ReviewPage() { return <KnowledgeReady><KnowledgeReview/></KnowledgeReady>; }
