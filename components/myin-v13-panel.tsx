@@ -14,6 +14,7 @@ import { MyinScreenCheck } from "./myin-screen-check";
 import { MyinVoiceCheck, type MyinVoiceCheckView, type MyinVoiceFixView } from "./myin-voice-check";
 import { DraftPlacePicker, localBlocker, useLocalRender, type DraftPlace } from "./myin-local-render";
 import { assToSrt } from "@/lib/subtitle-files";
+import { MyinRunRecord } from "./myin-run-record";
 
 interface Storyboard { scenes: number; model: string; at: string; metaphors: { scene: number; type: string; at: string }[]; cta: { after: string; line: string }[];
   summary: { title: string; points: string[] } | null; reasons: { metaphors: string; cta: string; summary: string };
@@ -379,6 +380,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
         <small>고친 뒤 [전체 영상 만들기]를 누르면 새 완성본이 다음 버전으로 올라와요.</small></div> : null}
       {run?.final ? finalNote ?? <p className="yt-note">이어폰으로 소리를 확인한 뒤 <a href={`/content/production?sourceId=${sourceId}`}>제작 현황 › 제작 자산·전체 승인 현황</a>에서 대표가 최종 영상·업로드 자료를 승인하고, <a href={`/content/publishing?sourceId=${sourceId}`}>⑥ 발행·업로드</a>에서 [OS 완성본 쓰기]로 올립니다. 업로드 자료는 ⑦ 유튜브 관리에서 만듭니다. 자막 파일과 엔드 스크린은 유튜브 스튜디오에서 사람이 합니다.</p> : null}
     </Step>
+    {run ? <MyinRunRecord key={run.id} runId={run.id} token={accessToken} /> : null}
     {error ? <p className="inline-alert danger" role="alert">{error}</p> : null}
   </div>;
 }
