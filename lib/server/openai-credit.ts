@@ -2,25 +2,28 @@ import { ApiError } from "@/lib/http";
 import { creditCycle, dailyCosts, sumCosts } from "@/lib/openai-credit";
 import { GPT_SAVING_BELOW_USD, type GptTier } from "@/lib/youtube-process/gpt-draft";
 
-type Credit = Awaited<ReturnType<typeof fetchOpenAiCredit>>;
 const FRESH_MS = 5 * 60_000, STALE_MS = 60 * 60_000;
-let asked: { at: number; credit: Promise<Credit> } | null = null;
-let good: { at: number; credit: Credit } | null = null;
 
 /**
- * This cycle's credit, read from OpenAI at most once per 5 minutes per server instance (calls made at once share the read).
- * Every GPT job asks for the tier too, and OpenAI's Costs API answered 429 to the 작동 상태 panel (2026-11-02); a failed read
- * falls back to the last good one from the past hour.
+ * A provider's cost read at most once per 5 minutes per server instance (calls made at once share the read). Every GPT job asks
+ * for the tier too, and OpenAI's Costs API answered 429 to the 작동 상태 panel (2026-11-02); a failed read falls back to the
+ * last good one from the past hour.
  */
-export function readOpenAiCredit(): Promise<Credit> {
-  const now = Date.now();
-  if (asked && now - asked.at < FRESH_MS) return asked.credit;
-  const credit = fetchOpenAiCredit().then(
-    (value) => { good = { at: Date.now(), credit: value }; return value; },
-    (error) => { asked = null; if (good && Date.now() - good.at < STALE_MS) return good.credit; throw error; });
-  asked = { at: now, credit };
-  return credit;
+export function cachedRead<T>(read: () => Promise<T>) {
+  let asked: { at: number; value: Promise<T> } | null = null;
+  let good: { at: number; value: T } | null = null;
+  return (): Promise<T> => {
+    const now = Date.now();
+    if (asked && now - asked.at < FRESH_MS) return asked.value;
+    const value = read().then(
+      (result) => { good = { at: Date.now(), value: result }; return result; },
+      (error) => { asked = null; if (good && Date.now() - good.at < STALE_MS) return good.value; throw error; });
+    asked = { at: now, value };
+    return value;
+  };
 }
+
+export const readOpenAiCredit = cachedRead(() => fetchOpenAiCredit());
 
 /** This cycle's GPT API credit: OPENAI_ADMIN_KEY (read-only admin key of the organization the OS key belongs to), the grant and its renewal day. */
 async function fetchOpenAiCredit(now = new Date()) {

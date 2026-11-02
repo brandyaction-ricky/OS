@@ -361,8 +361,13 @@ export async function prepareMeeting(token: string | null, brand = "", team = ""
 export async function getConnectionChecks(token: string | null) {
   return apiRequest<{ checks: import("./connection-status").ConnectionCheck[]; checkedAt: string }>("/api/v1/connections", { token });
 }
+/** A provider's monthly API credit: the grant, this cycle, spent and left (GPT · Claude). */
+export interface ApiCredit { configured: boolean; credit: number; start: string; end: string; spent?: number; remaining?: number; daily?: { day: string; usd: number }[] }
 export async function getOpenAiCredit(token: string | null) {
-  return apiRequest<{ configured: boolean; credit: number; start: string; end: string; spent?: number; remaining?: number; daily?: { day: string; usd: number }[] }>("/api/v1/connections/openai-credit", { token });
+  return apiRequest<ApiCredit>("/api/v1/connections/openai-credit", { token });
+}
+export async function getAnthropicCost(token: string | null) {
+  return apiRequest<ApiCredit>("/api/v1/connections/anthropic-cost", { token });
 }
 export async function testConnection(token: string | null, service: string) {
   return apiRequest<{ ok: boolean; checks: import("./connection-status").ConnectionCheck[] }>("/api/v1/connections", { token, method: "POST", body: JSON.stringify({ service }) });
