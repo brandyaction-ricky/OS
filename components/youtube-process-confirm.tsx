@@ -17,7 +17,7 @@ import { clipConfirmed, clipParts, clipSeconds, formatParts } from "@/lib/youtub
 import type { OsRecord } from "@/lib/record-types";
 
 // PD 컨펌 (owner decision 2026-10-26) and 쇼츠 확정 (2026-10-25): the PD confirms; the 대표 reads it here, leaves notes, and sends a step
-// back only when it must. 컨펌 대기 keeps requests sent before the change.
+// back only when it must. 컨펌 대기: what a PD asked the 대표 to confirm instead (컨펌 요청, 2026-11-02).
 const TABS = [["self", "PD 컨펌"], ["wait", "컨펌 대기"], ["done", "내가 처리한 것"], ["hold", "보류함"], ["shorts", "쇼츠 확정"]] as const;
 type Tab = (typeof TABS)[number][0];
 const when = (iso?: string) => { if (!iso) return ""; const date = new Date(iso); return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`; };

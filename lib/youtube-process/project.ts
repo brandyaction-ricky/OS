@@ -5,7 +5,7 @@ export type YpKind = "live" | "anim" | "short" | "card";
 export type YpGate = "topic" | "draft" | "review" | "shorts";
 export type YpGateState = "none" | "wait" | "changes" | "hold" | "ok";
 /** self: the PD confirmed it themselves (owner decision 2026-10-26: every confirm is the PD's; the 대표 is told and leaves notes). */
-export interface YpGateInfo { state: YpGateState; round: number; requestedAt?: string; requestedBy?: string; decidedAt?: string; decidedBy?: string; fields?: string[]; memo?: string; reason?: string; self?: boolean }
+export interface YpGateInfo { state: YpGateState; round: number; requestedAt?: string; requestedBy?: string; requestedTo?: string; decidedAt?: string; decidedBy?: string; fields?: string[]; memo?: string; reason?: string; self?: boolean }
 /** A note the 대표 leaves on a step the PD confirmed; the PD is told and reads it on that step. */
 export interface YpGateNote { gate: YpGate; at: string; by: string; name: string; text: string }
 export interface YpRef { url: string; videoId?: string; title?: string }

@@ -9,7 +9,7 @@ import { setEditGuard } from "@/lib/api-client";
 import { useSession } from "./session-provider";
 import { useYoutubeCanConfirm, YP_CONFIRM_EVENT } from "./use-youtube-confirm";
 import { ConfirmActions } from "./youtube-process-confirm";
-import { errorMessage, isConflict, youtubeProcessClient, type YpBundle, type YpMember } from "./youtube-process-data";
+import { errorMessage, isConflict, youtubeProcessClient, type YpBundle, type YpClient, type YpMember } from "./youtube-process-data";
 import { YoutubeFlow, type YpAction } from "./youtube-process-flow";
 
 export const LAST_KEY = "brandy-yp-last-project";
@@ -97,14 +97,16 @@ export function useGate(page: YpPage, gate: YpGate, flush?: () => Promise<YpProj
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [replyOpen, setReplyOpen] = useState(false);
-  const act = async (action: "confirm" | "request" | "cancel", reply?: string) => {
+  const askTo = useRef<string | undefined>(undefined);
+  const act = async (action: "confirm" | "request" | "cancel", reply?: string, to?: string) => {
     let project = page.bundle?.project;
+    if (to) askTo.current = to;
     if (!page.client || !project) return;
     setBusy(true); page.setError("");
     try {
       if (flush && action !== "cancel") { const saved = await flush(); if (!saved) return; project = saved; }
       if (action === "request" && !reply && project.yp.gates[gate].state === "changes" && !editedSinceDecision(project, gate)) { setReplyOpen(true); return; }
-      const result = await page.client.gate(project.id, gate, action, project.version, reply);
+      const result = await page.client.gate(project.id, gate, action, project.version, reply, action === "request" ? askTo.current : undefined);
       setReplyOpen(false);
       page.setBundle(current => current ? { ...current, project: result.project } : current);
       window.dispatchEvent(new Event(YP_CONFIRM_EVENT));
@@ -121,8 +123,39 @@ export function gateAction(page: YpPage, gate: YpGate, view: number, control: Re
   const project = page.bundle!.project;
   const current = project.yp.stage === "done" ? YP_FLOW.length : YP_STAGE_INDEX[project.yp.stage];
   if (view !== current && current < YP_FLOW.length) return { kind: "link", label: `이어서 하기 · ${stepName(current, project.yp.topic.type)}`, href: stepHref(current, project.id) };
-  // A request still waiting from before 2026-10-26 can be confirmed by the PD as well.
-  return { kind: "button", label: `${gateName(gate, project.yp.topic.type)}하고 다음으로`, reason: missing, busy: control.busy, onClick: () => void control.act("confirm") };
+  // The PD confirms; or asks an approver instead (2026-11-02), and may still confirm while the request waits.
+  const ask = project.yp.gates[gate].state !== "wait" && page.client
+    ? <AskApprover client={page.client} members={page.members} disabled={Boolean(missing) || control.busy} onSend={to => void control.act("request", undefined, to)} /> : null;
+  return { kind: "button", label: `${gateName(gate, project.yp.topic.type)}하고 다음으로`, reason: missing, busy: control.busy, onClick: () => void control.act("confirm"), extra: ask };
+}
+
+/**
+ * 컨펌 요청 (owner request 2026-11-02): beside the PD's own 컨펌, the PD picks an approver and sends the step to their 대표 메뉴 ›
+ * 컨펌 › 컨펌 대기. The approvers are asked for only when the button is pressed.
+ */
+export function AskApprover({ client, members, disabled, onSend }: { client: YpClient; members: YpMember[]; disabled: boolean; onSend: (to: string) => void }) {
+  const [ids, setIds] = useState<string[] | null>(null);
+  const [to, setTo] = useState("");
+  const [error, setError] = useState("");
+  const open = () => { setError(""); client.approvers().then(list => { setIds(list); setTo(list[0] ?? ""); }, reason => setError(errorMessage(reason))); };
+  if (!ids) return <>{error ? <span className="yp-warn-t" role="alert">{error}</span> : null}<button type="button" className="yp-btn yp-lg" disabled={disabled} onClick={open}>컨펌 요청하기</button></>;
+  return <span className="yp-ask">
+    {ids.length ? <label>누구에게 <select className="yp-pdsel" value={to} onChange={event => setTo(event.target.value)}>
+      {ids.map(id => <option key={id} value={id}>{members.find(member => member.id === id)?.name ?? "대표"}</option>)}</select></label> : <span>회사 승인자가 아직 없어요</span>}
+    <button type="button" className="yp-btn yp-lg" onClick={() => setIds(null)}>취소</button>
+    <button type="button" className="yp-btn yp-lg" disabled={disabled || !to} onClick={() => onSend(to)}>요청 보내기</button>
+  </span>;
+}
+
+/** 요청 취소: takes back a 컨펌 요청 still waiting (the step returns to where it was). */
+export function CancelAsk({ project, gate, client, onDone, onError }: { project: YpProject; gate: YpGate; client: YpClient; onDone: (next: YpProject) => void; onError: (reason: unknown) => void }) {
+  const [busy, setBusy] = useState(false);
+  const cancel = async () => {
+    setBusy(true);
+    try { onDone((await client.gate(project.id, gate, "cancel", project.version)).project); window.dispatchEvent(new Event(YP_CONFIRM_EVENT)); }
+    catch (reason) { onError(reason); } finally { setBusy(false); }
+  };
+  return <button type="button" className="yp-btn yp-sm" disabled={busy} onClick={() => void cancel()}>요청 취소</button>;
 }
 /** '지금 단계로' when looking at another step, else the step's own action. */
 export function stepAction(page: YpPage, view: number, own: YpAction): YpAction {
@@ -133,10 +166,13 @@ export function stepAction(page: YpPage, view: number, own: YpAction): YpAction 
   return view !== current ? { kind: "link", label: `이어서 하기 · ${stepName(current, project.yp.topic.type)}`, href: stepHref(current, project.id) } : own;
 }
 
+/** 「안저님께 」 for the wait line: who a 컨펌 요청 went to (empty for requests sent before the pick, 2026-11-02). */
+export const askedName = (members: YpMember[], id?: string) => { const name = id ? members.find(member => member.id === id)?.name : undefined; return name ? `${name}님께 ` : ""; };
+
 /** The sentence under a confirm step's title: what to do now, or that there is nothing to do while the 대표 decides. */
 export function gateSub(project: YpProject | undefined, gate: YpGate, todo: string, done: string) {
   const state = project?.yp.gates[gate].state;
-  if (state === "wait") return "대표 컨펌 요청이 남아 있어요. 이제 PD가 직접 컨펌하면 다음으로 넘어가요.";
+  if (state === "wait") return "대표 컨펌을 기다리고 있어요. 기다리지 않고 직접 컨펌해도 돼요.";
   if (state === "changes") return "대표 수정 요청을 반영하고 컨펌해요. 모든 칸을 고칠 수 있어요.";
   if (state === "hold") return "보류됐어요. 손본 뒤 컨펌할 수 있어요.";
   if (state === "ok") return done;
@@ -158,10 +194,11 @@ export function GateBanner({ page, gate, okExtra }: { page: YpPage; gate: YpGate
   const info = project.yp.gates[gate] as typeof project.yp.gates[YpGate] & { pdReply?: string };
   const name = gateName(gate, project.yp.topic.type);
   if (info.state === "wait") return <div className="yp-cwait" role="status">
-    <div className="yp-cwait-h"><Clock size={16} className="yp-i" aria-hidden="true" /><b>{name} 대기</b><span className="yp-hint">{md(info.requestedAt)} 요청{daysSince(info.requestedAt) ? ` · ${daysSince(info.requestedAt)}일째` : ""}</span></div>
+    <div className="yp-cwait-h"><Clock size={16} className="yp-i" aria-hidden="true" /><b>{name} 대기</b><span className="yp-hint">{md(info.requestedAt)} {askedName(page.members, info.requestedTo)}요청{daysSince(info.requestedAt) ? ` · ${daysSince(info.requestedAt)}일째` : ""}</span></div>
     {info.pdReply ? <p className="yp-reply-note"><b>PD 답글</b> · 고친 칸 없이 다시 요청: “{info.pdReply}”</p> : null}
     {page.canConfirm && page.client ? <ConfirmActions project={project} gate={gate} client={page.client} onDone={() => void page.reload()} />
-      : <p className="yp-hint">아래 [{name}하고 다음으로]를 누르면 PD 컨펌으로 넘어가요.</p>}
+      : <p className="yp-hint">기다리지 않고 아래 [{name}하고 다음으로]를 눌러 직접 컨펌해도 돼요.{page.client ? <> <CancelAsk project={project} gate={gate} client={page.client}
+        onDone={next => page.setBundle(current => current ? { ...current, project: next } : current)} onError={page.fail} /></> : null}</p>}
   </div>;
   if (info.state === "changes") return <div className="yp-note yp-warn" role="status"><AlertTriangle size={16} className="yp-i" aria-hidden="true" /><div><b>대표 수정 요청 · {md(info.decidedAt)}</b><br />메모: “{info.memo}”<br />{info.fields?.length ? `특히 볼 칸: ${info.fields.map(field => GATE_FIELDS[gate][field] ?? field).join(", ")} · ` : ""}모든 칸을 고칠 수 있어요</div></div>;
   if (info.state === "hold") return <div className="yp-note yp-bad" role="status"><PauseCircle size={16} className="yp-i" aria-hidden="true" /><div><b>보류됨 · {md(info.decidedAt)} · 대표</b><br />사유: “{info.reason}”<br />손본 뒤 컨펌할 수 있어요.</div></div>;
@@ -249,7 +286,7 @@ export function StepFooter({ action, todo = [] }: { action: YpAction; todo?: { l
       {todo.map(item => <span key={item.label} className={item.done ? "yp-o" : "yp-x"}>{item.done ? "✓" : "○"} {item.label}</span>)}</> : action.kind === "button" && action.reason ? <span>{action.reason}</span> : null}</div>
     {action.kind === "status" ? (action.secondary ? <button type="button" className="yp-btn" onClick={action.secondary.onClick}>{action.secondary.label}</button> : null)
       : action.kind === "link" ? <Link className="yp-btn yp-pri yp-lg" href={action.href}>{action.label} →</Link>
-      : <button type="button" className="yp-btn yp-pri yp-lg" disabled={Boolean(action.reason) || action.busy} onClick={action.onClick}>{action.busy ? "처리 중…" : action.label} →</button>}
+      : <>{action.extra}<button type="button" className="yp-btn yp-pri yp-lg" disabled={Boolean(action.reason) || action.busy} onClick={action.onClick}>{action.busy ? "처리 중…" : action.label} →</button></>}
   </div>;
 }
 

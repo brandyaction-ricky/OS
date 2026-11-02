@@ -58,8 +58,9 @@ export interface YpClient {
   bundle(id: string): Promise<YpBundle>;
   create(input: YpTopicInput): Promise<YpProject>;
   update(id: string, expectedVersion: number, patch: YpTopicInput): Promise<YpProject>;
-  topicGate(id: string, action: "confirm" | "request" | "cancel" | "reopen", expectedVersion: number, reply?: string): Promise<{ project: YpProject; created: YpProject[] }>;
-  gate(id: string, gate: YpGate, action: "confirm" | "request" | "cancel" | "reopen", expectedVersion: number, reply?: string): Promise<{ project: YpProject; created: YpProject[] }>;
+  /** `to`: the approver a 컨펌 요청 goes to (2026-11-02). */
+  topicGate(id: string, action: "confirm" | "request" | "cancel" | "reopen", expectedVersion: number, reply?: string, to?: string): Promise<{ project: YpProject; created: YpProject[] }>;
+  gate(id: string, gate: YpGate, action: "confirm" | "request" | "cancel" | "reopen", expectedVersion: number, reply?: string, to?: string): Promise<{ project: YpProject; created: YpProject[] }>;
   saveStage<K extends YpStageKind>(id: string, kind: K, expectedVersion: number, patch: Record<string, unknown>): Promise<{ stage: YpStageView<K>; project: YpProject }>;
   /** One SEO 칼럼 to the MYIN 아티클: send (draft or update), publish, or back to draft. */
   columnMyin(id: string, item: string, action: "send" | "publish" | "unpublish", expectedVersion: number): Promise<{ stage: YpStageView<"column">; project: YpProject }>;
@@ -84,6 +85,8 @@ export interface YpClient {
   /** 쇼츠 확정 by the PD, or a comment on its record (owner decision 2026-10-25). */
   shorts(id: string, expectedVersion: number, input: { action: "confirm"; note?: string } | { action: "comment"; text: string }): Promise<YpProject>;
   members(): Promise<YpMember[]>;
+  /** Who a PD can send a 컨펌 요청 to: the company approvers' ids. */
+  approvers(): Promise<string[]>;
   /** The connected YouTube channel's name for the list previews (유쓰 요청 6/8); null when none is connected. */
   channelName(): Promise<string | null>;
   legacy(): Promise<YpLegacyTopic[]>;
@@ -137,7 +140,7 @@ const json = (body: unknown) => JSON.stringify(body);
 
 function apiClient(token: string): YpClient {
   const base = "/api/v1/content/youtube/projects";
-  const gate: YpClient["gate"] = (id, name, action, expectedVersion, reply) => apiRequest(`${base}/${id}/gates/${name}`, { token, method: "POST", body: json({ action, expectedVersion, ...(reply ? { reply } : {}) }) });
+  const gate: YpClient["gate"] = (id, name, action, expectedVersion, reply, to) => apiRequest(`${base}/${id}/gates/${name}`, { token, method: "POST", body: json({ action, expectedVersion, ...(reply ? { reply } : {}), ...(to ? { to } : {}) }) });
   const assetUrl = async (id: string, path: string) => (await apiRequest<{ url: string }>(`${base}/${id}/assets?path=${encodeURIComponent(path)}`, { token })).url;
   const shortVideoUrl = async (id: string, renderId: string, download = false) => (await apiRequest<{ url: string }>(`${base}/${id}/short?video=${renderId}${download ? "&download=1" : ""}`, { token })).url;
   return {
@@ -149,7 +152,7 @@ function apiClient(token: string): YpClient {
     bundle: id => apiRequest<YpBundle>(`${base}/${id}`, { token }),
     create: async input => (await apiRequest<{ project: YpProject }>(base, { token, method: "POST", body: json(input) })).project,
     update: async (id, expectedVersion, patch) => (await apiRequest<{ project: YpProject }>(`${base}/${id}`, { token, method: "PATCH", body: json({ ...patch, expectedVersion }) })).project,
-    topicGate: (id, action, expectedVersion, reply) => gate(id, "topic", action, expectedVersion, reply),
+    topicGate: (id, action, expectedVersion, reply, to) => gate(id, "topic", action, expectedVersion, reply, to),
     gate,
     saveStage: (id, kind, expectedVersion, patch) => apiRequest(`${base}/${id}/stages/${kind}`, { token, method: "PATCH", body: json({ expectedVersion, patch }) }),
     columnMyin: (id, item, action, expectedVersion) => apiRequest(`${base}/${id}/column/myin`, { token, method: "POST", body: json({ item, action, expectedVersion }) }),
@@ -238,6 +241,7 @@ function apiClient(token: string): YpClient {
     members: async () => (await listMembers(token)).members
       .filter(member => member.is_active && !member.is_shared_account && member.member_kind !== "partner")
       .map(member => ({ id: member.id, name: member.display_name })),
+    approvers: async () => (await apiRequest<{ approvers?: string[] }>("/api/v1/content/youtube/me", { token })).approvers ?? [],
     channelName: async () => {
       const { connections } = await apiRequest<{ connections: ChannelConnection[] }>("/api/v1/channels", { token });
       const rows = connections.filter(row => row.platform === "youtube" && row.status === "connected");
@@ -397,7 +401,7 @@ function demoClient(): YpClient {
   const checkVersion = (version: number, expected: number) => {
     if (version !== expected) throw demoError(409, "RECORD_VERSION_CONFLICT", "다른 사람이 먼저 고쳤어요. 새로 불러와 주세요.");
   };
-  const gate: YpClient["gate"] = async (id, name, action, expectedVersion, reply) => {
+  const gate: YpClient["gate"] = async (id, name, action, expectedVersion, reply, to) => {
     const project = find(id);
     checkVersion(project.version, expectedVersion);
     const now = new Date().toISOString();
@@ -407,7 +411,7 @@ function demoClient(): YpClient {
       const missing = project.yp.topic.type === "card" ? (name === "draft" ? cardsMissing(stages.cards.data) : "")
         : name === "draft" ? project.yp.topic.type === "short" ? shortScriptMissing(stages.shortScript.data) : draftMissing(stages.plan.data) : (demoFinals.get(id) ?? []).length ? "" : "최종본을 올려주세요";
       if (missing) throw demoError(400, "GATE_INCOMPLETE", missing);
-      const yp = gateApply(project, name, action, { actor: DEMO_ME, now, reply });
+      const yp = gateApply(project, name, action, { actor: DEMO_ME, now, reply, to });
       if (name === "draft" && action === "confirm") { const stages = stagesOf(project); demoStages.set(id, { ...stages, plan: { ...stages.plan, data: { ...stages.plan.data, confirmed: confirmPlan(stages.plan.data, now) } } }); }
       // 카드 확정 fixes the picked cards, as fixConfirmedCards does on the server (no GPT check here: it waits for [검사하기]).
       if (name === "draft" && action === "confirm" && project.yp.topic.type === "card") {
@@ -419,7 +423,7 @@ function demoClient(): YpClient {
     const missing = topicMissing(project.title, project.yp.topic);
     if (missing) throw demoError(400, "TOPIC_INCOMPLETE", missing);
     const [first, ...rest] = topicLines(project.title).slice(0, YP_MAX_LINES);
-    const saved = put({ ...project, title: first, version: project.version + 1, updatedAt: now, yp: gateApply(project, "topic", action, { actor: DEMO_ME, now, reply }) });
+    const saved = put({ ...project, title: first, version: project.version + 1, updatedAt: now, yp: gateApply(project, "topic", action, { actor: DEMO_ME, now, reply, to }) });
     const created = rest.map(line => {
       const extra = add(line, { kind: project.yp.topic.type, target: project.yp.topic.target, note: project.yp.topic.note, refs: project.yp.topic.refs, assigneeId: project.assigneeId }, project.id);
       return put({ ...extra, yp: gateApply(extra, "topic", action, { actor: DEMO_ME, now }) });
@@ -478,7 +482,7 @@ function demoClient(): YpClient {
           ...((fields.purpose !== undefined ? fields.purpose : topic.purpose) ? { purpose: (fields.purpose !== undefined ? fields.purpose : topic.purpose)! } : {}) } } : project.yp,
       });
     },
-    topicGate: (id, action, expectedVersion, reply) => gate(id, "topic", action, expectedVersion, reply),
+    topicGate: (id, action, expectedVersion, reply, to) => gate(id, "topic", action, expectedVersion, reply, to),
     gate,
     saveStage: async (id, kind, expectedVersion, patch) => {
       const project = find(id);
@@ -609,6 +613,7 @@ function demoClient(): YpClient {
       catch (error) { throw error instanceof GateError ? demoError(error.status, error.code, error.message) : error; }
     },
     members: async () => DEMO_MEMBERS,
+    approvers: async () => [DEMO_ME],
     channelName: async () => "브랜디액션",
     legacy: async () => [],
     schedule: async () => demoProjects().map(project => {

@@ -23,7 +23,7 @@ import { YoutubeOverviewScreen } from "./youtube-process-overview";
 const SUB: Partial<Record<YoutubeV1Screen | "shorts", string>> = {
   overview: "사람이 하는 일과 AI가 하는 일을 한곳에서 봐요. 고를 것은 오른쪽에 모여요.",
   schedule: "영상별 업로드 예정일을 배치합니다. 왼쪽 목록을 달력으로 끌어 놓으세요.",
-  confirm: "PD가 컨펌한 것을 보고 노트를 남겨요.",
+  confirm: "PD가 컨펌한 것을 보고 노트를 남기고, 요청받은 건 직접 컨펌해요.",
   links: "회사 공용 선택값으로 UTM 링크를 만들어 링크 대장에 남기고, 마이인 단축 링크로 줄여요.",
   "voice-dictionary": "영상 만드는 컴퓨터가 음성을 만들 때마다 읽는 사전이에요.",
   "card-canon": "같은 시험 묶음을 지금 정본으로 다시 뽑고, 평가표로 채점해 정본 버전끼리 비교해요.",
