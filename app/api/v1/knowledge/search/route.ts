@@ -3,13 +3,14 @@ import {ApiError,apiErrorResponse} from "@/lib/http";
 import {authenticateRequest} from "@/lib/server/auth";
 import {POLICY_FIELDS,readableKnowledgePages} from "@/lib/server/knowledge-page-access";
 import {knowledgeAccessContext} from "@/lib/server/knowledge-access";
-import {searchWorkspace} from "@/lib/knowledge/search";
+import {searchText,searchWorkspace,type SearchText} from "@/lib/knowledge/search";
 import type {KnowledgeDocument} from "@/lib/types";
 export const dynamic="force-dynamic";
 // 문서 찾기 reads every visible body. A warm instance keeps them per document and content_hash (the os_documents write trigger
-// refreshes it on every save) and reads only new or changed bodies — the same idea as the 연결 map's links (#438).
-// ponytail: per-instance memory (every visible body, ~23 MB at most); a database text index if cold starts matter.
-const bodyCache=new Map<string,{hash:string;body:string}>();
+// refreshes it on every save) and reads only new or changed bodies — the same idea as the 연결 map's links (#438). Bodies are
+// kept already cleaned for search, so a search does not clean every body again.
+// ponytail: per-instance memory (every visible body twice, ~45 MB at most); a database text index if cold starts matter.
+const bodyCache=new Map<string,{hash:string;text:SearchText}>();
 export async function GET(request:Request){
   try{
     const actor=await authenticateRequest(request),url=new URL(request.url),q=(url.searchParams.get("q")??"").trim().slice(0,500);
@@ -41,12 +42,11 @@ export async function GET(request:Request){
       const pages=await Promise.all(chunks.slice(i,i+4).map(chunk=>actor.supabase.from("os_documents").select("id,content_md,content_hash").in("id",chunk)));
       for(const page of pages){
         if(page.error)throw new ApiError(503,"KNOWLEDGE_SEARCH_UNAVAILABLE","문서 검색을 완료하지 못했습니다.");
-        for(const row of (page.data??[]) as {id:string;content_md:string|null;content_hash:string|null}[])bodyCache.set(row.id,{hash:row.content_hash??"",body:row.content_md??""});
+        for(const row of (page.data??[]) as {id:string;content_md:string|null;content_hash:string|null}[])bodyCache.set(row.id,{hash:row.content_hash??"",text:searchText(row.content_md??"")});
       }
     }
-    for(const d of readable)d.content_md=bodyCache.get(d.id)?.body??"";
     timing.push(`stale;desc="${stale.length}/${readable.length}"`,`bodies;dur=${Math.round(performance.now()-checked)}`);
-    const results=searchWorkspace(readable,q,options),offset=Math.max(0,Number(url.searchParams.get("offset"))||0),limit=options.titleOnly?6:50;
+    const results=searchWorkspace(readable,q,{...options,text:d=>bodyCache.get(d.id)?.text??{body:"",lower:""}}),offset=Math.max(0,Number(url.searchParams.get("offset"))||0),limit=options.titleOnly?6:50;
     timing.push(`total;dur=${Math.round(performance.now()-started)}`);
     return NextResponse.json({results:results.slice(offset,offset+limit),total:results.length},{headers:{"Cache-Control":"private, no-store","Server-Timing":timing.join(", ")}});
   }catch(error){return apiErrorResponse(error);}
