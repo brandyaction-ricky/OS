@@ -5,8 +5,8 @@
 export const CARD_SIZE = { width: 1080, height: 1350 } as const;
 export const CARD_MAX_SLIDES = 10;
 
-export type CardFormatId = "list" | "myth" | "quote" | "compare" | "steps" | "structure";
-export const CARD_SLIDE_TYPES = ["cover", "item", "summary", "pair", "line", "compare", "step", "map", "part", "end"] as const;
+export type CardFormatId = "list" | "myth" | "quote" | "compare" | "steps" | "structure" | "webtoon";
+export const CARD_SLIDE_TYPES = ["cover", "item", "summary", "pair", "line", "compare", "step", "map", "part", "end", "toon", "panel"] as const;
 export type CardSlideType = typeof CARD_SLIDE_TYPES[number];
 export interface CardField { key: string; label: string; max: number; optional?: boolean }
 /** photo: the card can hold one photo the PD puts in (디자인 정본 §8: real material first; a card with a diagram has none). */
@@ -33,7 +33,21 @@ export const CARD_FORMATS: Record<CardFormatId, CardFormat> = {
   structure: { id: "structure", name: "구조형", when: "하나의 개념이 몇 가지 요소로 이뤄질 때 (구성 · 분해)", slides: [cover,
     { type: "map", label: "구조도", min: 1, max: 1, fields: [{ key: "center", label: "중심 개념", max: 12 }, { key: "note", label: "설명", max: 50, optional: true }] },
     { type: "part", label: "요소", min: 2, max: 5, photo: true, fields: [{ key: "title", label: "요소 이름", max: 12 }, { key: "body", label: "설명", max: 60 }] }, end] },
+  // 웹툰형 (대표 2026-11-02, 「웹툰형 캐릭터 설정」): one 화 of an Instagram series in 8~10 cards. Each 칸 is a picture filling the card
+  // (drawn with 「AI로 그리기」 from its 장면, with the 캐릭터 창고 faces of 나오는 사람) and the words sit on it in boxes and bubbles.
+  webtoon: { id: "webtoon", name: "웹툰형", when: "주인공의 하루로 이야기를 들려줄 때 (인스타 연재 · 한 화 8~10장)", slides: [
+    { type: "toon", label: "웹툰 표지", min: 1, max: 1, photo: true, fields: [{ key: "episode", label: "화", max: 6 }, { key: "title", label: "제목", max: 20 }, { key: "scene", label: "표지 장면 (그릴 것)", max: 300, optional: true }] },
+    { type: "panel", label: "칸", min: 5, max: 7, photo: true, fields: [{ key: "scene", label: "장면 (그릴 것)", max: 300, optional: true }, { key: "cast", label: "나오는 사람", max: 20, optional: true },
+      { key: "narration", label: "해설 상자", max: 40, optional: true }, { key: "talk", label: "대사", max: 40, optional: true }, { key: "reply", label: "받는 대사", max: 40, optional: true },
+      { key: "think", label: "속마음", max: 30, optional: true },
+      { key: "shout", label: "외침", max: 14, optional: true }, { key: "sfx", label: "효과음", max: 6, optional: true }] },
+    { ...summary, label: "오늘의 한 줄" }, end] },
 };
+/** The fields a 웹툰 card keeps for drawing its picture, never printed on it. */
+export const CARD_DRAW_FIELDS = ["scene", "cast"];
+/** The first 웹툰 card still without its picture (-1 when all are drawn): 카드 확정 waits for it. */
+export const toonArtMissing = (draft: Pick<CardDraft, "format" | "slides">) =>
+  draft.format === "webtoon" ? draft.slides.findIndex(slide => (slide.type === "toon" || slide.type === "panel") && !slide.photo) : -1;
 export const CARD_FORMAT_IDS = Object.keys(CARD_FORMATS) as CardFormatId[];
 export const isCardFormat = (value: unknown): value is CardFormatId => typeof value === "string" && value in CARD_FORMATS;
 
@@ -111,6 +125,8 @@ export function cardProblems(draft: Pick<CardDraft, "format" | "slides" | "capti
     const spec = slideSpec(draft.format, slide.type);
     if (!spec) { blocking.push(`${index + 1}장은 이 포맷에 없는 카드예요`); return; }
     if (slide.photo && !spec.photo) blocking.push(`${index + 1}장 ${spec.label}에는 사진을 넣지 않아요 — 도식이 그 자리예요`);
+    // An AI draft arrives without pictures, so a missing one is pointed out here and only 카드 확정 waits for it (cardsMissing).
+    if (draft.format === "webtoon" && spec.photo && !slide.photo) warnings.push(`${index + 1}장 그림이 아직 없어요 — 「AI로 그리기」로 그려요`);
     for (const field of spec.fields) {
       const value = (slide.fields[field.key] ?? "").trim();
       if (!value && !field.optional) blocking.push(`${index + 1}장 ${field.label}을 써 주세요`);

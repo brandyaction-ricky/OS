@@ -9,7 +9,7 @@ export const CARD_DRAW_REFS_MAX = 4;
 export const CARD_CHARACTERS_MAX = 60;
 
 export const CARD_DRAW_STYLES = {
-  webtoon: { label: "웹툰", prompt: "Modern Korean webtoon art: clean confident black line art, flat cel colours with soft shading, big expressive faces (shock, shouting, sweat drops), a detailed photo-like background." },
+  webtoon: { label: "웹툰", prompt: "Modern Korean webtoon art: clean confident black line art, flat cel colours with soft shading, big expressive faces (shock, shouting, sweat drops), a detailed photo-like background. Keep faces in the middle band and leave calm room at the top and bottom edges, where speech bubbles will sit." },
   simple: { label: "설명 그림", prompt: "Simple flat 2D explanatory illustration: few shapes on a plain light background, no gradients, gloss or texture, colours limited to deep blue #212CB0, gold #EED467, navy #151D2C and greys." },
 } as const;
 export type CardDrawStyle = keyof typeof CARD_DRAW_STYLES;

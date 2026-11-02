@@ -361,7 +361,9 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
               <textarea className="yp-in" rows={field.max > 30 ? 3 : 2} value={value} aria-label={field.label} disabled={!editable} onCompositionStart={() => setComposing(true)} onCompositionEnd={() => setComposing(false)} onChange={event => set(event.target.value)} /></label>; })}
           {spec?.photo && editable ? <div className="yp-field"><span className="yp-fld-h"><b>사진</b><span className="yp-opt">선택</span></span>
             <p className="yp-hint">실제 사진 · 자료를 넣거나 AI로 그려요. AI 그림은 설명용이라 실제 기록처럼 쓰지 않아요 (디자인 정본 §8).</p>
-            <CardDrawPanel page={page} projectId={project.id} photo={draft.slides[current].photo} onPhoto={photo => placePhoto(photo, current)}>
+            <CardDrawPanel key={draft.id} page={page} projectId={project.id} photo={draft.slides[current].photo} onPhoto={photo => placePhoto(photo, current)}
+              defaultStyle={draft.format === "webtoon" ? "webtoon" : "simple"}
+              brief={draft.format === "webtoon" ? { scene: draft.slides[current].fields.scene ?? "", cast: draft.slides[current].fields.cast ?? "" } : undefined}>
               <label className="yp-btn yp-sm"><ImagePlus size={13} aria-hidden="true" />{photoBusy ? "올리는 중…" : draft.slides[current].photo ? "사진 바꾸기" : "사진 넣기"}
                 <input type="file" accept="image/jpeg,image/png,image/webp" aria-label="사진 파일" hidden disabled={photoBusy} onChange={event => { const at = current; void putPhoto(event.target.files?.[0], at); event.target.value = ""; }} /></label>
               {draft.slides[current].photo ? <button type="button" className="yp-btn yp-sm" disabled={photoBusy} onClick={() => dropPhoto(current)}>사진 빼기</button> : null}

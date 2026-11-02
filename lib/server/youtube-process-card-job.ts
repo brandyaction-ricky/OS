@@ -15,6 +15,8 @@ import { readStages, writeStage } from "./youtube-process-stages";
 type Supabase = RequestActor["supabase"];
 export const CARD_CANON_TITLE = "카드뉴스 정본";
 export const VOICE_CANON_TITLE = "원고 말투 정본";
+/** 웹툰형's people: the three 동기, the 강점 낙서 and how one 화 runs. */
+export const WEBTOON_CAST_TITLE = "웹툰형 캐릭터 설정";
 const DRAFTS_MAX = 12;
 export const cardFormatsSchema = z.array(z.enum(CARD_FORMAT_IDS as [CardFormatId, ...CardFormatId[]])).min(1).max(3)
   .refine(formats => new Set(formats).size === formats.length, "포맷은 한 번씩만 고를 수 있어요.");
@@ -49,7 +51,9 @@ export const cardInputKey = (project: Pick<YpProject, "title" | "yp">, cards: Pi
 
 const NOTES: Partial<Record<CardSlide["type"], string>> = { item: "번호는 OS가 붙여요", summary: "앞 장의 소제목 목록은 OS가 자동으로 넣어요",
   compare: "두 쪽을 같은 기준으로, 왼쪽은 흔한 쪽 · 오른쪽은 권하는 쪽", step: "한 장에 한 단계, 할 일을 행동으로 · 단계 번호와 흐름은 OS가 그려요",
-  map: "구조도의 가지는 뒤 요소 장의 이름이 그대로 들어가요", part: "요소 이름은 구조도 가지에 그대로 보여요" };
+  map: "구조도의 가지는 뒤 요소 장의 이름이 그대로 들어가요", part: "요소 이름은 구조도 가지에 그대로 보여요",
+  toon: "episode는 「1화」처럼, scene은 표지 그림(주인공 한 명이 크게, 아래쪽 1/3은 제목이 앉도록 비워 둠)",
+  panel: "scene은 PD가 「AI로 그리기」에 넣을 그림 설명(글자 없이, 누가 어디서 무엇을 하는지 · 표정 · 배경), cast는 나오는 사람(서윤 · 도현 · 한결 중 + 낙서), 말은 칸마다 한두 개만 · think는 입 밖에 못 낸 속마음(낙서가 나오는 칸에 잘 맞아요) · 외침과 효과음은 한 화에 두세 번 · 효과음은 「빼꼼」「쿵」처럼 짧은 소리" };
 /** Each requested format's slides and fields, written from CARD_FORMATS (the numbers live only there). */
 export function cardFormatSpec(formats: CardFormatId[]) {
   return formats.map(id => {
@@ -61,7 +65,7 @@ export function cardFormatSpec(formats: CardFormatId[]) {
 }
 
 export function cardJobCard(input: { project: Pick<YpProject, "title" | "yp">; cards: Pick<YpCards, "source" | "focus">; formats: CardFormatId[];
-  canon: { id: string } | null; voice: { id: string; title: string }[]; leaseMinutes: number }) {
+  canon: { id: string } | null; voice: { id: string; title: string }[]; cast?: { id: string; title: string } | null; leaseMinutes: number }) {
   const { project, cards, formats } = input;
   const names = formats.map(id => CARD_FORMATS[id].name).join(" · ");
   const data = { source: { kind: cards.source.kind, title: cards.source.title, text: cards.source.text }, focus: cards.focus,
@@ -78,7 +82,8 @@ export function cardJobCard(input: { project: Pick<YpProject, "title" | "yp">; c
 
 ## 먼저 끝까지 열 문서 (doc_id로 엽니다)
 ${input.canon ? `- ${CARD_CANON_TITLE} (doc_id: ${input.canon.id}) — 이 정본을 그대로 따릅니다.` : `- search_knowledge로 「${CARD_CANON_TITLE}」을 찾아 엽니다.`} 열지 못하면 쓰지 말고 fail로 끝냅니다.
-${input.voice.map(doc => `- ${doc.title} (doc_id: ${doc.id}) — 문장과 목소리`).join("\n")}
+${input.voice.map(doc => `- ${doc.title} (doc_id: ${doc.id}) — 문장과 목소리`).join("\n")}${formats.includes("webtoon")
+  ? `\n- ${input.cast ? `${input.cast.title} (doc_id: ${input.cast.id})` : `search_knowledge로 찾는 「${WEBTOON_CAST_TITLE}」`} — 웹툰형의 주인공 셋 · 강점 낙서 · 한 화 구성을 그대로 따릅니다` : ""}
 
 ## 포맷별 장과 칸 (OS가 공백 포함 글자 수를 셉니다)
 ${cardFormatSpec(formats)}

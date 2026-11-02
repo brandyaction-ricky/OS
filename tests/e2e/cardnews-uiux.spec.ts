@@ -77,6 +77,27 @@ test("a picture is drawn with AI after the cost ask and kept as a character", as
   await expect(panel.getByRole("button", { name: "다시 그리기", exact: true })).toBeEnabled();
 });
 
+// 웹툰형 (대표 2026-11-02): a 칸 is a picture with words on it; its 장면 goes to 「AI로 그리기」 (그림체 웹툰) and 카드 확정 waits for the pictures.
+test("a 웹툰 화 starts by hand and each 칸 brings its 장면 to the drawing panel", async ({ page }) => {
+  await editor(page);
+  await page.getByRole("checkbox", { name: "웹툰형", exact: true }).check();
+  await page.getByRole("button", { name: "직접 쓰기", exact: true }).click();
+  const row = page.locator(".yp-card-row", { has: page.locator(".yp-card-row-h b", { hasText: "웹툰형" }) });
+  await expect(row).toHaveCount(1);
+  await row.getByRole("button", { name: "이걸로 하기", exact: true }).click();
+  await expect(page.getByText("웹툰형 · 8장")).toBeVisible();
+  await page.getByRole("button", { name: "2장 보기", exact: true }).click();
+  await expect(page.locator(".yp-card-big")).toContainText("그림 자리");
+  await page.getByLabel("장면 (그릴 것)", { exact: true }).fill("밤 11시 사무실, 서윤이 모니터 앞에서 웃는다");
+  await page.getByLabel("대사", { exact: true }).fill("네, 괜찮아요!");
+  await expect(page.locator(".yp-card-big [data-card-field=talk]")).toHaveText("네, 괜찮아요!");
+  await page.getByRole("button", { name: "AI로 그리기", exact: true }).click();
+  const panel = page.getByRole("group", { name: "AI로 그리기" });
+  await expect(panel.getByLabel("장면 설명")).toHaveValue("밤 11시 사무실, 서윤이 모니터 앞에서 웃는다");
+  await expect(panel.getByLabel("그림체")).toHaveValue("webtoon");
+  await expect(page.locator(".yp-card-checks")).toContainText("1장 그림이 아직 없어요");
+});
+
 test("the three diagram formats can be started by hand", async ({ page }) => {
   await editor(page);
   for (const name of ["비교형", "단계형", "구조형"]) await page.getByRole("checkbox", { name, exact: true }).check();
