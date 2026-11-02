@@ -4,7 +4,7 @@ import { buildKnowledgeGraph, type KnowledgeLinkSource } from "@/lib/knowledge-l
 import { authenticateRequest } from "@/lib/server/auth";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { withIgnoredLinks } from "@/lib/knowledge/ignored-links";
-import { readableKnowledgePages } from "@/lib/server/knowledge-page-access";
+import { POLICY_FIELDS, readableKnowledgePages } from "@/lib/server/knowledge-page-access";
 import { packKnowledgeGraph } from "@/lib/knowledge/graph-transport";
 
 export const runtime = "nodejs";
@@ -46,16 +46,48 @@ export async function GET(request: Request) {
       if (error) throw new ApiError(400, "KNOWLEDGE_GRAPH_FAILED", "지식 연결을 불러오지 못했습니다.", error.message);
       return (data ?? []) as KnowledgeLinkSource[];
     };
-    // Every page at once (the bodies make each page heavy); a document added meanwhile is picked up by the tail read.
+    // Bodies are only parsed for documents this viewer can see, and reading every body made this slow (4.6–12.7 s on
+    // 2026-11-02): read the light columns of every document first, decide what is visible, then fetch just those bodies.
+    const META = `${POLICY_FIELDS},title,folder,source_ref,current_version,updated_at`;
+    const readMeta = async (offset: number) => service.from("os_documents").select(META).neq("status", "archived").order("id", { ascending: true }).range(offset, offset + pageSize - 1);
     const { count } = await service.from("os_documents").select("id", { count: "exact", head: true }).neq("status", "archived");
-    const pages = await Promise.all(Array.from({ length: Math.max(1, Math.ceil((count ?? 0) / pageSize)) }, (_, i) => readPage(i * pageSize)));
-    for (let offset = pages.length * pageSize; pages[pages.length - 1].length === pageSize; offset += pageSize) pages.push(await readPage(offset));
-    const seen = new Set<string>();
-    for (const row of pages.flat()) if (!seen.has(row.id)) { seen.add(row.id); documents.push(row); }
-    lap("documents");
-
-    const readable = await readableKnowledgePages(actor, documents);
-    lap("access");
+    const metaPages = await Promise.all(Array.from({ length: Math.max(1, Math.ceil((count ?? 0) / pageSize)) }, (_, i) => readMeta(i * pageSize)));
+    let readable: Set<string>;
+    if (metaPages.some(page => page.error?.code === "42703" || page.error?.code === "PGRST204")) {
+      // An older schema without the policy columns: the original read with bodies.
+      const pages = [await readPage(0)];
+      for (let offset = pageSize; pages[pages.length - 1].length === pageSize; offset += pageSize) pages.push(await readPage(offset));
+      documents.push(...pages.flat());
+      lap("documents");
+      readable = await readableKnowledgePages(actor, documents);
+      lap("access");
+    } else {
+      const failed = metaPages.find(page => page.error);
+      if (failed?.error) throw new ApiError(400, "KNOWLEDGE_GRAPH_FAILED", "지식 연결을 불러오지 못했습니다.", failed.error.message);
+      // A document added meanwhile is picked up by the tail read; duplicates from shifted pages are dropped.
+      for (let offset = metaPages.length * pageSize; (metaPages[metaPages.length - 1].data ?? []).length === pageSize; offset += pageSize) {
+        const tail = await readMeta(offset);
+        if (tail.error) throw new ApiError(400, "KNOWLEDGE_GRAPH_FAILED", "지식 연결을 불러오지 못했습니다.", tail.error.message);
+        metaPages.push(tail);
+      }
+      const seen = new Set<string>();
+      for (const row of metaPages.flatMap(page => (page.data ?? []) as unknown as Omit<KnowledgeLinkSource, "content_md">[])) if (!seen.has(row.id)) { seen.add(row.id); documents.push({ ...row, content_md: "" }); }
+      lap("documents");
+      readable = await readableKnowledgePages(actor, documents);
+      lap("access");
+      // Bodies of the visible documents, 200 ids a request and four requests at a time so a small database is not flooded.
+      const ids = documents.filter(row => readable.has(row.id)).map(row => row.id), body = new Map<string, string>();
+      const chunks = Array.from({ length: Math.ceil(ids.length / 200) }, (_, i) => ids.slice(i * 200, i * 200 + 200));
+      for (let i = 0; i < chunks.length; i += 4) {
+        const results = await Promise.all(chunks.slice(i, i + 4).map(chunk => service.from("os_documents").select("id,content_md").in("id", chunk)));
+        for (const result of results) {
+          if (result.error) throw new ApiError(400, "KNOWLEDGE_GRAPH_FAILED", "지식 연결을 불러오지 못했습니다.", result.error.message);
+          for (const row of result.data ?? []) body.set(row.id, row.content_md ?? "");
+        }
+      }
+      for (const row of documents) if (body.has(row.id)) row.content_md = body.get(row.id)!;
+      lap("bodies");
+    }
     // Hidden links are few: read them once and keep the ones on visible pages (was one query per 100 visible ids).
     const ignored:Array<{action:string;target_id:string;detail:Record<string,unknown>}>=[];
     for(let offset=0;;offset+=1000){
