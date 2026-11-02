@@ -4,7 +4,7 @@ import { apiErrorResponse, ApiError, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { knowledgeAccessContext } from "@/lib/server/knowledge-access";
-import { readableKnowledgePages } from "@/lib/server/knowledge-page-access";
+import { POLICY_FIELDS, readableKnowledgePages } from "@/lib/server/knowledge-page-access";
 import { DEFAULT_TEMPLATES } from "@/lib/knowledge/default-templates";
 import { emptyKnowledgeState, type KnowledgeState } from "@/lib/knowledge/model";
 import { projectMeetings } from "@/lib/knowledge/meetings";
@@ -36,6 +36,12 @@ export async function GET(request: Request) {
     const timing: string[] = [], started = Date.now();
     let mark = started;
     const lap = (name: string) => { const now = Date.now(); timing.push(`${name};dur=${Math.round(now - mark)}`); mark = now; };
+    // 바뀐 것만 (대표 결정 2026-11-02): a browser that kept the list sends when it last synced and gets the documents written
+    // since, plus every visible id so the ones it may no longer see drop out. The next sync starts 30 s earlier than this read
+    // so a write in flight or a clock difference is sent twice rather than missed.
+    const sinceMatch = /[?&]since=([^&]+)/.exec(request.url), sinceParam = sinceMatch ? decodeURIComponent(sinceMatch[1]) : null;
+    const since = sinceParam && !Number.isNaN(Date.parse(sinceParam)) ? Date.parse(sinceParam) : null;
+    const syncedAt = new Date(started - 30_000).toISOString();
     // RLS filters each page; do not accept client supplied actor or permissions.
     // Supporting reads do not depend on the document list; start them together.
     const resourcesRead = Promise.all([
@@ -73,16 +79,17 @@ export async function GET(request: Request) {
     // Keyset pagination avoids re-evaluating hierarchical RLS for every skipped row. Ids are random UUIDs, so eight
     // id ranges read side by side cover the same rows in about one round trip instead of one page after another.
     const DOCUMENT_COLUMNS="id,title,folder,parent_document_id,page_order,status,brand,team,tags,source,source_ref,owner_id,steward_id,created_by,current_version,created_at,updated_at,category_id,work_state,due_on,daily_on,review_due_on,archived_at,archived_by,archived_from_status,retention_hold,meeting_record_id,reader_scope";
+    const listColumns: string = since===null?DOCUMENT_COLUMNS:`${POLICY_FIELDS},updated_at`;
     const bounds=["0","2","4","6","8","a","c","e"].map((from,index,all)=>({from:`${from}0000000-0000-0000-0000-000000000000`,to:all[index+1]?`${all[index+1]}0000000-0000-0000-0000-000000000000`:null}));
     const slices=await Promise.all(bounds.map(async({from,to})=>{
       const slice: KnowledgeDocument[]=[];
       for(let cursor=from,first=true;;first=false){
-        let query=db.from("os_documents").select(DOCUMENT_COLUMNS);
+        let query=db.from("os_documents").select(listColumns);
         query=first?query.gte("id",cursor):query.gt("id",cursor);
         if(to)query=query.lt("id",to);
         const result=await query.order("id").limit(1000);
         if(result.error) throw readError(result.error,"documents");
-        const batch=(result.data ?? []).map(row=>({...row,content_md:""})) as KnowledgeDocument[];
+        const batch=((result.data ?? []) as unknown as KnowledgeDocument[]).map(row=>({...row,content_md:""}));
         slice.push(...batch);
         if(batch.length<1000) return slice;
         cursor=batch[batch.length-1].id;
@@ -93,8 +100,19 @@ export async function GET(request: Request) {
     // One ancestor check over every page: parents from other pages are already loaded.
     const readable = await readableKnowledgePages(user,rows);
     lap("access");
-    state.documents.push(...rows.filter(d=>readable.has(d.id)));
-    const access = await knowledgeAccessContext(user,state.documents);
+    const visible = rows.filter(d=>readable.has(d.id));
+    if(since===null) state.documents.push(...visible);
+    else {
+      // The full summary only for what was written since; light rows above carry the policy fields for the checks.
+      const changed=visible.filter(d=>Date.parse(d.updated_at)>=since).map(d=>d.id);
+      const chunks=Array.from({length:Math.ceil(changed.length/200)},(_,i)=>changed.slice(i*200,i*200+200));
+      for(let i=0;i<chunks.length;i+=4){
+        const results=await Promise.all(chunks.slice(i,i+4).map(chunk=>db.from("os_documents").select(DOCUMENT_COLUMNS).in("id",chunk)));
+        for(const result of results){ if(result.error) throw readError(result.error,"documents"); state.documents.push(...((result.data ?? []).map(row=>({...row,content_md:""})) as KnowledgeDocument[])); }
+      }
+      lap("changed");
+    }
+    const access = await knowledgeAccessContext(user,visible);
     const resources = await resourcesRead;
     lap("resources");
     const stages=["categories","templates","inbox","pins","drafts","meetings","attendees","candidates","events","people","decisions"];
@@ -104,7 +122,7 @@ export async function GET(request: Request) {
     state.templates=templates as KnowledgeState["templates"];
     state.templates=[...DEFAULT_TEMPLATES.filter(t=>!state.templates.some(row=>row.default_key===t.id)),...state.templates.filter(t=>!t.archived_at)];
     state.inbox=inbox as KnowledgeState["inbox"];
-    const ids=new Set(state.documents.map(d=>d.id));
+    const ids=new Set(visible.map(d=>d.id));
     state.pins=pins.map(row=>row.document_id).filter(id=>ids.has(id));
     state.drafts=(drafts as KnowledgeState["drafts"]).filter(d=>ids.has(d.document_id));
     state.meetings=projectMeetings(meetings as Parameters<typeof projectMeetings>[0],decisions as Parameters<typeof projectMeetings>[1],attendees as Parameters<typeof projectMeetings>[2],access.actor);
@@ -136,7 +154,7 @@ export async function GET(request: Request) {
     state.events=state.events.map(e=>visibleTargets.has(e.target_id)?e:{...e,target_id:"",detail:{title:"볼 수 없는 항목"}});
     lap("rest");
     timing.push(`total;dur=${Date.now() - started}`);
-    return NextResponse.json({state,actor:access.actor,schemaReady:true},{headers:{"Cache-Control":"private, no-store","Server-Timing":timing.join(", ")}});
+    return NextResponse.json({state,actor:access.actor,schemaReady:true,syncedAt,...(since===null?{}:{delta:{visibleIds:visible.map(d=>d.id)}})},{headers:{"Cache-Control":"private, no-store","Server-Timing":timing.join(", ")}});
   } catch(error) { return apiErrorResponse(error instanceof ApiError ? error : readError({}, "workspace")); }
 }
 const commandSchema=z.object({action:z.enum([
