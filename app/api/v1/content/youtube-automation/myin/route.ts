@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
-import { checkMyinVoice, confirmMyinClips, createMyinRun, latestMyinRun, myinVoiceCheck, myinVoiceFixSchema, myinVoiceOnRenderPc, requestMyinVoiceFix, myinDownloads, myinOurImageUpload, myinOutputs, myinPhotos, myinPreviewSheets, myinSoundState, myinWordsReport, reopenMyinMaterials, reviewMyinStoryboard, saveMyinOurImage, saveMyinSound, setMyinDraftPlace, startMyinFinal, startMyinPrep } from "@/lib/server/myin-run";
+import { checkMyinVoice, confirmMyinClips, createMyinRun, latestMyinRun, myinVoiceCheck, myinVoiceFixSchema, myinVoiceOnRenderPc, requestMyinVoiceFix, myinDownloads, myinRecord, myinOurImageUpload, myinOutputs, myinPhotos, myinPreviewSheets, myinSoundState, myinWordsReport, reopenMyinMaterials, reviewMyinStoryboard, saveMyinOurImage, saveMyinSound, setMyinDraftPlace, startMyinFinal, startMyinPrep } from "@/lib/server/myin-run";
 import { readLocalRenderStatus } from "@/lib/server/youtube-render-pc";
 import { checkMyinScreens, myinScreenCheck } from "@/lib/server/myin-screen-check";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
@@ -36,6 +36,9 @@ export async function GET(request: Request) {
     // 우리 이미지 올리기 (2026-10-28): the storyboard's photo files and where each comes from.
     const photos = query.get("photos");
     if (photos) return NextResponse.json(await myinPhotos(actor, z.string().uuid().parse(photos)), { headers });
+    // 만든 재료 · 설정 보기 (유쓰 요청 4/8): what the run used and made, and which files are still kept.
+    const recordOf = query.get("record");
+    if (recordOf) return NextResponse.json(await myinRecord(actor, z.string().uuid().parse(recordOf)), { headers });
     const outputs = query.get("outputs");
     if (outputs) return NextResponse.json(await myinOutputs(actor, z.string().uuid().parse(outputs)), { headers });
     // 내 컴퓨터: whether this member's own Mac is on and has the render PC's engine (?local=1).

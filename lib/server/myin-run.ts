@@ -577,13 +577,18 @@ async function beginPrep(service: Service, record: OsRecord, run: MyinRun, by: s
   return save(service, record, "backlog", cta.every((c) => c.status === "ready") ? "prep_pending" : "cta_pending", next);
 }
 
-/** [자료 준비 다시 하기]: after a finished check (e.g. a library track was missing) or a blocked attempt. */
+/** [자료 준비 다시 하기]: after a finished check (e.g. a library track was missing) or a blocked attempt; a stop at the clips cuts only the clips again. */
 export async function startMyinPrep(actor: RequestActor, runId: string) {
   const { record, run } = await visibleRun(actor, runId);
   const restart = record.status === "blocked" && ["cta_pending", "prep_pending", "clips_pending"].includes(record.stage ?? "");
   if ((record.stage !== "prep_ready" && !restart) || !run.storyboard || run.review?.decision !== "confirmed")
     throw new ApiError(409, "MYIN_PREP_NOT_OPEN", "기획표 확인이 끝난 뒤에 다시 할 수 있습니다.");
   await assertCurrent(createServiceSupabase(), run);
+  // 멈춘 곳부터 (유쓰 요청 3/8): a stop while cutting the preview clips keeps the finished preparation and cuts the clips again.
+  if (restart && record.stage === "clips_pending" && run.prepared && !run.clipsReview) {
+    const next: MyinRun = { ...run, attempts: 0 }; delete next.lease; delete next.lastError;
+    return presentMyinRun(await save(createServiceSupabase(), record, "backlog", "clips_pending", next));
+  }
   return presentMyinRun(await (run.clipsReview ? beginPrep(createServiceSupabase(), record, run, actor.id) : beginDraft(createServiceSupabase(), record, run)));
 }
 
@@ -996,6 +1001,40 @@ export async function failMyinStage(input: { runId: string; lease: string; code:
   const { record, run } = await leased(service, input.runId, input.lease);
   await failed(service, record, run, input.code);
   return { runId: record.id, retry: run.attempts < 3 };
+}
+
+/**
+ * 만든 재료 · 설정 보기 (유쓰 요청 4/8, 2026-11-02): what this run actually used and made, read from its own record — never today's
+ * defaults — and for each file whether storage still holds it (a fixed voice replaces the one before it; a listed photo is fetched by
+ * the render PC and only its address is kept). Reading it changes and costs nothing.
+ */
+export async function myinRecord(actor: RequestActor, runId: string) {
+  const { record, run } = await visibleRun(actor, runId);
+  const service = createServiceSupabase();
+  const folder = `${record.owner_id}/${run.sourceId}/${record.id}`;
+  const listed = async (bucket: string, path = folder) => new Set(((await service.storage.from(bucket).list(path, { limit: 1000 })).data ?? []).map((o) => `${path}/${o.name}`));
+  const [timing, voice, media, video, sheets, ours] = await Promise.all([listed(YOUTUBE_VOICE_TIMING_BUCKET), listed(YOUTUBE_VOICE_BUCKET), listed(OUTPUT_BUCKET),
+    listed(ASSET_VIDEO_BUCKET), listed(SHEET_BUCKET), listed(OUTPUT_BUCKET, `${folder}/our-images`)]);
+  const kept = (set: Set<string>, path?: string) => path ? set.has(path) : null;
+  const approved = (run.storyboard?.assets ?? []).filter((a) => a.kind !== "bgm" && run.assets?.[a.file]?.decision === "approved");
+  return {
+    startedAt: record.created_at, short: run.layout === "short",
+    script: { version: run.script.version, paragraphs: run.paragraphs.length },
+    voice: { model: run.voiceModel, reference: run.voiceReferenceFingerprint.slice(0, 8), onPc: Boolean(run.voiceOn), changed: run.voiceChanged ?? null, check: run.voiceCheck ?? null },
+    words: run.words ? { at: run.words.at, durationSeconds: run.words.durationSeconds, words: run.words.words, lines: run.words.subtitleLines, kept: kept(timing, run.words.path),
+      voiceKept: run.words.voice ? kept(voice, voicePartPath(run.words.voice.path, 0)) : null } : null,
+    storyboard: run.storyboard ? { at: run.storyboard.at, model: run.storyboard.model, scenes: run.storyboard.scenes, kept: kept(timing, run.storyboard.path),
+      review: run.review ? { decision: run.review.decision, name: run.review.name, at: run.review.at } : null } : null,
+    photos: [...approved.map((a) => ({ file: a.file, from: `${a.source} · ${a.license}`, url: a.url, kept: null as boolean | null })),
+      ...Object.entries(run.ours ?? {}).map(([file, image]) => ({ file, from: `우리 이미지 · ${image.name}`, url: null, kept: kept(ours, image.path) }))],
+    sound: run.sound ? { at: run.sound.at, edited: run.sound.edited ? { name: run.sound.edited.name, at: run.sound.edited.at } : null } : null,
+    prepared: run.prepared ? { at: run.prepared.at, sheets: run.prepared.sheets.length, sheetsKept: run.prepared.sheets.filter((path) => sheets.has(path)).length } : null,
+    clips: run.clips ? { at: run.clips.at, count: run.clips.items.length, kept: run.clips.items.filter((item) => video.has(item.path)).length,
+      review: run.clipsReview ? { name: run.clipsReview.name, at: run.clipsReview.at } : null } : null,
+    final: run.final ? { at: run.final.at, durationSeconds: run.final.durationSeconds, bytes: run.final.bytes, lufs: run.final.lufs, peak: run.final.peak,
+      files: [["영상", kept(video, run.final.video)], ["자막 SRT", kept(media, run.final.srt)], ["한 장 정리", kept(media, run.final.summary)], ["덱 PDF", kept(media, run.final.deck)]]
+        .filter(([, value]) => value !== null).map(([name, value]) => ({ name: name as string, kept: value as boolean })) } : null,
+  };
 }
 
 /** Short-lived addresses of the clips and the finished files for the ③ panel. */
