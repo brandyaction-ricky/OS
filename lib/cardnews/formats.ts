@@ -45,6 +45,13 @@ export const CARD_FORMATS: Record<CardFormatId, CardFormat> = {
 };
 /** The fields a 웹툰 card keeps for drawing its picture, never printed on it. */
 export const CARD_DRAW_FIELDS = ["scene", "cast"];
+/** Where a 웹툰 bubble's tail points, in % of the card: the PD taps the speaker on the preview (stored as `talkAt` / `replyAt`, "x,y");
+ * until then the one in front is taken to stand left and the one answering right, as the scene is written to draw them. */
+export const TOON_AIM = { talk: [28, 40], reply: [64, 40] } as const;
+export function toonAim(slide: Pick<CardSlide, "fields">, key: keyof typeof TOON_AIM): [number, number] {
+  const match = /^(\d{1,3}),(\d{1,3})$/.exec(slide.fields[`${key}At`]?.trim() ?? "");
+  return match ? [Math.min(100, Number(match[1])), Math.min(100, Number(match[2]))] : [...TOON_AIM[key]];
+}
 /** The first 웹툰 card still without its picture (-1 when all are drawn): 카드 확정 waits for it. */
 export const toonArtMissing = (draft: Pick<CardDraft, "format" | "slides">) =>
   draft.format === "webtoon" ? draft.slides.findIndex(slide => (slide.type === "toon" || slide.type === "panel") && !slide.photo) : -1;

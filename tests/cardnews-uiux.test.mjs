@@ -187,3 +187,12 @@ test("card problems put 을/를 and 이/가 after the field name the Korean way"
   d.slides[0].fields = { episode: "1234567", title: "제목" };
   assert.ok(formats.cardProblems(d).blocking.includes("1장 화가 1자 넘쳐요 (6자까지)"));
 });
+
+// 말풍선 꼬리 (1화 시안 2026-11-02): the tail points where the PD tapped the speaker, else left / right of the middle band.
+test("a 웹툰 bubble tail points at the tapped speaker, else at its side of the picture", () => {
+  assert.deepEqual(formats.toonAim({ fields: {} }, "talk"), [28, 40]);
+  assert.deepEqual(formats.toonAim({ fields: {} }, "reply"), [64, 40]);
+  assert.deepEqual(formats.toonAim({ fields: { talkAt: "12,30" } }, "talk"), [12, 30]);
+  assert.deepEqual(formats.toonAim({ fields: { replyAt: "250,9" } }, "reply"), [100, 9], "a tap is kept on the card");
+  assert.deepEqual(formats.toonAim({ fields: { talkAt: "왼쪽" } }, "talk"), [28, 40], "anything else falls back");
+});

@@ -53,7 +53,7 @@ const NOTES: Partial<Record<CardSlide["type"], string>> = { item: "번호는 OS�
   compare: "두 쪽을 같은 기준으로, 왼쪽은 흔한 쪽 · 오른쪽은 권하는 쪽", step: "한 장에 한 단계, 할 일을 행동으로 · 단계 번호와 흐름은 OS가 그려요",
   map: "구조도의 가지는 뒤 요소 장의 이름이 그대로 들어가요", part: "요소 이름은 구조도 가지에 그대로 보여요",
   toon: "episode는 「1화」처럼, scene은 표지 그림(주인공 한 명이 크게, 아래쪽 1/3은 제목이 앉도록 비워 둠)",
-  panel: "scene은 PD가 「AI로 그리기」에 넣을 그림 설명(글자 없이, 누가 어디서 무엇을 하는지 · 표정 · 배경), cast는 나오는 사람(서윤 · 도현 · 한결 중 + 낙서), 말은 칸마다 한두 개만 · think는 입 밖에 못 낸 속마음(낙서가 나오는 칸에 잘 맞아요) · 외침과 효과음은 한 화에 두세 번 · 효과음은 「빼꼼」「쿵」처럼 짧은 소리" };
+  panel: "scene은 PD가 「AI로 그리기」에 넣을 그림 설명(글자 없이, 누가 어디서 무엇을 하는지 · 표정 · 배경 · talk를 말하는 사람은 왼쪽, reply를 말하는 사람은 오른쪽), cast는 나오는 사람(서윤 · 도현 · 한결 중 + 낙서), 말은 칸마다 한두 개만 · think는 입 밖에 못 낸 속마음(낙서가 나오는 칸에 잘 맞아요) · 외침과 효과음은 한 화에 두세 번 · 효과음은 「빼꼼」「쿵」처럼 짧은 소리" };
 /** Each requested format's slides and fields, written from CARD_FORMATS (the numbers live only there). */
 export function cardFormatSpec(formats: CardFormatId[]) {
   return formats.map(id => {

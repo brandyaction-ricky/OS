@@ -4,7 +4,7 @@
 // The look is the MYIN 카드뉴스 디자인 정본 (2026-11-02): white body cards, a blue cover and ending, Pretendard 400 · 500 · 600 at its
 // sizes for 1080 × 1350, 96px text margins, photos and diagrams within 80% of the width, and the explanation right under what it explains.
 import type { CSSProperties, ReactNode } from "react";
-import { CARD_MARK, CARD_SIZE, plainCardText, type CardDraft, type CardPhoto, type CardSlide } from "./formats.ts";
+import { CARD_MARK, CARD_SIZE, plainCardText, toonAim, type CardDraft, type CardPhoto, type CardSlide } from "./formats.ts";
 
 /** 디자인 정본 §2. Blue cards carry white text and gold only for the marked phrase; gold never sits on a light card. */
 export const CARD_THEME = { paper: "#FFFFFF", soft: "#EFEFF1", blue: "#212CB0", gold: "#EED467", title: "#151D2C", ink: "#1E1D1D", sub: "#43474C", white: "#FFFFFF" };
@@ -205,11 +205,20 @@ function ToonSlide({ draft, slide, index, theme, src }: { draft: CardDraft; slid
   // card's width pushed to its end.
   const row = (edge: { top: number } | { bottom: number }, end = false): CSSProperties => ({ display: "flex", position: "absolute", left: 56, width: W - 112, ...edge, justifyContent: end ? "flex-end" : "flex-start" });
   const centred: CSSProperties = { textAlign: "center", justifyContent: "center" };
-  // An oval with a tail toward whoever speaks (left: the one in front, right: the one answering).
-  const bubble = (name: string, side: "left" | "right") => <div style={{ display: "flex", flexDirection: "column", alignItems: side === "left" ? "flex-start" : "flex-end" }}>
-    <div style={{ display: "flex", maxWidth: 620, background: theme.white, border: `${LINE}px solid ${theme.title}`, borderRadius: "50%", padding: "40px 70px", ...centred }}>{f(name, centred)}</div>
-    <svg width={46} height={48} viewBox="0 0 46 48" style={{ marginTop: -LINE - 2, ...(side === "left" ? { marginLeft: 120 } : { marginRight: 120 }) }}>
-      <path d={side === "left" ? "M6 0 L4 46 L40 0" : "M40 0 L42 46 L6 0"} fill={theme.white} stroke={theme.title} strokeWidth={LINE} strokeLinejoin="round" /></svg></div>;
+  // An oval with a tail toward whoever speaks (toonAim: where the PD tapped, or the left / right of the faces the picture keeps in its
+  // middle). It left the oval's bottom and pointed at nobody until the 1화 시안 (2026-11-02). The tail starts 140 px in from the
+  // oval's outer side on its top edge — the oval's height estimated from its lines, as Satori cannot measure it — and always rises at
+  // least half as steeply as it leans. Column-reverse draws the tail after the oval, so its white covers the oval's edge where they join.
+  const bubble = (name: "talk" | "reply", bottom: number) => {
+    const left = name === "talk", lines = Math.min(3, plainCardText(slide.fields[name] ?? "").trim().split("\n").reduce((sum, line) => sum + Math.max(1, Math.ceil([...line].length / 15)), 0));
+    const baseX = left ? 196 : W - 196, baseY = H - bottom - Math.round(lines * 32 * 1.45 + 86), [ax, ay] = toonAim(slide, name);
+    const dx = ax / 100 * W - baseX, dy = Math.min(ay / 100 * H - baseY, -Math.abs(dx) / 2, -40), length = Math.hypot(dx, dy), reach = Math.max(56, Math.min(140, length - 40));
+    const tip = `${Math.round(150 + dx / length * reach)} ${Math.round(150 + dy / length * reach)}`;
+    return <div style={{ display: "flex", flexDirection: "column-reverse", alignItems: left ? "flex-start" : "flex-end" }}>
+      <div style={{ display: "flex", maxWidth: 620, background: theme.white, border: `${LINE}px solid ${theme.title}`, borderRadius: "50%", padding: "40px 70px", ...centred }}>{f(name, centred)}</div>
+      <svg width={300} height={150} viewBox="0 0 300 150" style={{ marginBottom: -LINE - 2, ...(left ? { marginLeft: -10 } : { marginRight: -10 }) }}>
+        <path d={`M132 150 L${tip} L168 150`} fill={theme.white} stroke={theme.title} strokeWidth={LINE} strokeLinejoin="round" /></svg></div>;
+  };
   // 외침 goes in the top band with the 해설 and 속마음, clear of the faces the picture keeps in its middle (it covered them there,
   // 2026-11-02 1화 시안); only when all three are on one panel does it drop below them.
   const think = has("think"), shout = has("shout"), shoutTop = think && has("narration") ? 430 : 40;
@@ -233,8 +242,8 @@ function ToonSlide({ draft, slide, index, theme, src }: { draft: CardDraft; slid
     {has("sfx") ? <div style={{ display: "flex", position: "absolute", left: 72, top: 600, transform: "rotate(-10deg)", alignItems: "flex-start" }}>
       {[...plainCardText(slide.fields.sfx ?? "").trim()].slice(0, 8).map((letter, at) => <span key={at} style={{ display: "flex", fontSize: 112, fontWeight: 600, lineHeight: 1, color: theme.title,
         textShadow: EDGE, marginTop: at % 2 ? 46 : 0, marginLeft: at ? -6 : 0, transform: `skewX(-10deg) rotate(${at % 2 ? 6 : -4}deg)` }}>{letter}</span>)}</div> : null}
-    {has("reply") ? <div style={row({ bottom: has("talk") ? 400 : 130 }, true)}>{bubble("reply", "right")}</div> : null}
-    {has("talk") ? <div style={row({ bottom: 130 })}>{bubble("talk", "left")}</div> : null}
+    {has("reply") ? <div style={row({ bottom: has("talk") ? 400 : 130 }, true)}>{bubble("reply", has("talk") ? 400 : 130)}</div> : null}
+    {has("talk") ? <div style={row({ bottom: 130 })}>{bubble("talk", 130)}</div> : null}
     <div style={row({ bottom: 40 }, true)}><div style={{ display: "flex", alignItems: "center", gap: 14, background: theme.white, borderRadius: 999, padding: "10px 22px", fontSize: 16, color: theme.sub }}>
       <Logo color={theme.title} height={20} /><span>{`${index + 1} / ${draft.slides.length}`}</span></div></div>
   </>;

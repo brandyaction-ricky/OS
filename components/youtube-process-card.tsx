@@ -4,11 +4,11 @@
 import "./youtube-process-card.css";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, Fragment, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { ArrowDown, ArrowRight, ArrowUp, Copy, Download, GalleryHorizontal, ImagePlus, Plus, Trash2 } from "lucide-react";
 import { CardSlideView } from "@/lib/cardnews/card-slide";
 import { cardsMissing } from "@/lib/cardnews/cards";
-import { addCardSlide, CARD_FORMAT_IDS, CARD_FORMATS, CARD_MAX_SLIDES, CARD_SIZE, cardLetters, cardProblems, moveCardSlide, parseCardHashtags, removeCardSlide, slideSpec, type CardDraft, type CardFormatId, type CardPhoto } from "@/lib/cardnews/formats";
+import { addCardSlide, CARD_FORMAT_IDS, CARD_FORMATS, CARD_MAX_SLIDES, CARD_SIZE, cardLetters, cardProblems, moveCardSlide, parseCardHashtags, removeCardSlide, slideSpec, TOON_AIM, type CardDraft, type CardFormatId, type CardPhoto } from "@/lib/cardnews/formats";
 import type { CardSourceChoice } from "@/lib/cardnews/sources";
 import { apiRequest } from "@/lib/api-client";
 import { modelName } from "@/lib/cost";
@@ -219,6 +219,8 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
   const [busy, setBusy] = useState(false);
   const [slide, setSlide] = useState(0);
   const [undo, setUndo] = useState<CardDraft | null>(null);
+  // 꼬리 맞추기: which bubble's tail the next tap on the big preview points (only on the card it was pressed on).
+  const [aim, setAim] = useState<{ index: number; key: keyof typeof TOON_AIM } | null>(null);
   const [composing, setComposing] = useState(false);
   const [over, setOver] = useState<Record<number, string[]>>({});
   const [photoBusy, setPhotoBusy] = useState(false);
@@ -350,15 +352,22 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
             <button type="button" aria-label={`${index + 1}장 삭제`} title="이 장 삭제 (최소 장수는 유지)" disabled={removeCardSlide(draft, index) === draft} onClick={() => { if (!Object.values(row.fields).some(Boolean) || window.confirm("이 카드의 내용을 뺄까요? 장 편집 되돌리기로 복원할 수 있어요.")) structure(removeCardSlide(draft, index), Math.max(0, index - 1)); }}><Trash2 size={13} /></button>
           </div>}
         </div>)}</div>
-        <CardEditorPreview draft={draft} index={current} />
+        <CardEditorPreview draft={draft} index={current} onAim={editable && aim?.index === current ? (x, y) => {
+          edit({ ...draft, slides: draft.slides.map((row, index) => index === current ? { ...row, fields: { ...row.fields, [`${aim.key}At`]: `${x},${y}` } } : row) }); setAim(null);
+        } : undefined} />
         <div className="yp-card-fields">
           <h3>{current + 1}장 · {spec?.label}</h3>
           {editable ? <p className="yp-hint">가장 먼저 읽힐 구절 하나를 *별표*로 감싸면 파란색으로 보여요 (표지 · 마무리는 노란색).</p> : null}
           {spec?.fields.map(field => { const value = draft.slides[current].fields[field.key] ?? ""; const n = cardLetters(value);
             const set = (text: string) => edit({ ...draft, slides: draft.slides.map((row, index) => index === current ? { ...row, fields: { ...row.fields, [field.key]: text } } : row) });
-            return <label key={field.key} className="yp-field"><span className="yp-fld-h"><b>{field.label}</b>{field.optional ? <span className="yp-opt">선택</span> : null}
+            const tail = draft.format === "webtoon" && editable && draft.slides[current].photo && value.trim() && field.key in TOON_AIM ? field.key as keyof typeof TOON_AIM : null;
+            const aiming = aim?.index === current && aim.key === tail, aimed = tail ? draft.slides[current].fields[`${tail}At`] : "";
+            const aimRow = tail ? <div className="yp-card-aim-row"><button type="button" className="yp-btn yp-sm" aria-pressed={aiming} onClick={() => setAim(aiming ? null : { index: current, key: tail })}>
+              {aiming ? "미리보기에서 말하는 사람을 눌러요" : "말풍선 꼬리 맞추기"}</button>
+              {aimed ? <button type="button" className="yp-btn yp-sm" onClick={() => edit({ ...draft, slides: draft.slides.map((row, index) => index === current ? { ...row, fields: { ...row.fields, [`${tail}At`]: "" } } : row) })}>꼬리 처음대로</button> : null}</div> : null;
+            return <Fragment key={field.key}><label className="yp-field"><span className="yp-fld-h"><b>{field.label}</b>{field.optional ? <span className="yp-opt">선택</span> : null}
               <span className={n > field.max ? "yp-card-n yp-bad" : "yp-card-n"}>{n}/{field.max}</span>{over[current]?.includes(field.key) ? <span className="yp-tag yp-bad">넘침</span> : null}</span>
-              <textarea className="yp-in" rows={field.max > 30 ? 3 : 2} value={value} aria-label={field.label} disabled={!editable} onCompositionStart={() => setComposing(true)} onCompositionEnd={() => setComposing(false)} onChange={event => set(event.target.value)} /></label>; })}
+              <textarea className="yp-in" rows={field.max > 30 ? 3 : 2} value={value} aria-label={field.label} disabled={!editable} onCompositionStart={() => setComposing(true)} onCompositionEnd={() => setComposing(false)} onChange={event => set(event.target.value)} /></label>{aimRow}</Fragment>; })}
           {spec?.photo && editable ? <div className="yp-field"><span className="yp-fld-h"><b>사진</b><span className="yp-opt">선택</span></span>
             <p className="yp-hint">실제 사진 · 자료를 넣거나 AI로 그려요. AI 그림은 설명용이라 실제 기록처럼 쓰지 않아요 (디자인 정본 §8).</p>
             <CardDrawPanel key={draft.id} page={page} projectId={project.id} photo={draft.slides[current].photo} onPhoto={photo => placePhoto(photo, current)}
@@ -378,7 +387,7 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
   </YpFrame></CardPhotos.Provider>;
 }
 
-function CardEditorPreview({ draft, index }: { draft: CardDraft; index: number }) {
+function CardEditorPreview({ draft, index, onAim }: { draft: CardDraft; index: number; onAim?: (x: number, y: number) => void }) {
   const box = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(320);
   useLayoutEffect(() => {
@@ -388,7 +397,14 @@ function CardEditorPreview({ draft, index }: { draft: CardDraft; index: number }
     measure(); const observer = new ResizeObserver(measure); observer.observe(element);
     return () => observer.disconnect();
   }, []);
-  return <div className="yp-card-big" ref={box}><CardPreview draft={draft} index={index} width={width} /></div>;
+  // 꼬리 맞추기: a tap on the picture says where the speaker is, in % of the card.
+  const pick = (event: MouseEvent<HTMLDivElement>) => {
+    const card = event.currentTarget.firstElementChild?.getBoundingClientRect();
+    if (!onAim || !card?.width) return;
+    const at = (value: number) => Math.round(Math.min(100, Math.max(0, value * 100)));
+    onAim(at((event.clientX - card.left) / card.width), at((event.clientY - card.top) / card.height));
+  };
+  return <div className={onAim ? "yp-card-big yp-card-aim" : "yp-card-big"} ref={box} onClick={onAim ? pick : undefined}><CardPreview draft={draft} index={index} width={width} /></div>;
 }
 
 function CardPostFields({ draft, editable, onEdit, onComposing }: { draft: CardDraft; editable: boolean; onEdit: (draft: CardDraft) => void; onComposing: (value: boolean) => void }) {
