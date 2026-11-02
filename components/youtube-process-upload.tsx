@@ -7,7 +7,7 @@ import { apiRequest, uploadYoutubeFile } from "@/lib/api-client";
 import { ENDSCREEN_CARD_DEFAULT, type EndscreenCard } from "@/lib/youtube-process/endscreen-card";
 import type { ChannelConnection } from "@/lib/channel-types";
 import { projectName, stepHref } from "@/lib/youtube-process/project";
-import { DESC_TEMPLATE, descChecks, descWritten, diagnosisLink, finalPair, linksMissing, pinnedDraft, publishAtProblem, shortLinkProblem, SLOTS, UTM_DESTS, UTM_OPTIONS, utmBase, utmCode, utmUrl, withLinks, type YpMake, type YpUpload } from "@/lib/youtube-process/stages";
+import { DESC_TEMPLATE, descChecks, descWritten, diagnosisLink, finalPair, reviewOkAt, uploadFinal, linksMissing, pinnedDraft, publishAtProblem, shortLinkProblem, SLOTS, UTM_DESTS, UTM_OPTIONS, utmBase, utmCode, utmUrl, withLinks, type YpMake, type YpUpload } from "@/lib/youtube-process/stages";
 import { errorMessage } from "./youtube-process-data";
 import { JobLine, SendDialog, useStaffJob, type SendTab } from "./youtube-process-ai";
 import { draftTag, isGptModel } from "@/lib/youtube-process/gpt-draft";
@@ -50,7 +50,9 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
   useEffect(() => { if (upload && !dirty) setForm(upload.data); }, [upload, dirty]);
   const project = page.bundle?.project;
   const finals = page.bundle?.finals ?? [];
-  const last = finals.at(-1) ?? null;
+  // The final that goes up: not one the OS made after the 최종 검토 컨펌 (it waits as a candidate, 유쓰 요청 공통 조건 4).
+  const last = project ? uploadFinal(finals, reviewOkAt(project.yp.gates.review)) : null;
+  const waiting = last ? finals.filter(item => !item.aspect && item.at > last.at && item.source !== "upload") : [];
   const done = form?.run?.status === "done";
   // 로건 QA 10/30: the 업로드 칸 can be written while the video is edited (제작 · 최종 검토); the upload waits for the 최종 검토 OK.
   const early = project?.yp.stage === "make" || project?.yp.stage === "review";
@@ -66,10 +68,10 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
   useEffect(() => {
     let active = true;
     if (!last?.runId || page.demo || !page.accessToken) { setMyinSrt(null); return; }
-    apiRequest<{ srt: string | null; deck: string | null; summary: string | null }>(`/api/v1/content/youtube-automation/myin?outputs=${last.runId}`, { token: page.accessToken })
+    apiRequest<{ srt: string | null; deck: string | null; summary: string | null }>(`/api/v1/content/youtube-automation/myin?outputs=${last.runId}&at=${encodeURIComponent(last.at)}`, { token: page.accessToken })
       .then(result => { if (active) { setMyinSrt(result.srt); setHandouts({ deck: result.deck, summary: result.summary }); } }, () => undefined);
     return () => { active = false; };
-  }, [last?.runId, page.demo, page.accessToken]);
+  }, [last?.runId, last?.at, page.demo, page.accessToken]);
 
   const save = async (next: YpUpload | null = form, patch?: Record<string, unknown>) => {
     if (!page.client || !project || !upload || !next || saving.current) return;
@@ -105,11 +107,11 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
       if (!response?.ok) throw new Error("저장된 최종본을 불러오지 못했어요.");
       const file = new File([await response.blob()], last.name || "final.mp4", { type: "video/mp4" });
       setStep("유튜브로 보내는 중");
-      const session = await page.client.uploadSession(project.id, { fileName: file.name, fileSize: file.size, mimeType: file.type, ...(owner ? { connectionOwnerId: owner } : {}) });
+      const session = await page.client.uploadSession(project.id, { fileName: file.name, fileSize: file.size, mimeType: file.type, finalAt: last.at, ...(owner ? { connectionOwnerId: owner } : {}) });
       const since = Date.now();
       const video = await uploadYoutubeFile(session.uploadUrl, file, (percent, loaded, total) => { setProgress(percent); setBytes({ loaded, total, since }); });
       setStep("결과를 기록하는 중");
-      await page.client.uploadComplete(project.id, { videoId: video.id, ...(owner ? { connectionOwnerId: owner } : {}) });
+      await page.client.uploadComplete(project.id, { videoId: video.id, finalAt: last.at, ...(owner ? { connectionOwnerId: owner } : {}) });
       await page.reload(); setDirty(false);
     } catch (reason) { page.fail(reason); setGoError(errorMessage(reason)); } finally { setProgress(null); setBytes(null); setStep(""); }
   };
@@ -243,6 +245,7 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
             : page.demo ? <span className="yp-hint">데모에서는 채널 연결이 없어요</span> : <span className="yp-hint">유튜브 채널이 연결되지 않았어요. <Link className="yp-lnk" href="/settings/account">내 계정 › 채널 연결</Link>에서 연결해요.</span>}</div>
         </YpSection>
         <section className="yp-upgo"><div className="yp-upgo-l"><b>올라갈 영상</b><span>{last ? `v${last.v} · ${last.source === "myin" ? "자동 제작" : last.name}${project?.yp.gates.review.decidedAt && last.at > project.yp.gates.review.decidedAt ? " · 컨펌 뒤 올린 버전" : ""}` : "최종본이 없어요"}</span>
+          {waiting.length ? <span className="yp-hint">컨펌 뒤 자동으로 만든 {waiting.map(item => `v${item.v}`).join(" · ")}는 후보로 있어요. 그걸 올리려면 최종 검토를 다시 열어 컨펌해 주세요.</span> : null}
           {handouts.deck || handouts.summary ? <span style={{ fontSize: 12 }}>{handouts.deck ? <a className="yp-lnk" href={handouts.deck} target="_blank" rel="noreferrer">덱 PDF</a> : null}{handouts.deck && handouts.summary ? " · " : ""}{handouts.summary ? <a className="yp-lnk" href={handouts.summary} target="_blank" rel="noreferrer">한 장 정리 이미지</a> : null}</span> : null}
           <span className="yp-muted" style={{ fontSize: 12 }}>제목 A{finalPair(plan, make, "A")?.changed ? "(제작에서 바꾼 것)" : ""} · 썸네일 A로 올라가요. 다 올라갈 때까지 화면을 닫지 마세요.</span></div>
           <div className="yp-upgo-r">{done ? <><button type="button" className="yp-btn yp-lg" disabled><Check size={16} /> 유튜브에 올리기</button><small className="yp-upok">✓ 올렸어요</small></>

@@ -40,7 +40,7 @@ export async function GET(request: Request) {
     const recordOf = query.get("record");
     if (recordOf) return NextResponse.json(await myinRecord(actor, z.string().uuid().parse(recordOf)), { headers });
     const outputs = query.get("outputs");
-    if (outputs) return NextResponse.json(await myinOutputs(actor, z.string().uuid().parse(outputs)), { headers });
+    if (outputs) return NextResponse.json(await myinOutputs(actor, z.string().uuid().parse(outputs), z.string().datetime().optional().parse(query.get("at") ?? undefined)), { headers });
     // 내 컴퓨터: whether this member's own Mac is on and has the render PC's engine (?local=1).
     if (query.get("local")) return NextResponse.json({ local: await readLocalRenderStatus(actor.ownerId) }, { headers });
     const sound = query.get("sound");

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as
 import { useSearchParams } from "next/navigation";
 import { ArrowUpRight, ChevronDown, ChevronUp, Columns2, Download, Eraser, MapPin, MessageSquare, Paperclip, Pause, Pencil, Play, Search, Square, ThumbsUp, Trash2, Upload, Waypoints } from "lucide-react";
 import { personName, stepHref } from "@/lib/youtube-process/project";
-import { finalPair, SLOTS, type YpSlot } from "@/lib/youtube-process/stages";
+import { finalPair, reviewOkAt, SLOTS, uploadFinal, type YpSlot } from "@/lib/youtube-process/stages";
 import { GateBanner, gateAction, gateSub, LockedStep, ReplyForm, Subject, useGate, useYpBundle, YpFrame } from "./youtube-process-frame";
 import { CardReviewScreen } from "./youtube-process-card";
 import type { YpFeedbackView } from "./youtube-process-data";
@@ -70,6 +70,9 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
   const latest = finals.at(-1)?.v ?? 0;
   const ver = verSel ?? latest;
   const final = finals.find(item => item.v === ver) ?? null;
+  // 유쓰 요청 공통 조건 4: a video the OS made after the 최종 검토 컨펌 is a candidate; the one that goes up is named in the version list.
+  const okAt = project ? reviewOkAt(project.yp.gates.review) : null;
+  const active = okAt ? uploadFinal(finals, okAt) : null;
 
   // Keyed on the client and the video id only: `page` is a new object every render, so depending on it refetched and re-rendered forever.
   const { client, fail } = page, projectId = project?.id;
@@ -250,7 +253,7 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
                 <span className="yp-knob" style={{ left: `${duration ? time / duration * 100 : 0}%` }} /></div>
               <span className="yp-tm">{fmt(time)} / {fmt(duration)}</span></div>
             <div className="yp-ctrl2"><label className="yp-vsel">버전 <select value={ver} onChange={event => { setVerSel(Number(event.target.value)); setRange(null); setTime(0); }} aria-label="영상 버전">
-              {[...finals].reverse().map(item => <option key={item.v} value={item.v}>v{item.v}{item.v === latest ? " (최신)" : ""} · {item.source === "myin" || item.source === "short" ? "자동 제작" : item.name}</option>)}</select></label>
+              {[...finals].reverse().map(item => <option key={item.v} value={item.v}>v{item.v}{item.v === latest ? " (최신)" : ""} · {item.source === "myin" || item.source === "short" ? "자동 제작" : item.name}{item.v === active?.v ? " · 올라갈 영상" : item.source !== "upload" && okAt && item.at > okAt ? " · 컨펌 뒤 후보" : ""}</option>)}</select></label>
               <label className="yp-vsel">속도 <select value={rate} onChange={event => { const value = Number(event.target.value); setRate(value); if (video.current) video.current.playbackRate = value; if (videoB.current) videoB.current.playbackRate = value; }} aria-label="재생 속도">
                 {[1, 1.5, 2].map(value => <option key={value} value={value}>{value}배</option>)}</select></label>
               {finals.length > 1 ? compareVer === null

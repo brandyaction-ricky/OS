@@ -43,6 +43,8 @@ type Service = ReturnType<typeof createServiceSupabase>;
 
 const hex = z.string().regex(/^[a-f0-9]{64}$/);
 const versionRef = z.object({ id: z.string().uuid(), version: z.number().int().positive() }).strict();
+const finalSchema = z.object({ video: z.string(), summary: z.string().optional(), deck: z.string().optional(), srt: z.string(), bytes: z.number().int().positive(),
+  durationSeconds: z.number().positive(), lufs: z.number(), peak: z.number(), at: z.string().datetime() }).strict();
 const leaseSchema = z.object({ token: z.string().uuid(), expiresAt: z.string().datetime(), startedAt: z.string().datetime().optional() }).strict();
 const runSchema = z.object({
   kind: z.literal(MYIN_RUN_KIND), runKey: hex, sourceId: z.string().uuid(), inputKey: hex, script: versionRef, scriptMarkdownHash: hex,
@@ -95,14 +97,22 @@ const runSchema = z.object({
   // 사운드 창고 (2026-10-27): Logan's music match report from the ③ preparation, and who last changed the sound at ④.
   sound: z.object({ report: z.string().max(20_000), at: z.string().datetime(),
     edited: z.object({ by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict().optional() }).strict().optional(),
-  final: z.object({ video: z.string(), summary: z.string().optional(), deck: z.string().optional(), srt: z.string(), bytes: z.number().int().positive(),
-    durationSeconds: z.number().positive(), lufs: z.number(), peak: z.number(), at: z.string().datetime() }).strict().optional(),
+  final: finalSchema.optional(),
+  // 완성본 후보 (유쓰 요청 2/8 · 공통 조건, 2026-11-02): the finished videos made before the current one, oldest first. Making the video
+  // again never drops one — each stays a version to compare, and its files stay where the render PC put them.
+  finals: z.array(finalSchema).max(8).optional(),
   lease: leaseSchema.optional(), attempts: z.number().int().min(0).max(20),
   lastError: z.object({ code: z.string(), at: z.string().datetime() }).strict().optional(),
 }).strict();
 type MyinRun = z.infer<typeof runSchema>;
 
 const sha = (value: string) => createHash("sha256").update(value).digest("hex");
+/** The current finished video joins the run's earlier ones instead of being dropped when the video is made again. */
+function retireFinal(run: MyinRun) {
+  if (!run.final) return;
+  run.finals = [...(run.finals ?? []), run.final].slice(-8);
+  delete run.final;
+}
 const parse = (record: Pick<OsRecord, "metadata">) => {
   // The 10-28 voice backfill also stored its request's "action" in words.voice (fixed 2026-10-29); reading leaves it out, so those
   // runs open again and their next save writes them clean.
@@ -559,7 +569,7 @@ function photosInUse(run: MyinRun, story: Awaited<ReturnType<typeof storyboardJs
 async function beginDraft(service: Service, record: OsRecord, run: MyinRun) {
   photosInUse(run, await storyboardJson(service, run));
   const next: MyinRun = { ...run, attempts: 0 };
-  delete next.prepared; delete next.lastError; delete next.clips; delete next.clipsReview; delete next.final; delete next.sound;
+  delete next.prepared; delete next.lastError; delete next.clips; delete next.clipsReview; delete next.sound; retireFinal(next);
   return save(service, record, "backlog", "prep_pending", next);
 }
 
@@ -773,12 +783,12 @@ export async function completeMyinPrep(input: { runId: string; lease: string }, 
   const next: MyinRun = { ...run, storyboard, sound, attempts: 0, prepared: { path: prepBundlePath(record, run, input.lease), misses: bundle.misses.slice(0, 60),
     sheets: Array.from({ length: bundle.sheets }, (_, i) => sheetPath(record, run, input.lease, i + 1)), credits, at: new Date().toISOString() } };
   delete next.lease; delete next.lastError;
-  if (draft) { delete next.clips; delete next.clipsReview; delete next.final; }
+  if (draft) { delete next.clips; delete next.clipsReview; retireFinal(next); }
   if (!next.sound) delete next.sound;
   // ③ with nothing missing: the drafts are next, without anyone pressing a button. ④ stops here for the sound and photos check;
   // a 숏폼 has no sound to check (voice only), so its full video starts.
   const stage = bundle.misses.length ? "prep_ready" : draft ? "clips_pending" : run.layout ? "final_pending" : "prep_ready";
-  if (stage === "final_pending") delete next.final;
+  if (stage === "final_pending") retireFinal(next);
   await save(service, record, stage === "prep_ready" ? "done" : "backlog", stage, next);
   // 화면 자동 검사 (2026-10-29): GPT reads the new sheets after this response, while the drafts are being made.
   if (bundle.sheets) await import("./myin-screen-check").then((module) => module.scheduleScreenCheck(record.id)).catch(() => undefined);
@@ -910,7 +920,7 @@ export async function confirmMyinClips(actor: RequestActor, runId: string, note:
   await assertCurrent(service, run);
   if (record.stage !== "clips_review" || !run.clips) throw new ApiError(409, "MYIN_CLIPS_NOT_IN_REVIEW", "확인을 기다리는 미리보기가 없습니다.");
   const next: MyinRun = { ...run, attempts: 0, clipsReview: { by: actor.id, name: actor.name, note: note.trim().slice(0, 2000), at: new Date().toISOString() } };
-  delete next.final;
+  retireFinal(next);
   // 2026-10-27 대표: 시안 확인이 사진 허락 — ④ 자료 준비(사진 받기 · 구독 대사 음성)를 바로 시작한다.
   const saved = await save(service, record, "done", "clips_review", next);
   return presentMyinRun(await beginPrep(service, saved, parse(saved), actor.id));
@@ -924,7 +934,7 @@ export async function startMyinFinal(actor: RequestActor, runId: string) {
   const ready = record.stage === "prep_ready" && Boolean(run.clipsReview) && Boolean(run.prepared) && !run.prepared?.misses.length;
   if (!ready && !(record.stage === "final_pending" && record.status === "blocked"))
     throw new ApiError(409, "MYIN_FINAL_NOT_OPEN", "④ 자료 준비가 끝난 뒤에 전체 영상을 만들 수 있습니다.");
-  const next: MyinRun = { ...run, attempts: 0 }; delete next.lastError; delete next.lease; delete next.final;
+  const next: MyinRun = { ...run, attempts: 0 }; delete next.lastError; delete next.lease; retireFinal(next);
   return presentMyinRun(await save(service, record, "backlog", "final_pending", next));
 }
 
@@ -1038,13 +1048,15 @@ export async function myinRecord(actor: RequestActor, runId: string) {
 }
 
 /** Short-lived addresses of the clips and the finished files for the ③ panel. */
-export async function myinOutputs(actor: RequestActor, runId: string) {
+export async function myinOutputs(actor: RequestActor, runId: string, at?: string) {
   const { run } = await visibleRun(actor, runId);
   const service = createServiceSupabase();
   const read = (bucket: string, path?: string) => path ? sign(service, bucket, path) : Promise.resolve(null);
+  // An earlier version of this run's finished video (최종 검토 버전 비교), found by when it was made.
+  const final = at ? [...(run.finals ?? []), ...(run.final ? [run.final] : [])].find((item) => item.at === at) : run.final;
   return {
     clips: await Promise.all((run.clips?.items ?? []).map(async (item) => ({ label: item.label, url: await read(ASSET_VIDEO_BUCKET, item.path) }))),
-    video: await read(ASSET_VIDEO_BUCKET, run.final?.video), summary: await read(OUTPUT_BUCKET, run.final?.summary),
-    deck: await read(OUTPUT_BUCKET, run.final?.deck), srt: await read(OUTPUT_BUCKET, run.final?.srt),
+    video: await read(ASSET_VIDEO_BUCKET, final?.video), summary: await read(OUTPUT_BUCKET, final?.summary),
+    deck: await read(OUTPUT_BUCKET, final?.deck), srt: await read(OUTPUT_BUCKET, final?.srt),
   };
 }
