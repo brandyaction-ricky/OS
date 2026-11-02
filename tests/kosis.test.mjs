@@ -5,7 +5,7 @@ import { callMcpTool, MCP_TOOLS } from "../lib/server/mcp.ts";
 
 const search = kosisInputSchema.parse({ action: "search", query: "자영업자" });
 const data = kosisInputSchema.parse({ action: "data", orgId: "101", tblId: "DT_SAMPLE", itmId: "T1", objL1: "00", prdSe: "Y" });
-const row = { ORG_ID: "101", TBL_ID: "DT_SAMPLE", TBL_NM: "시험 표", ITM_ID: "T1", ITM_NM: "취업자", PRD_DE: "2025", PRD_SE: "Y", DT: "-", UNIT_NM: "천명", C1: "00", C1_NM: "전체", C1_OBJ_NM: "연령" };
+const row = { ORG_ID: "101", TBL_ID: "DT_SAMPLE", TBL_NM: "시험 표", ITM_ID: "T1", ITM_NM: "취업자", PRD_DE: "2025", PRD_SE: "A", DT: "-", UNIT_NM: "천명", C1: "00", C1_NM: "전체", C1_OBJ_NM: "연령" };
 
 test("explicit selections and bounded requests prevent arbitrary upstream URLs", () => {
   assert.throws(() => kosisInputSchema.parse({ ...search, apiKey: "injected" }));
@@ -30,10 +30,11 @@ test("data preserves missing and suppression symbols, units, periods and dimensi
   assert.equal(result.items[0].unit, "천명"); assert.equal(result.items[0].period, "2025");
   assert.equal(result.items[0].dimensions[0].label, "전체");
   assert.equal(normalizeKosis(data, [{ ...row, UNIT_NM: "" }]).items[0].unit, null);
+  assert.equal(normalizeKosis(data, [{ ...row, ITM_NM: "1인가구비율＜br＞(A÷B×100)" }]).items[0].item, "1인가구비율 (A÷B×100)");
 });
 
 test("HTTP-200 API errors, unexpected objects and wrong tables never become evidence", () => {
-  for (const payload of [{ err: "20", errMsg: "bad credential" }, [{ err: "20" }], {}, [{ ...row, TBL_ID: "WRONG" }]]) {
+  for (const payload of [{ err: "20", errMsg: "bad credential" }, [{ err: "20" }], {}, [{ ...row, TBL_ID: "WRONG" }], [{ ...row, PRD_SE: "M" }]]) {
     assert.throws(() => normalizeKosis(data, payload));
   }
   assert.throws(() => normalizeKosis(data, Array.from({ length: 1001 }, () => row)), /결과가 너무 많/);
