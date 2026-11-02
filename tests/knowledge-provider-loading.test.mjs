@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
 import * as model from "../lib/knowledge/model.ts";
+import { mergeWorkspaceDocuments } from "../lib/knowledge/browser-cache.ts";
 
 const actor = { ownerId: "synthetic-user", type: "user", role: "member", memberKind: "staff", active: true, allowedStatuses: ["draft", "team", "canonical"] };
 const canon = { documents: [{ id: "canonical", title: "기준", folder: "규칙", current_version: 1, updated_at: "2026-10-12T00:00:00Z" }], people: [], proposalDocumentIds: [], actor };
@@ -12,8 +13,8 @@ const turn = () => new Promise(resolve => setTimeout(resolve, 0));
 
 // Controlled hook lifecycle verifies that a persistent Next layout never treats
 // a partial canon response as a complete document/meeting/editor workspace.
-function setup(recent = {}) {
-  const hooks = [], effects = [], requests = [], listeners = new Map();
+function setup(recent = {}, kept = null) {
+  const hooks = [], effects = [], requests = [], listeners = new Map(), written = [];
   let cursor = 0, pathname = "/knowledge/canon";
   const profile = { id: actor.ownerId, role: "member", isActive: true };
   const react = {
@@ -30,6 +31,8 @@ function setup(recent = {}) {
     "@/components/session-provider": { useSession: () => ({ profile, accessToken: "synthetic-token", demo: false, loading: false }) },
     "@/lib/api-client": { apiRequest: (path, options) => new Promise((resolve, reject) => requests.push({ path, options, resolve, reject })), recentRead: path => recent[path] },
     "@/lib/knowledge/demo": {}, "@/lib/knowledge/model": model, "./shortcuts": { KnowledgeShortcuts: () => null },
+    // No list kept on this PC in these runs (회사 문서 목록 브라우저 저장 is covered in knowledge-browser-cache.test.mjs).
+    "@/lib/knowledge/browser-cache": { keptSyncedAt: () => kept?.syncedAt ?? null, readWorkspaceCache: async () => kept ?? undefined, writeWorkspaceCache: async (_owner, value) => { written.push(value); }, mergeWorkspaceDocuments },
   };
   const exports = {};
   const code = ts.transpileModule(readFileSync(new URL("../components/knowledge/provider.tsx", import.meta.url), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
@@ -37,7 +40,7 @@ function setup(recent = {}) {
     window: { addEventListener: (name, callback) => listeners.set(name, callback), removeEventListener: name => listeners.delete(name) },
   });
   return {
-    requests,
+    requests, written,
     render(path = pathname) { pathname = path; cursor = 0; const result = exports.KnowledgeProvider({ children: null }); while (effects.length) effects.shift()(); return result.value; },
     focus: () => listeners.get("focus")?.(),
   };
@@ -134,4 +137,20 @@ test("a revisit shows the remembered list at once, but editors wait for the fres
   assert.equal(value.draftsReady, false, "remembered drafts never open an editor");
   app.requests[1].resolve(workspace()); await turn();
   assert.equal(app.render().draftsReady, true);
+});
+
+// 회사 문서 목록 브라우저 저장 (2026-11-02): this PC's list renders at once and the read asks only for what changed since.
+test("this PC's kept list shows at once and only the changes are read and merged", async () => {
+  const doc = (id, title) => ({ id, title, folder: "규칙", current_version: 1, updated_at: "2026-11-01T00:00:00Z", content_md: "" });
+  const kept = { syncedAt: "2026-11-02T00:00:00.000Z", actor, documents: [doc("a", "가"), doc("b", "나")] };
+  const app = setup({}, kept);
+  app.render("/knowledge/docs");
+  assert.equal(app.requests[0].path, "/api/v1/knowledge/workspace?since=2026-11-02T00%3A00%3A00.000Z");
+  await turn();
+  assert.deepEqual(app.render().state.documents.map(d => d.title), ["가", "나"], "the kept list renders before the network answers");
+  app.requests[0].resolve({ ...workspace(), state: { ...model.emptyKnowledgeState(), documents: [doc("b", "나 고침")] }, syncedAt: "2026-11-02T01:00:00.000Z", delta: { visibleIds: ["b", "a"] } });
+  await turn(); await turn();
+  assert.deepEqual(app.render().state.documents.map(d => d.title), ["나 고침", "가"]);
+  assert.equal(app.requests.length, 1, "no full read when every visible document was kept");
+  assert.equal(app.written.at(-1).syncedAt, "2026-11-02T01:00:00.000Z");
 });

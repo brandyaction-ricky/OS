@@ -8,7 +8,7 @@ import { emptyKnowledgeState, kstDay, type Command, type KnowledgeState, type Me
 import type { KnowledgeActor } from "@/lib/knowledge/access";
 import type { KnowledgeDocument } from "@/lib/types";
 import type { CanonListSnapshot } from "@/lib/knowledge/canon-list";
-import { mergeWorkspaceDocuments, readWorkspaceCache, writeWorkspaceCache } from "@/lib/knowledge/browser-cache";
+import { keptSyncedAt, mergeWorkspaceDocuments, readWorkspaceCache, writeWorkspaceCache } from "@/lib/knowledge/browser-cache";
 
 import { KnowledgeShortcuts } from "./shortcuts";
 
@@ -86,14 +86,16 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
         // Drafts in a remembered snapshot are this tab's own: any save clears the memory.
         const recent = workspaceReadyRef.current ? undefined : recentRead<Synced>("/api/v1/knowledge/workspace", token);
         if (recent) { applyWorkspace(recent); if (recent.syncedAt) { syncedAt.current = recent.syncedAt; base = recent.state.documents; } }
-        // 회사 문서 목록 브라우저 저장 (대표 결정 2026-11-02): this PC's last list shows at once; the read below brings it up to date.
-        if (!workspaceReadyRef.current) {
-          const kept = await readWorkspaceCache(actor.ownerId);
-          if (!isCurrent()) return;
-          if (kept && !workspaceReadyRef.current) {
-            applyWorkspace({ state: { ...emptyKnowledgeState(), documents: kept.documents }, actor: kept.actor, schemaReady: true });
-            syncedAt.current = kept.syncedAt; base = kept.documents;
-          }
+        // 회사 문서 목록 브라우저 저장 (대표 결정 2026-11-02): this PC's sync time is read at once so the request below asks for
+        // changes only; the kept list itself loads meanwhile and shows until the fresh one arrives.
+        let kept: Promise<KnowledgeDocument[] | null> | null = null;
+        const keptAt = workspaceReadyRef.current ? null : keptSyncedAt(actor.ownerId);
+        if (keptAt) {
+          syncedAt.current = keptAt;
+          kept = readWorkspaceCache(actor.ownerId).then(value => {
+            if (value && isCurrent() && !workspaceReadyRef.current) applyWorkspace({ state: { ...emptyKnowledgeState(), documents: value.documents }, actor: value.actor, schemaReady: true });
+            return value?.syncedAt === keptAt ? value.documents : null;
+          });
         }
         const meetingId = /^\/knowledge\/meetings\/([0-9a-f-]{36})$/i.exec(pathname)?.[1];
         if (meetingId && !initialMeetingRead.current && !stateRef.current.meetings.some(row => row.id === meetingId)) {
@@ -106,11 +108,13 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
             setPartialMeetingId(meetingId);
           } catch { /* The full workspace read below remains the fallback for old or inaccessible meetings. */ }
         }
-        let result = await apiRequest<Synced>(`/api/v1/knowledge/workspace${base && syncedAt.current ? `?since=${encodeURIComponent(syncedAt.current)}` : ""}`, { token });
+        let result = await apiRequest<Synced>(`/api/v1/knowledge/workspace${(base || kept) && syncedAt.current ? `?since=${encodeURIComponent(syncedAt.current)}` : ""}`, { token });
         if (!isCurrent()) return;
         if (result.delta) {
           // Only what changed came back; a visible document the kept list never had means reading everything once.
-          const documents = base ? mergeWorkspaceDocuments(base, result.state.documents, result.delta.visibleIds) : null;
+          const from = base ?? (kept ? await kept : null);
+          if (!isCurrent()) return;
+          const documents = from ? mergeWorkspaceDocuments(from, result.state.documents, result.delta.visibleIds) : null;
           result = documents ? { ...result, state: { ...result.state, documents } } : await apiRequest<Synced>("/api/v1/knowledge/workspace", { token });
           if (!isCurrent()) return;
         }

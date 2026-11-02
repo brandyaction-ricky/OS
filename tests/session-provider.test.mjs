@@ -68,6 +68,7 @@ function setup() {
     "react/jsx-runtime": { jsx: (_type, props) => props },
     "next/navigation": { useRouter: () => router, usePathname: () => pathname },
     "@/lib/supabase/client": { getBrowserSupabase: () => client },
+    "@/lib/knowledge/browser-cache": { clearWorkspaceCache: async () => {} },
   };
   const mod = { exports: {} };
   runInNewContext(`(function(require, module, exports) { ${code}\n})`, {

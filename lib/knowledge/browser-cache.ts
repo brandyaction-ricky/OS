@@ -22,15 +22,28 @@ function withStore<T>(mode: IDBTransactionMode, place: (store: IDBObjectStore) =
   });
 }
 
+// The sync time sits in localStorage beside the list so the next read can ask for changes at once, before the list is loaded.
+const syncKey = (ownerId: string) => `brandyos:knowledge-synced:${ownerId}`;
+export function keptSyncedAt(ownerId: string) {
+  try { return typeof localStorage === "undefined" ? null : localStorage.getItem(syncKey(ownerId)); } catch { return null; }
+}
+const forgetSyncTimes = () => {
+  try { if (typeof localStorage !== "undefined") for (const key of Object.keys(localStorage)) if (key.startsWith("brandyos:knowledge-synced:")) localStorage.removeItem(key); } catch { /* nothing kept */ }
+};
+
 export async function readWorkspaceCache(ownerId: string): Promise<CachedWorkspace | undefined> {
   try { return await withStore("readonly", store => store.get(ownerId)) as CachedWorkspace | undefined; } catch { return undefined; }
 }
 /** Keeps only this person's list: whoever used the browser before is cleared first. */
 export async function writeWorkspaceCache(ownerId: string, value: CachedWorkspace) {
   const kept = { ...value, documents: value.documents.map(doc => doc.content_md ? { ...doc, content_md: "" } : doc) };
-  try { await withStore("readwrite", store => { store.clear(); return store.put(kept, ownerId); }); } catch { /* the next visit simply reads everything */ }
+  try {
+    await withStore("readwrite", store => { store.clear(); return store.put(kept, ownerId); });
+    forgetSyncTimes(); localStorage.setItem(syncKey(ownerId), value.syncedAt);
+  } catch { forgetSyncTimes(); /* the next visit simply reads everything */ }
 }
 export async function clearWorkspaceCache() {
+  forgetSyncTimes();
   try { await withStore("readwrite", store => store.clear()); } catch { /* nothing kept */ }
 }
 
