@@ -133,7 +133,8 @@
   .os-chip:is([aria-pressed="true"], [aria-current="page"]) :is(b, .os-count) { color: var(--accent-2); }
   .os-search {
     display: inline-flex; align-items: center; gap: var(--os-space-3); min-width: 200px; max-width: 320px; flex: 1;
-    height: var(--os-input-h); padding: 0 10px; border: 1px solid var(--line); border-radius: var(--os-radius-sm); background: var(--card); color: var(--muted);
+    height: var(--os-input-h); min-height: var(--os-input-h); /* 세로 줄에서 flex 로 늘려도 납작해지지 않게 (11-02 팀 휴대폰 17px) */
+    padding: 0 10px; border: 1px solid var(--line); border-radius: var(--os-radius-sm); background: var(--card); color: var(--muted);
   }
   .os-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; color: var(--text); font: inherit; font-size: var(--os-text-meta); min-height: 0; padding: 0; }
 
