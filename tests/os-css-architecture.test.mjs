@@ -168,7 +168,7 @@ if (process.env.OS_CSS_BASELINE) console.log("BASELINE " + JSON.stringify(Object
 // 2026-10-31 main d75de32c 기준값 (03_1031_보충 2장 2 — 스타일 점검 P1 · P2 뒤에 다시 뽑음) · 11-01 L1 (main 916ec3a3, !important 짝 지움). 파일을 고치면 숫자를 줄여 적는다. 표에 없는 새 파일은 전부 0 이어야 한다.
 const BASELINE = {
   "app/final-uiux.css": {"important": 1, "breakOff": 4},
-  "app/globals.css": {"important": 49, "color": 2, "fontOff": 32, "breakOff": 54},
+  "app/globals.css": {"important": 46, "color": 2, "fontOff": 30, "breakOff": 54},
   "app/os-foundation.css": {"important": 2},
   "app/share/[token]/share.css": {"color": 7},
   "app/theme-tokens.css": {"themeSel": 1},

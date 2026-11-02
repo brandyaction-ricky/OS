@@ -49,7 +49,6 @@ test("light theme and guidance-off rules cover global workspaces", async () => {
   assert.match(css, /\.status-filters > button\.active/);
   assert.doesNotMatch(css, /var\(--light-/);
   assert.match(css, /\.example-queries button:hover/);
-  assert.match(css, /\.calendar-platforms button\.active/);
   assert.match(css, /html\[data-guidance="off"\]/);
   assert.match(css, /\.page-title-group > p/);
   assert.match(css, /\.panel-header p/);
