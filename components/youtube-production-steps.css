@@ -55,6 +55,8 @@
 .linear-shell .ui-v2 .yt-note { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--panel-2); color: var(--text-2); font-size: 12px; }
 .linear-shell .ui-v2 .yt-stop { display: block; line-height: 1.6; }
 .linear-shell .ui-v2 .yt-note.yt-warn { border-color: transparent; background: var(--warning-soft); }
+/* 채널 모양 고르기 (유쓰 요청 5/8) */
+.linear-shell .ui-v2 .yt-style-pick { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; }
 /* 자막 한꺼번에 고치기 (유쓰 요청 1/8) */
 .linear-shell .ui-v2 .yt-sub { display: grid; gap: 10px; }
 .linear-shell .ui-v2 .yt-sub-find { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }

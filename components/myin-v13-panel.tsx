@@ -29,7 +29,8 @@ interface MyinRun { id: string; status: string; stage: string; layout?: "short" 
   clips: { name: string; label: string }[] | null; clipsReview: { name: string; note: string; at: string } | null;
   final: { bytes: number; durationSeconds: number; lufs: number; peak: number; at: string } | null; scriptChanged?: boolean; workingSince?: string | null;
   sound: { report: string; at: string; edited?: { name: string; at: string } } | null; local: { by: string; name: string } | null; localReady: boolean;
-  voiceFixes?: MyinVoiceFixView[]; voiceCheck?: MyinVoiceCheckView | null; voiceFixable?: boolean; voiceChanged?: { at: string; count: number } | null }
+  voiceFixes?: MyinVoiceFixView[]; voiceCheck?: MyinVoiceCheckView | null; voiceFixable?: boolean; voiceChanged?: { at: string; count: number } | null;
+  style?: { id: string; name: string; version: number; channel: string } | null }
 interface Outputs { clips: { label: string; url: string | null }[]; video: string | null; summary: string | null; deck: string | null; srt: string | null }
 
 const PHASE: Record<string, string> = { breath_pending: "영상 만드는 컴퓨터가 숨 자리 고르는 중", voice_pending: "음성 만드는 중", words_pending: "영상 만드는 컴퓨터가 받아쓰기·자막 만드는 중", words_ready: "받아쓰기·자막 완료",
@@ -118,6 +119,14 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
   // 20-second poll made the browser download every clip again (2026-10-29: about 970 times a clip a day, most of the OS's egress).
   const outputsFor = useRef({ key: "", at: 0 });
   const [place, setPlace] = useState<DraftPlace>("pc");
+  // 채널 모양 (유쓰 요청 5/8): picked when the voice starts and pinned to the video with its version.
+  const [styles, setStyles] = useState<{ id: string; name: string; version: number }[]>([]);
+  const [styleId, setStyleId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!accessToken) return;
+    apiRequest<{ styles: { id: string; name: string; version: number }[] }>("/api/v1/content/youtube/channel-styles", { token: accessToken })
+      .then(result => setStyles(result.styles), () => setStyles([]));
+  }, [accessToken]);
   const draftWaiting = Boolean(run && !run.clipsReview && ["prep_pending", "clips_pending"].includes(run.stage));
   const { status: localPc, reload: reloadLocal } = useLocalRender(accessToken, run?.stage === "storyboard_review" || draftWaiting);
   const load = useCallback(async () => {
@@ -231,12 +240,17 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       <p>{short ? "확정한 대본을 대표 목소리로 읽고, 영상 만드는 컴퓨터가 받아쓰기와 자막을 만들어요." : "승인된 원고를 대표 목소리(drama-3)로 만들고, 영상 만드는 컴퓨터가 다듬어 받아쓰기와 방송 자막을 만듭니다."}</p>
       {run?.scriptChanged ? <p className="yt-note yt-warn">{short ? "확정한 대본이 바뀌었어요. 아래 작업은 옛 대본으로 만든 것이라 더 진행되지 않아요. 새로 만들면 기획표와 미리보기 확인도 다시 거쳐요." : "구성안 원고가 바뀌었어요. 아래 작업은 옛 원고로 만든 것이라 더 진행되지 않아요. 새로 만들면 기획표와 미리보기 확인도 다시 거쳐요."}</p> : null}
       {!run || (run.status === "blocked" && !run.words) || run.scriptChanged ? <div className="yt-actions">
-        <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void (async () => { if (run && !run.scriptChanged || await askVoice(voiceText ?? "", "같은 원고로 다시 누르면 들지 않아요", voiceOnPc)) await act("start", () => post("/myin", "POST", { sourceId })); })()}>{busy === "start" ? "시작하는 중…" : run?.scriptChanged ? short ? "바뀐 대본으로 음성 다시 만들기" : "바뀐 원고로 v13 음성 다시 만들기" : run ? short ? "음성 다시 시작" : "v13 음성 다시 시작" : short ? "음성 만들기" : "v13 음성 만들기"}</button>
+        {styles.length && (!run || run.scriptChanged) ? <label className="yt-style-pick">채널 모양<select value={styleId ?? run?.style?.id ?? styles[0].id} onChange={(event) => setStyleId(event.target.value)}>
+          <option value="">기본 (고르지 않음)</option>{styles.map((style) => <option key={style.id} value={style.id}>{style.name} · v{style.version}</option>)}</select></label> : null}
+        <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void (async () => {
+          const pick = styleId ?? run?.style?.id ?? styles[0]?.id ?? "";
+          if (run && !run.scriptChanged || await askVoice(voiceText ?? "", "같은 원고로 다시 누르면 들지 않아요", voiceOnPc)) await act("start", () => post("/myin", "POST", { sourceId, ...(pick ? { styleId: pick } : {}) })); })()}>{busy === "start" ? "시작하는 중…" : run?.scriptChanged ? short ? "바뀐 대본으로 음성 다시 만들기" : "바뀐 원고로 v13 음성 다시 만들기" : run ? short ? "음성 다시 시작" : "v13 음성 다시 시작" : short ? "음성 만들기" : "v13 음성 만들기"}</button>
         <small><CostTag kind="paid" amount={voiceText ? voiceEstimate(voiceText, myinVoice).krw : null} /> 같은 {short ? "대본" : "원고"}으로 다시 누르면 만든 음성을 이어 써요.</small>
       </div> : null}
       {run ? <div className="yt-run">
         <div className="yt-run-head"><span className="status-pill" data-status={run.status === "blocked" && !run.words ? "failed" : run.words && !run.voiceFixes?.length ? "approved" : "scheduled"}>{run.voiceFixes?.length && run.stage === "words_pending" ? "고친 곳 다시 만드는 중" : run.words ? "받아쓰기·자막 완료" : phase}</span>
-          {run.voiceOnPc ? <small>음성 {run.paragraphs}문단 · 영상 만드는 컴퓨터가 문장마다 만들어 고름</small> : <small>음성 {run.paragraphsReady}/{run.paragraphs}문단</small>}</div>
+          {run.voiceOnPc ? <small>음성 {run.paragraphs}문단 · 영상 만드는 컴퓨터가 문장마다 만들어 고름</small> : <small>음성 {run.paragraphsReady}/{run.paragraphs}문단</small>}
+          {run.style ? <small>채널 모양 {run.style.name} · v{run.style.version}</small> : null}</div>
         {run.status === "blocked" && !run.words ? <StopNote run={run} /> : null}
         {run.stage === "voice_pending" ? <progress max={run.paragraphs} value={run.paragraphsReady} aria-label="음성 진행" /> : null}
         {run.words ? <small>낭독 {Math.floor(run.words.durationSeconds / 60)}분 {Math.round(run.words.durationSeconds % 60)}초 · 받아쓴 단어 {run.words.words.toLocaleString()}개 · 자막 {run.words.subtitleLines}줄</small> : null}

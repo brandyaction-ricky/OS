@@ -110,8 +110,8 @@ export async function POST(request: Request) {
   try {
     pilot();
     const actor = await authenticateRequest(request, { allowAgent: false });
-    const input = z.object({ sourceId: z.string().uuid() }).passthrough().parse(await parseJson(request, 1_000));
-    return NextResponse.json({ run: await createMyinRun(actor, input.sourceId) }, { status: 202, headers });
+    const input = z.object({ sourceId: z.string().uuid(), styleId: z.string().uuid().optional() }).passthrough().parse(await parseJson(request, 1_000));
+    return NextResponse.json({ run: await createMyinRun(actor, input.sourceId, input.styleId) }, { status: 202, headers });
   } catch (error) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "INVALID_MYIN_INPUT", "콘텐츠를 확인해 주세요."));
     return apiErrorResponse(error);
