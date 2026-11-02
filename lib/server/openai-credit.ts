@@ -1,5 +1,5 @@
 import { ApiError } from "@/lib/http";
-import { creditCycle, sumCosts } from "@/lib/openai-credit";
+import { creditCycle, dailyCosts, sumCosts } from "@/lib/openai-credit";
 import { GPT_SAVING_BELOW_USD, type GptTier } from "@/lib/youtube-process/gpt-draft";
 
 /** This cycle's GPT API credit: OPENAI_ADMIN_KEY (read-only admin key of the organization the OS key belongs to), the grant and its renewal day. */
@@ -10,6 +10,7 @@ export async function readOpenAiCredit(now = new Date()) {
   const key = process.env.OPENAI_ADMIN_KEY?.trim();
   if (!key) return { configured: false as const, ...cycle };
   let spent = 0, page = "";
+  const daily: { day: string; usd: number }[] = [];
   for (let i = 0; i < 5; i++) {   // a cycle is at most 31 daily buckets: one page
     const url = new URL("https://api.openai.com/v1/organization/costs");
     url.search = new URLSearchParams({ start_time: String(Math.floor(start.getTime() / 1000)), bucket_width: "1d", limit: "31", ...(page ? { page } : {}) }).toString();
@@ -23,10 +24,11 @@ export async function readOpenAiCredit(now = new Date()) {
     }
     const body = await response.json() as { next_page?: string | null };
     spent += sumCosts(body);
+    daily.push(...dailyCosts(body));
     if (!body.next_page) break;
     page = body.next_page;
   }
-  return { configured: true as const, ...cycle, spent, remaining: Math.max(0, credit - spent) };
+  return { configured: true as const, ...cycle, spent, remaining: Math.max(0, credit - spent), daily };
 }
 
 /** 정밀 unless this month's credit is nearly used up (an unreadable balance counts as plenty). */

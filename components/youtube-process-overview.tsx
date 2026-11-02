@@ -10,6 +10,7 @@ import { nextAction } from "@/lib/youtube-process/next";
 import type { YpProject } from "@/lib/youtube-process/project";
 import { useSession } from "./session-provider";
 import { YP_CONFIRM_EVENT } from "./use-youtube-confirm";
+import { OpenAiCreditCard } from "./openai-credit-panel";
 import { ConfirmActions } from "./youtube-process-confirm";
 import { errorMessage, youtubeProcessClient, type YpMember } from "./youtube-process-data";
 
@@ -193,6 +194,7 @@ export function YoutubeOverviewScreen() {
           {data && !count("decide") ? <p className="yp-ov-empty">지금 고를 것이 없어요</p> : null}
           <div className="yp-ov-today"><span className="yp-ov-k">오늘 내린 결정</span>
             {decided.length ? <ul>{decided.map(item => <li key={`${item.href}-${item.at}`}><span className="yp-ov-ok">✓</span><span><Link className="yp-lnk" href={item.href}>{item.title}</Link><small>{hhmm(item.at)} · {item.what}</small></span></li>)}</ul> : <p className="yp-ov-empty">아직 없어요</p>}</div>
+          <OpenAiCreditCard />
         </>}
       </aside>
     </div>

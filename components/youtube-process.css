@@ -1393,6 +1393,10 @@
 .linear-shell .ui-v2.yp .yp-ov-rep p{margin:4px 0 0}
 .linear-shell .ui-v2.yp .yp-ov-rep .yp-ov-concl{margin:0}
 
+/* 한눈에 보기 오른쪽 칸 맨 아래: 회사 GPT 크레딧 (관리자만, P3) */
+.linear-shell .ui-v2.yp .yp-ov-credit{display:grid;gap:2px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line-soft)}
+.linear-shell .ui-v2.yp .yp-ov-credit b{font-size:13px}
+.linear-shell .ui-v2.yp .yp-ov-credit b small{color:var(--muted);font-weight:400}
 /* 한눈에 보기 · 지도 (관제실 시안 P3): 가운데 우리 팀 → 채널 가지 → 일 잎. 색은 상태에만, AI 잎만 은은하게 빛남 */
 .linear-shell .ui-v2.yp .yp-map{display:flex;flex-direction:column;gap:12px;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
 .linear-shell .ui-v2.yp .yp-map-top{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:28px}
