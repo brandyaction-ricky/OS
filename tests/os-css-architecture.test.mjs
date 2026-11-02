@@ -178,7 +178,7 @@ const BASELINE = {
   "components/cost-notice.css": {"breakOff": 1},
   "components/development-notifications.css": {"breakOff": 2},
   "components/development-workspace.css": {"breakOff": 3},
-  "components/finance/finance.css": {"important": 3, "color": 9, "fontOff": 9, "breakOff": 5, "foreign": 489, "kitOverride": 31},
+  "components/finance/finance.css": {"important": 3, "color": 4, "fontOff": 9, "breakOff": 5, "foreign": 489, "kitOverride": 31},
   "components/fullscreen-content.css": {"fontOff": 1, "breakOff": 2},
   "components/fullscreen-documents.css": {"fontOff": 1, "breakOff": 1},
   "components/fullscreen-operations.css": {"fontOff": 2},
