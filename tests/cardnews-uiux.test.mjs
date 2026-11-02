@@ -31,7 +31,8 @@ test("body-card reorder preserves every field and does not mutate the original",
 test("all formats keep cover and ending anchored and reject invalid destinations", () => {
   for (const id of formats.CARD_FORMAT_IDS) {
     const before = formats.emptyCardDraft(id, "d", "QA", "t");
-    assert.notEqual(formats.moveCardSlide(before, 1, 2), before, id);
+    const at = before.slides.findIndex(slide => formats.slideSpec(id, slide.type).max > 1);   // the first body kind with more than one card
+    assert.notEqual(formats.moveCardSlide(before, at, at + 1), before, id);
     assert.equal(formats.moveCardSlide(before, 1, before.slides.length - 1), before, id);
     assert.equal(formats.removeCardSlide(before, 0), before, id);
   }
@@ -62,6 +63,17 @@ test("the shared preview drawing renders explicit Korean newlines into a real 10
   assert.equal(multiline.readUInt32BE(16), 1080); assert.equal(multiline.readUInt32BE(20), 1350);
   assert.notDeepEqual(multiline, singleline, "explicit newlines must affect the exported drawing");
   assert.notDeepEqual(marked, singleline, "a marked phrase is drawn in the accent colour");
+  // Every card of every format draws, with a photo where the card takes one (a 1 × 1 PNG standing in for the PD's photo).
+  const png = `data:image/png;base64,${Buffer.from("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8cfc0f01f0005000201a5e5c2a20000000049454e44ae426082", "hex").toString("base64")}`;
+  for (const id of formats.CARD_FORMAT_IDS) {
+    const d = formats.emptyCardDraft(id, id, "QA", "now");
+    d.slides = d.slides.map(slide => ({ ...slide, fields: Object.fromEntries(Object.keys(slide.fields).map(key => [key, `QA ${key}`])),
+      ...(formats.slideSpec(id, slide.type)?.photo ? { photo: { path: "p.png", w: 1200, h: 900 } } : {}) }));
+    for (let index = 0; index < d.slides.length; index++) {
+      const out = Buffer.from(await new ImageResponse(createElement(view.exports.CardSlideView, { draft: d, index, photos: { "p.png": png } }), { ...formats.CARD_SIZE, fonts }).arrayBuffer());
+      assert.equal(out.subarray(1, 4).toString(), "PNG", `${id} ${index + 1}`);
+    }
+  }
 });
 
 test("a *marked* phrase is not counted as letters and one per card is the rule", () => {
@@ -72,6 +84,17 @@ test("a *marked* phrase is not counted as letters and one per card is the rule",
   assert.deepEqual(formats.cardProblems(d).blocking.filter(text => text.includes("소제목")), []);
   d.slides[1].fields.body = "*하나* 그리고 *둘*";
   assert.ok(formats.cardProblems(d).warnings.some(text => text.startsWith("2장에 강조가 3곳")));
+});
+
+test("the diagram formats start at their fewest cards and a diagram card takes no photo", () => {
+  assert.deepEqual(formats.emptyCardDraft("compare", "c", "QA", "t").slides.map(slide => slide.type), ["cover", "compare", "compare", "summary", "end"]);
+  assert.deepEqual(formats.emptyCardDraft("steps", "s", "QA", "t").slides.map(slide => slide.type), ["cover", "step", "step", "step", "summary", "end"]);
+  assert.deepEqual(formats.emptyCardDraft("structure", "m", "QA", "t").slides.map(slide => slide.type), ["cover", "map", "part", "part", "end"]);
+  const d = formats.emptyCardDraft("compare", "c", "QA", "t");
+  d.slides[1].photo = { path: "p.png", w: 10, h: 10 };
+  assert.ok(formats.cardProblems(d).blocking.some(text => text.startsWith("2장 비교에는 사진을 넣지 않아요")));
+  d.slides[1].photo = undefined; d.slides[0].photo = { path: "p.png", w: 10, h: 10 };
+  assert.ok(!formats.cardProblems(d).blocking.some(text => text.includes("사진")));
 });
 
 test("saved URLs reject executable schemes, credentials and oversized values", () => {

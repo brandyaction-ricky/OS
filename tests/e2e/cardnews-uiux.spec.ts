@@ -44,6 +44,24 @@ test("a *marked* phrase shows in the accent colour and its stars are not counted
   await expect(page.locator(".yp-card-fields .yp-card-n").first()).toHaveText(/^10\//);
 });
 
+// A 30 × 20 grey PNG (Chromium's createImageBitmap refuses the 1 × 1 one other tests upload).
+const PNG = "iVBORw0KGgoAAAANSUhEUgAAAB4AAAAUCAIAAAAVyRqTAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAKUlEQVQ4jWOYtXgrjRDDqNGLRwNk62gKmTWaZRaPliFbRwvVWUOrlgEAt4+PbaDlegEAAAAASUVORK5CYII=";
+test("a photo goes on a card and comes off again", async ({ page }) => {
+  await editor(page);
+  await page.getByRole("button", { name: "2장 보기", exact: true }).click();
+  await page.getByLabel("사진 파일").setInputFiles({ name: "현장.png", mimeType: "image/png", buffer: Buffer.from(PNG, "base64") });
+  await expect(page.locator(".yp-card-big img")).toBeVisible();
+  await page.getByRole("button", { name: "사진 빼기", exact: true }).click();
+  await expect(page.locator(".yp-card-big img")).toHaveCount(0);
+});
+
+test("the three diagram formats can be started by hand", async ({ page }) => {
+  await editor(page);
+  for (const name of ["비교형", "단계형", "구조형"]) await page.getByRole("checkbox", { name, exact: true }).check();
+  await page.getByRole("button", { name: "직접 쓰기", exact: true }).click();
+  for (const name of ["비교형", "단계형", "구조형"]) await expect(page.locator(".yp-card-row-h b", { hasText: name })).toHaveCount(1);
+});
+
 test("headline and subcopy retain Enter and shared post text survives card selection and save", async ({ page }) => {
   await editor(page);
   await page.getByLabel("헤드 카피", { exact: true }).fill("QA 첫 줄\n둘째 줄");

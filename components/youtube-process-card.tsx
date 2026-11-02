@@ -4,8 +4,8 @@
 import "./youtube-process-card.css";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ArrowDown, ArrowRight, ArrowUp, Copy, Download, GalleryHorizontal, Plus, Trash2 } from "lucide-react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ArrowDown, ArrowRight, ArrowUp, Copy, Download, GalleryHorizontal, ImagePlus, Plus, Trash2 } from "lucide-react";
 import { CardSlideView } from "@/lib/cardnews/card-slide";
 import { cardsMissing } from "@/lib/cardnews/cards";
 import { addCardSlide, CARD_FORMAT_IDS, CARD_FORMATS, CARD_MAX_SLIDES, CARD_SIZE, cardLetters, cardProblems, moveCardSlide, parseCardHashtags, removeCardSlide, slideSpec, type CardDraft, type CardFormatId } from "@/lib/cardnews/formats";
@@ -26,9 +26,46 @@ import { GateBanner, gateAction, gateSub, LockedStep, stepAction, Subject, useGa
 
 const SOURCE_NAME = { longform: "롱폼", short: "숏폼", threads: "스레드", none: "" } as const;
 
+/** Card photos by path → an address the browser can load. Screens that show a project's own cards provide it; elsewhere a photo is a grey box. */
+const CardPhotos = createContext<Record<string, string>>({});
+// Signed addresses last an hour; one is reused for 50 minutes so moving between cards and steps asks again only for new photos.
+const signedPhotos = new Map<string, { until: number; url: Promise<string> }>();
+function useCardPhotoUrls(page: YpPage, drafts: (CardDraft | null | undefined)[]) {
+  const [urls, setUrls] = useState<Record<string, string>>({});
+  const client = page.client, projectId = page.bundle?.project.id;
+  const paths = [...new Set(drafts.flatMap(draft => draft?.slides.flatMap(slide => slide.photo ? [slide.photo.path] : []) ?? []))].sort().join("\n");
+  useEffect(() => {
+    if (!client || !projectId || !paths) return;
+    let live = true;
+    void Promise.all(paths.split("\n").map(async path => {
+      let hit = signedPhotos.get(path);
+      if (!hit || hit.until < Date.now()) { hit = { until: Date.now() + 50 * 60_000, url: client.assetUrl(projectId, path) }; signedPhotos.set(path, hit); }
+      return [path, await hit.url.catch(() => { signedPhotos.delete(path); return ""; })] as const;
+    })).then(rows => { if (live) setUrls(current => ({ ...current, ...Object.fromEntries(rows.filter(([, url]) => url)) })); });
+    return () => { live = false; };
+  }, [client, projectId, paths]);
+  return urls;
+}
+
+/** A photo shrunk in the browser before it goes up (a card shows it at most 864px wide): JPEG, or PNG when it may be a cut-out (누끼). */
+async function shrinkPhoto(file: File) {
+  const bitmap = await createImageBitmap(file).catch(() => { throw new Error("이 사진은 열 수 없어요. JPG나 PNG로 넣어 주세요."); });
+  const scale = Math.min(1, 1296 / Math.max(bitmap.width, bitmap.height));
+  const w = Math.max(1, Math.round(bitmap.width * scale)), h = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = w; canvas.height = h;
+  canvas.getContext("2d")?.drawImage(bitmap, 0, 0, w, h);
+  bitmap.close();
+  const png = file.type === "image/png";
+  const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, png ? "image/png" : "image/jpeg", 0.86));
+  if (!blob) throw new Error("사진을 줄이지 못했어요. 다른 사진으로 해 주세요.");
+  return { file: new File([blob], `${file.name.replace(/\.[^.]+$/, "") || "photo"}.${png ? "png" : "jpg"}`, { type: blob.type }), w, h };
+}
+
 /** One card at `width` px, drawn at 1080 × 1350 and scaled; reports the fields whose text runs past their lines. */
 export function CardPreview({ draft, index, width, onOver }: { draft: CardDraft; index: number; width: number; onOver?: (index: number, fields: string[]) => void }) {
   const box = useRef<HTMLDivElement>(null);
+  const photos = useContext(CardPhotos);
   const report = useRef(onOver);
   useEffect(() => { report.current = onOver; }, [onOver]);
   useLayoutEffect(() => {
@@ -41,7 +78,7 @@ export function CardPreview({ draft, index, width, onOver }: { draft: CardDraft;
   }, [draft, index]);
   const scale = width / CARD_SIZE.width;
   return <div className="yp-card-pv" style={{ width, height: Math.round(CARD_SIZE.height * scale) }} ref={box}>
-    <div style={{ transform: `scale(${scale})`, transformOrigin: "0 0", width: CARD_SIZE.width, height: CARD_SIZE.height }}><CardSlideView draft={draft} index={index} /></div>
+    <div style={{ transform: `scale(${scale})`, transformOrigin: "0 0", width: CARD_SIZE.width, height: CARD_SIZE.height }}><CardSlideView draft={draft} index={index} photos={photos} /></div>
   </div>;
 }
 
@@ -183,7 +220,9 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
   const [undo, setUndo] = useState<CardDraft | null>(null);
   const [composing, setComposing] = useState(false);
   const [over, setOver] = useState<Record<number, string[]>>({});
+  const [photoBusy, setPhotoBusy] = useState(false);
   const picked = cards?.drafts.find(row => row.id === cards.picked) ?? null;
+  const photos = useCardPhotoUrls(page, [draft, ...(cards?.drafts ?? [])]);
   useEffect(() => { if (!dirty) setDraft(picked); }, [picked, dirty]);
   useEffect(() => { if (cards?.recommend?.formats.length && !chosen.length) setChosen(cards.recommend.formats.slice(0, 3)); }, [cards?.recommend, chosen.length]);
   const reload = page.reload;
@@ -244,8 +283,20 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
   const current = draft?.slides[slide] ? slide : 0;
   const spec = draft ? slideSpec(draft.format, draft.slides[current].type) : null;
   const addBlank = async () => { for (const format of chosen) if (!(await save({ add: format }))) return; };
+  // The photo goes up first (shrunk), then lands on the card that was open when it was picked.
+  const putPhoto = async (file: File | undefined, at: number) => {
+    if (!file || !draft || !page.client) return;
+    setPhotoBusy(true);
+    try {
+      const shrunk = await shrinkPhoto(file);
+      const asset = await page.client.uploadAsset(project.id, "card", shrunk.file);
+      const latest = draftRef.current ?? draft;
+      edit({ ...latest, slides: latest.slides.map((row, index) => index === at ? { ...row, photo: { path: asset.path, w: shrunk.w, h: shrunk.h } } : row) });
+    } catch (reason) { page.fail(reason); } finally { setPhotoBusy(false); }
+  };
+  const dropPhoto = (at: number) => { if (draft) edit({ ...draft, slides: draft.slides.map((row, index) => index === at ? { type: row.type, fields: row.fields } : row) }); };
 
-  return <YpFrame page={page} view={1} action={action} header={header} title="카드 만들기"
+  return <CardPhotos.Provider value={photos}><YpFrame page={page} view={1} action={action} header={header} title="카드 만들기"
     sub={gateSub(project, "draft", "포맷을 골라 초안을 뽑고, 하나를 골라 다듬은 뒤 카드를 확정해요.", "카드를 확정했어요. 최종 검토에서 한 장씩 봐요.")}
     todo={editable ? [{ label: "초안", done: cards.drafts.length > 0 }, { label: "고른 초안", done: Boolean(picked) }, { label: "글자 수 · 넘침", done: Boolean(draft) && !problems.blocking.length && !overList.length }] : undefined}>
     <GateBanner page={page} gate="draft" />
@@ -307,6 +358,12 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
             return <label key={field.key} className="yp-field"><span className="yp-fld-h"><b>{field.label}</b>{field.optional ? <span className="yp-opt">선택</span> : null}
               <span className={n > field.max ? "yp-card-n yp-bad" : "yp-card-n"}>{n}/{field.max}</span>{over[current]?.includes(field.key) ? <span className="yp-tag yp-bad">넘침</span> : null}</span>
               <textarea className="yp-in" rows={field.max > 30 ? 3 : 2} value={value} aria-label={field.label} disabled={!editable} onCompositionStart={() => setComposing(true)} onCompositionEnd={() => setComposing(false)} onChange={event => set(event.target.value)} /></label>; })}
+          {spec?.photo && editable ? <div className="yp-field"><span className="yp-fld-h"><b>사진</b><span className="yp-opt">선택</span></span>
+            <p className="yp-hint">실제 사진 · 자료만 넣어요. 만든 이미지를 실제 기록처럼 쓰지 않아요 (디자인 정본 §8).</p>
+            <div className="yp-row-btns">
+              <label className="yp-btn yp-sm"><ImagePlus size={13} aria-hidden="true" />{photoBusy ? "올리는 중…" : draft?.slides[current].photo ? "사진 바꾸기" : "사진 넣기"}
+                <input type="file" accept="image/jpeg,image/png,image/webp" aria-label="사진 파일" hidden disabled={photoBusy} onChange={event => { const at = current; void putPhoto(event.target.files?.[0], at); event.target.value = ""; }} /></label>
+              {draft?.slides[current].photo ? <button type="button" className="yp-btn yp-sm" disabled={photoBusy} onClick={() => dropPhoto(current)}>사진 빼기</button> : null}</div></div> : null}
         </div>
       </div>
       <CardPostFields key={draft.id} draft={draft} editable={editable} onEdit={edit} onComposing={setComposing} />
@@ -314,7 +371,7 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
         {[...problems.blocking, ...overList].map(text => <li key={text} className="yp-bad">{text}</li>)}
         {problems.warnings.map(text => <li key={text} className="yp-warn">{text}</li>)}</ul> : null}
     </YpSection> : editable && !cards.drafts.length ? <p className="yp-pempty">포맷을 고르고 초안을 뽑으면 여기서 카드를 다듬어요.</p> : null}
-  </YpFrame>;
+  </YpFrame></CardPhotos.Provider>;
 }
 
 function CardEditorPreview({ draft, index }: { draft: CardDraft; index: number }) {
@@ -351,6 +408,7 @@ export function CardReviewScreen({ page, header }: { page: YpPage; header: React
   const draft = confirmedDraft(page);
   const [over, setOver] = useState<Record<number, string[]>>({});
   const onOver = useCallback((index: number, fields: string[]) => setOver(current => JSON.stringify(current[index] ?? []) === JSON.stringify(fields) ? current : { ...current, [index]: fields }), []);
+  const photos = useCardPhotoUrls(page, [draft]);
   if (!page.bundle || !project) return <YpFrame page={page} view={4} action={null} header={header} title="최종 검토" sub="" />;
   const check = draft ? cardProblems(draft) : { blocking: ["확정한 카드가 없어요"], warnings: [] };
   const overCount = Object.values(over).filter(fields => fields.length).length;
@@ -361,7 +419,7 @@ export function CardReviewScreen({ page, header }: { page: YpPage; header: React
       <Subject page={page} />
       {draft ? <>
         <YpSection n={1} title="카드" gq={`${CARD_FORMATS[draft.format].name} · ${draft.slides.length}장`}>
-          <div className="yp-card-grid">{draft.slides.map((_, index) => <CardPreview key={index} draft={draft} index={index} width={260} onOver={onOver} />)}</div>
+          <CardPhotos.Provider value={photos}><div className="yp-card-grid">{draft.slides.map((_, index) => <CardPreview key={index} draft={draft} index={index} width={260} onOver={onOver} />)}</div></CardPhotos.Provider>
         </YpSection>
         <YpSection n={2} title="캡션 · 해시태그"><p className="yp-card-caption">{draft.caption || "캡션이 없어요"}</p><p className="yp-muted">{draft.hashtags.map(tag => `#${tag}`).join(" ")}</p></YpSection>
         {check.blocking.length || check.warnings.length || overCount ? <ul className="yp-card-checks">{check.blocking.map(text => <li key={text} className="yp-bad">{text}</li>)}
@@ -435,6 +493,7 @@ export function CardExportScreen({ page, header }: { page: YpPage; header: React
   const [busy, setBusy] = useState("");
   const [copied, setCopied] = useState(false);
   useEffect(() => { if (cards?.data.exported?.url) setUrl(cards.data.exported.url); }, [cards?.data.exported?.url]);
+  const photos = useCardPhotoUrls(page, [draft]);
   if (!page.bundle || !project || !cards) return <YpFrame page={page} view={5} action={null} header={header} title="내보내기" sub="" />;
   const run = async (what: string, work: () => Promise<unknown>) => { setBusy(what); try { await work(); } catch (reason) { page.fail(reason); } finally { setBusy(""); } };
   const caption = draft ? [draft.caption.trim(), draft.hashtags.map(tag => `#${tag}`).join(" ")].filter(Boolean).join("\n\n") : "";
@@ -447,7 +506,7 @@ export function CardExportScreen({ page, header }: { page: YpPage; header: React
       <GateBanner page={page} gate="review" />
       <Subject page={page} />
       <YpSection n={1} title="이미지 · 캡션" gq={draft ? `${draft.slides.length}장 · 1080 × 1350` : ""}>
-        {draft ? <div className="yp-card-strip">{draft.slides.map((_, index) => <CardPreview key={index} draft={draft} index={index} width={120} />)}</div> : null}
+        {draft ? <CardPhotos.Provider value={photos}><div className="yp-card-strip">{draft.slides.map((_, index) => <CardPreview key={index} draft={draft} index={index} width={120} />)}</div></CardPhotos.Provider> : null}
         <div className="yp-row-btns" style={{ marginTop: 10 }}>
           <button type="button" className="yp-btn yp-pri" disabled={!draft || Boolean(busy)} onClick={() => void run("zip", async () => saveBlob(await page.client!.cardsFile(project.id, { zip: true }), `카드뉴스-${projectName(project).slice(0, 30)}.zip`))}>
             <Download size={14} aria-hidden="true" /> {busy === "zip" ? "만드는 중…" : "이미지 묶음 내려받기"}</button>

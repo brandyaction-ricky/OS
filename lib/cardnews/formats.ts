@@ -5,29 +5,41 @@
 export const CARD_SIZE = { width: 1080, height: 1350 } as const;
 export const CARD_MAX_SLIDES = 10;
 
-export type CardFormatId = "list" | "myth" | "quote";
-export type CardSlideType = "cover" | "item" | "summary" | "pair" | "line" | "end";
+export type CardFormatId = "list" | "myth" | "quote" | "compare" | "steps" | "structure";
+export const CARD_SLIDE_TYPES = ["cover", "item", "summary", "pair", "line", "compare", "step", "map", "part", "end"] as const;
+export type CardSlideType = typeof CARD_SLIDE_TYPES[number];
 export interface CardField { key: string; label: string; max: number; optional?: boolean }
-export interface CardSlideSpec { type: CardSlideType; label: string; min: number; max: number; fields: CardField[] }
+/** photo: the card can hold one photo the PD puts in (디자인 정본 §8: real material first; a card with a diagram has none). */
+export interface CardSlideSpec { type: CardSlideType; label: string; min: number; max: number; fields: CardField[]; photo?: boolean }
 export interface CardFormat { id: CardFormatId; name: string; when: string; slides: CardSlideSpec[] }
 
-const cover: CardSlideSpec = { type: "cover", label: "표지", min: 1, max: 1, fields: [{ key: "head", label: "헤드 카피", max: 22 }, { key: "sub", label: "서브", max: 30, optional: true }] };
+const cover: CardSlideSpec = { type: "cover", label: "표지", min: 1, max: 1, photo: true, fields: [{ key: "head", label: "헤드 카피", max: 22 }, { key: "sub", label: "서브", max: 30, optional: true }] };
 const end: CardSlideSpec = { type: "end", label: "마무리", min: 1, max: 1, fields: [{ key: "line", label: "마무리 문장", max: 30 }, { key: "action", label: "다음 행동", max: 14 }] };
+const summary: CardSlideSpec = { type: "summary", label: "정리", min: 1, max: 1, fields: [{ key: "line", label: "한 줄 정리", max: 24 }] };
 
 export const CARD_FORMATS: Record<CardFormatId, CardFormat> = {
   list: { id: "list", name: "정리형", when: "방법 · 신호 · 이유를 나열할 때 (롱폼 원고에 잘 맞아요)", slides: [cover,
-    { type: "item", label: "항목", min: 3, max: 7, fields: [{ key: "title", label: "소제목", max: 16 }, { key: "body", label: "설명", max: 60 }] },
-    { type: "summary", label: "정리", min: 1, max: 1, fields: [{ key: "line", label: "한 줄 정리", max: 24 }] }, end] },
+    { type: "item", label: "항목", min: 3, max: 7, photo: true, fields: [{ key: "title", label: "소제목", max: 16 }, { key: "body", label: "설명", max: 60 }] }, summary, end] },
   myth: { id: "myth", name: "오해와 진실형", when: "흔한 생각을 뒤집을 때 (저장 · 공유가 잘 돼요)", slides: [cover,
-    { type: "pair", label: "오해와 진실", min: 3, max: 5, fields: [{ key: "myth", label: "흔한 생각", max: 28 }, { key: "fact", label: "실제", max: 50 }, { key: "basis", label: "근거", max: 40, optional: true }] },
-    { type: "summary", label: "정리", min: 1, max: 1, fields: [{ key: "line", label: "한 줄 정리", max: 24 }] }, end] },
+    { type: "pair", label: "오해와 진실", min: 3, max: 5, fields: [{ key: "myth", label: "흔한 생각", max: 28 }, { key: "fact", label: "실제", max: 50 }, { key: "basis", label: "근거", max: 40, optional: true }] }, summary, end] },
   quote: { id: "quote", name: "한 문장형", when: "통찰을 한 줄씩 (스레드 글 · 숏폼 대본에 잘 맞아요)", slides: [cover,
-    { type: "line", label: "문장", min: 4, max: 8, fields: [{ key: "text", label: "문장", max: 45 }, { key: "note", label: "덧말", max: 30, optional: true }] }, end] },
+    { type: "line", label: "문장", min: 4, max: 8, photo: true, fields: [{ key: "text", label: "문장", max: 45 }, { key: "note", label: "덧말", max: 30, optional: true }] }, end] },
+  // 디자인 정본 §8–9 (2026-11-02): a format for each diagram — 차이 (좌우 비교), 과정 (단계별 흐름), 구성 요소 (중심에서 가지로).
+  compare: { id: "compare", name: "비교형", when: "같은 기준으로 두 쪽을 나란히 볼 때 (이전 · 이후, 흔한 방식 · 권하는 방식)", slides: [cover,
+    { type: "compare", label: "비교", min: 2, max: 5, fields: [{ key: "title", label: "비교 기준", max: 18 }, { key: "leftLabel", label: "왼쪽 이름", max: 8 },
+      { key: "left", label: "왼쪽", max: 30 }, { key: "rightLabel", label: "오른쪽 이름", max: 8 }, { key: "right", label: "오른쪽", max: 30 }, { key: "note", label: "설명", max: 50, optional: true }] }, summary, end] },
+  steps: { id: "steps", name: "단계형", when: "순서대로 따라 하는 방법 · 과정일 때 (실행 · 체크리스트)", slides: [cover,
+    { type: "step", label: "단계", min: 3, max: 6, photo: true, fields: [{ key: "title", label: "단계 이름", max: 16 }, { key: "body", label: "할 일", max: 60 }] }, summary, end] },
+  structure: { id: "structure", name: "구조형", when: "하나의 개념이 몇 가지 요소로 이뤄질 때 (구성 · 분해)", slides: [cover,
+    { type: "map", label: "구조도", min: 1, max: 1, fields: [{ key: "center", label: "중심 개념", max: 12 }, { key: "note", label: "설명", max: 50, optional: true }] },
+    { type: "part", label: "요소", min: 2, max: 5, photo: true, fields: [{ key: "title", label: "요소 이름", max: 12 }, { key: "body", label: "설명", max: 60 }] }, end] },
 };
 export const CARD_FORMAT_IDS = Object.keys(CARD_FORMATS) as CardFormatId[];
 export const isCardFormat = (value: unknown): value is CardFormatId => typeof value === "string" && value in CARD_FORMATS;
 
-export interface CardSlide { type: CardSlideType; fields: Record<string, string> }
+/** A photo kept in the project's files (youtube/<project>/card/…), with its size so the card keeps its ratio. */
+export interface CardPhoto { path: string; w: number; h: number }
+export interface CardSlide { type: CardSlideType; fields: Record<string, string>; photo?: CardPhoto }
 export interface CardDraft {
   id: string; format: CardFormatId; slides: CardSlide[]; caption: string; hashtags: string[]; at: string; by: string;
   /** Who drafted it: a staff member's own AI or the company GPT, and under which 카드뉴스 정본 version (for the 정본 다듬기 comparison). */
@@ -98,6 +110,7 @@ export function cardProblems(draft: Pick<CardDraft, "format" | "slides" | "capti
   draft.slides.forEach((slide, index) => {
     const spec = slideSpec(draft.format, slide.type);
     if (!spec) { blocking.push(`${index + 1}장은 이 포맷에 없는 카드예요`); return; }
+    if (slide.photo && !spec.photo) blocking.push(`${index + 1}장 ${spec.label}에는 사진을 넣지 않아요 — 도식이 그 자리예요`);
     for (const field of spec.fields) {
       const value = (slide.fields[field.key] ?? "").trim();
       if (!value && !field.optional) blocking.push(`${index + 1}장 ${field.label}을 써 주세요`);
