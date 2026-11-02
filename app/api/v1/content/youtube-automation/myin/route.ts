@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
-import { checkMyinVoice, confirmMyinClips, createMyinRun, latestMyinRun, myinVoiceCheck, myinVoiceFixSchema, myinVoiceOnRenderPc, requestMyinVoiceFix, myinDownloads, myinRecord, myinOurImageUpload, myinOutputs, myinPhotos, myinPreviewSheets, myinSoundState, myinWordsReport, reopenMyinMaterials, reviewMyinStoryboard, saveMyinOurImage, saveMyinSound, setMyinDraftPlace, startMyinFinal, startMyinPrep } from "@/lib/server/myin-run";
+import { checkMyinVoice, confirmMyinClips, createMyinRun, latestMyinRun, myinVoiceCheck, myinVoiceFixSchema, myinVoiceOnRenderPc, requestMyinVoiceFix, myinDownloads, myinRecord, myinSubtitles, myinSubtitleChangeSchema, saveMyinSubtitles, myinOurImageUpload, myinOutputs, myinPhotos, myinPreviewSheets, myinSoundState, myinWordsReport, reopenMyinMaterials, reviewMyinStoryboard, saveMyinOurImage, saveMyinSound, setMyinDraftPlace, startMyinFinal, startMyinPrep } from "@/lib/server/myin-run";
 import { readLocalRenderStatus } from "@/lib/server/youtube-render-pc";
 import { checkMyinScreens, myinScreenCheck } from "@/lib/server/myin-screen-check";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
@@ -37,6 +37,9 @@ export async function GET(request: Request) {
     const photos = query.get("photos");
     if (photos) return NextResponse.json(await myinPhotos(actor, z.string().uuid().parse(photos)), { headers });
     // 만든 재료 · 설정 보기 (유쓰 요청 4/8): what the run used and made, and which files are still kept.
+    // 자막 한꺼번에 고치기 (유쓰 요청 1/8): stage 1's subtitle lines with the edits, and Logan's 자막 검수 lines.
+    const subtitles = query.get("subtitles");
+    if (subtitles) return NextResponse.json(await myinSubtitles(actor, z.string().uuid().parse(subtitles)), { headers });
     const recordOf = query.get("record");
     if (recordOf) return NextResponse.json(await myinRecord(actor, z.string().uuid().parse(recordOf)), { headers });
     const outputs = query.get("outputs");
@@ -66,6 +69,7 @@ const patchSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("reopen"), runId: z.string().uuid() }),
   z.object({ action: z.literal("voice_fix"), runId: z.string().uuid(), fixes: z.array(myinVoiceFixSchema).min(1).max(20) }),
   z.object({ action: z.literal("voice_check"), runId: z.string().uuid(), skipped: z.boolean() }),
+  z.object({ action: z.literal("subtitles"), runId: z.string().uuid(), changes: z.array(myinSubtitleChangeSchema).min(1).max(600) }),
   z.object({ action: z.literal("sound"), runId: z.string().uuid(), plan: z.object({
     music: z.array(z.object({ scene: z.number().int().min(1).max(200), key: z.string().min(1).max(80), start: z.number().min(0).max(3600).optional() }).strict()).max(60),
     amb: z.array(z.object({ scene: z.number().int().min(1).max(200), key: z.string().min(1).max(80), dur: z.number().positive().max(600).optional(),
@@ -89,6 +93,7 @@ export async function PATCH(request: Request) {
       : input.action === "reopen" ? { run: await reopenMyinMaterials(actor, input.runId) }
       : input.action === "voice_fix" ? { run: await requestMyinVoiceFix(actor, input.runId, input.fixes) }
       : input.action === "voice_check" ? { run: await checkMyinVoice(actor, input.runId, input.skipped) }
+      : input.action === "subtitles" ? { run: await saveMyinSubtitles(actor, input.runId, input.changes) }
       : input.action === "sound" ? { run: await saveMyinSound(actor, input.runId, input.plan) }
       : input.action === "our_image_url" ? await myinOurImageUpload(actor, input.runId, input.file, input.type)
       : input.action === "our_image" ? { run: await saveMyinOurImage(actor, input.runId, input.file, input.path) }

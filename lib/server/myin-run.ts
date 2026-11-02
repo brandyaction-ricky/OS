@@ -3,6 +3,7 @@ import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { myinBreathText, myinCleanScript, myinRunMatchesScript, myinScriptMarkdown } from "@/lib/myin-script";
 import { draftFilter } from "@/lib/myin-local";
+import { applySubtitleEdits, subtitleIssues, subtitleLines, subtitleTextProblem } from "@/lib/myin-subtitles";
 import { applyMyinSoundPlan, MYIN_METAPHOR_TYPES, myinDriftPairs, myinOnlySoundChanged, myinPhotoFetchUrl, myinPhotoFolders, myinPrepPhotos, myinSoundIssues, myinSoundPlan, myinStoryboardSchema, type MyinSoundPlan } from "@/lib/myin-storyboard";
 import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
@@ -44,7 +45,9 @@ type Service = ReturnType<typeof createServiceSupabase>;
 const hex = z.string().regex(/^[a-f0-9]{64}$/);
 const versionRef = z.object({ id: z.string().uuid(), version: z.number().int().positive() }).strict();
 const finalSchema = z.object({ video: z.string(), summary: z.string().optional(), deck: z.string().optional(), srt: z.string(), bytes: z.number().int().positive(),
-  durationSeconds: z.number().positive(), lufs: z.number(), peak: z.number(), at: z.string().datetime() }).strict();
+  durationSeconds: z.number().positive(), lufs: z.number(), peak: z.number(), at: z.string().datetime(),
+  /** Which subtitle edits it was made with (자막 한꺼번에 고치기); none = the subtitles as stage 1 made them. */
+  subtitles: hex.optional() }).strict();
 const leaseSchema = z.object({ token: z.string().uuid(), expiresAt: z.string().datetime(), startedAt: z.string().datetime().optional() }).strict();
 const runSchema = z.object({
   kind: z.literal(MYIN_RUN_KIND), runKey: hex, sourceId: z.string().uuid(), inputKey: hex, script: versionRef, scriptMarkdownHash: hex,
@@ -97,6 +100,9 @@ const runSchema = z.object({
   // 사운드 창고 (2026-10-27): Logan's music match report from the ③ preparation, and who last changed the sound at ④.
   sound: z.object({ report: z.string().max(20_000), at: z.string().datetime(),
     edited: z.object({ by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict().optional() }).strict().optional(),
+  // 자막 한꺼번에 고치기 (유쓰 요청 1/8): the words changed on stage 1's subtitle lines (by number, with the words they replaced).
+  subtitleEdits: z.object({ lines: z.array(z.object({ i: z.number().int().min(0), from: z.string().max(400), to: z.string().min(1).max(80) }).strict()).max(600),
+    at: z.string().datetime(), by: z.string().uuid(), name: z.string() }).strict().optional(),
   final: finalSchema.optional(),
   // 완성본 후보 (유쓰 요청 2/8 · 공통 조건, 2026-11-02): the finished videos made before the current one, oldest first. Making the video
   // again never drops one — each stays a version to compare, and its files stay where the render PC put them.
@@ -158,7 +164,7 @@ export function presentMyinRun(record: OsRecord) {
     clips: run.clips ? run.clips.items.map(({ name, label }) => ({ name, label })) : null, clipsReview: run.clipsReview ?? null, sound: run.sound ?? null,
     final: run.final ? { bytes: run.final.bytes, durationSeconds: run.final.durationSeconds, lufs: run.final.lufs, peak: run.final.peak, at: run.final.at } : null,
     voiceFixes: (run.voiceFixes ?? []).map(({ memo, say, read, name }) => ({ memo, say: say ?? null, read: read ?? null, name })), voiceCheck: run.voiceCheck ?? null,
-    voiceFixable: voiceFixable(record, run), voiceChanged: run.voiceChanged ?? null,
+    voiceFixable: voiceFixable(record, run), voiceChanged: run.voiceChanged ?? null, subtitleEdits: run.subtitleEdits ? run.subtitleEdits.lines.length : 0,
     lastErrorCode: run.lastError?.code ?? null, createdAt: record.created_at, local: run.local ? { by: run.local.by, name: run.local.name } : null, localReady: Boolean(run.words?.voice) && !run.layout,
     // 로건 피드백 10/26-8: when the render PC took this step, so the screen can say how long it has been working.
     workingSince: record.status === "in_progress" ? run.lease?.startedAt ?? null : null };
@@ -514,6 +520,59 @@ export async function myinVoiceCheck(actor: RequestActor, runId: string) {
     previewUrl: run.words.preview ? await sign(service, YOUTUBE_VOICE_BUCKET, run.words.preview.path) : null };
 }
 
+// ── 자막 한꺼번에 고치기 (유쓰 요청 1/8, 2026-11-02) ──
+/** Stage 1's subtitles as the render PC made them, with the run's edits laid over; `key` names the edited words (none while nothing applies). */
+async function subtitleState(service: Service, run: MyinRun) {
+  if (!run.words) throw new ApiError(409, "MYIN_WORDS_NOT_READY", "받아쓰기·자막이 끝난 뒤에 고칠 수 있어요.");
+  const { data } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).download(run.words.path);
+  if (!data) throw new ApiError(409, "MYIN_BUNDLE_MISSING", "받아쓰기 결과 파일을 찾지 못했습니다.");
+  const bundle = JSON.parse(await data.text()) as { subtitlesAss?: string; subtitleQc?: string };
+  const ass = String(bundle.subtitlesAss ?? "");
+  const edited = applySubtitleEdits(ass, run.subtitleEdits?.lines ?? []);
+  return { ass, qc: String(bundle.subtitleQc ?? ""), edited, key: edited.applied ? sha(edited.ass) : undefined };
+}
+/** What the render PC writes as subs_myin.ass before it draws: only once someone has edited (an edit taken back sends the original again). */
+const subtitlesFor = async (service: Service, run: MyinRun) => run.subtitleEdits ? { subtitlesAss: (await subtitleState(service, run)).edited.ass } : {};
+/** Lines can change while no voice is being made again and no full video is being drawn. */
+const subtitlesOpen = (record: OsRecord, run: MyinRun) => Boolean(run.words) && !["breath_pending", "voice_pending", "words_pending", "final_pending"].includes(record.stage ?? "");
+
+export async function myinSubtitles(actor: RequestActor, runId: string) {
+  const { record, run } = await visibleRun(actor, runId);
+  const state = await subtitleState(createServiceSupabase(), run);
+  const edits = new Map((run.subtitleEdits?.lines ?? []).map((edit) => [edit.i, edit]));
+  const conflicts = new Set(state.edited.conflicts);
+  return {
+    lines: subtitleLines(state.ass).map((line) => ({ ...line, original: line.text, text: !conflicts.has(line.i) && edits.get(line.i)?.to || line.text,
+      edited: edits.has(line.i) && !conflicts.has(line.i), conflict: conflicts.has(line.i), ...(conflicts.has(line.i) ? { wanted: edits.get(line.i)?.to } : {}) })),
+    issues: subtitleIssues(state.qc), open: subtitlesOpen(record, run), conflicts: state.edited.conflicts.length,
+    edits: run.subtitleEdits ? { count: run.subtitleEdits.lines.length, name: run.subtitleEdits.name, at: run.subtitleEdits.at,
+      voiceRemade: Boolean(run.words && run.words.at > run.subtitleEdits.at) } : null,
+    // The finished video was made with other subtitles than these: 「고친 자막으로 전체 영상 다시 만들기」.
+    pending: Boolean(run.final) && state.key !== run.final?.subtitles,
+  };
+}
+
+export const myinSubtitleChangeSchema = z.object({ i: z.number().int().min(0).max(5000), to: z.string().max(400) }).strict();
+/** The words of some lines (a 찾아 바꾸기 or one line); writing a line back as it was takes its edit away. Times never change. */
+export async function saveMyinSubtitles(actor: RequestActor, runId: string, changes: z.infer<typeof myinSubtitleChangeSchema>[]) {
+  const service = createServiceSupabase();
+  const { record, run } = await visibleRun(actor, runId);
+  if (!subtitlesOpen(record, run)) throw new ApiError(409, "MYIN_SUBTITLES_CLOSED", "음성이나 전체 영상을 만드는 중이에요. 끝난 뒤에 고쳐 주세요.");
+  if (!changes.length) throw new ApiError(400, "MYIN_SUBTITLES_EMPTY", "고칠 자막을 골라 주세요.");
+  const lines = subtitleLines((await subtitleState(service, run)).ass);
+  const edits = new Map((run.subtitleEdits?.lines ?? []).map((edit) => [edit.i, edit]));
+  for (const change of changes) {
+    const line = lines[change.i];
+    if (!line) throw new ApiError(400, "MYIN_SUBTITLE_LINE", `없는 자막 줄이에요: ${change.i}`);
+    const problem = subtitleTextProblem(change.to);
+    if (problem) throw new ApiError(400, "MYIN_SUBTITLE_TEXT", `${change.i}번 줄: ${problem}`);
+    if (change.to === line.text) edits.delete(change.i); else edits.set(change.i, { i: change.i, from: line.text, to: change.to });
+  }
+  const next: MyinRun = { ...run, subtitleEdits: { lines: [...edits.values()].sort((a, b) => a.i - b.i), at: new Date().toISOString(), by: actor.id, name: actor.name } };
+  if (next.subtitleEdits!.lines.length > 600) throw new ApiError(400, "MYIN_SUBTITLES_TOO_MANY", "한 영상에서 고칠 수 있는 자막은 600줄까지예요.");
+  return presentMyinRun(await save(service, record, record.status, record.stage ?? "", next));
+}
+
 // ── Stage 3: photos, music, CTA voice and the render PC's preparation with Logan's preview check ──
 
 const SHEET_BUCKET = "os-youtube-character"; // private, accepts PNG: Logan's preview sheets for the ③ panel
@@ -656,7 +715,7 @@ export async function myinDownloads(actor: RequestActor, runId: string) {
   if (!run.words) throw new ApiError(404, "MYIN_WORDS_NOT_READY", "받아쓰기·자막이 아직 없습니다.");
   const service = createServiceSupabase();
   return { voice: run.words.voice ? await voiceDownload(service, run.words.voice) : null, wordsUrl: await sign(service, YOUTUBE_VOICE_TIMING_BUCKET, run.words.path),
-    previewUrl: run.words.preview ? await sign(service, YOUTUBE_VOICE_BUCKET, run.words.preview.path) : null };
+    previewUrl: run.words.preview ? await sign(service, YOUTUBE_VOICE_BUCKET, run.words.preview.path) : null, ...await subtitlesFor(service, run) };
 }
 
 /** 음성 확인·수정 (로건 OS 요청 2026-10-30): what may be asked of the render PC for one sentence. `read` is 「원래말=읽는소리」. */
@@ -753,7 +812,7 @@ export async function claimMyinPrep(service: Service = createServiceSupabase(), 
     const { data: bundle } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).createSignedUploadUrl(prepBundlePath(record, run, lease.token), { upsert: true });
     if (!bundle) throw new ApiError(503, "MYIN_SIGN_FAILED", "결과 업로드 주소를 만들지 못했습니다.");
     return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), draft, placeholders, storyboard: myinDriftPairs(story), assets, cta, ...(cta.some((c) => !c.url) ? { fishVoice: fishVoice() } : {}), siteCapture: story.scenes.some((sc) => sc.type === "site_ad"),
-      sheetUploadUrls: sheetUploads, bundleUploadUrl: bundle.signedUrl, ...(owner ? { seed: await localSeed(service, run) } : {}) };
+      sheetUploadUrls: sheetUploads, bundleUploadUrl: bundle.signedUrl, ...(owner ? { seed: await localSeed(service, run) } : {}), ...await subtitlesFor(service, run) };
   } catch (error) {
     await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_PREP_CLAIM_FAILED");
     throw error;
@@ -894,7 +953,8 @@ export async function claimMyinClips(service: Service = createServiceSupabase(),
   try {
     const items = clipItems(run);
     const uploads = await Promise.all(items.map((item) => uploadUrl(service, ASSET_VIDEO_BUCKET, outPath(record, run, `${item.name}-${tag(lease.token)}.mp4`))));
-    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), clips: items.map((item, i) => ({ ...item, uploadUrl: uploads[i] })), ...(owner ? { seed: await localSeed(service, run) } : {}) };
+    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), clips: items.map((item, i) => ({ ...item, uploadUrl: uploads[i] })), ...(owner ? { seed: await localSeed(service, run) } : {}),
+      ...await subtitlesFor(service, run) };
   } catch (error) {
     await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_CLIPS_CLAIM_FAILED");
     throw error;
@@ -932,7 +992,10 @@ export async function startMyinFinal(actor: RequestActor, runId: string) {
   const { record, run } = await visibleRun(actor, runId);
   await assertCurrent(service, run);
   const ready = record.stage === "prep_ready" && Boolean(run.clipsReview) && Boolean(run.prepared) && !run.prepared?.misses.length;
-  if (!ready && !(record.stage === "final_pending" && record.status === "blocked"))
+  // 자막 한꺼번에 고치기: a finished video whose subtitles were edited since is made again with them (a new version; the earlier one stays).
+  const subtitles = record.stage === "final_ready" && Boolean(run.clipsReview && run.prepared && run.final && run.subtitleEdits)
+    && (await subtitleState(service, run)).key !== run.final?.subtitles;
+  if (!ready && !subtitles && !(record.stage === "final_pending" && record.status === "blocked"))
     throw new ApiError(409, "MYIN_FINAL_NOT_OPEN", "④ 자료 준비가 끝난 뒤에 전체 영상을 만들 수 있습니다.");
   const next: MyinRun = { ...run, attempts: 0 }; delete next.lastError; delete next.lease; retireFinal(next);
   return presentMyinRun(await save(service, record, "backlog", "final_pending", next));
@@ -992,7 +1055,8 @@ export async function claimMyinFinal(service: Service = createServiceSupabase(),
     // The storyboard as ④ left it (sound edits made after the preparation), written into the render PC's copy before the render.
     return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), storyboard: myinDriftPairs(await storyboardJson(service, run)),
       videoUploadUrl: await uploadUrl(service, ASSET_VIDEO_BUCKET, files.video), srtUploadUrl: await uploadUrl(service, OUTPUT_BUCKET, files.srt),
-      ...(files.summary && files.deck ? { summaryUploadUrl: await uploadUrl(service, OUTPUT_BUCKET, files.summary), deckUploadUrl: await uploadUrl(service, OUTPUT_BUCKET, files.deck) } : {}) };
+      ...(files.summary && files.deck ? { summaryUploadUrl: await uploadUrl(service, OUTPUT_BUCKET, files.summary), deckUploadUrl: await uploadUrl(service, OUTPUT_BUCKET, files.deck) } : {}),
+      ...await subtitlesFor(service, run) };
   } catch (error) {
     await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_FINAL_CLAIM_FAILED");
     throw error;
@@ -1001,7 +1065,9 @@ export async function claimMyinFinal(service: Service = createServiceSupabase(),
 
 export async function completeMyinFinal(input: { runId: string; lease: string; bytes: number; durationSeconds: number; lufs: number; peak: number }, service: Service = createServiceSupabase()) {
   const { record, run } = await leased(service, input.runId, input.lease);
-  const next: MyinRun = { ...run, attempts: 0, final: { ...finalFiles(record, run, input.lease), bytes: input.bytes, durationSeconds: input.durationSeconds, lufs: input.lufs, peak: input.peak, at: new Date().toISOString() } };
+  const subtitles = run.subtitleEdits ? await subtitleState(service, run).then((state) => state.key, () => undefined) : undefined;
+  const next: MyinRun = { ...run, attempts: 0, final: { ...finalFiles(record, run, input.lease), bytes: input.bytes, durationSeconds: input.durationSeconds, lufs: input.lufs, peak: input.peak,
+    at: new Date().toISOString(), ...(subtitles ? { subtitles } : {}) } };
   delete next.lease; delete next.lastError; delete next.voiceChanged;
   await save(service, record, "done", "final_ready", next);
   return { runId: record.id, stage: "final_ready" };

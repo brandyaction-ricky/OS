@@ -16,6 +16,7 @@ import { DraftPlacePicker, localBlocker, useLocalRender, type DraftPlace } from 
 import { assToSrt } from "@/lib/subtitle-files";
 import { myinRetryScope, myinStop } from "@/lib/myin-stop";
 import { MyinRunRecord } from "./myin-run-record";
+import { MyinSubtitleEdit } from "./myin-subtitle-edit";
 
 interface Storyboard { scenes: number; model: string; at: string; metaphors: { scene: number; type: string; at: string }[]; cta: { after: string; line: string }[];
   summary: { title: string; points: string[] } | null; reasons: { metaphors: string; cta: string; summary: string };
@@ -159,7 +160,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
     if (!run) return;
     setSaving(kind); setError("");
     try {
-      const files = await apiRequest<{ voice: { urls: string[]; bytes: number } | null; wordsUrl: string }>(`/api/v1/content/youtube-automation/myin?downloads=${run.id}`, { token: accessToken });
+      const files = await apiRequest<{ voice: { urls: string[]; bytes: number } | null; wordsUrl: string; subtitlesAss?: string }>(`/api/v1/content/youtube-automation/myin?downloads=${run.id}`, { token: accessToken });
       const name = (title.replace(/[\\/:*?"<>|]/g, " ").trim() || "영상").slice(0, 60);
       let file: Blob;
       if (kind === "voice") {
@@ -174,9 +175,13 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
         file = new Blob(parts, { type: "audio/wav" });
         if (file.size !== files.voice.bytes) throw new Error("음성 파일이 다 받아지지 않았어요. 다시 눌러 주세요.");
       } else {
-        const response = await fetch(files.wordsUrl);
-        if (!response.ok) throw new Error("자막 파일을 받지 못했어요. 다시 눌러 주세요.");
-        const ass = String(((await response.json()) as { subtitlesAss?: string }).subtitlesAss ?? "");
+        // 자막 한꺼번에 고치기: once someone edited, the OS hands the edited subtitles (what the next video is made with).
+        let ass = files.subtitlesAss ?? "";
+        if (!ass) {
+          const response = await fetch(files.wordsUrl);
+          if (!response.ok) throw new Error("자막 파일을 받지 못했어요. 다시 눌러 주세요.");
+          ass = String(((await response.json()) as { subtitlesAss?: string }).subtitlesAss ?? "");
+        }
         file = new Blob([kind === "srt" ? assToSrt(ass) : ass], { type: "text/plain;charset=utf-8" });
       }
       const link = document.createElement("a");
@@ -248,6 +253,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
         <summary>자막 검사표 보기</summary>
         <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, maxHeight: 360, overflow: "auto", margin: 0 }}>{qc || "불러오는 중…"}</pre>
       </details> : null}
+      {run?.words ? <MyinSubtitleEdit key={run.id} runId={run.id} token={accessToken} stage={run.stage} onFinal={() => act("final", () => post("/myin", "PATCH", { action: "final", runId: run.id }))} /> : null}
     </Step>
 
     <Step index={1} state={step2} title="장면 기획표 (내 AI → 로건, 유쓰 확인)" idBase="myin-step">

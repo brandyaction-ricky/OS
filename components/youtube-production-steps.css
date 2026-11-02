@@ -55,6 +55,15 @@
 .linear-shell .ui-v2 .yt-note { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--panel-2); color: var(--text-2); font-size: 12px; }
 .linear-shell .ui-v2 .yt-stop { display: block; line-height: 1.6; }
 .linear-shell .ui-v2 .yt-note.yt-warn { border-color: transparent; background: var(--warning-soft); }
+/* 자막 한꺼번에 고치기 (유쓰 요청 1/8) */
+.linear-shell .ui-v2 .yt-sub { display: grid; gap: 10px; }
+.linear-shell .ui-v2 .yt-sub-find { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.linear-shell .ui-v2 .yt-sub-find .yp-in { flex: 1 1 160px; }
+.linear-shell .ui-v2 .yt-sub-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; max-height: 360px; overflow: auto; }
+.linear-shell .ui-v2 .yt-sub-list li, .linear-shell .ui-v2 .yt-sub-list label { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.linear-shell .ui-v2 .yt-sub-at { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 52px; }
+.linear-shell .ui-v2 .yt-sub-ed { display: inline-flex; gap: 6px; flex: 1 1 220px; }
+.linear-shell .ui-v2 .yt-sub-ed .yp-in { flex: 1; }
 /* 만든 재료 · 설정 보기 (유쓰 요청 4/8) */
 .linear-shell .ui-v2 .yt-record { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 6px 12px; margin: 8px 0; font-size: 13px; }
 .linear-shell .ui-v2 .yt-record dt { color: var(--muted); }

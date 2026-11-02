@@ -523,6 +523,14 @@ export function readVoiceDictionaries(dir) {
     tests: Array.isArray(tests?.items) ? tests.items : [] };
 }
 
+/**
+ * 자막 한꺼번에 고치기 (유쓰 요청 1/8): the OS sends stage 1's subtitles with the words people changed (same lines, same times). His
+ * renderer draws the video's subtitles and writes subs_youtube.srt from this one file, so both follow it. An OS without edits sends none.
+ */
+export function writeSubtitles(videoDir, ass) {
+  if (typeof ass === "string" && ass.includes("Dialogue:")) writeFileSync(path.join(videoDir, "subs_myin.ass"), ass);
+}
+
 /** Process one v13 words job; returns false when there is none (or this PC has no v13 package). */
 export async function processMyinWords() {
   if (!myinPkg) return false;
@@ -704,6 +712,7 @@ export async function processMyinPrep() {
     const env = layoutEnv(myinEnv(), job.layout);
     const storyFile = path.join(videoDir, "myin_storyboard.json");
     writeFileSync(storyFile, JSON.stringify(job.storyboard, null, 1));
+    writeSubtitles(videoDir, job.subtitlesAss);
     for (const spot of job.placeholders ?? []) {
       const file = path.join(work, "assets", spot.kind, spot.file);
       if (existsSync(file)) continue;
@@ -798,6 +807,7 @@ export async function processMyinClips() {
     if (job.seed) await myinRebuild(job.runId, job.seed);
     const { videoDir, myinDir } = myinDirs(job.runId);
     const env = layoutEnv(myinEnv(), job.layout);
+    writeSubtitles(videoDir, job.subtitlesAss);
     const out = await runCapture(myinPython, ["-c", RESOLVE_PY], { cwd: myinDir, env });
     const times = JSON.parse(out.split("\n").find((line) => line.startsWith("TIMES ")).slice(6));
     const names = [];
@@ -833,6 +843,7 @@ export async function processMyinFinal() {
     const env = layoutEnv(myinEnv(), job.layout);
     // ④ sound edits made after the preparation reach the render in the storyboard the OS hands out with the job.
     if (job.storyboard) writeFileSync(path.join(videoDir, "myin_storyboard.json"), JSON.stringify(job.storyboard, null, 1));
+    writeSubtitles(videoDir, job.subtitlesAss);
     await runAsync(myinPython, ["render_myin.py", "os_myin", "render", "4"], { cwd: myinDir, env: { ...env, OUTNAME: "final_myin_v1_raw.mp4" } });
     const video = path.join(videoDir, "final_myin_v1.mp4");
     if (job.layout === "short") {
