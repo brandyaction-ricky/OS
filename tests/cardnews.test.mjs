@@ -33,7 +33,7 @@ test("an over-long or empty field, a wrong count or order blocks 카드 확정; 
   const draft = filled("list");
   draft.slides[0].fields.head = "가".repeat(23);
   draft.slides[1].fields.title = "";
-  assert.deepEqual(cardProblems(draft).blocking, ["1장 헤드 카피이 1자 넘쳐요 (22자까지)", "2장 소제목을 써 주세요"]);
+  assert.deepEqual(cardProblems(draft).blocking, ["1장 헤드 카피가 1자 넘쳐요 (22자까지)", "2장 소제목을 써 주세요"]);
   const short = { ...filled("list"), slides: filled("list").slides.filter((_, index) => index !== 1) };
   assert.match(cardProblems(short).blocking[0], /항목은 3~7장이에요 \(지금 2장\)/);
   const swapped = filled("myth"); swapped.slides = [swapped.slides[1], swapped.slides[0], ...swapped.slides.slice(2)];
@@ -64,7 +64,7 @@ test("the cards record changes only at 카드 만들기, and the address only af
   assert.equal(cards.picked, "n1", "the first draft is the one being worked on");
   cards = nextCards(cardProject(), cards, { add: "quote" }, "리키", "now", newId);
   assert.equal(cards.picked, "n1");
-  assert.match(cardsMissing(cards), /헤드 카피을 써 주세요/);
+  assert.match(cardsMissing(cards), /헤드 카피를 써 주세요/);
   const edited = filled("list");
   cards = nextCards(cardProject(), cards, { draft: { ...edited, id: "n1" } }, "리키", "now", newId);
   assert.equal(cardsMissing(cards), "");

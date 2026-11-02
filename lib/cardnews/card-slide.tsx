@@ -227,7 +227,8 @@ function ToonSlide({ draft, slide, index, theme, src }: { draft: CardDraft; slid
     {has("shout") ? <div style={row({ top: shoutTop }, true)}><div style={{ display: "flex", position: "relative", width: 540, height: 300, alignItems: "center", justifyContent: "center" }}>
       <svg width={540} height={300} viewBox="0 0 540 300" style={{ position: "absolute", left: 0, top: 0 }}><polygon points={BURST} fill={theme.white} stroke={theme.title} strokeWidth={LINE} strokeLinejoin="round" /></svg>
       {f("shout", { ...centred, maxWidth: 320, transform: "skewX(-8deg)" })}</div></div> : null}
-    {has("sfx") ? <div data-card-field="sfx" style={{ display: "flex", position: "absolute", left: 72, top: 600, transform: "rotate(-10deg)", alignItems: "flex-start" }}>
+    {/* No data-card-field: the tilted, stepping letters always reach past their own box, and 6 letters never need cutting. */}
+    {has("sfx") ? <div style={{ display: "flex", position: "absolute", left: 72, top: 600, transform: "rotate(-10deg)", alignItems: "flex-start" }}>
       {[...plainCardText(slide.fields.sfx ?? "").trim()].slice(0, 8).map((letter, at) => <span key={at} style={{ display: "flex", fontSize: 112, fontWeight: 600, lineHeight: 1, color: theme.title,
         textShadow: EDGE, marginTop: at % 2 ? 46 : 0, marginLeft: at ? -6 : 0, transform: `skewX(-10deg) rotate(${at % 2 ? 6 : -4}deg)` }}>{letter}</span>)}</div> : null}
     {has("reply") ? <div style={row({ bottom: has("talk") ? 400 : 130 }, true)}>{bubble("reply", "right")}</div> : null}

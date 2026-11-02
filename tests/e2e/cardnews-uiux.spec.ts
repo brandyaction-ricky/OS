@@ -91,6 +91,11 @@ test("a 웹툰 화 starts by hand and each 칸 brings its 장면 to the drawing 
   await page.getByLabel("장면 (그릴 것)", { exact: true }).fill("밤 11시 사무실, 서윤이 모니터 앞에서 웃는다");
   await page.getByLabel("대사", { exact: true }).fill("네, 괜찮아요!");
   await expect(page.locator(".yp-card-big [data-card-field=talk]")).toHaveText("네, 괜찮아요!");
+  // The tilted 효과음 letters reach past their box; that must not count as 넘침 (it would block 카드 확정).
+  await page.getByLabel("효과음", { exact: true }).fill("빼꼼");
+  await page.getByLabel("속마음", { exact: true }).fill("근데 나 왜\n또 괜찮다고 했지?");
+  await expect(page.getByRole("button", { name: "2장 보기", exact: true })).not.toContainText("넘침");
+  await expect(page.locator(".yp-card-checks")).not.toContainText("넘쳐요");
   await page.getByRole("button", { name: "AI로 그리기", exact: true }).click();
   const panel = page.getByRole("group", { name: "AI로 그리기" });
   await expect(panel.getByLabel("장면 설명")).toHaveValue("밤 11시 사무실, 서윤이 모니터 앞에서 웃는다");
