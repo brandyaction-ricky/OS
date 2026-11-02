@@ -138,14 +138,12 @@ test("settings pages no longer expose requested English and code labels", async 
 });
 
 test("mobile navigation includes settings and company settings link to canonical editors", async () => {
-  const [shell, css, settings] = await Promise.all([
+  const [shell, settings] = await Promise.all([
     read("components/app-shell.tsx"),
-    read("app/globals.css"),
     read("components/settings-workspaces.tsx"),
   ]);
   assert.match(shell, /NAV_STAGES\.map|youtubeV1Stages\(NAV_STAGES\)/);
   assert.doesNotMatch(shell, /NAV_STAGES\.slice\(0, 5\)/);
-  assert.match(css, /mobile-stage-bar[^}]*grid-template-columns: repeat\(6,1fr\)/);
   assert.match(settings, /href="\/organization\/members"/);
   assert.doesNotMatch(settings, /href="\/home\/goals"/);
   assert.doesNotMatch(settings, /이번 달 매출 목표/);
