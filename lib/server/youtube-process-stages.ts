@@ -93,10 +93,12 @@ export async function youtubeProjectBundle(actor: RequestActor, id: string) {
 const assetPath = (projectId: string, kind: string) => new RegExp(`^youtube/${projectId}/${kind}/[0-9a-f-]{36}\\.[a-z0-9]+$`);
 const text = (max: number) => z.string().max(max);
 const refSchema = z.object({ url: z.string().url().max(300), videoId: z.string().max(20).optional(), title: z.string().max(200).optional() }).strict();
+const statSchema = z.object({ fact: text(200), value: text(40), unit: text(20), period: text(20), table: text(120), organization: text(60),
+  sourceUrl: z.string().max(300).regex(/^https:\/\/kosis\.kr\//) }).strict();
 const thumbSchema = z.object({ id: text(40), mode: z.enum(["img", "text"]), path: text(300).optional(), screen: text(500).optional(), copy: text(120).optional() }).strict();
 export const stagePatchSchemas = {
   plan: z.object({ titles: z.array(z.object({ id: text(40), text: text(200) }).strict()).min(1).max(12), thumbs: z.array(thumbSchema).min(1).max(8),
-    opening: text(2000), body: text(6000), closing: text(2000), note: text(2000), extraRefs: z.array(refSchema).max(50), aiDraft: z.null() }).partial().strict(),
+    opening: text(2000), body: text(6000), closing: text(2000), note: text(2000), extraRefs: z.array(refSchema).max(50), stats: z.array(statSchema).max(3), aiDraft: z.null() }).partial().strict(),
   outline: z.object({ spec: z.object({ runtimeMin: z.number().int().min(1).max(120).nullable(), res: text(60), fps: text(60), ratio: text(60) }).strict(),
     script: text(120_000), saveVersion: z.literal(true), restore: z.number().int().positive() }).partial().strict(),
   make: z.object({ editDue: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/), editDueWhy: text(200), status: z.enum(["prep", "shoot", "edit", "done"]),

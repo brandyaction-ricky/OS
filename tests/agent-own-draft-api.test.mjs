@@ -11,6 +11,7 @@ import * as keyPolicy from "../lib/agent-key-policy.ts";
 import * as relevance from "../lib/search-relevance.ts";
 import * as diagnostics from "../lib/search-diagnostics.ts";
 import { DOCUMENT_STATUSES } from "../lib/types.ts";
+import * as kosis from "../lib/kosis.ts";
 
 const uuid = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const owner = uuid(1), other = uuid(2), org = uuid(3), key = uuid(4);
@@ -109,7 +110,7 @@ async function fixture(documents, options = {}) {
   };
   const detail = await load("app/api/v1/knowledge-documents/route.ts", apiModules);
   const searchRoute = await load("app/api/v1/search/route.ts", apiModules);
-  const mcpTools = await load("lib/server/mcp.ts");
+  const mcpTools = await load("lib/server/mcp.ts", { "../kosis.ts": kosis });
   const forwarded = [];
   const mcp = await load("app/api/mcp/route.ts", { "@/lib/server/mcp": mcpTools }, {
     fetch: async (url, init) => {

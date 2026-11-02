@@ -26,12 +26,15 @@ export const slotOf = (index: number): YpSlot | "예비" => index < SLOTS.length
 
 export interface YpThumb { id: string; mode: "img" | "text"; path?: string; screen?: string; copy?: string }
 export interface YpPick { title: string; thumb: YpThumb | null }
+/** One national figure the staff AI read from KOSIS for the 기획안 (owner decision 2026-11-01): the PD keeps or removes it,
+ *  and the 원고 and the 설명란 [인용 및 출처] use it as written. */
+export interface YpStat { fact: string; value: string; unit: string; period: string; table: string; organization: string; sourceUrl: string }
 export interface YpPlan {
   titles: { id: string; text: string }[]; thumbs: YpThumb[];
-  opening: string; body: string; closing: string; note: string; extraRefs: YpRef[];
+  opening: string; body: string; closing: string; note: string; extraRefs: YpRef[]; stats?: YpStat[];
   /** The staff AI's last draft: who made it, and (when the PD had already written) the draft waiting beside the fields. */
   ai?: { by: string; model: string; at: string; jobId: string; patterns?: YpPatterns };
-  aiDraft?: Pick<YpPlan, "titles" | "thumbs" | "opening" | "body" | "closing" | "note">;
+  aiDraft?: Pick<YpPlan, "titles" | "thumbs" | "opening" | "body" | "closing" | "note" | "stats">;
   /** Copied when the 기획안 컨펌 is OK: the A · B · (C) pairs that later screens compare against. */
   confirmed?: { at: string } & Partial<Record<YpSlot, YpPick>>;
 }
@@ -277,8 +280,8 @@ export function confirmPlan(plan: YpPlan, at: string): NonNullable<YpPlan["confi
   return confirmed;
 }
 /** Plan fields → the keys the approver ticks in 수정 요청 (GATE_FIELDS.draft). */
-export const PLAN_FIELD_KEY: Record<"titles" | "thumbs" | "opening" | "body" | "closing" | "note" | "extraRefs", string> = {
-  titles: "draft.tt", thumbs: "draft.tt", opening: "draft.opening", body: "draft.body", closing: "draft.closing", note: "draft.note", extraRefs: "draft.note",
+export const PLAN_FIELD_KEY: Record<"titles" | "thumbs" | "opening" | "body" | "closing" | "note" | "extraRefs" | "stats", string> = {
+  titles: "draft.tt", thumbs: "draft.tt", opening: "draft.opening", body: "draft.body", closing: "draft.closing", note: "draft.note", extraRefs: "draft.note", stats: "draft.note",
 };
 
 // ── 구성안 (S4) ──
