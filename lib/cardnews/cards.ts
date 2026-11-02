@@ -2,7 +2,7 @@
 import { editableFields } from "../youtube-process/confirm.ts";
 import type { YpProject } from "../youtube-process/project.ts";
 import type { YpCards } from "../youtube-process/stages.ts";
-import { cardProblems, emptyCardDraft, type CardDraft, type CardFormatId } from "./formats.ts";
+import { cardProblems, emptyCardDraft, toonArtMissing, type CardDraft, type CardFormatId } from "./formats.ts";
 
 export class CardError extends Error {
   readonly code: string;
@@ -48,5 +48,6 @@ export const pickedDraft = (cards: YpCards) => cards.drafts.find(row => row.id =
 export function cardsMissing(cards: YpCards) {
   const draft = pickedDraft(cards);
   if (!draft) return cards.drafts.length ? "쓸 초안을 하나 골라 주세요" : "포맷을 골라 초안을 만들어 주세요";
-  return cardProblems(draft).blocking[0] ?? "";
+  const art = toonArtMissing(draft);
+  return cardProblems(draft).blocking[0] ?? (art >= 0 ? `${art + 1}장 그림을 그려 주세요` : "");
 }

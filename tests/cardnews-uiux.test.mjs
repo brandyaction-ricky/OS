@@ -159,3 +159,20 @@ test("cover batch is restricted to visible card parents and shows a reopened dra
   assert.equal((await server.readCardCovers(actor([item("visible", "card", "done")], rows), ["visible"])).visible.id, "old");
   const empty = actor([], []); assert.deepEqual(plain(await server.readCardCovers(empty, ["hidden"])), {}); assert.equal(empty.calls.length, 0);
 });
+
+// 웹툰형 (대표 2026-11-02): one 화 is 8~10 cards; an AI draft arrives without pictures and passes, but 카드 확정 waits for every picture.
+test("a 웹툰 화 is 8 to 10 cards and 카드 확정 waits for every picture", () => {
+  const d = formats.emptyCardDraft("webtoon", "w", "QA", "t");
+  assert.deepEqual(d.slides.map(slide => slide.type), ["toon", "panel", "panel", "panel", "panel", "panel", "summary", "end"]);
+  let full = d;
+  for (let i = 0; i < 3; i++) full = formats.addCardSlide(full, "panel");
+  assert.equal(full.slides.length, 10, "two more 칸 at most: 7 칸, 10 cards");
+  const filled = { ...d, caption: "캡션", hashtags: [], slides: d.slides.map(slide => ({ ...slide, fields: Object.fromEntries(Object.keys(slide.fields).map(key => [key, key === "episode" ? "1화" : `QA ${key}`.slice(0, 6)])) })) };
+  assert.deepEqual(formats.cardProblems(filled).blocking, [], "no picture is not a blocking problem (an AI draft has none)");
+  assert.ok(formats.cardProblems(filled).warnings.some(text => text === "1장 그림이 아직 없어요 — 「AI로 그리기」로 그려요"));
+  const cardsRecord = (draft) => ({ drafts: [draft], picked: draft.id });
+  assert.equal(cards.cardsMissing(cardsRecord(filled)), "1장 그림을 그려 주세요");
+  const drawn = { ...filled, slides: filled.slides.map((slide, at) => at < 6 ? { ...slide, photo: { path: "p.png", w: 1024, h: 1280 } } : slide) };
+  assert.equal(cards.cardsMissing(cardsRecord(drawn)), "");
+  assert.equal(formats.toonArtMissing({ ...drawn, format: "list" }), -1, "only 웹툰형 asks for pictures");
+});

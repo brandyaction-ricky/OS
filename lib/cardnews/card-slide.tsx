@@ -24,6 +24,10 @@ export const CARD_FIELD_STYLE: Record<string, { size: number; weight: number; le
   "map.center": { size: 40, weight: 500, leading: 1.3, lines: 2 }, "map.note": { size: 28, weight: 400, leading: 1.5, lines: 2 },
   "part.title": { size: 52, weight: 600, leading: 1.3, lines: 2 }, "part.body": { size: 30, weight: 400, leading: 1.55, lines: 4 },
   "end.line": { size: 52, weight: 600, leading: 1.3, lines: 3 }, "end.action": { size: 28, weight: 500, leading: 1.3, lines: 1 },
+  "toon.episode": { size: 28, weight: 600, leading: 1.2, lines: 1 }, "toon.title": { size: 56, weight: 600, leading: 1.3, lines: 2 },
+  "panel.narration": { size: 30, weight: 500, leading: 1.5, lines: 2 }, "panel.talk": { size: 32, weight: 500, leading: 1.45, lines: 3 },
+  "panel.reply": { size: 32, weight: 500, leading: 1.45, lines: 3 }, "panel.shout": { size: 46, weight: 600, leading: 1.25, lines: 2 },
+  "panel.sfx": { size: 64, weight: 600, leading: 1.1, lines: 1 },
 };
 
 // The MYIN wordmark (마이인_로고.ai, 2026-11-02) as paths, so it takes the card's colour in the browser and in next/og alike.
@@ -106,7 +110,7 @@ function Body({ draft, slide, index, theme, src }: { draft: CardDraft; slide: Ca
     case "summary": {
       const titles = bodyTitles(draft, ["item", "compare", "step"]), steps = draft.format === "steps";
       return <div style={column}>
-        <Label color={theme.blue}>정리</Label>{f("line", title)}
+        <Label color={theme.blue}>{draft.format === "webtoon" ? "오늘의 한 줄" : "정리"}</Label>{f("line", title)}
         {titles.length ? <div style={{ ...visual, marginTop: 56 }}>{titles.map((text, at) => <div key={at} style={{ display: "flex", flexDirection: "column" }}>
           {at && steps ? <Arrow color={theme.blue} size={28} /> : null}
           <div style={{ display: "flex", alignItems: "center", background: theme.paper, borderRadius: 20, padding: "24px 36px", marginTop: at && !steps ? 16 : 0 }}>
@@ -158,10 +162,51 @@ function Body({ draft, slide, index, theme, src }: { draft: CardDraft; slide: Ca
   }
 }
 
+// 웹툰형 (「웹툰형 캐릭터 설정」 2026-11-02): the picture fills the card and the words sit on it — 해설 in a double-ruled box at the top,
+// 대사 in round bubbles at the bottom, 외침 in a burst, 효과음 on a tilted tag. The letters follow the 디자인 정본 (Pretendard, no outline
+// or shadow), so each sits on its own white ground; only the picture is the 정본's exception.
+const W = CARD_SIZE.width, H = CARD_SIZE.height;
+// ponytail: a fixed 24-point burst; a bubble shape that follows the text's own size if 외침 grows past two lines.
+const BURST = Array.from({ length: 24 }, (_, at) => {
+  const angle = (at / 24) * Math.PI * 2, r = at % 2 ? 0.8 : 1;
+  return `${Math.round(270 + Math.cos(angle) * 262 * r)},${Math.round(150 + Math.sin(angle) * 142 * r)}`;
+}).join(" ");
+function ToonSlide({ draft, slide, index, theme, src }: { draft: CardDraft; slide: CardSlide; index: number; theme: Theme; src?: string }) {
+  const ink = { color: theme.title, accent: theme.blue };
+  const f = (name: string, style?: CSSProperties) => <Field slide={slide} name={name} tone={ink} style={style} />;
+  const has = (name: string) => Boolean(slide.fields[name]?.trim());
+  const full: CSSProperties = { position: "absolute", left: 0, top: 0, width: W, height: H };
+  // Satori places an absolute box by its left edge and an explicit width only, so everything on the right sits in a row of the
+  // card's width pushed to its end.
+  const row = (edge: { top: number } | { bottom: number }, end = false): CSSProperties => ({ display: "flex", position: "absolute", left: 64, width: W - 128, ...edge, justifyContent: end ? "flex-end" : "flex-start" });
+  const bubble: CSSProperties = { display: "flex", maxWidth: 640, background: theme.white, border: `3px solid ${theme.title}`, borderRadius: 48, padding: "26px 40px" };
+  return <>
+    {/* eslint-disable-next-line @next/next/no-img-element -- next/og draws plain <img>; next/image does not exist there. */}
+    {src ? <img src={src} alt="" width={W} height={H} style={{ ...full, objectFit: "cover" }} />
+      : <div style={{ ...full, display: "flex", alignItems: "center", justifyContent: "center", padding: PAD, background: theme.soft, color: theme.sub, fontSize: 28, lineHeight: 1.5, textAlign: "center" }}>
+        {slide.photo ? "" : `그림 자리 · ${plainCardText(slide.fields.scene ?? "").trim().slice(0, 90) || "장면을 쓰고 「AI로 그리기」로 그려요"}`}</div>}
+    {slide.type === "toon" ? <div style={{ display: "flex", flexDirection: "column", position: "absolute", left: 64, bottom: 128, maxWidth: 800, background: theme.white, borderRadius: 24, padding: "32px 44px" }}>
+      {f("episode", { color: theme.blue, marginBottom: 12 })}{f("title")}</div> : null}
+    {slide.type === "panel" && has("narration") ? <div style={{ display: "flex", position: "absolute", left: 64, top: 64, maxWidth: 760, background: theme.white, border: `3px solid ${theme.title}`, padding: 6 }}>
+      <div style={{ display: "flex", border: `2px solid ${theme.title}`, padding: "18px 28px" }}>{f("narration")}</div></div> : null}
+    {slide.type === "panel" && has("shout") ? <div style={row({ top: 340 }, true)}><div style={{ display: "flex", position: "relative", width: 540, height: 300, alignItems: "center", justifyContent: "center" }}>
+      <svg width={540} height={300} viewBox="0 0 540 300" style={{ position: "absolute", left: 0, top: 0 }}><polygon points={BURST} fill={theme.white} stroke={theme.title} strokeWidth={4} strokeLinejoin="round" /></svg>
+      {f("shout", { maxWidth: 340, textAlign: "center", justifyContent: "center" })}</div></div> : null}
+    {slide.type === "panel" && has("sfx") ? <div style={{ display: "flex", position: "absolute", left: 72, top: 560, transform: "rotate(-8deg)", background: theme.white, borderRadius: 20, padding: "10px 28px" }}>
+      {f("sfx", { color: theme.blue })}</div> : null}
+    {slide.type === "panel" && has("reply") ? <div style={row({ bottom: has("talk") ? 380 : 140 }, true)}><div style={bubble}>{f("reply")}</div></div> : null}
+    {slide.type === "panel" && has("talk") ? <div style={row({ bottom: 140 })}><div style={bubble}>{f("talk")}</div></div> : null}
+    <div style={row({ bottom: 40 }, true)}><div style={{ display: "flex", alignItems: "center", gap: 14, background: theme.white, borderRadius: 999, padding: "10px 22px", fontSize: 16, color: theme.sub }}>
+      <Logo color={theme.title} height={20} /><span>{`${index + 1} / ${draft.slides.length}`}</span></div></div>
+  </>;
+}
+
 /** Card `index` of `draft` at 1080 × 1350; `photos` maps a photo's path to an address the drawing can load (a signed URL, or a data URL in the PNG). */
 export function CardSlideView({ draft, index, photos, theme = CARD_THEME }: { draft: CardDraft; index: number; photos?: Record<string, string>; theme?: Theme }) {
   const slide = draft.slides[index];
   const onBlue = ON_BLUE.has(slide?.type ?? "");
+  if (slide?.type === "toon" || slide?.type === "panel") return <div style={{ display: "flex", position: "relative", overflow: "hidden", width: W, height: H, background: theme.soft, fontFamily: "Pretendard" }}>
+    <ToonSlide draft={draft} slide={slide} index={index} theme={theme} src={slide.photo ? photos?.[slide.photo.path] : undefined} /></div>;
   return <div style={{ display: "flex", flexDirection: "column", position: "relative", boxSizing: "border-box", width: CARD_SIZE.width, height: CARD_SIZE.height, padding: `128px ${PAD}px 160px`,
     background: onBlue ? theme.blue : slide?.type === "summary" ? theme.soft : theme.paper, color: theme.ink, fontFamily: "Pretendard" }}>
     {slide ? <Body draft={draft} slide={slide} index={index} theme={theme} src={slide.photo ? photos?.[slide.photo.path] : undefined} /> : null}

@@ -9,11 +9,12 @@ import type { CardPhoto } from "@/lib/cardnews/formats";
 import { CostTag, useCostConfirm, useCostModels } from "./cost-notice";
 import type { YpPage } from "./youtube-process-frame";
 
-/** `children`: the photo buttons the 「AI로 그리기」 button sits beside. */
-export function CardDrawPanel({ page, projectId, photo, onPhoto, children }: { page: YpPage; projectId: string; photo?: CardPhoto; onPhoto: (photo: CardPhoto) => void; children: ReactNode }) {
+/** `children`: the photo buttons the 「AI로 그리기」 button sits beside. `brief`: a 웹툰 card's own 장면 and 나오는 사람. */
+export function CardDrawPanel({ page, projectId, photo, onPhoto, brief, defaultStyle = "simple", children }: { page: YpPage; projectId: string; photo?: CardPhoto;
+  onPhoto: (photo: CardPhoto) => void; brief?: { scene: string; cast: string }; defaultStyle?: CardDrawStyle; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [scene, setScene] = useState("");
-  const [style, setStyle] = useState<CardDrawStyle>("webtoon");
+  const [style, setStyle] = useState<CardDrawStyle>(defaultStyle);
   const [quality, setQuality] = useState<CardDrawQuality>("medium");
   const [refs, setRefs] = useState<string[]>([]);
   const [characters, setCharacters] = useState<CardCharacterView[] | null>(null);
@@ -27,6 +28,14 @@ export function CardDrawPanel({ page, projectId, photo, onPhoto, children }: { p
     if (!open || characters || !client) return;
     client.cardCharacters().then(setCharacters, reason => { setCharacters([]); fail(reason); });
   }, [open, characters, client, fail]);
+  // A 웹툰 card fills the box with its 장면 and ticks the 창고 pictures whose names carry its 나오는 사람 (「낙서」 finds the 낙서 sheet).
+  const briefScene = brief?.scene.trim() ?? "", briefCast = brief?.cast.trim() ?? "";
+  useEffect(() => { if (briefScene) setScene(briefScene); }, [briefScene]);
+  useEffect(() => {
+    if (!characters || !briefCast) return;
+    const names = briefCast.split(/[\s,·]+/).filter(Boolean);
+    setRefs(characters.filter(row => names.some(name => row.name.includes(name))).slice(0, CARD_DRAW_REFS_MAX).map(row => row.id));
+  }, [characters, briefCast]);
   if (!client) return <div className="yp-row-btns">{children}</div>;
   const run = async (what: string, work: () => Promise<void>) => { setBusy(what); try { await work(); } catch (reason) { page.fail(reason); } finally { setBusy(""); } };
   const draw = () => run("draw", async () => {

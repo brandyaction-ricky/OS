@@ -37,3 +37,12 @@ test("the 캐릭터 창고 keeps one record per picture and never rewrites a sha
   assert.match(source, /upload\(`\$\{CHARACTERS\}\/\$\{id\}\.json`.*\{ upsert: false/);
   assert.match(source, /remove\(\[`\$\{CHARACTERS\}\/\$\{id\}\.json`, row\.path\]\)/);
 });
+
+// 웹툰형: the AI writes each 칸's 장면 and 나오는 사람 for 「AI로 그리기」, after opening the 웹툰형 캐릭터 설정.
+test("the 웹툰형 job card sends the AI to the 캐릭터 설정 and explains the 칸", () => {
+  const job = readFileSync("lib/server/youtube-process-card-job.ts", "utf8");
+  assert.match(job, /WEBTOON_CAST_TITLE = "웹툰형 캐릭터 설정"/);
+  assert.match(job, /formats\.includes\("webtoon"\)/);
+  assert.match(job, /panel: "scene은 PD가 「AI로 그리기」에 넣을 그림 설명/);
+  assert.match(readFileSync("lib/server/youtube-ai-jobs.ts", "utf8"), /cast: formats\.includes\("webtoon"\) \? \(await namedProcedures\(service\(\), \[WEBTOON_CAST_TITLE\]\)\)\[0\]/);
+});

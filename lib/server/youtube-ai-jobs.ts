@@ -37,7 +37,7 @@ import { assertTopicFormulaInputs, saveTopicFormula, topicFormulaCard, topicForm
 import type { NicheVideo } from "@/lib/youtube-process/discover";
 import type { GptTier } from "@/lib/youtube-process/gpt-draft";
 import { readStages } from "./youtube-process-stages";
-import { assertCardJobOpen, cardCanon, cardFormatsSchema, cardInputKey, cardJobCard, cardJobSource, checkCardResult, saveCardDrafts, VOICE_CANON_TITLE } from "./youtube-process-card-job";
+import { assertCardJobOpen, cardCanon, cardFormatsSchema, cardInputKey, cardJobCard, cardJobSource, checkCardResult, saveCardDrafts, VOICE_CANON_TITLE, WEBTOON_CAST_TITLE } from "./youtube-process-card-job";
 
 /** The name a job carries: the adopted title, or a v1 project's confirmed A. */
 const jobTitle = (state: Awaited<ReturnType<typeof readPipeline>>) => isYoutubeV1(state.source) ? v1Title(v1Stages(state)) : state.writing.packageTitle || state.source.title;
@@ -569,7 +569,8 @@ async function claimJob(agent: RequestActor, jobId: string, byGpt: boolean) {
     if (byGpt && !canon) throw new ApiError(409, "CARD_CANON_MISSING", "「카드뉴스 정본」을 찾지 못했어요.");
     const lease = await take();
     return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt,
-      instructions: cardJobCard({ project, cards, formats, canon, voice: await namedProcedures(service(), [VOICE_CANON_TITLE]), leaseMinutes: minutes }) };
+      instructions: cardJobCard({ project, cards, formats, canon, voice: await namedProcedures(service(), [VOICE_CANON_TITLE]),
+        cast: formats.includes("webtoon") ? (await namedProcedures(service(), [WEBTOON_CAST_TITLE]))[0] ?? null : null, leaseMinutes: minutes }) };
   }
   if (m.task === "column") {
     const state = await currentColumnInput(job);
