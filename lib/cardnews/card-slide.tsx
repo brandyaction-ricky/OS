@@ -25,9 +25,9 @@ export const CARD_FIELD_STYLE: Record<string, { size: number; weight: number; le
   "part.title": { size: 52, weight: 600, leading: 1.3, lines: 2 }, "part.body": { size: 30, weight: 400, leading: 1.55, lines: 4 },
   "end.line": { size: 52, weight: 600, leading: 1.3, lines: 3 }, "end.action": { size: 28, weight: 500, leading: 1.3, lines: 1 },
   "toon.episode": { size: 28, weight: 600, leading: 1.2, lines: 1 }, "toon.title": { size: 56, weight: 600, leading: 1.3, lines: 2 },
-  "panel.narration": { size: 30, weight: 500, leading: 1.5, lines: 2 }, "panel.talk": { size: 32, weight: 500, leading: 1.45, lines: 3 },
-  "panel.reply": { size: 32, weight: 500, leading: 1.45, lines: 3 }, "panel.shout": { size: 46, weight: 600, leading: 1.25, lines: 2 },
-  "panel.sfx": { size: 64, weight: 600, leading: 1.1, lines: 1 },
+  "panel.narration": { size: 30, weight: 500, leading: 1.5, lines: 3 }, "panel.talk": { size: 32, weight: 500, leading: 1.45, lines: 3 },
+  "panel.reply": { size: 32, weight: 500, leading: 1.45, lines: 3 }, "panel.think": { size: 32, weight: 500, leading: 1.45, lines: 3 },
+  "panel.shout": { size: 46, weight: 600, leading: 1.25, lines: 2 },
 };
 
 // The MYIN wordmark (마이인_로고.ai, 2026-11-02) as paths, so it takes the card's colour in the browser and in next/og alike.
@@ -61,10 +61,12 @@ function Field({ slide, name, tone, style }: { slide: CardSlide; name: string; t
   if (!value || !spec) return null;
   const box: CSSProperties = { display: "flex", color: tone.color, fontSize: spec.size, fontWeight: spec.weight, lineHeight: spec.leading,
     maxHeight: Math.ceil(spec.size * spec.leading * spec.lines), overflow: "hidden", ...style };
-  if (!CARD_MARK.test(value)) return <div data-card-field={name} style={{ ...box, wordBreak: "keep-all", whiteSpace: "pre-wrap" }}>{value}</div>;
-  // Satori lays spans out as boxes, not inline text, so a field with a marked phrase is drawn word by word and still breaks between words.
-  return <div data-card-field={name} style={{ ...box, flexDirection: "column" }}>{value.split("\n").map((line, at) =>
-    <div key={at} style={{ display: "flex", flexWrap: "wrap", columnGap: Math.round(spec.size * 0.25), minHeight: Math.round(spec.size * spec.leading) }}>
+  const centred = style?.textAlign === "center";
+  if (!CARD_MARK.test(value) && !(centred && value.includes("\n"))) return <div data-card-field={name} style={{ ...box, wordBreak: "keep-all", whiteSpace: "pre-wrap" }}>{value}</div>;
+  // Satori lays spans out as boxes, not inline text, so a field with a marked phrase is drawn word by word and still breaks between words;
+  // centred text with its own line breaks goes the same way (Satori turns those breaks into spaces when the text is centred).
+  return <div data-card-field={name} style={{ ...box, flexDirection: "column", ...(centred ? { alignItems: "center" } : {}) }}>{value.split("\n").map((line, at) =>
+    <div key={at} style={{ display: "flex", flexWrap: "wrap", columnGap: Math.round(spec.size * 0.25), minHeight: Math.round(spec.size * spec.leading), ...(centred ? { justifyContent: "center" } : {}) }}>
       {markedWords(line).map((word, n) => <div key={n} style={{ display: "flex" }}>{word.map((part, k) => <span key={k} style={part.em ? { color: tone.accent } : undefined}>{part.text}</span>)}</div>)}</div>)}</div>;
 }
 const Label = ({ children, color }: { children: ReactNode; color: string }) =>
@@ -162,24 +164,53 @@ function Body({ draft, slide, index, theme, src }: { draft: CardDraft; slide: Ca
   }
 }
 
-// 웹툰형 (「웹툰형 캐릭터 설정」 2026-11-02): the picture fills the card and the words sit on it — 해설 in a double-ruled box at the top,
-// 대사 in round bubbles at the bottom, 외침 in a burst, 효과음 on a tilted tag. The letters follow the 디자인 정본 (Pretendard, no outline
-// or shadow), so each sits on its own white ground; only the picture is the 정본's exception.
-const W = CARD_SIZE.width, H = CARD_SIZE.height;
-// ponytail: a fixed 24-point burst; a bubble shape that follows the text's own size if 외침 grows past two lines.
-const BURST = Array.from({ length: 24 }, (_, at) => {
-  const angle = (at / 24) * Math.PI * 2, r = at % 2 ? 0.8 : 1;
-  return `${Math.round(270 + Math.cos(angle) * 262 * r)},${Math.round(150 + Math.sin(angle) * 142 * r)}`;
-}).join(" ");
+// 웹툰형 (「웹툰형 캐릭터 설정」 2026-11-02; lettering from the owner's 말풍선 · 멘트 · 효과음 references, 2026-11-02): the picture fills
+// the card and the words sit on it the way webtoons letter them — not their shapes, the genre's habits. 해설 sits in a double-ruled
+// hexagon, 대사 in thin-lined ovals with a tail toward the speaker, 속마음 in an oval ringed with spikes, 외침 in a ragged burst, and
+// 효과음 is big tilted letters stepping up and down. Bubble letters keep the 디자인 정본 (Pretendard on white); only the 효과음 carries a
+// white edge, like the picture it is part of.
+const W = CARD_SIZE.width, H = CARD_SIZE.height, LINE = 3;
+// ponytail: fixed shapes sized for the letter limits (외침 14, 속마음 30); shapes that follow the text if those limits grow.
+const ring = (count: number, cx: number, cy: number, rx: number, ry: number, radius: (at: number) => number) => Array.from({ length: count }, (_, at) => {
+  const angle = (at / count) * Math.PI * 2, r = radius(at);
+  return [Math.round(cx + Math.cos(angle) * rx * r), Math.round(cy + Math.sin(angle) * ry * r)] as const;
+});
+// A ragged burst: uneven points, so it reads as drawn rather than as a star.
+const BURST = ring(22, 270, 150, 258, 140, at => at % 2 ? 0.74 + (at * 37 % 11) / 100 : 1 - (at * 53 % 7) / 100).map(point => point.join(",")).join(" ");
+// Spikes round an oval: short strokes pointing out from its edge.
+// A double-ruled hexagon round the 해설, as tall as the lines its text takes (Satori cannot size a picture to the text).
+function Hexagon({ slide, width, theme, children }: { slide: CardSlide; width: number; theme: Theme; children: ReactNode }) {
+  const spec = CARD_FIELD_STYLE["panel.narration"], perLine = Math.floor((width - 150) / (spec.size * 0.95));
+  const lines = Math.min(spec.lines, plainCardText(slide.fields.narration ?? "").trim().split("\n").reduce((sum, line) => sum + Math.max(1, Math.ceil([...line].length / perLine)), 0));
+  const height = Math.round(lines * spec.size * spec.leading) + 60, cut = Math.min(44, height / 2);
+  const points = (inset: number) => [[cut + inset, inset], [width - cut - inset, inset], [width - inset, height / 2], [width - cut - inset, height - inset], [cut + inset, height - inset], [inset, height / 2]].map(point => point.join(",")).join(" ");
+  return <div style={{ display: "flex", position: "absolute", left: 56, top: 56, width, height, alignItems: "center", justifyContent: "center", padding: "0 72px" }}>
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ position: "absolute", left: 0, top: 0 }}>
+      <polygon points={points(2)} fill={theme.white} stroke={theme.title} strokeWidth={LINE} strokeLinejoin="round" />
+      <polygon points={points(10)} fill="none" stroke={theme.title} strokeWidth={2} strokeLinejoin="round" /></svg>
+    {children}</div>;
+}
+const SPIKES = ring(84, 270, 165, 222, 128, () => 1).map(([x, y], at) => {
+  const dx = x - 270, dy = y - 165, length = Math.hypot(dx, dy), reach = at % 3 ? 16 : 30;
+  return `M${x} ${y}L${Math.round(x + dx / length * reach)} ${Math.round(y + dy / length * reach)}`;
+}).join("");
+// The 효과음's white edge: eight hard shadows round each letter (no blur, so it is an edge, not a glow).
+const EDGE = [[5, 0], [-5, 0], [0, 5], [0, -5], [4, 4], [-4, 4], [4, -4], [-4, -4]].map(([x, y]) => `${x}px ${y}px 0 #FFFFFF`).join(", ");
 function ToonSlide({ draft, slide, index, theme, src }: { draft: CardDraft; slide: CardSlide; index: number; theme: Theme; src?: string }) {
   const ink = { color: theme.title, accent: theme.blue };
   const f = (name: string, style?: CSSProperties) => <Field slide={slide} name={name} tone={ink} style={style} />;
-  const has = (name: string) => Boolean(slide.fields[name]?.trim());
+  const has = (name: string) => slide.type === "panel" && Boolean(slide.fields[name]?.trim());
   const full: CSSProperties = { position: "absolute", left: 0, top: 0, width: W, height: H };
   // Satori places an absolute box by its left edge and an explicit width only, so everything on the right sits in a row of the
   // card's width pushed to its end.
-  const row = (edge: { top: number } | { bottom: number }, end = false): CSSProperties => ({ display: "flex", position: "absolute", left: 64, width: W - 128, ...edge, justifyContent: end ? "flex-end" : "flex-start" });
-  const bubble: CSSProperties = { display: "flex", maxWidth: 640, background: theme.white, border: `3px solid ${theme.title}`, borderRadius: 48, padding: "26px 40px" };
+  const row = (edge: { top: number } | { bottom: number }, end = false): CSSProperties => ({ display: "flex", position: "absolute", left: 56, width: W - 112, ...edge, justifyContent: end ? "flex-end" : "flex-start" });
+  const centred: CSSProperties = { textAlign: "center", justifyContent: "center" };
+  // An oval with a tail toward whoever speaks (left: the one in front, right: the one answering).
+  const bubble = (name: string, side: "left" | "right") => <div style={{ display: "flex", flexDirection: "column", alignItems: side === "left" ? "flex-start" : "flex-end" }}>
+    <div style={{ display: "flex", maxWidth: 620, background: theme.white, border: `${LINE}px solid ${theme.title}`, borderRadius: "50%", padding: "40px 70px", ...centred }}>{f(name, centred)}</div>
+    <svg width={46} height={48} viewBox="0 0 46 48" style={{ marginTop: -LINE - 2, ...(side === "left" ? { marginLeft: 120 } : { marginRight: 120 }) }}>
+      <path d={side === "left" ? "M6 0 L4 46 L40 0" : "M40 0 L42 46 L6 0"} fill={theme.white} stroke={theme.title} strokeWidth={LINE} strokeLinejoin="round" /></svg></div>;
+  const think = has("think"), shoutTop = think ? 430 : 300;
   return <>
     {/* eslint-disable-next-line @next/next/no-img-element -- next/og draws plain <img>; next/image does not exist there. */}
     {src ? <img src={src} alt="" width={W} height={H} style={{ ...full, objectFit: "cover" }} />
@@ -187,15 +218,20 @@ function ToonSlide({ draft, slide, index, theme, src }: { draft: CardDraft; slid
         {slide.photo ? "" : `그림 자리 · ${plainCardText(slide.fields.scene ?? "").trim().slice(0, 90) || "장면을 쓰고 「AI로 그리기」로 그려요"}`}</div>}
     {slide.type === "toon" ? <div style={{ display: "flex", flexDirection: "column", position: "absolute", left: 64, bottom: 128, maxWidth: 800, background: theme.white, borderRadius: 24, padding: "32px 44px" }}>
       {f("episode", { color: theme.blue, marginBottom: 12 })}{f("title")}</div> : null}
-    {slide.type === "panel" && has("narration") ? <div style={{ display: "flex", position: "absolute", left: 64, top: 64, maxWidth: 760, background: theme.white, border: `3px solid ${theme.title}`, padding: 6 }}>
-      <div style={{ display: "flex", border: `2px solid ${theme.title}`, padding: "18px 28px" }}>{f("narration")}</div></div> : null}
-    {slide.type === "panel" && has("shout") ? <div style={row({ top: 340 }, true)}><div style={{ display: "flex", position: "relative", width: 540, height: 300, alignItems: "center", justifyContent: "center" }}>
-      <svg width={540} height={300} viewBox="0 0 540 300" style={{ position: "absolute", left: 0, top: 0 }}><polygon points={BURST} fill={theme.white} stroke={theme.title} strokeWidth={4} strokeLinejoin="round" /></svg>
-      {f("shout", { maxWidth: 340, textAlign: "center", justifyContent: "center" })}</div></div> : null}
-    {slide.type === "panel" && has("sfx") ? <div style={{ display: "flex", position: "absolute", left: 72, top: 560, transform: "rotate(-8deg)", background: theme.white, borderRadius: 20, padding: "10px 28px" }}>
-      {f("sfx", { color: theme.blue })}</div> : null}
-    {slide.type === "panel" && has("reply") ? <div style={row({ bottom: has("talk") ? 380 : 140 }, true)}><div style={bubble}>{f("reply")}</div></div> : null}
-    {slide.type === "panel" && has("talk") ? <div style={row({ bottom: 140 })}><div style={bubble}>{f("talk")}</div></div> : null}
+    {has("narration") ? <Hexagon slide={slide} width={think ? 440 : 760} theme={theme}>{f("narration", centred)}</Hexagon> : null}
+    {think ? <div style={row({ top: 40 }, true)}><div style={{ display: "flex", position: "relative", width: 540, height: 330, alignItems: "center", justifyContent: "center" }}>
+      <svg width={540} height={330} viewBox="0 0 540 330" style={{ position: "absolute", left: 0, top: 0 }}>
+        <path d={SPIKES} stroke={theme.white} strokeWidth={10} strokeLinecap="round" /><path d={SPIKES} stroke={theme.title} strokeWidth={4} strokeLinecap="round" />
+        <ellipse cx={270} cy={165} rx={224} ry={130} fill={theme.white} /></svg>
+      {f("think", { ...centred, maxWidth: 330 })}</div></div> : null}
+    {has("shout") ? <div style={row({ top: shoutTop }, true)}><div style={{ display: "flex", position: "relative", width: 540, height: 300, alignItems: "center", justifyContent: "center" }}>
+      <svg width={540} height={300} viewBox="0 0 540 300" style={{ position: "absolute", left: 0, top: 0 }}><polygon points={BURST} fill={theme.white} stroke={theme.title} strokeWidth={LINE} strokeLinejoin="round" /></svg>
+      {f("shout", { ...centred, maxWidth: 320, transform: "skewX(-8deg)" })}</div></div> : null}
+    {has("sfx") ? <div data-card-field="sfx" style={{ display: "flex", position: "absolute", left: 72, top: 600, transform: "rotate(-10deg)", alignItems: "flex-start" }}>
+      {[...plainCardText(slide.fields.sfx ?? "").trim()].slice(0, 8).map((letter, at) => <span key={at} style={{ display: "flex", fontSize: 112, fontWeight: 600, lineHeight: 1, color: theme.title,
+        textShadow: EDGE, marginTop: at % 2 ? 46 : 0, marginLeft: at ? -6 : 0, transform: `skewX(-10deg) rotate(${at % 2 ? 6 : -4}deg)` }}>{letter}</span>)}</div> : null}
+    {has("reply") ? <div style={row({ bottom: has("talk") ? 400 : 130 }, true)}>{bubble("reply", "right")}</div> : null}
+    {has("talk") ? <div style={row({ bottom: 130 })}>{bubble("talk", "left")}</div> : null}
     <div style={row({ bottom: 40 }, true)}><div style={{ display: "flex", alignItems: "center", gap: 14, background: theme.white, borderRadius: 999, padding: "10px 22px", fontSize: 16, color: theme.sub }}>
       <Logo color={theme.title} height={20} /><span>{`${index + 1} / ${draft.slides.length}`}</span></div></div>
   </>;

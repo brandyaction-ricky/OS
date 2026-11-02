@@ -39,6 +39,7 @@ export const CARD_FORMATS: Record<CardFormatId, CardFormat> = {
     { type: "toon", label: "웹툰 표지", min: 1, max: 1, photo: true, fields: [{ key: "episode", label: "화", max: 6 }, { key: "title", label: "제목", max: 20 }, { key: "scene", label: "표지 장면 (그릴 것)", max: 300, optional: true }] },
     { type: "panel", label: "칸", min: 5, max: 7, photo: true, fields: [{ key: "scene", label: "장면 (그릴 것)", max: 300, optional: true }, { key: "cast", label: "나오는 사람", max: 20, optional: true },
       { key: "narration", label: "해설 상자", max: 40, optional: true }, { key: "talk", label: "대사", max: 40, optional: true }, { key: "reply", label: "받는 대사", max: 40, optional: true },
+      { key: "think", label: "속마음", max: 30, optional: true },
       { key: "shout", label: "외침", max: 14, optional: true }, { key: "sfx", label: "효과음", max: 6, optional: true }] },
     { ...summary, label: "오늘의 한 줄" }, end] },
 };
