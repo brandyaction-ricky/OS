@@ -11,10 +11,10 @@ function workspace({failureTable,code='57014',authenticated=true,documents=[]}={
   const logs=[],calls=[];
   const db={from(table){
     calls.push(table);
-    let cursor='',start=0,end=499,lim=500;
+    let cursor='',from='',to='\uffff',start=0,end=499,lim=500;
     const builder=new Proxy({}, {get:(_,key)=>{
-      if(key==='then')return resolve=>resolve(table===failureTable?{data:null,error:{code,message:'private document SQL text'}}:{data:table==='os_documents'?documents.filter(d=>d.id>cursor).slice(0,lim):[].slice(start,end+1),error:null});
-      return (...args)=>{if(key==='gt')cursor=args[1];if(key==='limit')lim=args[0];if(key==='range')[start,end]=args;return builder;};
+      if(key==='then')return resolve=>resolve(table===failureTable?{data:null,error:{code,message:'private document SQL text'}}:{data:table==='os_documents'?documents.filter(d=>d.id>cursor&&d.id>=from&&d.id<to).slice(0,lim):[].slice(start,end+1),error:null});
+      return (...args)=>{if(key==='gt')cursor=args[1];if(key==='gte')from=args[1];if(key==='lt')to=args[1];if(key==='limit')lim=args[0];if(key==='range')[start,end]=args;return builder;};
     }});return builder;
   },rpc:async()=>({data:null,error:{code,message:'private command SQL'}})};
   const modules={
@@ -51,7 +51,8 @@ test('workspace keyset inventory returns every authorized page without body data
   const docs=Array.from({length:1105},(_,i)=>({id:`10000000-0000-0000-0000-${String(i).padStart(12,'0')}`,content_md:'private body',owner_id:i===1001?'hidden-owner':'synthetic-owner'}));
   const api=workspace({documents:docs}),response=await api.GET(new Request('http://localhost')),body=await response.json();
   assert.equal(response.status,200);assert.equal(body.state.documents.length,1104);assert.equal(new Set(body.state.documents.map(d=>d.id)).size,1104);
-  assert.ok(body.state.documents.every(d=>d.content_md===''));assert.equal(api.calls.filter(t=>t==='os_documents').length,2);
+  // Eight id ranges side by side: the range holding all 1,105 ids takes two pages, the seven empty ranges one read each.
+  assert.ok(body.state.documents.every(d=>d.content_md===''));assert.equal(api.calls.filter(t=>t==='os_documents').length,9);
 });
 test('workspace command failure contract remains unchanged',async()=>{
   const api=workspace(),response=await api.POST(new Request('http://localhost',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'document.create'})}));
