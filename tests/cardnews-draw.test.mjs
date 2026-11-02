@@ -27,3 +27,13 @@ test("the server draws only for an open 카드 만들기 and keeps the picture w
   assert.match(source, /moderation_blocked/);
   assert.match(source, /row\.byId !== actor\.ownerId && actor\.role !== "admin"/, "only the one who saved it or an admin takes a character out");
 });
+
+// 2026-11-02: four 캐릭터로 저장 a few seconds apart kept three — one shared list file was read stale and written over. Each picture now
+// has its own record, written once (upsert: false) and found by listing the folder.
+test("the 캐릭터 창고 keeps one record per picture and never rewrites a shared list", () => {
+  const source = readFileSync("lib/server/card-draw.ts", "utf8");
+  assert.doesNotMatch(source, /index\.json|upsert: true/);
+  assert.match(source, /\.list\(CHARACTERS/);
+  assert.match(source, /upload\(`\$\{CHARACTERS\}\/\$\{id\}\.json`.*\{ upsert: false/);
+  assert.match(source, /remove\(\[`\$\{CHARACTERS\}\/\$\{id\}\.json`, row\.path\]\)/);
+});
