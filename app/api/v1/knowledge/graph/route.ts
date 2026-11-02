@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { apiErrorResponse, ApiError } from "@/lib/http";
-import { buildKnowledgeGraph, type KnowledgeLinkSource } from "@/lib/knowledge-links";
+import { buildKnowledgeGraph, extractWikiLinks, type KnowledgeLinkSource } from "@/lib/knowledge-links";
 import { authenticateRequest } from "@/lib/server/auth";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { withIgnoredLinks } from "@/lib/knowledge/ignored-links";
@@ -9,6 +9,12 @@ import { packKnowledgeGraph } from "@/lib/knowledge/graph-transport";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// The graph only needs each body's [[links]]. Keep them per document and body fingerprint (content_hash, set by the
+// os_documents write trigger on every save) on this warm instance, so a later request reads changed bodies only
+// (the visible bodies took 3.7–7.3 s on 2026-11-02).
+// ponytail: per-instance memory; a stored links column if cold starts stay slow.
+const linkCache = new Map<string, { at: string; links: string[] }>();
 
 export async function GET(request: Request) {
   try {
@@ -48,7 +54,7 @@ export async function GET(request: Request) {
     };
     // Bodies are only parsed for documents this viewer can see, and reading every body made this slow (4.6–12.7 s on
     // 2026-11-02): read the light columns of every document first, decide what is visible, then fetch just those bodies.
-    const META = `${POLICY_FIELDS},title,folder,source_ref,current_version,updated_at`;
+    const META = `${POLICY_FIELDS},title,folder,source_ref,current_version,updated_at,content_hash`;
     const readMeta = async (offset: number) => service.from("os_documents").select(META).neq("status", "archived").order("id", { ascending: true }).range(offset, offset + pageSize - 1);
     const { count } = await service.from("os_documents").select("id", { count: "exact", head: true }).neq("status", "archived");
     const metaPages = await Promise.all(Array.from({ length: Math.max(1, Math.ceil((count ?? 0) / pageSize)) }, (_, i) => readMeta(i * pageSize)));
@@ -75,17 +81,23 @@ export async function GET(request: Request) {
       lap("documents");
       readable = await readableKnowledgePages(actor, documents);
       lap("access");
-      // Bodies of the visible documents, 200 ids a request and four requests at a time so a small database is not flooded.
-      const ids = documents.filter(row => readable.has(row.id)).map(row => row.id), body = new Map<string, string>();
-      const chunks = Array.from({ length: Math.ceil(ids.length / 200) }, (_, i) => ids.slice(i * 200, i * 200 + 200));
+      // Bodies of the visible documents that changed since this instance last read them, 200 ids a request and four at a time
+      // so a small database is not flooded. A document without a fingerprint is always read.
+      const visibleRows = documents.filter(row => readable.has(row.id));
+      const print = (row: KnowledgeLinkSource) => (row as KnowledgeLinkSource & { content_hash?: string | null }).content_hash ?? "";
+      const stale = visibleRows.filter(row => !print(row) || linkCache.get(row.id)?.at !== print(row)).map(row => row.id);
+      const chunks = Array.from({ length: Math.ceil(stale.length / 200) }, (_, i) => stale.slice(i * 200, i * 200 + 200));
+      const at = new Map(visibleRows.map(row => [row.id, print(row)]));
       for (let i = 0; i < chunks.length; i += 4) {
         const results = await Promise.all(chunks.slice(i, i + 4).map(chunk => service.from("os_documents").select("id,content_md").in("id", chunk)));
         for (const result of results) {
           if (result.error) throw new ApiError(400, "KNOWLEDGE_GRAPH_FAILED", "지식 연결을 불러오지 못했습니다.", result.error.message);
-          for (const row of result.data ?? []) body.set(row.id, row.content_md ?? "");
+          for (const row of result.data ?? []) linkCache.set(row.id, { at: at.get(row.id) ?? "", links: extractWikiLinks(row.content_md ?? "") });
         }
       }
-      for (const row of documents) if (body.has(row.id)) row.content_md = body.get(row.id)!;
+      // buildKnowledgeGraph reads links from content_md: give it just the links back.
+      for (const row of visibleRows) row.content_md = (linkCache.get(row.id)?.links ?? []).map(link => `[[${link}]]`).join("\n");
+      timing.push(`stale;desc="${stale.length}/${visibleRows.length}"`);
       lap("bodies");
     }
     // Hidden links are few: read them once and keep the ones on visible pages (was one query per 100 visible ids).
