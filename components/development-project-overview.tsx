@@ -42,7 +42,7 @@ export function DevelopmentProjectOverview({ projects, token, demo, requests, on
     return () => { controller.abort(); window.clearInterval(timer); window.removeEventListener("focus", onRefresh); };
   }, [projects, token, demo, requests, revision]);
   return <section className="dev-overview" aria-label="프로젝트 전체 현황">
-    <header><div><h2>오늘 확인할 개발 작업</h2><p>프로젝트를 선택하면 해당 요청과 개발·배포 기록으로 이동합니다.</p></div><button className="dev-button" onClick={() => setRevision(value => value + 1)}>새로고침</button></header>
+    <header><div><h2>오늘 확인할 개발 작업</h2><p>프로젝트를 선택하면 해당 요청과 개발·배포 기록으로 이동합니다.</p></div><button className="dev-button secondary-button" onClick={() => setRevision(value => value + 1)}>새로고침</button></header>
     <div className="dev-overview-grid">{projects.map(project => {
       const summary = summaries[project.id];
       return <article key={project.id}><button className="dev-project-title" onClick={() => onChoose(project.id)}>{project.title}</button>
