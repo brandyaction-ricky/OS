@@ -55,6 +55,28 @@ test("a photo goes on a card and comes off again", async ({ page }) => {
   await expect(page.locator(".yp-card-big img")).toHaveCount(0);
 });
 
+// 카드 그림 (대표 2026-11-02): the PD writes a scene, the cost is asked first, the picture lands on the card, and it can be kept in the
+// 캐릭터 창고 to draw the same face from next time (the demo draws a grey 「연습 그림」 board instead of calling GPT).
+test("a picture is drawn with AI after the cost ask and kept as a character", async ({ page }) => {
+  await editor(page);
+  await page.getByRole("button", { name: "2장 보기", exact: true }).click();
+  await page.getByRole("button", { name: "AI로 그리기", exact: true }).click();
+  const panel = page.getByRole("group", { name: "AI로 그리기" });
+  await expect(panel.getByText(/아직 없어요/)).toBeVisible();
+  await expect(panel.locator(".cost-tag")).toContainText("원");
+  await panel.getByLabel("장면 설명").fill("밤 11시 사무실, 한결이 모니터 앞에서 웃어요");
+  await panel.getByRole("button", { name: "그리기", exact: true }).click();
+  const ask = page.locator("dialog.cost-dlg");
+  await expect(ask).toContainText("GPT Image 2.5 Flare");
+  await ask.getByRole("button", { name: "그리기", exact: true }).click();
+  await expect(page.locator(".yp-card-big img")).toBeVisible();
+  await panel.getByLabel("캐릭터 이름").fill("한결 앞모습");
+  await panel.getByRole("button", { name: "캐릭터로 저장", exact: true }).click();
+  await expect(panel.getByRole("checkbox", { name: "한결 앞모습" })).toBeVisible();
+  await panel.getByRole("checkbox", { name: "한결 앞모습" }).check();
+  await expect(panel.getByRole("button", { name: "다시 그리기", exact: true })).toBeEnabled();
+});
+
 test("the three diagram formats can be started by hand", async ({ page }) => {
   await editor(page);
   for (const name of ["비교형", "단계형", "구조형"]) await page.getByRole("checkbox", { name, exact: true }).check();
@@ -194,9 +216,12 @@ for (const width of [1440, 390]) for (const theme of ["light", "dark"]) {
 }
 
 test("card catalog and cover reads reject unauthenticated callers before validation", async ({ request }) => {
-  for (const url of ["/api/v1/content/youtube/cards", "/api/v1/content/youtube/cards?covers=not-a-uuid"]) {
+  for (const url of ["/api/v1/content/youtube/cards", "/api/v1/content/youtube/cards?covers=not-a-uuid", "/api/v1/content/youtube/card-characters"]) {
     const response = await request.get(url); expect(response.status()).toBe(401);
   }
+  // 카드 그림 and 캐릭터 창고 writes ask for a session too, before anything is read or drawn.
+  expect((await request.post("/api/v1/content/youtube/projects/00000000-0000-4000-8000-000000000000/cards", { data: { action: "draw", scene: "QA", style: "simple", quality: "medium", refs: [] } })).status()).toBe(401);
+  expect((await request.delete("/api/v1/content/youtube/card-characters?id=00000000-0000-4000-8000-000000000000")).status()).toBe(401);
 });
 
 test("project platform selector filters every kind, retains search and can leave an empty status", async ({ page }) => {

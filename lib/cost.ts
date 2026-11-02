@@ -29,12 +29,29 @@ const TOKEN_USD: [prefix: string, name: string, input: number, output: number, l
   ["gpt-6-astra", "GPT-6 Astra", 10, 50],
   ["gpt-6.1-sol", "GPT-6.1 Sol", 2, 10],
 ];
+/**
+ * GPT Image, USD per 1M tokens: text in, image in, image out (developers.openai.com/api/docs/pricing, checked 2026-11-02; gpt-image-2 and
+ * both 2.5 models cost the same).
+ */
+const IMAGE_USD: Record<string, { name: string; text: number; image: number; out: number }> = {
+  "gpt-image-2.5-flare": { name: "GPT Image 2.5 Flare", text: 5, image: 8, out: 30 },
+  "gpt-image-2.5-sunburst": { name: "GPT Image 2.5 Sunburst", text: 5, image: 8, out: 30 },
+  "gpt-image-2": { name: "GPT Image 2", text: 5, image: 8, out: 30 },
+};
+// ponytail: OpenAI publishes no token table for GPT Image 2+; the older models' 1024×1536 figures (medium 1,584 · high 6,240) are the
+// planning numbers, and a reference picture (always read at high fidelity) is counted at 3,000. Read `usage` from the answer if 원 matter.
+const IMAGE_OUT_TOKENS = { medium: 1_600, high: 6_300 } as const;
+/** 원 for one card picture at `quality` drawn from `refs` reference pictures, or null when the model is not in the table. */
+export function imageEstimate(model: string, quality: keyof typeof IMAGE_OUT_TOKENS, refs: number) {
+  const row = IMAGE_USD[model];
+  return row ? won((1_000 * row.text + refs * 3_000 * row.image + IMAGE_OUT_TOKENS[quality] * row.out) / 1_000_000) : null;
+}
 /** USD per audio minute (developers.openai.com pricing, checked 2026-10-26). */
 const MINUTE_USD: Record<string, number> = { "gpt-4o-mini-transcribe": 0.003 };
 const tokenRow = (model: string) => TOKEN_USD.find(([prefix]) => model.startsWith(prefix));
 
 export const modelName = (model: string) => /^(s1|s2|drama)/.test(model) ? `Fish Audio ${model}`
-  : tokenRow(model)?.[1] ?? (MINUTE_USD[model] ? `OpenAI ${model}` : model);
+  : tokenRow(model)?.[1] ?? IMAGE_USD[model]?.name ?? (MINUTE_USD[model] ? `OpenAI ${model}` : model);
 
 // ponytail: one token per Korean letter is the planning figure for these upper bounds; count with the provider's tokenizer if a
 // screen ever shows exact amounts.
@@ -61,8 +78,8 @@ export type GenerationAction = keyof typeof GENERATION;
 export const GENERATION_INPUT = 85_000;
 
 /** The models each paid button uses on the server; the defaults are lib/config.ts's (CLAUDE_FAST_MODEL · CLAUDE_SMART_MODEL). */
-export interface CostModels { voice: string; myinVoice: string; haiku: string; sonnet: string; transcribe: string }
+export interface CostModels { voice: string; myinVoice: string; haiku: string; sonnet: string; transcribe: string; image: string }
 export const DEFAULT_COST_MODELS: CostModels = {
   voice: "s2.1-pro", myinVoice: "drama-3", haiku: "claude-haiku-5-5", sonnet: "claude-sonnet-5-5",
-  transcribe: "gpt-4o-mini-transcribe",
+  transcribe: "gpt-4o-mini-transcribe", image: "gpt-image-2.5-flare",
 };

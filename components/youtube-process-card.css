@@ -135,4 +135,18 @@
   .linear-shell .ui-v2.yp .yp-card-tools > .yp-hint { margin-left: 0; width: 100%; }
 }
 
+/* 카드 만들기 › 사진 › AI로 그리기: the scene, the style, and the 캐릭터 창고 pictures to keep the faces from. */
+.linear-shell .ui-v2.yp .yp-card-draw { display: grid; gap: 10px; margin-top: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; }
+.linear-shell .ui-v2.yp .yp-card-draw .yp-row-btns > input { flex: 1; min-width: 160px; }
+.linear-shell .ui-v2.yp .yp-card-chars { margin: 0; padding: 0; border: 0; min-width: 0; }
+.linear-shell .ui-v2.yp .yp-card-chars legend { margin-bottom: 6px; color: var(--muted); font-size: 12px; }
+.linear-shell .ui-v2.yp .yp-card-chars ul { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
+.linear-shell .ui-v2.yp .yp-card-chars li { position: relative; }
+.linear-shell .ui-v2.yp .yp-card-chars label { display: grid; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; font-size: 12px; }
+.linear-shell .ui-v2.yp .yp-card-chars label.yp-on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.linear-shell .ui-v2.yp .yp-card-chars input { position: absolute; top: 8px; left: 8px; }
+.linear-shell .ui-v2.yp .yp-card-chars img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 5px; background: var(--panel); }
+.linear-shell .ui-v2.yp .yp-card-chars span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.linear-shell .ui-v2.yp .yp-card-chars li > button { position: absolute; top: 6px; right: 6px; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: var(--card); }
+
 }

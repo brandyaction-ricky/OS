@@ -8,7 +8,7 @@ import { createContext, useCallback, useContext, useEffect, useLayoutEffect, use
 import { ArrowDown, ArrowRight, ArrowUp, Copy, Download, GalleryHorizontal, ImagePlus, Plus, Trash2 } from "lucide-react";
 import { CardSlideView } from "@/lib/cardnews/card-slide";
 import { cardsMissing } from "@/lib/cardnews/cards";
-import { addCardSlide, CARD_FORMAT_IDS, CARD_FORMATS, CARD_MAX_SLIDES, CARD_SIZE, cardLetters, cardProblems, moveCardSlide, parseCardHashtags, removeCardSlide, slideSpec, type CardDraft, type CardFormatId } from "@/lib/cardnews/formats";
+import { addCardSlide, CARD_FORMAT_IDS, CARD_FORMATS, CARD_MAX_SLIDES, CARD_SIZE, cardLetters, cardProblems, moveCardSlide, parseCardHashtags, removeCardSlide, slideSpec, type CardDraft, type CardFormatId, type CardPhoto } from "@/lib/cardnews/formats";
 import type { CardSourceChoice } from "@/lib/cardnews/sources";
 import { apiRequest } from "@/lib/api-client";
 import { modelName } from "@/lib/cost";
@@ -20,6 +20,7 @@ import { CostTag, tokenEstimate, useCostConfirm } from "./cost-notice";
 import { useSession } from "./session-provider";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
 import { errorMessage, youtubeProcessClient, type YpClient } from "./youtube-process-data";
+import { CardDrawPanel } from "./card-draw-panel";
 import { CardSourcePicker } from "./card-source-picker";
 import { CardUrlBookmarks } from "./card-url-bookmarks";
 import { GateBanner, gateAction, gateSub, LockedStep, stepAction, Subject, useGate, useLeaveGuard, YpFrame, YpSection, type YpPage } from "./youtube-process-frame";
@@ -283,15 +284,15 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
   const current = draft?.slides[slide] ? slide : 0;
   const spec = draft ? slideSpec(draft.format, draft.slides[current].type) : null;
   const addBlank = async () => { for (const format of chosen) if (!(await save({ add: format }))) return; };
-  // The photo goes up first (shrunk), then lands on the card that was open when it was picked.
+  // A photo (or a drawn picture) lands on the card that was open when it was picked, on the draft as it is by then.
+  const placePhoto = (photo: CardPhoto, at: number) => { const latest = draftRef.current; if (latest) edit({ ...latest, slides: latest.slides.map((row, index) => index === at ? { ...row, photo } : row) }); };
   const putPhoto = async (file: File | undefined, at: number) => {
     if (!file || !draft || !page.client) return;
     setPhotoBusy(true);
     try {
       const shrunk = await shrinkPhoto(file);
       const asset = await page.client.uploadAsset(project.id, "card", shrunk.file);
-      const latest = draftRef.current ?? draft;
-      edit({ ...latest, slides: latest.slides.map((row, index) => index === at ? { ...row, photo: { path: asset.path, w: shrunk.w, h: shrunk.h } } : row) });
+      placePhoto({ path: asset.path, w: shrunk.w, h: shrunk.h }, at);
     } catch (reason) { page.fail(reason); } finally { setPhotoBusy(false); }
   };
   const dropPhoto = (at: number) => { if (draft) edit({ ...draft, slides: draft.slides.map((row, index) => index === at ? { type: row.type, fields: row.fields } : row) }); };
@@ -359,11 +360,12 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
               <span className={n > field.max ? "yp-card-n yp-bad" : "yp-card-n"}>{n}/{field.max}</span>{over[current]?.includes(field.key) ? <span className="yp-tag yp-bad">넘침</span> : null}</span>
               <textarea className="yp-in" rows={field.max > 30 ? 3 : 2} value={value} aria-label={field.label} disabled={!editable} onCompositionStart={() => setComposing(true)} onCompositionEnd={() => setComposing(false)} onChange={event => set(event.target.value)} /></label>; })}
           {spec?.photo && editable ? <div className="yp-field"><span className="yp-fld-h"><b>사진</b><span className="yp-opt">선택</span></span>
-            <p className="yp-hint">실제 사진 · 자료만 넣어요. 만든 이미지를 실제 기록처럼 쓰지 않아요 (디자인 정본 §8).</p>
-            <div className="yp-row-btns">
-              <label className="yp-btn yp-sm"><ImagePlus size={13} aria-hidden="true" />{photoBusy ? "올리는 중…" : draft?.slides[current].photo ? "사진 바꾸기" : "사진 넣기"}
+            <p className="yp-hint">실제 사진 · 자료를 넣거나 AI로 그려요. AI 그림은 설명용이라 실제 기록처럼 쓰지 않아요 (디자인 정본 §8).</p>
+            <CardDrawPanel page={page} projectId={project.id} photo={draft.slides[current].photo} onPhoto={photo => placePhoto(photo, current)}>
+              <label className="yp-btn yp-sm"><ImagePlus size={13} aria-hidden="true" />{photoBusy ? "올리는 중…" : draft.slides[current].photo ? "사진 바꾸기" : "사진 넣기"}
                 <input type="file" accept="image/jpeg,image/png,image/webp" aria-label="사진 파일" hidden disabled={photoBusy} onChange={event => { const at = current; void putPhoto(event.target.files?.[0], at); event.target.value = ""; }} /></label>
-              {draft?.slides[current].photo ? <button type="button" className="yp-btn yp-sm" disabled={photoBusy} onClick={() => dropPhoto(current)}>사진 빼기</button> : null}</div></div> : null}
+              {draft.slides[current].photo ? <button type="button" className="yp-btn yp-sm" disabled={photoBusy} onClick={() => dropPhoto(current)}>사진 빼기</button> : null}
+            </CardDrawPanel></div> : null}
         </div>
       </div>
       <CardPostFields key={draft.id} draft={draft} editable={editable} onEdit={edit} onComposing={setComposing} />
