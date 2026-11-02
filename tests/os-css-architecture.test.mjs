@@ -182,7 +182,7 @@ const BASELINE = {
   "components/fullscreen-content.css": {"fontOff": 1, "breakOff": 2},
   "components/fullscreen-documents.css": {"fontOff": 1, "breakOff": 1},
   "components/fullscreen-operations.css": {"fontOff": 2},
-  "components/hr/hr.css": {"important": 1, "fontOff": 3, "breakOff": 1, "foreign": 15, "kitOverride": 22},
+  "components/hr/hr.css": {"fontOff": 3, "breakOff": 1, "foreign": 13, "kitOverride": 3},
   "components/indexing-progress.css": {"breakOff": 1},
   "components/knowledge-vault.css": {"important": 2, "color": 2, "fontOff": 7, "breakOff": 5, "foreign": 109, "kitOverride": 12},
   "components/knowledge/workspace.css": {"fontOff": 6, "breakOff": 9, "foreign": 7, "kitOverride": 2},
