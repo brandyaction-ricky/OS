@@ -10,9 +10,10 @@ import { CardReviewScreen } from "./youtube-process-card";
 import type { YpFeedbackView } from "./youtube-process-data";
 import { useSession } from "./session-provider";
 import { ApiRequestError } from "@/lib/api-client";
-import { feedbackNotice, compareTime, FEEDBACK_FILES_PER_ITEM, FEEDBACK_FILTER_LABEL, feedbackClosed, feedbackMatches, type FeedbackAction, type FeedbackFile, type FeedbackFilter, type FeedbackMark } from "@/lib/youtube-process/feedback";
+import { feedbackNotice, compareTime, FEEDBACK_KIND_LABEL, feedbackKind, FEEDBACK_FILES_PER_ITEM, FEEDBACK_FILTER_LABEL, feedbackClosed, feedbackMatches, type FeedbackAction, type FeedbackFile, type FeedbackFilter, type FeedbackMark } from "@/lib/youtube-process/feedback";
 import { YtCard, YtLookPicker } from "./youtube-process-media";
 import { VoiceFeedbackBox } from "./youtube-process-voice-feedback";
+import { FeedbackTodo } from "./youtube-process-feedback-todo";
 import { ReviewersBar } from "./youtube-process-reviewers";
 import { alignVersions, mapTime, srtCues, type Anchor, type VersionChange } from "@/lib/youtube-process/compare";
 
@@ -192,7 +193,7 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
   };
   const exportList = () => {
     const rows = items.filter(item => item.target === "video" && item.ver === ver && !item.reaction).sort((a, b) => (a.t ?? a.range?.[0] ?? 0) - (b.t ?? b.range?.[0] ?? 0));
-    const csv = ["시간,내용,누가,상태", ...rows.map(item => [label(item).replace("▷ ", ""), `"${item.text.replace(/"/g, '""')}"`, item.who, item.status === "done" ? "반영" : item.status === "declined" ? "반영 안 함" : "남음"].join(","))].join("\n");
+    const csv = ["시간,종류,내용,누가,상태", ...rows.map(item => [label(item).replace("▷ ", ""), FEEDBACK_KIND_LABEL[feedbackKind(item.text)], `"${item.text.replace(/"/g, '""')}"`, item.who, item.status === "done" ? "반영" : item.status === "declined" ? "반영 안 함" : "남음"].join(","))].join("\n");
     const link = document.createElement("a");
     link.href = URL.createObjectURL(new Blob([`﻿${csv}`], { type: "text/csv" })); link.download = `feedback_v${ver}.csv`; link.click();
   };
@@ -286,6 +287,9 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
         <div className="yp-fbsearch"><Search size={14} aria-hidden="true" /><input className="yp-in" value={query} onChange={event => setQuery(event.target.value)} placeholder="피드백·답글·쓴 사람 찾기" aria-label="피드백 찾기" />
           <div className="yp-seg2 yp-sm" role="group" aria-label="상태">{(Object.keys(FEEDBACK_FILTER_LABEL) as FeedbackFilter[]).map(key => <button key={key} type="button" className={filter === key ? "yp-on" : ""} aria-pressed={filter === key} onClick={() => setFilter(key)}>{FEEDBACK_FILTER_LABEL[key]}</button>)}</div></div>
         {view === "video" && !short && !page.demo && project ? <VoiceFeedbackBox projectId={project.id} final={finals.find(item => item.v === ver)} items={items} token={page.accessToken} onSeek={seek} /> : null}
+        {view === "video" && !searching ? <FeedbackTodo items={openItems} total={items.length} ver={ver} onPick={item => {
+          setOpen(item.id); seek(item.t ?? item.range?.[0] ?? 0); window.setTimeout(() => document.getElementById(`fb-${item.id}`)?.scrollIntoView({ block: "center", behavior: "smooth" }), 50);
+        }} /> : null}
         {searching ? <div className="yp-fbl">{matched.length ? matched.map(item => <FeedbackItem key={item.id} item={item} open={open === item.id} latest={latest} onOpen={() => setOpen(open === item.id ? null : item.id)}
             onSeek={() => { if (item.target === "video") { setView("video"); seek(item.t ?? item.range?.[0] ?? 0); } else setThumbTarget(item.target as YpSlot); }} onAct={(action, value, replyId) => act(item, action, value, replyId)} onOpenFile={openFile} />)
           : <p className="yp-muted" style={{ padding: 8 }}>맞는 피드백이 없어요</p>}</div> :
