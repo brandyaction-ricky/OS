@@ -129,7 +129,7 @@ export function TaxInvoicePanel({ token, mode }: { token: string | null; mode: "
     {mode === "sales" && data && data.totals.suspect ? <div className="fin-callout fin-warn" role="status"><b>확인 필요</b><span className="fin-grow">「같은 매출 의심 · 검토 필요」 계산서 {won(data.totals.suspect)}이 합계에 아직 두 번 들어가 있어요. 아래 표에서 같은 매출인지 골라 주세요.</span></div> : null}
     {mode === "sales" ? <div className="fin-upload">
       <b>계산서 올리기</b>
-      <label className="fin-field"><span>사업자</span><select className="fin-sel" value={uploadBiz} onChange={event => setUploadBiz(event.target.value as Biz | "")}><option value="">고르세요</option>{BIZ_KEYS.map(key => <option key={key} value={key}>{TAX_BIZ[key]}</option>)}</select></label>
+      <label className="fin-pick"><span>사업자</span><select className="fin-sel" value={uploadBiz} onChange={event => setUploadBiz(event.target.value as Biz | "")}><option value="">고르세요</option>{BIZ_KEYS.map(key => <option key={key} value={key}>{TAX_BIZ[key]}</option>)}</select></label>
       <label className="primary-button compact">홈택스 엑셀 올리기<input type="file" accept=".xlsx,.xls,.csv" hidden onChange={event => { void pick(event.target.files?.[0]); event.target.value = ""; }} /></label>
       <button type="button" className="secondary-button compact" onClick={() => void copyAside()}>Aside에 맡기기 (지침 복사)</button>
     </div> : null}
@@ -142,7 +142,7 @@ export function TaxInvoicePanel({ token, mode }: { token: string | null; mode: "
         <button type="button" className="secondary-button compact fin-ghost" onClick={() => setPreview(null)}>취소</button>
       </div>
     </div> : null}
-    {note ? <p className="fin-callout fin-note" role="status">{note}</p> : null}
+    {note ? <p className="fin-callout fin-ok-note" role="status">{note}</p> : null}
     {error ? <p className="fin-callout fin-bad" role="alert">{error}</p> : null}
     {!data && !error ? <p className="fin-small fin-muted" role="status">계산서를 불러오는 중이에요…</p> : null}
     {data && !invoices.length ? <div className="fin-empty"><b>이 기간에 올린 계산서가 없어요</b>{mode === "sales" ? "홈택스 엑셀을 올리거나 Aside에 맡겨 보세요." : "매출내역에서 홈택스 계산서를 먼저 올려 주세요."}</div> : null}

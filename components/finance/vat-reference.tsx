@@ -79,8 +79,8 @@ export function VatReference({ token }: { token: string | null }) {
         <button type="button" className="primary-button compact" disabled={!result?.rows.length || busy} onClick={() => void excel()}>{busy ? "만드는 중…" : "엑셀 내려받기"}</button>
       </div></div>
     <div className="os-toolbar">
-      <label className="fin-field"><span>사업자</span><select className="fin-sel" value={biz} onChange={event => setBiz(event.target.value as Biz)}>{BIZ_KEYS.map(key => <option key={key} value={key}>{TAX_BIZ[key]}</option>)}</select></label>
-      <label className="fin-field"><span>기간</span><select className="fin-sel" value={period} onChange={event => setPeriod(event.target.value)}>
+      <label className="fin-pick"><span>사업자</span><select className="fin-sel" value={biz} onChange={event => setBiz(event.target.value as Biz)}>{BIZ_KEYS.map(key => <option key={key} value={key}>{TAX_BIZ[key]}</option>)}</select></label>
+      <label className="fin-pick"><span>기간</span><select className="fin-sel" value={period} onChange={event => setPeriod(event.target.value)}>
         <optgroup label="신고기간 (예정·확정)">{options.quarters.map(key => <option key={key} value={key}>{labelOf(key)}</option>)}</optgroup>
         <optgroup label="반기 (개인사업자 확정)">{options.halves.map(key => <option key={key} value={key}>{labelOf(key)}</option>)}</optgroup>
         <optgroup label="월별">{options.months.map(key => <option key={key} value={key}>{labelOf(key)}</option>)}</optgroup>

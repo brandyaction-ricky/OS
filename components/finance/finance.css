@@ -330,6 +330,7 @@
 .page-content .finance-workspace .fin-stack {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   gap: 16px;
 }
 .page-content .finance-workspace .fin-row {
@@ -498,20 +499,23 @@
   display: flex;
   flex-direction: column;
   gap: 5px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  border-radius: 0;
   min-width: 0;
   min-height: min-content;
   flex-shrink: 0;
-  box-shadow: none;
+  font-size: 12px;
+  line-height: normal;
+  color: var(--text);
 }
 .page-content .finance-workspace .fin-field > label,
 .page-content .finance-workspace .fin-field > .fin-lb {
   font-size: 12px;
   font-weight: 700;
   color: var(--text-2);
+}
+.page-content .finance-workspace .fin-hint {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.45;
 }
 .page-content .finance-workspace .fin-field .fin-hint {
   font-size: 12px;
@@ -823,6 +827,7 @@
   grid-template-columns: 110px minmax(0, 1fr);
   gap: 8px 14px;
   font-size: 13px;
+  line-height: 1.5;
   margin: 0;
 }
 .page-content .finance-workspace .fin-kv dt {
@@ -1935,13 +1940,13 @@
 .page-content .finance-react .fin-tiles.fin-t5 { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); margin-bottom: 14px; }
 .page-content .finance-react .fin-gap { margin-bottom: 14px; }
 .page-content .finance-react .fin-total { background: var(--accent-soft); border-color: transparent; }
-.page-content .finance-react .fin-field { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.page-content .finance-react .fin-pick { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
 .page-content .finance-react .fin-upload { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 12px 0 14px; border-top: 1px solid var(--line-soft); margin-bottom: 4px; }
 .page-content .finance-react .fin-upload > b { font-size: 13px; margin-right: 4px; }
 .page-content .finance-react label.secondary-button { cursor: pointer; }
 .page-content .finance-react .fin-preview { display: grid; gap: 10px; margin-bottom: 14px; }
 .page-content .finance-react .fin-preview ul { margin: 0; padding-left: 28px; display: block; }
-.page-content .finance-react .fin-note { background: var(--mint-soft); }
+.page-content .finance-react .fin-ok-note { background: var(--mint-soft); }
 .page-content .finance-react .fin-empty b { display: block; color: var(--text); margin-bottom: 4px; }
 .page-content .finance-react .fin-tbl .status-pill { margin-left: 6px; }
 .page-content .finance-react .fin-candidate { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
