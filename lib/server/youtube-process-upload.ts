@@ -3,7 +3,7 @@ import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { myinCreditsBlock } from "@/lib/myin-storyboard";
 import { projectName } from "@/lib/youtube-process/project";
-import { descWritten, finalPair, publishAtProblem, utmCode, utmUrl, withLinks, type YpUpload } from "@/lib/youtube-process/stages";
+import { descWritten, finalPair, publishAtProblem, reviewOkAt, uploadFinal, utmCode, utmUrl, withLinks, type YpUpload } from "@/lib/youtube-process/stages";
 
 // utm_content (utmCode): the Data API cannot edit a video with the upload permission alone, so the link carries the project code from the start.
 export { utmCode };
@@ -17,9 +17,10 @@ import { MEDIA_BUCKET, readFinals, readStages, writeStage } from "./youtube-proc
 
 // S7 [업로드] (지시서 10-2): the browser sends the last final straight to YouTube's resumable session; the OS checks the
 // 최종 검수 OK before opening the session and records the video after.
+// finalAt: the final the browser is sending (유쓰 요청 공통 조건 3) — checked at the start, written down at the end.
 export const uploadSessionSchema = z.object({ fileName: z.string().trim().min(1).max(255), fileSize: z.number().int().positive().max(137_438_953_472),
-  mimeType: z.string().regex(/^video\/[a-z0-9.+-]+$/i), connectionOwnerId: z.string().uuid().optional() }).strict();
-export const uploadCompleteSchema = z.object({ videoId: z.string().regex(/^[A-Za-z0-9_-]{6,20}$/), connectionOwnerId: z.string().uuid().optional() }).strict();
+  mimeType: z.string().regex(/^video\/[a-z0-9.+-]+$/i), connectionOwnerId: z.string().uuid().optional(), finalAt: z.string().datetime().optional() }).strict();
+export const uploadCompleteSchema = z.object({ videoId: z.string().regex(/^[A-Za-z0-9_-]{6,20}$/), connectionOwnerId: z.string().uuid().optional(), finalAt: z.string().datetime().optional() }).strict();
 
 /**
  * The page that will send the file (로건 피드백 10/26-9): YouTube answers the browser's PUT with CORS headers only when the
@@ -36,8 +37,8 @@ async function uploadReady(actor: RequestActor, id: string) {
   if (project.yp.stage !== "upload" || project.yp.gates.review.state !== "ok") throw new ApiError(409, "REVIEW_CONFIRM_REQUIRED", "최종 검토 컨펌 OK 뒤에 올릴 수 있어요.");
   const stages = await readStages(actor.supabase, project);
   const finals = await readFinals(actor.supabase, project.id, stages.make.data, project.yp.topic.type);
-  // A 숏폼's 1:1 or 4:5 feed ad never goes up as a Short; the latest 9:16 final does.
-  return { project, stages, final: finals.filter(final => !final.aspect).at(-1) ?? null };
+  // A 숏폼's 1:1 or 4:5 feed ad never goes up as a Short; the latest 9:16 final does — not one the OS made after the 최종 검토 컨펌.
+  return { project, stages, finals, final: uploadFinal(finals, reviewOkAt(project.yp.gates.review)) };
 }
 
 export async function startYoutubeUpload(actor: RequestActor, id: string, input: z.infer<typeof uploadSessionSchema>, origin: string) {
@@ -45,6 +46,7 @@ export async function startYoutubeUpload(actor: RequestActor, id: string, input:
   const upload = stages.upload.data;
   if (upload.run?.status === "done") throw new ApiError(409, "UPLOAD_DONE", "이미 유튜브에 올린 영상이에요.");
   if (!final) throw new ApiError(409, "FINAL_REQUIRED", "올릴 최종본이 없어요.");
+  if (input.finalAt && input.finalAt !== final.at) throw new ApiError(409, "FINAL_CHANGED", "올릴 영상이 바뀌었어요. 화면을 새로 불러온 뒤 다시 눌러 주세요.");
   if (!descWritten(upload.desc)) throw new ApiError(409, "DESCRIPTION_REQUIRED", "설명란을 채워 주세요.");
   const ownerId = input.connectionOwnerId ?? actor.id;
   await authorizeYoutubeConnection(actor, ownerId);
@@ -102,7 +104,9 @@ async function channelVideo(ownerId: string, videoId: string) {
 
 /** Checks the video is on the connected channel, sets thumbnail A, and records the result on the 업로드 step. */
 export async function completeYoutubeUpload(actor: RequestActor, id: string, input: z.infer<typeof uploadCompleteSchema>) {
-  const { project, stages, final } = await uploadReady(actor, id);
+  const { project, stages, finals, final: active } = await uploadReady(actor, id);
+  // The record names the final that was sent, even if another one became the newest while it went up.
+  const final = (input.finalAt ? finals.find(item => item.at === input.finalAt) : null) ?? active;
   const ownerId = input.connectionOwnerId ?? actor.id;
   await authorizeYoutubeConnection(actor, ownerId);
   const { video, accessToken, channelId } = await channelVideo(ownerId, input.videoId);
@@ -120,7 +124,7 @@ export async function completeYoutubeUpload(actor: RequestActor, id: string, inp
   }
   const short = project.yp.topic.type === "short";
   const videoUrl = short ? `https://www.youtube.com/shorts/${video.id}` : `https://www.youtube.com/watch?v=${video.id}`;
-  const run = { at: new Date().toISOString(), by: actor.name, status: "done" as const, videoId: video.id, videoUrl, finalV: final?.v, thumbnail,
+  const run = { at: new Date().toISOString(), by: actor.name, status: "done" as const, videoId: video.id, videoUrl, finalV: final?.v, ...(final ? { finalAt: final.at } : {}), thumbnail,
     ...(video.status?.privacyStatus ? { privacy: video.status.privacyStatus } : {}), ...(video.status?.publishAt ? { publishAt: video.status.publishAt } : {}) };
   await writeStage(actor.supabase, actor.id, actor.team, project, "upload", stages.upload, { ...stages.upload.data, run }).catch(error => {
     throw error instanceof ApiError && error.code === conflict().code ? new ApiError(409, "UPLOAD_RECORD_CONFLICT", "영상은 올라갔지만 기록이 바뀌었어요. 같은 버튼을 다시 누르면 기록만 저장해요.") : error;

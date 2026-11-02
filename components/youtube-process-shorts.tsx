@@ -125,7 +125,7 @@ export function YoutubeShortsScreen({ header }: { header: ReactNode }) {
     if (!page.client || !project || !last) return;
     page.client.finalUrl(project.id, last).then(url => { if (active) setSrc(url); }, () => undefined);
     const srtUrl = last.runId && page.accessToken
-      ? apiRequest<{ srt: string | null }>(`/api/v1/content/youtube-automation/myin?outputs=${last.runId}`, { token: page.accessToken }).then(result => result.srt)
+      ? apiRequest<{ srt: string | null }>(`/api/v1/content/youtube-automation/myin?outputs=${last.runId}&at=${encodeURIComponent(last.at)}`, { token: page.accessToken }).then(result => result.srt)
       : page.bundle?.stages.upload.data.srt ? page.client.assetUrl(project.id, page.bundle.stages.upload.data.srt.path) : Promise.resolve(null);
     srtUrl.then(url => url ? fetch(url).then(response => response.text()) : "").then(text => { if (active) setSrt(text); }, () => undefined);
     return () => { active = false; };

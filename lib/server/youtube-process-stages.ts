@@ -54,16 +54,17 @@ export async function readStages(supabase: Supabase, project: YpProject): Promis
 }
 
 export interface YpFinal { v: number; at: string; source: "myin" | "short" | "upload"; name: string; bytes: number; durationSeconds: number | null; runId?: string; path?: string; aspect?: "1:1" | "4:5" }
+type RunFinal = { at: string; bytes: number; durationSeconds: number };
 /** Every final in time order: the OS-made 마이인 finals (from their runs), a 숏폼's MP4s from the render PC, and the files uploaded by hand. */
 export async function readFinals(supabase: Supabase, projectId: string, make: YpMake, kind?: YpKind | null): Promise<YpFinal[]> {
   const { data, error } = await supabase.from("os_records").select("id,stage,metadata").eq("parent_id", projectId).eq("record_type", "ai_job")
     .eq("metadata->>kind", MYIN_RUN_KIND).is("archived_at", null).limit(50);
   if (error) throw readFailed();
   // 숏폼 too since 2026-10-28: made from its confirmed 대본 by the vertical engine.
-  const runs = (data ?? []).filter(row => row.stage === "final_ready" && row.metadata?.final).map(row => {
-    const final = row.metadata.final as { at: string; bytes: number; durationSeconds: number };
-    return { at: final.at, source: "myin" as const, name: kind === "short" ? "숏폼 MP4" : "final_myin.mp4", bytes: final.bytes, durationSeconds: final.durationSeconds, runId: row.id as string };
-  });
+  // 완성본 후보 (유쓰 요청 2/8, 2026-11-02): every finished video a run made stays a version — the earlier ones too, and the last one
+  // while the video is being made again.
+  const runs = (data ?? []).flatMap(row => [...((row.metadata?.finals ?? []) as RunFinal[]), ...(row.metadata?.final ? [row.metadata.final as RunFinal] : [])].map(final =>
+    ({ at: final.at, source: "myin" as const, name: kind === "short" ? "숏폼 MP4" : "final_myin.mp4", bytes: final.bytes, durationSeconds: final.durationSeconds, runId: row.id as string })));
   if (kind === "short") {
     // The 숏폼 card belongs to the project owner; the caller has already been allowed to the project. The video link checks the run's signature.
     const { data: renders, error: renderError } = await createServiceSupabase().from("os_records").select("id,updated_at,metadata").eq("record_type", "ai_job").eq("metadata->>kind", SHORT_RENDER_KIND)
