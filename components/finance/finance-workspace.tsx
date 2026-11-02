@@ -91,7 +91,7 @@ export function FinanceWorkspace() {
   // 부가세 신고 참고 자료 is its own React page; the shared ledger app is not mounted for it.
   // 서류함 (2026-10-31) is its own React page too.
   if (documentsPage) return <CompanyDocuments token={accessToken} demo={demo} />;
-  if (vatPage) return demo ? <section className="panel empty-state" role="status"><h1>부가세 신고 참고 자료</h1><p>연습용 화면에서는 실제 결제·계산서가 없어 비어 있어요.</p></section> : <VatReference token={accessToken} />;
+  if (vatPage) return demo ? <section className="panel empty-state" role="status"><div><h1>부가세 신고 참고 자료</h1><p>연습용 화면에서는 실제 결제·계산서가 없어 비어 있어요.</p></div></section> : <VatReference token={accessToken} />;
   return (
     <>
       {error ? (

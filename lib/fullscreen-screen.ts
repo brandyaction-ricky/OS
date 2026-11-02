@@ -13,6 +13,9 @@ export const FULLSCREEN_ROUTES = {
   "/finance/cards": "finance-cards",
   "/finance/recurring": "finance-recurring",
   "/finance/budget": "finance-budget",
+  // 11-02 L2-4: 재무 서류함 · 부가세 참고 자료도 화면 키트(ui-v2)에
+  "/finance/vat": "finance-vat",
+  "/finance/documents": "finance-documents",
   "/home": "home",
   "/content/topics": "topics",
   "/content/scripts": "scripts",
