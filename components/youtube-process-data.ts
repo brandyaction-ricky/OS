@@ -15,7 +15,8 @@ import { markReviewed, setReviewers, type YpReviewer } from "@/lib/youtube-proce
 import { applyFeedback, cleanMarks, FEEDBACK_FILE_MAX, FEEDBACK_FILE_TYPES, FeedbackRuleError, type FeedbackAction, type FeedbackFile, type FeedbackMark, type FeedbackReply } from "@/lib/youtube-process/feedback";
 import { cutsFromScenes, scenesFromCuts, shortsAction, type YpShortAppeal, type YpShortBrief, type YpShortScene } from "@/lib/youtube-process/short";
 import { CardError, cardsMissing, nextCards, type CardsPatch } from "@/lib/cardnews/cards";
-import { cardSignature, emptyCardDraft, type CardDraft } from "@/lib/cardnews/formats";
+import { cardSignature, emptyCardDraft, type CardDraft, type CardPhoto } from "@/lib/cardnews/formats";
+import { CARD_DRAW_SIZE, type CardCharacterView, type CardDrawInput } from "@/lib/cardnews/draw";
 import { cardSourceProjectReady, projectCardSources, type CardSourceChoice } from "@/lib/cardnews/sources";
 
 /** What the CTA screen shows of one change (lib/server/youtube-cta.ts summary). */
@@ -131,6 +132,12 @@ export interface YpClient {
   cardCovers(ids: string[]): Promise<Record<string, CardDraft>>;
   /** The cards drawn as images now: one PNG, or every card and the caption as a ZIP. */
   cardsFile(id: string, query: { draft?: string; slide?: number; zip?: boolean }): Promise<Blob>;
+  /** 카드 그림: GPT draws one picture into the project's files; the PD puts it on a card as a photo. */
+  cardDraw(id: string, input: CardDrawInput): Promise<CardPhoto>;
+  /** 캐릭터 창고: the pictures 카드 그림 keeps the characters' faces from. */
+  cardCharacters(): Promise<CardCharacterView[]>;
+  addCardCharacter(input: { projectId: string; path: string; name: string }): Promise<CardCharacterView[]>;
+  removeCardCharacter(characterId: string): Promise<CardCharacterView[]>;
   demo: boolean;
 }
 export type YpCardInput = { from: "none"; title: string; target: string; note?: string } | { from: "project"; projectId: string; focus?: string } | { from: "threads"; itemId: string };
@@ -238,6 +245,10 @@ function apiClient(token: string): YpClient {
       if (!response.ok) { const body = await response.json().catch(() => null); throw new ApiRequestError(body?.error?.message ?? `이미지를 만들지 못했어요. (${response.status})`, body?.error?.code ?? "REQUEST_FAILED", response.status); }
       return response.blob();
     },
+    cardDraw: async (id, input) => (await apiRequest<{ photo: CardPhoto }>(`${base}/${id}/cards`, { token, method: "POST", body: json({ action: "draw", ...input }) })).photo,
+    cardCharacters: async () => (await apiRequest<{ characters: CardCharacterView[] }>("/api/v1/content/youtube/card-characters", { token })).characters,
+    addCardCharacter: async input => (await apiRequest<{ characters: CardCharacterView[] }>("/api/v1/content/youtube/card-characters", { token, method: "POST", body: json(input) })).characters,
+    removeCardCharacter: async characterId => (await apiRequest<{ characters: CardCharacterView[] }>(`/api/v1/content/youtube/card-characters?id=${encodeURIComponent(characterId)}`, { token, method: "DELETE" })).characters,
     members: async () => (await listMembers(token)).members
       .filter(member => member.is_active && !member.is_shared_account && member.member_kind !== "partner")
       .map(member => ({ id: member.id, name: member.display_name })),
@@ -360,6 +371,7 @@ const demoFinals = new Map<string, YpFinalView[]>();
 const demoAdopted = new Set<string>();
 const demoFeedback = new Map<string, YpFeedbackView[]>();
 const demoFiles = new Map<string, string>();
+const demoCharacters: CardCharacterView[] = [];
 /** The demo has no 영상 만드는 컴퓨터: [찾기] returns two example references at once (no images). */
 function exampleRefs(id: string, query: string): YpShortRefFetch {
   const now = new Date().toISOString();
@@ -469,6 +481,19 @@ function demoClient(): YpClient {
       return draft ? [[id, structuredClone(draft)]] : [];
     })),
     cardsFile: async () => { throw demoError(400, "DEMO_NO_RENDER", "연습 화면에서는 이미지를 만들지 않아요. 미리보기로 확인해 주세요."); },
+    // 연습 화면: no GPT; a grey 「연습 그림」 board with the scene stands in for the picture.
+    cardDraw: async (_id, input) => {
+      const { width, height } = CARD_DRAW_SIZE, scene = input.scene.slice(0, 40).replace(/[<&>"]/g, "");
+      const path = `youtube/demo/card/${crypto.randomUUID()}.png`;
+      demoFiles.set(path, `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="#e4e6ec"/><text x="50%" y="46%" font-size="64" text-anchor="middle" fill="#43474c">연습 그림</text><text x="50%" y="54%" font-size="36" text-anchor="middle" fill="#43474c">${scene}</text></svg>`)}`);
+      return { path, w: width, h: height };
+    },
+    cardCharacters: async () => structuredClone(demoCharacters),
+    addCardCharacter: async input => {
+      demoCharacters.push({ id: crypto.randomUUID(), name: input.name, path: input.path, at: new Date().toISOString(), byId: DEMO_ME, by: "리키", url: demoFiles.get(input.path) ?? "" });
+      return structuredClone(demoCharacters);
+    },
+    removeCardCharacter: async characterId => { demoCharacters.splice(demoCharacters.findIndex(row => row.id === characterId) >>> 0, 1); return structuredClone(demoCharacters); },
     update: async (id, expectedVersion, { assigneeId, ...fields }) => {
       const project = find(id);
       checkVersion(project.version, expectedVersion);

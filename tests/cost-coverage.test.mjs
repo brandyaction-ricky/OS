@@ -9,6 +9,7 @@ const PAID = [
   [/\b(transcribeMeeting|summarizeMeeting)\(|\/api\/v1\/meeting-summary/, /<CostTag kind="paid"/, "meeting transcription · summary"],
   [/\b(searchYoutubeMarket|resolveYoutubeChannel|createYoutubeUploadSession)\(|\/api\/v1\/youtube\/outlier/, /<CostTag kind="youtube"/, "YouTube Data API"],
   [/action: ?"extract"/, /<CostTag kind=/, "정본 규칙 추출"],
+  [/\bcardDraw\(/, /<CostTag kind="paid"/, "카드 AI 그림"],
 ];
 const files = dir => readdirSync(dir).flatMap(name => {
   const path = `${dir}/${name}`;

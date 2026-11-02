@@ -19,6 +19,7 @@ export async function GET(request: Request) {
       haiku: CLAUDE_FAST_MODEL,
       sonnet: CLAUDE_SMART_MODEL,
       transcribe: env.OPENAI_TRANSCRIPTION_MODEL || DEFAULT_COST_MODELS.transcribe,
+      image: env.OPENAI_IMAGE_MODEL?.trim() || DEFAULT_COST_MODELS.image,
     };
     return NextResponse.json({ models });
   } catch (error) { return apiErrorResponse(error); }

@@ -47,3 +47,15 @@ test("the server's generation budgets come from the same table as the popup", as
   assert.match(server, /tokenBudget = \(action[^)]*\) => GENERATION\[action\]\.output/);
   assert.match(server, /GENERATION\.comment_reply\.output/);
 });
+
+// 카드 그림 (대표 2026-11-02): GPT Image bills tokens; the estimate counts the picture out, each reference picture in, and the prompt.
+test("a card picture estimate follows quality and reference pictures", async () => {
+  const { imageEstimate, modelName, DEFAULT_COST_MODELS } = await import("../lib/cost.ts");
+  const model = DEFAULT_COST_MODELS.image;
+  assert.equal(modelName(model), "GPT Image 2.5 Flare");
+  assert.equal(imageEstimate(model, "medium", 0), Math.round((1_000 * 5 + 1_600 * 30) / 1e6 * 1400));
+  assert.equal(imageEstimate(model, "high", 2), Math.round((1_000 * 5 + 2 * 3_000 * 8 + 6_300 * 30) / 1e6 * 1400));
+  assert.ok(imageEstimate(model, "high", 0) > imageEstimate(model, "medium", 0));
+  assert.ok(imageEstimate(model, "medium", 4) > imageEstimate(model, "medium", 0));
+  assert.equal(imageEstimate("dall-e-3", "medium", 0), null);
+});
