@@ -60,6 +60,7 @@ test("the credit is read from OpenAI at most once per 5 minutes; a failed read s
   class ApiError extends Error { constructor(status, code, message) { super(message); this.status = status; this.code = code; } }
   const source = await readFile(new URL("../lib/server/openai-credit.ts", import.meta.url), "utf8");
   let clock = Date.UTC(2026, 10, 2, 8), calls = 0, fail = false;
+  const shared = [];
   class FakeDate extends Date { constructor(...args) { super(...(args.length ? args : [clock])); } static now() { return clock; } }
   const fetch = async () => { calls++; return fail ? { ok: false, status: 429, json: async () => ({ error: { code: "rate_limit_exceeded" } }) }
     : { ok: true, json: async () => ({ data: [{ start_time: Date.UTC(2026, 10, 1) / 1000, results: [{ amount: { value: calls, currency: "usd" } }] }], next_page: null }) }; };
@@ -67,9 +68,11 @@ test("the credit is read from OpenAI at most once per 5 minutes; a failed read s
   runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, {
     module: compiled, exports: compiled.exports, console: { error: () => undefined }, Date: FakeDate, fetch, URL, URLSearchParams, AbortSignal, Math, Number, String, Promise,
     process: { env: { OPENAI_ADMIN_KEY: "test-admin-key" } },
-    require: (name) => ({ "@/lib/http": { ApiError }, "@/lib/openai-credit": lib, "@/lib/youtube-process/gpt-draft": { GPT_SAVING_BELOW_USD: 20 } })[name],
+    require: (name) => ({ "@/lib/http": { ApiError }, "@/lib/openai-credit": lib, "@/lib/youtube-process/gpt-draft": { GPT_SAVING_BELOW_USD: 20 },
+      "next/cache": { unstable_cache: (fn, keys, options) => { shared.push([keys[0], options.revalidate]); return fn; } } })[name],
   });
   const { readOpenAiCredit } = compiled.exports;
+  assert.deepEqual(shared, [["openai-credit", 300]], "kept in Next's data cache, shared by every server instance, for 5 minutes");
   const [a, b] = await Promise.all([readOpenAiCredit(), readOpenAiCredit()]);
   assert.equal(calls, 1, "calls made at once share one read");
   assert.equal(a.spent, 1); assert.equal(b.spent, 1);

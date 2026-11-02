@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { ApiError } from "@/lib/http";
 import { creditCycle, dailyCosts, sumCosts } from "@/lib/openai-credit";
 import { GPT_SAVING_BELOW_USD, type GptTier } from "@/lib/youtube-process/gpt-draft";
@@ -5,17 +6,19 @@ import { GPT_SAVING_BELOW_USD, type GptTier } from "@/lib/youtube-process/gpt-dr
 const FRESH_MS = 5 * 60_000, STALE_MS = 60 * 60_000;
 
 /**
- * A provider's cost read at most once per 5 minutes per server instance (calls made at once share the read). Every GPT job asks
- * for the tier too, and OpenAI's Costs API answered 429 to the 작동 상태 panel (2026-11-02); a failed read falls back to the
- * last good one from the past hour.
+ * A provider's cost read at most once per 5 minutes (calls made at once share the read). Every GPT job asks for the tier too,
+ * and OpenAI's Costs API answered 429 to the 작동 상태 panel (2026-11-02). The read is kept in Next's data cache, shared by every
+ * server instance — each instance asking for itself still got 429 right after the deploy; a failed read falls back to the last
+ * good one from the past hour.
  */
-export function cachedRead<T>(read: () => Promise<T>) {
+export function cachedRead<T>(name: string, read: () => Promise<T>) {
+  const shared = unstable_cache(read, [name], { revalidate: FRESH_MS / 1000 });
   let asked: { at: number; value: Promise<T> } | null = null;
   let good: { at: number; value: T } | null = null;
   return (): Promise<T> => {
     const now = Date.now();
     if (asked && now - asked.at < FRESH_MS) return asked.value;
-    const value = read().then(
+    const value = shared().then(
       (result) => { good = { at: Date.now(), value: result }; return result; },
       (error) => { asked = null; if (good && Date.now() - good.at < STALE_MS) return good.value; throw error; });
     asked = { at: now, value };
@@ -23,7 +26,7 @@ export function cachedRead<T>(read: () => Promise<T>) {
   };
 }
 
-export const readOpenAiCredit = cachedRead(() => fetchOpenAiCredit());
+export const readOpenAiCredit = cachedRead("openai-credit", () => fetchOpenAiCredit());
 
 /** This cycle's GPT API credit: OPENAI_ADMIN_KEY (read-only admin key of the organization the OS key belongs to), the grant and its renewal day. */
 async function fetchOpenAiCredit(now = new Date()) {
