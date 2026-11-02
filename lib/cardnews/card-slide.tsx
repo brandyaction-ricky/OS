@@ -210,7 +210,9 @@ function ToonSlide({ draft, slide, index, theme, src }: { draft: CardDraft; slid
     <div style={{ display: "flex", maxWidth: 620, background: theme.white, border: `${LINE}px solid ${theme.title}`, borderRadius: "50%", padding: "40px 70px", ...centred }}>{f(name, centred)}</div>
     <svg width={46} height={48} viewBox="0 0 46 48" style={{ marginTop: -LINE - 2, ...(side === "left" ? { marginLeft: 120 } : { marginRight: 120 }) }}>
       <path d={side === "left" ? "M6 0 L4 46 L40 0" : "M40 0 L42 46 L6 0"} fill={theme.white} stroke={theme.title} strokeWidth={LINE} strokeLinejoin="round" /></svg></div>;
-  const think = has("think"), shoutTop = think ? 430 : 300;
+  // 외침 goes in the top band with the 해설 and 속마음, clear of the faces the picture keeps in its middle (it covered them there,
+  // 2026-11-02 1화 시안); only when all three are on one panel does it drop below them.
+  const think = has("think"), shout = has("shout"), shoutTop = think && has("narration") ? 430 : 40;
   return <>
     {/* eslint-disable-next-line @next/next/no-img-element -- next/og draws plain <img>; next/image does not exist there. */}
     {src ? <img src={src} alt="" width={W} height={H} style={{ ...full, objectFit: "cover" }} />
@@ -218,14 +220,14 @@ function ToonSlide({ draft, slide, index, theme, src }: { draft: CardDraft; slid
         {slide.photo ? "" : `그림 자리 · ${plainCardText(slide.fields.scene ?? "").trim().slice(0, 90) || "장면을 쓰고 「AI로 그리기」로 그려요"}`}</div>}
     {slide.type === "toon" ? <div style={{ display: "flex", flexDirection: "column", position: "absolute", left: 64, bottom: 128, maxWidth: 800, background: theme.white, borderRadius: 24, padding: "32px 44px" }}>
       {f("episode", { color: theme.blue, marginBottom: 12 })}{f("title")}</div> : null}
-    {has("narration") ? <Hexagon slide={slide} width={think ? 440 : 760} theme={theme}>{f("narration", centred)}</Hexagon> : null}
+    {has("narration") ? <Hexagon slide={slide} width={think || shout ? 440 : 760} theme={theme}>{f("narration", centred)}</Hexagon> : null}
     {think ? <div style={row({ top: 40 }, true)}><div style={{ display: "flex", position: "relative", width: 540, height: 330, alignItems: "center", justifyContent: "center" }}>
       <svg width={540} height={330} viewBox="0 0 540 330" style={{ position: "absolute", left: 0, top: 0 }}>
         <path d={SPIKES} stroke={theme.white} strokeWidth={10} strokeLinecap="round" /><path d={SPIKES} stroke={theme.title} strokeWidth={4} strokeLinecap="round" />
         <ellipse cx={270} cy={165} rx={224} ry={130} fill={theme.white} /></svg>
       {f("think", { ...centred, maxWidth: 330 })}</div></div> : null}
-    {has("shout") ? <div style={row({ top: shoutTop }, true)}><div style={{ display: "flex", position: "relative", width: 540, height: 300, alignItems: "center", justifyContent: "center" }}>
-      <svg width={540} height={300} viewBox="0 0 540 300" style={{ position: "absolute", left: 0, top: 0 }}><polygon points={BURST} fill={theme.white} stroke={theme.title} strokeWidth={LINE} strokeLinejoin="round" /></svg>
+    {shout ? <div style={row({ top: shoutTop }, !think || shoutTop > 40)}><div style={{ display: "flex", position: "relative", width: 500, height: 280, alignItems: "center", justifyContent: "center" }}>
+      <svg width={500} height={280} viewBox="0 0 540 300" preserveAspectRatio="none" style={{ position: "absolute", left: 0, top: 0 }}><polygon points={BURST} fill={theme.white} stroke={theme.title} strokeWidth={LINE} strokeLinejoin="round" /></svg>
       {f("shout", { ...centred, maxWidth: 320, transform: "skewX(-8deg)" })}</div></div> : null}
     {/* No data-card-field: the tilted, stepping letters always reach past their own box, and 6 letters never need cutting. */}
     {has("sfx") ? <div style={{ display: "flex", position: "absolute", left: 72, top: 600, transform: "rotate(-10deg)", alignItems: "flex-start" }}>
