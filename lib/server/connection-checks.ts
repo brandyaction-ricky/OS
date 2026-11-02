@@ -18,6 +18,11 @@ export async function readConnectionChecks() {
   const configured = connectionConfiguration();
   // Owners are read alongside the checks instead of before them.
   const ownersRead = db.from("os_connection_owners").select("service,primary_owner,backup_owner,version");
+  // The index coverage (about half a second) starts with the probe history instead of after it.
+  const embeddingsRead = Promise.all([
+    getIndexCoverage(db).catch(()=>null),
+    db.from("os_embedding_jobs").select("finished_at").eq("status", "done").is("last_error", null).order("finished_at", { ascending: false }).limit(1).maybeSingle(),
+  ]);
   return Promise.all(CONNECTIONS.map(async ({ id }): Promise<ConnectionCheck> => {
     const [lastOk, latest, failures] = await Promise.all([
       db.from("os_connection_checks").select("checked_at").eq("service", id).eq("ok", true).order("checked_at", { ascending: false }).limit(1).maybeSingle(),
@@ -30,10 +35,7 @@ export async function readConnectionChecks() {
     let evidenceAvailable = !lastOk.error && !latest.error && !failures.error;
     // Existing failed jobs take precedence over a successful credentials probe.
     if (id === "embeddings") {
-      const [coverage, success] = await Promise.all([
-        getIndexCoverage(db).catch(()=>null),
-        db.from("os_embedding_jobs").select("finished_at").eq("status", "done").is("last_error", null).order("finished_at", { ascending: false }).limit(1).maybeSingle(),
-      ]);
+      const [coverage, success] = await embeddingsRead;
       blockedJobs = !coverage || coverage.truncated ? null : coverage.failed;
       if (success.data?.finished_at && (!lastOkAt || success.data.finished_at > lastOkAt)) lastOkAt = success.data.finished_at;
       evidenceAvailable &&= Boolean(coverage&&!coverage.truncated) && !success.error;
