@@ -274,6 +274,19 @@
 .linear-shell .ui-v2.yp .yp-ytm .yp-yt-av{width:30px;height:30px}
 .linear-shell .ui-v2.yp .yp-ytm .yp-yt-t{font-size:13px}
 .linear-shell .ui-v2.yp .yp-yt.yp-big{width:520px}
+/* 작게 보기 (유쓰 요청 6/8): PC 검색 결과 줄, 시청 화면 옆 추천 목록 */
+.linear-shell .ui-v2.yp .yp-yt.yp-yt-search,.linear-shell .ui-v2.yp .yp-yt.yp-yt-side{display:flex;gap:12px;align-items:flex-start}
+.linear-shell .ui-v2.yp .yp-yt.yp-yt-search{width:560px}
+.linear-shell .ui-v2.yp .yp-yt.yp-yt-side{width:402px;gap:8px}
+.linear-shell .ui-v2.yp .yp-yt-search .yp-thumb{width:56%;flex:none}
+.linear-shell .ui-v2.yp .yp-yt-side .yp-thumb{width:168px;flex:none;border-radius:8px}
+.linear-shell .ui-v2.yp .yp-yt-b{min-width:0;flex:1}
+.linear-shell .ui-v2.yp .yp-yt-pick{margin-bottom:8px}
+.linear-shell .ui-v2.yp .yp-yt-pick-row{grid-column:1/-1;margin:0}
+.linear-shell .ui-v2.yp .yp-yt-search .yp-yt-t{font-size:18px;font-weight:400}
+.linear-shell .ui-v2.yp .yp-yt-side .yp-yt-t{font-size:14px}
+.linear-shell .ui-v2.yp .yp-yt-search .yp-yt-m:last-child{display:flex;align-items:center;gap:6px;margin-top:10px}
+.linear-shell .ui-v2.yp .yp-yt-search .yp-yt-av{width:24px;height:24px}
 
 /* 서식 편집기 (§5 · §6) */
 .linear-shell .ui-v2.yp .yp-rte{border:1px solid var(--line);border-radius:8px;background:var(--card);overflow:hidden}
