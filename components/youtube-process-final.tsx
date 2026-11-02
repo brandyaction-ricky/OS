@@ -11,7 +11,7 @@ import type { YpFeedbackView } from "./youtube-process-data";
 import { useSession } from "./session-provider";
 import { ApiRequestError } from "@/lib/api-client";
 import { feedbackNotice, compareTime, FEEDBACK_FILES_PER_ITEM, FEEDBACK_FILTER_LABEL, feedbackClosed, feedbackMatches, type FeedbackAction, type FeedbackFile, type FeedbackFilter, type FeedbackMark } from "@/lib/youtube-process/feedback";
-import { YtCard } from "./youtube-process-media";
+import { YtCard, YtLookPicker } from "./youtube-process-media";
 import { VoiceFeedbackBox } from "./youtube-process-voice-feedback";
 import { alignVersions, mapTime, srtCues, type Anchor, type VersionChange } from "@/lib/youtube-process/compare";
 
@@ -272,6 +272,7 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
                 video.current?.pause(); videoB.current?.pause(); hold.current = change.a[0]; seek(change.a[0]); if (videoB.current) videoB.current.currentTime = change.b[0];
               }}>A {fmt(change.a[0])} · B {fmt(change.b[0])}</button> <span>{change.bText ? `B 「${change.bText.slice(0, 60)}${change.bText.length > 60 ? "…" : ""}」` : ""}{change.aText ? `${change.bText ? " · " : ""}A에만 「${change.aText.slice(0, 40)}${change.aText.length > 40 ? "…" : ""}」` : ""}</span></li>)}</ul></details> : null}
           </> : <div className="yp-tview2" style={{ padding: 12, display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))" }}>
+            <div className="yp-yt-pick yp-yt-pick-row"><YtLookPicker /></div>
             {SLOTS.filter(slot => confirmed?.[slot]).map(slot => <button key={slot} type="button" className={`yp-abc${thumbTarget === slot ? " yp-on" : ""}`} style={{ textAlign: "left" }} onClick={() => setThumbTarget(slot)}>
               <div className="yp-abc-h"><span className={`yp-ltag${slot === "C" ? " yp-c" : ""}`}>{slot}</span>{finalPair(plan, make, slot)?.changed ? <span className="yp-tag yp-warn">컨펌본과 다름</span> : null}</div>
               <YtCard page={page} thumb={finalPair(plan, make, slot)?.thumb} path={make.thumbs[slot]?.path} title={finalPair(plan, make, slot)?.title ?? ""} /></button>)}</div>}
