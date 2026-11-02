@@ -274,6 +274,14 @@
 .linear-shell .ui-v2.yp .yp-ytm .yp-yt-av{width:30px;height:30px}
 .linear-shell .ui-v2.yp .yp-ytm .yp-yt-t{font-size:13px}
 .linear-shell .ui-v2.yp .yp-yt.yp-big{width:520px}
+/* 할 일로 묶어 보기 (유쓰 요청 7/8) */
+.linear-shell .ui-v2.yp .yp-todo{margin:0 0 10px;padding:8px 10px;border:1px solid var(--line-soft);border-radius:10px;background:var(--card);font-size:13px}
+.linear-shell .ui-v2.yp .yp-todo summary{cursor:pointer;font-weight:700;display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
+.linear-shell .ui-v2.yp .yp-todo summary .yp-muted{font-weight:400;font-size:12px}
+.linear-shell .ui-v2.yp .yp-todo-g{margin-top:8px}
+.linear-shell .ui-v2.yp .yp-todo-g ul{list-style:none;margin:4px 0 0;padding:0;display:grid;gap:4px}
+.linear-shell .ui-v2.yp .yp-todo-g li{display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
+.linear-shell .ui-v2.yp .yp-todo-g li .yp-muted{font-size:12px}
 
 /* 서식 편집기 (§5 · §6) */
 .linear-shell .ui-v2.yp .yp-rte{border:1px solid var(--line);border-radius:8px;background:var(--card);overflow:hidden}
