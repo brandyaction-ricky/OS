@@ -52,15 +52,26 @@ test("the shared preview drawing renders explicit Korean newlines into a real 10
   runInNewContext(ts.transpileModule(drawing, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 } }).outputText, {
     module: view, exports: view.exports, require: name => name === "./formats.ts" ? formats : require(name),
   });
-  const fonts = await Promise.all([400, 700, 800].map(async weight => ({ name: "Pretendard", weight, style: "normal", data: await readFile(new URL(`../lib/cardnews/fonts/Pretendard-${weight}.woff`, import.meta.url)) })));
+  const fonts = await Promise.all([400, 500, 600].map(async weight => ({ name: "Pretendard", weight, style: "normal", data: await readFile(new URL(`../lib/cardnews/fonts/Pretendard-${weight}.woff`, import.meta.url)) })));
   const render = async head => {
     const d = draft(); d.slides[0].fields = { head, sub: "서브 첫 줄\n둘째 줄" };
     return Buffer.from(await new ImageResponse(createElement(view.exports.CardSlideView, { draft: d, index: 0 }), { ...formats.CARD_SIZE, fonts }).arrayBuffer());
   };
-  const multiline = await render("첫 줄\n둘째 줄"), singleline = await render("첫 줄 둘째 줄");
+  const multiline = await render("첫 줄\n둘째 줄"), singleline = await render("첫 줄 둘째 줄"), marked = await render("첫 줄 *둘째* 줄");
   assert.equal(multiline.subarray(1, 4).toString(), "PNG");
   assert.equal(multiline.readUInt32BE(16), 1080); assert.equal(multiline.readUInt32BE(20), 1350);
   assert.notDeepEqual(multiline, singleline, "explicit newlines must affect the exported drawing");
+  assert.notDeepEqual(marked, singleline, "a marked phrase is drawn in the accent colour");
+});
+
+test("a *marked* phrase is not counted as letters and one per card is the rule", () => {
+  assert.equal(formats.plainCardText("연봉이 *덜 지칠* 거라는 **생각**"), "연봉이 덜 지칠 거라는 생각");
+  assert.equal(formats.cardLetters("*1234567890123456*"), 16);
+  const d = { ...draft(), caption: "캡션", hashtags: [] };
+  d.slides[1].fields = { title: "*1234567890123456*", body: "설명" };
+  assert.deepEqual(formats.cardProblems(d).blocking.filter(text => text.includes("소제목")), []);
+  d.slides[1].fields.body = "*하나* 그리고 *둘*";
+  assert.ok(formats.cardProblems(d).warnings.some(text => text.startsWith("2장에 강조가 3곳")));
 });
 
 test("saved URLs reject executable schemes, credentials and oversized values", () => {

@@ -37,6 +37,13 @@ for (const [kind, query, summary] of [["longform", "고객 인터뷰", "롱폼"]
   });
 }
 
+test("a *marked* phrase shows in the accent colour and its stars are not counted", async ({ page }) => {
+  await editor(page);
+  await page.getByLabel("헤드 카피", { exact: true }).fill("연봉이 *덜 지칠까요*");
+  await expect(page.locator(".yp-card-big [data-card-field=head] span").filter({ hasText: "지칠까요" })).toHaveCSS("color", "rgb(238, 212, 103)");
+  await expect(page.locator(".yp-card-fields .yp-card-n").first()).toHaveText(/^10\//);
+});
+
 test("headline and subcopy retain Enter and shared post text survives card selection and save", async ({ page }) => {
   await editor(page);
   await page.getByLabel("헤드 카피", { exact: true }).fill("QA 첫 줄\n둘째 줄");

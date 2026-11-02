@@ -1,6 +1,6 @@
 // 카드뉴스 포맷 목록 (설계서 2026-10-30 §2): what each format is made of — slide kinds, how many, and the letters each field may
 // hold. The screens, the AI job and the server check all read this one list; the 카드뉴스 정본 says how to write, not these numbers.
-// Limits count letters with spaces; they start from the font size and the 920px text width and are tuned while the 정본 is ground.
+// Limits count letters with spaces; they start from the font size and the 888px text width and are tuned while the 정본 is ground.
 
 export const CARD_SIZE = { width: 1080, height: 1350 } as const;
 export const CARD_MAX_SLIDES = 10;
@@ -69,6 +69,10 @@ export function moveCardSlide(draft: CardDraft, from: number, to: number): CardD
 /** Parsing is for storage only: never replace the text in an input while someone is typing Korean. */
 export const parseCardHashtags = (text: string) => [...new Set(text.split(/[\s,#]+/u).map(tag => tag.trim()).filter(Boolean))].slice(0, 30);
 
+/** `*구절*` marks the one phrase read first on a card (디자인 정본 §7: blue, gold on a blue card). The marks are not counted as letters. */
+export const CARD_MARK = /\*{1,2}([^*\n]+?)\*{1,2}/;
+export const plainCardText = (value: string) => value.split(CARD_MARK).join("");
+export const cardLetters = (value: string) => [...plainCardText(value)].length;
 const letters = (value: string) => [...value].length;
 // Owner rules carried into every format: the 진단 is paid (발행 키트 정본 · 2026-10-26), and '여러분' is not our voice (말투 정본).
 const BANNED: [RegExp, string][] = [[/무료\s*(진단|검사)/, "진단은 유료예요 — ‘무료 진단’이라고 쓰지 않아요"], [/여러분/, "‘여러분’은 쓰지 않아요 (말투 정본)"]];
@@ -97,11 +101,13 @@ export function cardProblems(draft: Pick<CardDraft, "format" | "slides" | "capti
     for (const field of spec.fields) {
       const value = (slide.fields[field.key] ?? "").trim();
       if (!value && !field.optional) blocking.push(`${index + 1}장 ${field.label}을 써 주세요`);
-      if (letters(value) > field.max) blocking.push(`${index + 1}장 ${field.label}이 ${letters(value) - field.max}자 넘쳐요 (${field.max}자까지)`);
+      if (cardLetters(value) > field.max) blocking.push(`${index + 1}장 ${field.label}이 ${cardLetters(value) - field.max}자 넘쳐요 (${field.max}자까지)`);
       if (value.length >= 8) { if (seen.has(value)) warnings.push(`${seen.get(value)! + 1}장과 ${index + 1}장에 같은 문장이 있어요`); else seen.set(value, index); }
     }
+    const marks = Object.values(slide.fields).reduce((sum, value) => sum + (value.split(CARD_MARK).length - 1) / 2, 0);
+    if (marks > 1) warnings.push(`${index + 1}장에 강조가 ${marks}곳이에요 — 한 장에 하나만 *별표*로 감싸요`);
   });
-  const all = [...draft.slides.flatMap(slide => Object.values(slide.fields)), draft.caption].join("\n");
+  const all = [...draft.slides.flatMap(slide => Object.values(slide.fields).map(plainCardText)), draft.caption].join("\n");
   for (const [pattern, message] of BANNED) if (pattern.test(all)) warnings.push(message);
   if (/\d+(\.\d+)?\s*(%|퍼센트|배|명 중)/.test(all) && !/출처|자료|조사|연구|통계/.test(all)) warnings.push("숫자가 있어요 — 출처를 근거 칸이나 캡션에 적어 주세요");
   if (letters(draft.caption) > CAPTION_MAX) blocking.push(`캡션은 ${CAPTION_MAX.toLocaleString("ko-KR")}자까지예요`);

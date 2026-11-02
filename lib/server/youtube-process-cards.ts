@@ -11,7 +11,7 @@ import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { CardSlideView } from "@/lib/cardnews/card-slide";
 import { CardError, cardsMissing, nextCards, pickedDraft } from "@/lib/cardnews/cards";
-import { CAPTION_MAX, CARD_FORMAT_IDS, CARD_MAX_SLIDES, CARD_SIZE, cardSignature, type CardDraft } from "@/lib/cardnews/formats";
+import { CAPTION_MAX, CARD_FORMAT_IDS, CARD_MAX_SLIDES, CARD_SIZE, cardSignature, plainCardText, type CardDraft } from "@/lib/cardnews/formats";
 import { storedZip } from "@/lib/cardnews/zip";
 import { projectCardSources, visibleThreadSource, type CardSourceChoice } from "@/lib/cardnews/sources";
 import { applyGateAction, quietHours } from "@/lib/youtube-process/confirm";
@@ -167,7 +167,7 @@ export async function checkCardScreens(project: YpProject, who: { id: string; te
   let data: YpScreenCheck;
   try {
     const images = await Promise.all(draft.slides.map(async (_, index) => `data:image/png;base64,${Buffer.from(await cardPng(draft, index)).toString("base64")}`));
-    const hints = draft.slides.map((slide, index) => `#${index + 1} ${slide.type}: ${Object.values(slide.fields).filter(Boolean).join(" / ").replace(/\s+/g, " ").slice(0, 160)}`).join("\n");
+    const hints = draft.slides.map((slide, index) => `#${index + 1} ${slide.type}: ${Object.values(slide.fields).filter(Boolean).map(plainCardText).join(" / ").replace(/\s+/g, " ").slice(0, 160)}`).join("\n");
     const text = await generateContentText({ model, effort: effort === "high" ? "medium" : "low", maxTokens: 8_000, timeoutMs, jsonSchema: SCREEN_SCHEMA, prompt: cardScreenPrompt(hints), images });
     const result = parseScreen(text, draft.slides.length);
     data = result ? { ...base, state: "done", ...result } : { ...base, state: "failed", error: "GPT 답을 읽지 못했어요. 다시 검사해 주세요." };
@@ -190,9 +190,9 @@ export async function checkCardsAgain(actor: RequestActor, id: string, tier: Gpt
 }
 
 // ── PNG · ZIP ──
-let fonts: Promise<{ name: string; data: Buffer; weight: 400 | 700 | 800; style: "normal" }[]> | null = null;
-// The same Pretendard the browser preview uses (public/fonts/pretendard), cut to three static weights: Satori reads no woff2.
-const loadFonts = () => fonts ??= Promise.all(([400, 700, 800] as const).map(async weight =>
+let fonts: Promise<{ name: string; data: Buffer; weight: 400 | 500 | 600; style: "normal" }[]> | null = null;
+// The same Pretendard the browser preview uses (public/fonts/pretendard), cut to the three weights the 디자인 정본 uses: Satori reads no woff2.
+const loadFonts = () => fonts ??= Promise.all(([400, 500, 600] as const).map(async weight =>
   ({ name: "Pretendard", data: await readFile(join(process.cwd(), "lib/cardnews/fonts", `Pretendard-${weight}.woff`)), weight, style: "normal" as const })));
 
 export async function cardPng(draft: CardDraft, index: number) {

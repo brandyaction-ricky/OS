@@ -8,7 +8,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { ArrowDown, ArrowRight, ArrowUp, Copy, Download, GalleryHorizontal, Plus, Trash2 } from "lucide-react";
 import { CardSlideView } from "@/lib/cardnews/card-slide";
 import { cardsMissing } from "@/lib/cardnews/cards";
-import { addCardSlide, CARD_FORMAT_IDS, CARD_FORMATS, CARD_MAX_SLIDES, CARD_SIZE, cardProblems, moveCardSlide, parseCardHashtags, removeCardSlide, slideSpec, type CardDraft, type CardFormatId } from "@/lib/cardnews/formats";
+import { addCardSlide, CARD_FORMAT_IDS, CARD_FORMATS, CARD_MAX_SLIDES, CARD_SIZE, cardLetters, cardProblems, moveCardSlide, parseCardHashtags, removeCardSlide, slideSpec, type CardDraft, type CardFormatId } from "@/lib/cardnews/formats";
 import type { CardSourceChoice } from "@/lib/cardnews/sources";
 import { apiRequest } from "@/lib/api-client";
 import { modelName } from "@/lib/cost";
@@ -24,7 +24,6 @@ import { CardSourcePicker } from "./card-source-picker";
 import { CardUrlBookmarks } from "./card-url-bookmarks";
 import { GateBanner, gateAction, gateSub, LockedStep, stepAction, Subject, useGate, useLeaveGuard, YpFrame, YpSection, type YpPage } from "./youtube-process-frame";
 
-const letters = (value: string) => [...value].length;
 const SOURCE_NAME = { longform: "롱폼", short: "숏폼", threads: "스레드", none: "" } as const;
 
 /** One card at `width` px, drawn at 1080 × 1350 and scaled; reports the fields whose text runs past their lines. */
@@ -302,7 +301,8 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
         <CardEditorPreview draft={draft} index={current} />
         <div className="yp-card-fields">
           <h3>{current + 1}장 · {spec?.label}</h3>
-          {spec?.fields.map(field => { const value = draft.slides[current].fields[field.key] ?? ""; const n = letters(value);
+          {editable ? <p className="yp-hint">가장 먼저 읽힐 구절 하나를 *별표*로 감싸면 파란색으로 보여요 (표지 · 마무리는 노란색).</p> : null}
+          {spec?.fields.map(field => { const value = draft.slides[current].fields[field.key] ?? ""; const n = cardLetters(value);
             const set = (text: string) => edit({ ...draft, slides: draft.slides.map((row, index) => index === current ? { ...row, fields: { ...row.fields, [field.key]: text } } : row) });
             return <label key={field.key} className="yp-field"><span className="yp-fld-h"><b>{field.label}</b>{field.optional ? <span className="yp-opt">선택</span> : null}
               <span className={n > field.max ? "yp-card-n yp-bad" : "yp-card-n"}>{n}/{field.max}</span>{over[current]?.includes(field.key) ? <span className="yp-tag yp-bad">넘침</span> : null}</span>
@@ -336,7 +336,7 @@ function CardPostFields({ draft, editable, onEdit, onComposing }: { draft: CardD
   useEffect(() => { if (!focused.current) setTags(draft.hashtags.map(tag => `#${tag}`).join(" ")); }, [draft.hashtags]);
   return <section className="yp-card-post" aria-label="카드뉴스 공통 게시글">
     <h3>공통 게시글 · 모든 카드에 함께 사용</h3><p className="yp-hint">카드를 바꿔도 이 영역은 유지됩니다. 최종 검토와 내보내기에서도 확인할 수 있어요.</p>
-    <label className="yp-field"><span className="yp-fld-h"><b>캡션</b><span className="yp-card-n">{letters(draft.caption)}자</span></span><textarea className="yp-in" rows={5} aria-label="공통 캡션" value={draft.caption} disabled={!editable} onCompositionStart={() => onComposing(true)} onCompositionEnd={() => onComposing(false)} onChange={event => onEdit({ ...draft, caption: event.target.value })} /></label>
+    <label className="yp-field"><span className="yp-fld-h"><b>캡션</b><span className="yp-card-n">{[...draft.caption].length}자</span></span><textarea className="yp-in" rows={5} aria-label="공통 캡션" value={draft.caption} disabled={!editable} onCompositionStart={() => onComposing(true)} onCompositionEnd={() => onComposing(false)} onChange={event => onEdit({ ...draft, caption: event.target.value })} /></label>
     <label className="yp-field"><span className="yp-fld-h"><b>해시태그</b><span className="yp-opt">3~5개 · 띄어 써요</span></span><input className="yp-in" aria-label="공통 해시태그" value={tags} disabled={!editable} onFocus={() => { focused.current = true; }} onBlur={() => { focused.current = false; }} onCompositionStart={() => onComposing(true)} onCompositionEnd={() => onComposing(false)}
       onChange={event => { setTags(event.target.value); onEdit({ ...draft, hashtags: parseCardHashtags(event.target.value) }); }} /></label>
   </section>;
