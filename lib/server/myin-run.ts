@@ -577,13 +577,18 @@ async function beginPrep(service: Service, record: OsRecord, run: MyinRun, by: s
   return save(service, record, "backlog", cta.every((c) => c.status === "ready") ? "prep_pending" : "cta_pending", next);
 }
 
-/** [자료 준비 다시 하기]: after a finished check (e.g. a library track was missing) or a blocked attempt. */
+/** [자료 준비 다시 하기]: after a finished check (e.g. a library track was missing) or a blocked attempt; a stop at the clips cuts only the clips again. */
 export async function startMyinPrep(actor: RequestActor, runId: string) {
   const { record, run } = await visibleRun(actor, runId);
   const restart = record.status === "blocked" && ["cta_pending", "prep_pending", "clips_pending"].includes(record.stage ?? "");
   if ((record.stage !== "prep_ready" && !restart) || !run.storyboard || run.review?.decision !== "confirmed")
     throw new ApiError(409, "MYIN_PREP_NOT_OPEN", "기획표 확인이 끝난 뒤에 다시 할 수 있습니다.");
   await assertCurrent(createServiceSupabase(), run);
+  // 멈춘 곳부터 (유쓰 요청 3/8): a stop while cutting the preview clips keeps the finished preparation and cuts the clips again.
+  if (restart && record.stage === "clips_pending" && run.prepared && !run.clipsReview) {
+    const next: MyinRun = { ...run, attempts: 0 }; delete next.lease; delete next.lastError;
+    return presentMyinRun(await save(createServiceSupabase(), record, "backlog", "clips_pending", next));
+  }
   return presentMyinRun(await (run.clipsReview ? beginPrep(createServiceSupabase(), record, run, actor.id) : beginDraft(createServiceSupabase(), record, run)));
 }
 

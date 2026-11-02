@@ -14,6 +14,7 @@ import { MyinScreenCheck } from "./myin-screen-check";
 import { MyinVoiceCheck, type MyinVoiceCheckView, type MyinVoiceFixView } from "./myin-voice-check";
 import { DraftPlacePicker, localBlocker, useLocalRender, type DraftPlace } from "./myin-local-render";
 import { assToSrt } from "@/lib/subtitle-files";
+import { myinRetryScope, myinStop } from "@/lib/myin-stop";
 
 interface Storyboard { scenes: number; model: string; at: string; metaphors: { scene: number; type: string; at: string }[]; cta: { after: string; line: string }[];
   summary: { title: string; points: string[] } | null; reasons: { metaphors: string; cta: string; summary: string };
@@ -45,12 +46,15 @@ const SHORT_MIN: Record<string, number> = { words_pending: 6, prep_pending: 3, c
 const typicalMinutes = (run: MyinRun) => run.voiceOnPc && run.stage === "words_pending" ? (run.layout === "short" ? 8 : 10 + Math.ceil(run.paragraphs / 4))
   : run.layout === "short" ? SHORT_MIN[run.stage] : run.stage === "clips_pending" ? Math.ceil(((run.storyboard?.metaphors.length ?? 0) + 1) * 1.5)
   : run.stage === "final_pending" ? finalMinutes(run) : TYPICAL_MIN[run.stage];
-// What a stop means, so a staff member knows whether pressing again can help (2026-10-26: three presses hit the same stop).
-const STOP: Record<string, string> = {
-  WORKER_STAGE_FAILED: "영상 만드는 컴퓨터의 프로그램이 도중에 멈췄어요. 다시 해도 같은 이유로 멈출 수 있어요 — 다시 하기 전에 OS 담당자에게 알려 주세요.",
-  WORKER_DOWNLOAD_FAILED: "영상 만드는 컴퓨터가 사진이나 음성 파일을 받지 못했어요. 사진 주소를 확인하거나 OS 담당자에게 알려 주세요.",
-  MYIN_RUN_STALE: "원고가 바뀌었어요. v13 음성을 다시 시작해 주세요.",
-};
+// What a stop means and what 다시 하기 redoes, so a staff member knows whether pressing again can help (2026-10-26: three presses hit
+// the same stop; 유쓰 요청 3/8 2026-11-02: every code in plain words, with what is kept).
+function StopNote({ run }: { run: MyinRun }) {
+  if (run.status !== "blocked" && !run.lastErrorCode) return null;
+  const stop = myinStop(run.lastErrorCode);
+  if (run.status !== "blocked") return <small>한 번 멈춰서 영상 만드는 컴퓨터가 다시 하고 있어요 · {stop.why}</small>;
+  const scope = myinRetryScope(run);
+  return <small className="yt-stop"><b>멈춘 이유</b> {stop.why}{scope ? <><br /><b>다시 하면</b> {scope}</> : null}<br />{stop.next}</small>;
+}
 // 2026-10-27 대표: ③ 시안 → ④ 자료 준비(사진 확정 · 구독 대사 · 사운드) → ⑤ 최종 시안. The same stages run twice: before the drafts are
 // confirmed (clipsReview empty) the preparation is the ③ draft one, after it the ④ one.
 // 내 컴퓨터로 시안 (2026-10-27): the ③ drafts of a run sent to a member's own Mac name that computer instead of the render PC.
@@ -70,7 +74,7 @@ function RunState({ run }: { run: MyinRun }) {
   const started = run.workingSince ? new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit" }).format(new Date(run.workingSince)) : "";
   return <>
     <span className="status-pill" data-status={run.status === "blocked" ? "failed" : "scheduled"}>{run.status === "blocked" ? `멈춤 · 오류 코드 ${run.lastErrorCode ?? "없음"}` : phaseLabel(run)}</span>
-    {run.status === "blocked" ? STOP[run.lastErrorCode ?? ""] ? <small>{STOP[run.lastErrorCode ?? ""]}</small> : null
+    {run.status === "blocked" || (run.lastErrorCode && minutes === null) ? <StopNote run={run} />
       : minutes !== null ? <small>시작 {started} · {minutes}분째{typical ? minutes > typical * 1.5 ? " · 평소보다 오래 걸려요(확인 필요)" : ` · 보통 ${typical}분쯤 걸려요${run.stage === "clips_pending" && run.layout !== "short" ? `(미리보기 ${(run.storyboard?.metaphors.length ?? 0) + 1}개)` : ""}` : ""}</small>
       : typical && run.status === "backlog" ? <small>{maker(run)} 차례를 기다리는 중</small> : null}
   </>;
@@ -227,6 +231,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       {run ? <div className="yt-run">
         <div className="yt-run-head"><span className="status-pill" data-status={run.status === "blocked" && !run.words ? "failed" : run.words && !run.voiceFixes?.length ? "approved" : "scheduled"}>{run.voiceFixes?.length && run.stage === "words_pending" ? "고친 곳 다시 만드는 중" : run.words ? "받아쓰기·자막 완료" : phase}</span>
           {run.voiceOnPc ? <small>음성 {run.paragraphs}문단 · 영상 만드는 컴퓨터가 문장마다 만들어 고름</small> : <small>음성 {run.paragraphsReady}/{run.paragraphs}문단</small>}</div>
+        {run.status === "blocked" && !run.words ? <StopNote run={run} /> : null}
         {run.stage === "voice_pending" ? <progress max={run.paragraphs} value={run.paragraphsReady} aria-label="음성 진행" /> : null}
         {run.words ? <small>낭독 {Math.floor(run.words.durationSeconds / 60)}분 {Math.round(run.words.durationSeconds % 60)}초 · 받아쓴 단어 {run.words.words.toLocaleString()}개 · 자막 {run.words.subtitleLines}줄</small> : null}
       </div> : null}
@@ -326,8 +331,8 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       </div> : null}
       {run?.clipsReview ? <small>{personName(run.clipsReview.name)} 미리보기 확인 · {when(run.clipsReview.at)}{run.clipsReview.note ? ` · ${run.clipsReview.note}` : ""}</small> : null}
       {run && !materials && (run.stage === "prep_ready" || (run.status === "blocked" && ["prep_pending", "clips_pending"].includes(run.stage))) ? <div className="yt-actions">
-        <button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => void act("prep", () => post("/myin", "PATCH", { action: "prepare", runId: run.id }))}>{busy === "prep" ? "시작하는 중…" : "미리보기 다시 준비하기"}</button>
-        <small>문구 점검과 미리보기를 다시 만듭니다.</small></div> : null}
+        <button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => void act("prep", () => post("/myin", "PATCH", { action: "prepare", runId: run.id }))}>{busy === "prep" ? "시작하는 중…" : run.status === "blocked" && run.stage === "clips_pending" && run.prepared ? "미리보기 영상만 다시 만들기" : "미리보기 다시 준비하기"}</button>
+        <small>{run.status === "blocked" ? myinRetryScope(run) : "문구 점검과 미리보기를 다시 만듭니다."}</small></div> : null}
     </Step>
 
     <Step index={3} state={step4} title={short ? "사진 확정" : "자료 준비 (사진 · 구독 대사 · 사운드)"} idBase="myin-step">
