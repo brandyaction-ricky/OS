@@ -28,7 +28,7 @@ export interface OvRow {
   /** The one line under the title: what is happening now. */
   now: string; since: string | null; href: string; gate?: YpGate; job?: OvJob;
 }
-export interface OvDecision { at: string; title: string; what: string; href: string }
+export interface OvDecision { at: string; title: string; what: string; href: string; channel: TopicPlatform }
 
 // content-platforms projectPlatform, kept here because that module pulls server-only code into the unit tests.
 const platformOf = (topic: YpProject["yp"]["topic"]): TopicPlatform => topic.type === "card" ? "card" : topic.type === "short" ? (topic.purpose === "ad" ? "ad" : "short") : "longform";
@@ -90,18 +90,46 @@ export function overviewRows(projects: YpProject[], jobs: OvJob[], me: { id: str
   return { rows, done };
 }
 
-/** 오늘 내린 결정: steps confirmed, sent back or held today (KST), newest first. */
-export function decisionsToday(projects: YpProject[], now = Date.now()) {
+/** 오늘 내린 결정 (daysAgo 0) · 어제 (1): steps confirmed, sent back or held that Korean day, newest first. */
+export function decisionsToday(projects: YpProject[], now = Date.now(), daysAgo = 0) {
   const day = (value: number) => new Date(value + 9 * 3_600_000).toISOString().slice(0, 10);
-  const today = day(now);
+  const target = day(now - daysAgo * 86_400_000);
   const RESULT: Record<string, string> = { ok: "컨펌", changes: "수정 요청", hold: "보류" };
   const list: OvDecision[] = [];
   for (const project of projects) for (const gate of ["topic", "draft", "review"] as YpGate[]) {
     const info = project.yp.gates[gate];
-    if (!info?.decidedAt || !RESULT[info.state] || day(Date.parse(info.decidedAt)) !== today) continue;
-    list.push({ at: info.decidedAt, title: projectName(project), what: `${gateName(gate, project.yp.topic.type)} → ${RESULT[info.state]}${info.self ? " (PD)" : ""}`, href: nextAction(project).href });
+    if (!info?.decidedAt || !RESULT[info.state] || day(Date.parse(info.decidedAt)) !== target) continue;
+    list.push({ at: info.decidedAt, title: projectName(project), what: `${gateName(gate, project.yp.topic.type)} → ${RESULT[info.state]}${info.self ? " (PD)" : ""}`, href: nextAction(project).href, channel: platformOf(project.yp.topic) });
   }
   return list.sort((a, b) => b.at.localeCompare(a.at));
+}
+
+/** 지도 보기 (시안 P3): the channels in 새 일 시작하기 order, each with its open work. */
+export const MAP_CHANNELS: TopicPlatform[] = ["longform", "short", "ad", "card", "threads"];
+export const mapBranches = (rows: OvRow[]) => MAP_CHANNELS.map(channel => ({ channel, rows: rows.filter(row => row.channel === channel) }));
+
+/**
+ * 채널 확대 (시안 P3): one channel's record for a Korean day — decisions plus the AI jobs asked for, taken and
+ * finished that day — newest first. 다음 is what the channel's open work needs next, waiting work last.
+ */
+export function channelDay(rows: OvRow[], decisions: OvDecision[], channel: TopicPlatform, now = Date.now(), daysAgo = 0) {
+  const day = (iso: string) => new Date(Date.parse(iso) + 9 * 3_600_000).toISOString().slice(0, 10);
+  const target = new Date(now - daysAgo * 86_400_000 + 9 * 3_600_000).toISOString().slice(0, 10);
+  const log: { at: string; title: string; what: string }[] = decisions.filter(item => item.channel === channel && day(item.at) === target).map(({ at, title, what }) => ({ at, title, what }));
+  for (const row of rows) if (row.channel === channel && row.job) {
+    const { job } = row;
+    for (const [at, what] of [[job.requestedAt, "맡김"], [job.claimedAt, "AI가 가져감"], [job.doneAt, "결과 도착"]] as const) if (at && day(at) === target) log.push({ at, title: row.title, what: `${job.task} · ${what}` });
+  }
+  return log.sort((a, b) => b.at.localeCompare(a.at));
+}
+export const channelNext = (rows: OvRow[], channel: TopicPlatform) => rows.filter(row => row.channel === channel && row.state !== "wait").slice(0, 5);
+
+/** 지켜보기: what a row is doing, without the minutes that tick on their own ("4분째"). */
+const doing = (row: OvRow) => [row.state, row.stage, row.gate ?? "", row.job ? `${row.job.status}:${row.job.task}:${row.job.doneAt ?? ""}` : ""].join("|");
+/** Rows that are new or doing something else since the last look. */
+export function changedRows(before: OvRow[], after: OvRow[]) {
+  const seen = new Map(before.map(row => [row.id, doing(row)]));
+  return after.filter(row => seen.get(row.id) !== doing(row)).map(row => row.id);
 }
 
 /** The side-menu badges: decisions and AI jobs per platform, nothing when there is no work. */
