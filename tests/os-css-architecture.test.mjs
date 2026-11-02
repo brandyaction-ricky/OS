@@ -190,7 +190,7 @@ const BASELINE = {
   "components/myin-sound-editor.css": {"breakOff": 1},
   "components/os-ui.css": {"color": 4, "fontOff": 3},
   "components/production-hub.css": {"breakOff": 2},
-  "components/team-workspace.css": {"fontOff": 4, "foreign": 8, "kitOverride": 4},
+  "components/team-workspace.css": {"fontOff": 2, "foreign": 8, "kitOverride": 4},
   "components/team/meeting-board.css": {"color": 1, "breakOff": 1},
   "components/team/team-kpi.css": {"color": 1, "breakOff": 1},
   "components/threads-editorial-workspace.css": {"fontOff": 1, "breakOff": 1},

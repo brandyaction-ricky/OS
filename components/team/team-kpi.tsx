@@ -35,7 +35,7 @@ export function TeamKpiView({ token }: { token: string }) {
     catch (e) { setError((e as Error).message); return false; } finally { setBusy(false); }
   };
   return <section className="tm-kpi">
-    {error ? <div className="tm-callout" data-tone="danger" role="alert">{error}</div> : null}
+    {error ? <div className="os-callout" data-tone="danger" role="alert">{error}</div> : null}
     {!data ? <p className="tm-muted">불러오는 중…</p> : <div className="tm-kpi-grid">{data.businesses.map(business => business.mode === "month"
       ? <article className="panel panel-pad tm-kpi-card" key={business.key}>
           <header className="tm-row"><h3 className="card-title">{business.label}</h3>
