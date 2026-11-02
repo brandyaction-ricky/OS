@@ -1,6 +1,6 @@
-// 회사 문서 목록 브라우저 저장 (대표 결정 2026-11-02): a company PC keeps the last document list — titles, folders, dates, never
-// bodies — so the knowledge screens open at once and ask the server only for what changed since. One person's list per browser;
-// signing out clears it. Storage can be missing or refused (private window): every call then quietly does nothing.
+// 회사 문서 목록 브라우저 저장 (대표 결정 2026-11-02): a company PC keeps the last document list and 연결 map — titles, folders,
+// dates and links, never bodies — so the knowledge screens open at once and ask the server only for what changed since. One
+// person's copy per browser; signing out clears it. Storage can be missing or refused (private window): every call then quietly does nothing.
 import type { KnowledgeActor } from "./access";
 import type { KnowledgeDocument } from "../types";
 
@@ -16,8 +16,9 @@ function withStore<T>(mode: IDBTransactionMode, place: (store: IDBObjectStore) =
     open.onerror = () => reject(open.error);
     open.onsuccess = () => {
       const request = place(open.result.transaction(STORE, mode).objectStore(STORE));
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
+      // Listeners, not onsuccess: a caller may already handle this request's success (writeKept puts after reading keys).
+      request.addEventListener("success", () => resolve(request.result));
+      request.addEventListener("error", () => reject(request.error));
     };
   });
 }
@@ -31,14 +32,25 @@ const forgetSyncTimes = () => {
   try { if (typeof localStorage !== "undefined") for (const key of Object.keys(localStorage)) if (key.startsWith("brandyos:knowledge-synced:")) localStorage.removeItem(key); } catch { /* nothing kept */ }
 };
 
-export async function readWorkspaceCache(ownerId: string): Promise<CachedWorkspace | undefined> {
-  try { return await withStore("readonly", store => store.get(ownerId)) as CachedWorkspace | undefined; } catch { return undefined; }
+/** What this browser keeps for a person: the document list and the 연결 map (titles, folders and links — never bodies). */
+type KeptKind = "workspace" | "graph";
+export async function readKept<T>(ownerId: string, kind: KeptKind): Promise<T | undefined> {
+  try { return await withStore("readonly", store => store.get(`${ownerId}:${kind}`)) as T | undefined; } catch { return undefined; }
 }
-/** Keeps only this person's list: whoever used the browser before is cleared first. */
+/** Keeps this person's copy and clears whatever anyone else left in this browser. */
+export async function writeKept(ownerId: string, kind: KeptKind, value: unknown) {
+  await withStore("readwrite", store => {
+    const keys = store.getAllKeys();
+    keys.addEventListener("success", () => { for (const key of keys.result) if (!String(key).startsWith(`${ownerId}:`)) store.delete(key); store.put(value, `${ownerId}:${kind}`); });
+    return keys;
+  });
+}
+
+export const readWorkspaceCache = (ownerId: string) => readKept<CachedWorkspace>(ownerId, "workspace");
 export async function writeWorkspaceCache(ownerId: string, value: CachedWorkspace) {
   const kept = { ...value, documents: value.documents.map(doc => doc.content_md ? { ...doc, content_md: "" } : doc) };
   try {
-    await withStore("readwrite", store => { store.clear(); return store.put(kept, ownerId); });
+    await writeKept(ownerId, "workspace", kept);
     forgetSyncTimes(); localStorage.setItem(syncKey(ownerId), value.syncedAt);
   } catch { forgetSyncTimes(); /* the next visit simply reads everything */ }
 }

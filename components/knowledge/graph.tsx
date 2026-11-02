@@ -13,6 +13,7 @@ import {visibleGraphLabels} from "@/lib/knowledge/graph-labels";
 import {graphViewport} from "@/lib/knowledge/graph-viewport";
 import {apiRequest,getKnowledgeGraph,repairKnowledgeLinks} from "@/lib/api-client";
 import {searchWorkspace,type KnowledgeSearchHit} from "@/lib/knowledge/search";
+import {readKept,writeKept} from "@/lib/knowledge/browser-cache";
 
 const COLORS:Record<string,string>={mine:"#9471d9",team:"#508bd7",canon:"#4da575",meet:"#d788a9",ai:"#caa058"};
 /** 문서에 물어보기 (리키 관제실 시안 P3 「회사 기억 지도」): the documents 문서 찾기 finds, numbered as sources; a number lights its point. No AI call. */
@@ -43,8 +44,19 @@ export function KnowledgeGraphPage(){
   const [repulsion,setRepulsion]=useState(4200),[length,setLength]=useState(70),[center,setCenter]=useState(.02),[size,setSize]=useState(1),[page,setPage]=useState(0),[repair,setRepair]=useState<BrokenKnowledgeLink|null>(null),[target,setTarget]=useState(""),[busy,setBusy]=useState(false);
   const [batch,setBatch]=useState(false),[type,setType]=useState("all"),[full,setFull]=useState(false);
   const tab=params.get("tab")??"map",selected=params.get("sel")??"";
-  const load=useCallback(async()=>{setLoading(true);try{setGraph(demo?withIgnoredLinks(buildKnowledgeGraph(state.documents),state.events):await getKnowledgeGraph(token));setError("");}catch(e){setError((e as Error).message);}finally{setLoading(false);}},[demo,state.documents,state.events,token]);
-  useEffect(()=>{void load();},[load]);
+  // The practice map follows the practice documents. The live map is read when the screen opens or 새로고침 is pressed —
+  // not every time the document list refreshes — and this PC's last map (titles and links, no bodies) shows meanwhile.
+  const shown=useRef(false);
+  const loadLive=useCallback(async()=>{
+    setError("");
+    if(!shown.current){const kept=await readKept<KnowledgeGraph>(actor.ownerId,"graph");if(kept&&!shown.current){shown.current=true;setGraph(kept);setLoading(false);}}
+    if(!shown.current)setLoading(true);
+    try{const fresh=await getKnowledgeGraph(token);shown.current=true;setGraph(fresh);void writeKept(actor.ownerId,"graph",fresh).catch(()=>undefined);}
+    catch(e){setError((e as Error).message);}finally{setLoading(false);}
+  },[token,actor.ownerId]);
+  useEffect(()=>{if(demo){setGraph(withIgnoredLinks(buildKnowledgeGraph(state.documents),state.events));setLoading(false);}},[demo,state.documents,state.events]);
+  useEffect(()=>{if(!demo)void loadLive();},[demo,loadLive]);
+  const load=useCallback(async()=>{if(demo){setGraph(withIgnoredLinks(buildKnowledgeGraph(state.documents),state.events));return;}await loadLive();},[demo,state.documents,state.events,loadLive]);
   const select=useCallback((id:string)=>{const next=new URLSearchParams(params);if(id)next.set("sel",id);else next.delete("sel");router.replace(`/knowledge/graph?${next}`,{scroll:false});},[params,router]);
   const selectedNode=graph.nodes.find(n=>n.id===selected);
   const viewport=useMemo(()=>graphViewport(graph,{spaces,hideOrphans,selected,around,depth,full}),[graph,spaces,hideOrphans,selected,around,depth,full]);
