@@ -783,6 +783,7 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
             <label>
               <span>안건</span>
               <textarea
+                className="field is-prose"
                 name="agenda"
                 rows={4}
                 defaultValue={editing?.description ?? ""}
@@ -838,6 +839,7 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
             <label>
               <span>회의 원문·받아쓴 글</span>
               <textarea
+                className="field is-prose"
                 rows={9}
                 value={transcript}
                 onChange={(event) => setTranscript(event.target.value)}
@@ -863,6 +865,7 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
                   : ""}
               </span>
               <textarea
+                className="field is-prose"
                 rows={7}
                 value={summary}
                 onChange={(event) => setSummary(event.target.value)}

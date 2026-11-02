@@ -322,6 +322,7 @@ html[data-guidance="off"] .guide-strip, html[data-guidance="off"] .guide-no, htm
 .linear-shell .ui-v2 .field.sm-wide { padding: 5px 8px; }                  /* F-5 패널 select */
 .linear-shell .ui-v2 .field.xs { padding: 4px 8px; }                       /* F-5 계정 필터 */
 .linear-shell .ui-v2 .field.is-area { line-height: 1.5; padding: 7px 8px; resize: none; }            /* F-3 캡션 */
+.linear-shell .ui-v2 .field.is-prose { font-size: var(--os-text-body); line-height: 1.8; padding: 12px; resize: vertical; }
 .linear-shell .ui-v2 .field.is-reply { font-size: 13px; line-height: 1.55; border-radius: 8px; padding: 10px 12px; resize: none; } /* F-5 답글 */
 .linear-shell .ui-v2 .field.is-date { width: 92px; }                      /* F-6 기간 */
 .linear-shell .ui-v2 :where(input[type="checkbox"], input[type="radio"]) { accent-color: var(--accent); }

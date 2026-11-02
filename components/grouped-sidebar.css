@@ -30,7 +30,8 @@
 .os-app .os-sidebar .nav-section:first-child .nav-section-pages { margin: 3px 0 6px 19px; padding: 0 0 0 10px; border-left: 1px solid var(--os-nav-line); }
 .os-app .os-sidebar .nav-section-pages .page-link { padding: 7px 8px; min-height: 32px; gap: 8px; border-radius: var(--os-radius-xs); font-size: var(--os-text-meta); color: var(--os-nav-muted); font-weight: 400; }
 .os-app .os-sidebar .nav-section-pages .page-link svg { color: inherit; }
-.os-app .os-sidebar .nav-section-pages .page-link:hover { color: var(--os-nav-text); background: var(--os-nav-hover); }
+/* Keep the foreground and background paired above the kit's inactive-link hover rule. */
+.os-app .os-sidebar .nav-section-pages .page-link:not(.active):not([aria-current="page"]):is(:hover, :focus-visible) { color: var(--os-nav-text); background: var(--os-nav-hover); }
 .os-app .os-sidebar .nav-section-pages .page-link.active { color: var(--os-nav-on-selected); background: var(--os-nav-selected); box-shadow: inset 3px 0 var(--os-nav-category); font-weight: 600; }
 .os-app .os-sidebar .nav-section-pages .page-link.active svg { color: inherit; }
 .os-app .os-sidebar .page-link > span:last-child { flex: 1; white-space: normal; overflow-wrap: anywhere; }
