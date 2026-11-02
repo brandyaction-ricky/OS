@@ -1,5 +1,6 @@
 // 카드 그림 (대표 2026-11-02): GPT Image draws a card picture into the project's files (the same place an uploaded photo goes), and the
-// 캐릭터 창고 keeps the pictures it should draw the same characters from. The 창고 is one JSON list beside its pictures: no table.
+// 캐릭터 창고 keeps the pictures it should draw the same characters from. Each picture has its own small JSON beside it, written once
+// and never overwritten: a shared list file lost saves made seconds apart (2026-11-02, 4 saves → 3 kept). No table.
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
@@ -11,7 +12,7 @@ import { getYoutubeProject } from "./youtube-process";
 import { MEDIA_BUCKET } from "./youtube-process-stages";
 
 const CHARACTERS = "card-characters";
-const INDEX = `${CHARACTERS}/index.json`;
+const RECORD = /^[0-9a-f-]{36}\.json$/;
 export const imageModel = () => process.env.OPENAI_IMAGE_MODEL?.trim() || DEFAULT_COST_MODELS.image;
 
 export const cardDrawSchema = z.object({
@@ -21,22 +22,17 @@ export const cardDrawSchema = z.object({
 export const characterAddSchema = z.object({ projectId: z.string().uuid(), path: z.string().max(200), name: z.string().trim().min(1).max(40) }).strict();
 
 const characterSchema = z.object({ id: z.string().uuid(), name: z.string(), path: z.string(), at: z.string(), byId: z.string(), by: z.string() });
+// The folder listing is a database read (never a cached copy); each record is read once it exists and is never rewritten.
 async function readCharacters(): Promise<CardCharacter[]> {
-  const { data, error } = await createServiceSupabase().storage.from(MEDIA_BUCKET).download(INDEX);
-  if (error) {
-    // The first picture makes the list; any other failure stops here so a save never writes over a list it could not read.
-    if (/not.?found/i.test(error.message) || (error as { status?: number }).status === 404) return [];
-    throw new ApiError(503, "CARD_CHARACTERS_READ_FAILED", "캐릭터 창고를 불러오지 못했어요. 다시 시도해 주세요.");
-  }
-  const parsed = z.array(characterSchema).safeParse(JSON.parse(await data.text()));
-  if (!parsed.success) throw new ApiError(503, "CARD_CHARACTERS_INVALID", "캐릭터 창고 목록을 읽지 못했어요.");
-  return parsed.data;
-}
-// ponytail: read-then-write; two people saving a character at the same moment can lose one. A table with rows if that ever happens.
-async function writeCharacters(list: CardCharacter[]) {
-  const { error } = await createServiceSupabase().storage.from(MEDIA_BUCKET)
-    .upload(INDEX, new Blob([JSON.stringify(list)], { type: "application/json" }), { upsert: true, contentType: "application/json" });
-  if (error) throw new ApiError(502, "CARD_CHARACTERS_SAVE_FAILED", "캐릭터 창고에 저장하지 못했어요.");
+  const bucket = createServiceSupabase().storage.from(MEDIA_BUCKET);
+  const { data, error } = await bucket.list(CHARACTERS, { limit: 1000 });
+  if (error) throw new ApiError(503, "CARD_CHARACTERS_READ_FAILED", "캐릭터 창고를 불러오지 못했어요. 다시 시도해 주세요.");
+  const rows = await Promise.all((data ?? []).filter(file => RECORD.test(file.name)).map(async file => {
+    const { data: blob } = await bucket.download(`${CHARACTERS}/${file.name}`);
+    const parsed = blob ? characterSchema.safeParse(await blob.text().then(JSON.parse, () => null)) : null;
+    return parsed?.success ? parsed.data : null;   // a record cut short by a failed save is skipped, not fatal
+  }));
+  return rows.filter((row): row is CardCharacter => Boolean(row)).sort((a, b) => a.at.localeCompare(b.at));
 }
 async function withUrls(list: CardCharacter[]): Promise<CardCharacterView[]> {
   if (!list.length) return [];
@@ -58,9 +54,11 @@ export async function addCardCharacter(actor: RequestActor, input: z.infer<typeo
   const id = randomUUID(), path = `${CHARACTERS}/${id}.${match[1]}`;
   const { error } = await createServiceSupabase().storage.from(MEDIA_BUCKET).copy(input.path, path);
   if (error) throw new ApiError(502, "CARD_CHARACTER_COPY_FAILED", "그림을 캐릭터 창고로 옮기지 못했어요.");
-  const next = [...list, { id, name: input.name, path, at: new Date().toISOString(), byId: actor.ownerId, by: actor.name }];
-  await writeCharacters(next);
-  return withUrls(next);
+  const row: CardCharacter = { id, name: input.name, path, at: new Date().toISOString(), byId: actor.ownerId, by: actor.name };
+  const saved = await createServiceSupabase().storage.from(MEDIA_BUCKET)
+    .upload(`${CHARACTERS}/${id}.json`, new Blob([JSON.stringify(row)], { type: "application/json" }), { upsert: false, contentType: "application/json" });
+  if (saved.error) throw new ApiError(502, "CARD_CHARACTERS_SAVE_FAILED", "캐릭터 창고에 저장하지 못했어요.");
+  return withUrls([...list, row]);
 }
 
 /** 빼기: the one who saved it, or an admin. */
@@ -69,10 +67,9 @@ export async function removeCardCharacter(actor: RequestActor, id: string) {
   const row = list.find(item => item.id === id);
   if (!row) throw new ApiError(404, "CARD_CHARACTER_NOT_FOUND", "그 캐릭터 그림이 없어요.");
   if (row.byId !== actor.ownerId && actor.role !== "admin") throw new ApiError(403, "CARD_CHARACTER_FORBIDDEN", "저장한 사람이나 관리자만 뺄 수 있어요.");
-  const next = list.filter(item => item.id !== id);
-  await writeCharacters(next);
-  await createServiceSupabase().storage.from(MEDIA_BUCKET).remove([row.path]);
-  return withUrls(next);
+  const { error } = await createServiceSupabase().storage.from(MEDIA_BUCKET).remove([`${CHARACTERS}/${id}.json`, row.path]);
+  if (error) throw new ApiError(502, "CARD_CHARACTER_REMOVE_FAILED", "캐릭터 그림을 빼지 못했어요. 다시 시도해 주세요.");
+  return withUrls(list.filter(item => item.id !== id));
 }
 
 /** Why GPT Image said no, in words the PD can act on. Its own message is not shown: it can be long and in English. */
