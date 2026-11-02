@@ -9,6 +9,7 @@
 //   node tools/css-fingerprint.mjs out/base.json                 바꾸기 전에 한 번
 //   node tools/css-fingerprint.mjs out/after.json out/base.json  바꾼 뒤 비교 (메뉴별 다른 요소 수 + 예시)
 //   FP_THEME=dark node tools/css-fingerprint.mjs …             어두운 테마로
+//   FP_WIDTH=390 node tools/css-fingerprint.mjs …             휴대폰 폭으로 (가이드: 1440 · 390 둘 다)
 // 같은 빌드를 두 번 재도 /knowledge?tab=canon 표 칸 10개 정도는 너비가 조금 달라진다(데이터 그리기 순서) — 잡음으로 본다.
 import { chromium } from "@playwright/test";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
@@ -39,7 +40,7 @@ const grab = P => { const out = []; document.querySelectorAll("body *").forEach(
 const [outPath, basePath] = process.argv.slice(2);
 if (!outPath) { console.error("사용: node tools/css-fingerprint.mjs <out.json> [base.json]"); process.exit(1); }
 const browser = await chromium.launch(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {}); // 설치된 브라우저 판이 다르면 PW_CHROMIUM=경로
-const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" });
+const ctx = await browser.newContext({ viewport: { width: Number(process.env.FP_WIDTH) || 1440, height: 900 }, reducedMotion: "reduce" });
 if (process.env.FP_THEME) await ctx.addInitScript(t => localStorage.setItem("brandy-os-theme", t), process.env.FP_THEME); // FP_THEME=dark 로 어두운 테마를 잰다
 const page = await ctx.newPage();
 const res = {};
