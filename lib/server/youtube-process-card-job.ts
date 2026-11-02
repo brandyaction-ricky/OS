@@ -47,7 +47,9 @@ export function assertCardJobOpen(project: YpProject) {
 export const cardInputKey = (project: Pick<YpProject, "title" | "yp">, cards: Pick<YpCards, "source" | "focus">, formats: CardFormatId[], canon: string) =>
   createHash("sha256").update(JSON.stringify([cards.source.text, cards.focus, project.title, project.yp.topic.target, project.yp.topic.note, formats, canon])).digest("hex");
 
-const NOTES: Partial<Record<CardSlide["type"], string>> = { item: "번호는 OS가 붙여요", summary: "항목 소제목 목록은 OS가 자동으로 넣어요" };
+const NOTES: Partial<Record<CardSlide["type"], string>> = { item: "번호는 OS가 붙여요", summary: "앞 장의 소제목 목록은 OS가 자동으로 넣어요",
+  compare: "두 쪽을 같은 기준으로, 왼쪽은 흔한 쪽 · 오른쪽은 권하는 쪽", step: "한 장에 한 단계, 할 일을 행동으로 · 단계 번호와 흐름은 OS가 그려요",
+  map: "구조도의 가지는 뒤 요소 장의 이름이 그대로 들어가요", part: "요소 이름은 구조도 가지에 그대로 보여요" };
 /** Each requested format's slides and fields, written from CARD_FORMATS (the numbers live only there). */
 export function cardFormatSpec(formats: CardFormatId[]) {
   return formats.map(id => {
@@ -71,7 +73,8 @@ export function cardJobCard(input: { project: Pick<YpProject, "title" | "yp">; c
 - 원본에 없는 사실 · 숫자 · 사례를 만들지 않습니다. 숫자를 쓰면 출처를 근거 칸이나 캡션에 적습니다.
 - 진단은 유료예요. ‘무료 진단’이라고 쓰지 않습니다.
 - ‘여러분’은 쓰지 않습니다. 사람이 말하듯 자연스럽게 씁니다.
-- 한 장에 한 메시지만. 표지는 처음 보는 사람이 멈추게 씁니다.${cards.focus.trim() ? "\n- 입력의 focus는 PD가 짚은 부분이에요. 그 부분 위주로 씁니다." : ""}
+- 한 장에 한 메시지만. 표지는 처음 보는 사람이 멈추게 씁니다.
+- 장마다 가장 먼저 읽힐 구절 하나를 *별표*로 감쌀 수 있어요(카드에서 파란색, 표지 · 마무리는 노란색). 한 장에 하나까지, 별표는 글자 수에 세지 않습니다. 색 · 글꼴 · 배치는 OS가 디자인 정본대로 그립니다. 사진은 PD가 직접 넣으니 쓰지 않습니다.${cards.focus.trim() ? "\n- 입력의 focus는 PD가 짚은 부분이에요. 그 부분 위주로 씁니다." : ""}
 
 ## 먼저 끝까지 열 문서 (doc_id로 엽니다)
 ${input.canon ? `- ${CARD_CANON_TITLE} (doc_id: ${input.canon.id}) — 이 정본을 그대로 따릅니다.` : `- search_knowledge로 「${CARD_CANON_TITLE}」을 찾아 엽니다.`} 열지 못하면 쓰지 말고 fail로 끝냅니다.

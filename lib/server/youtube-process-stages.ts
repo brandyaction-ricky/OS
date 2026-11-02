@@ -469,8 +469,10 @@ const ASSET_KINDS = {
   final: { max: 5 * 1024 * 1024 * 1024, types: { "video/mp4": "mp4", "video/quicktime": "mov", "video/x-m4v": "m4v", "video/webm": "webm" } },
   srt: { max: 5 * 1024 * 1024, types: { "application/x-subrip": "srt" } },
   column: { max: 10 * 1024 * 1024, types: { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif" } },
+  // 카드뉴스 사진: the browser shrinks it to JPEG (PNG when it may be a cut-out) first; next/og reads only those two.
+  card: { max: 5 * 1024 * 1024, types: { "image/jpeg": "jpg", "image/png": "png" } },
 } as const;
-export const assetCreateSchema = z.object({ kind: z.enum(["plan_thumb", "thumb", "final", "srt", "column"]), fileName: z.string().trim().min(1).max(240), fileSize: z.number().int().positive(), mimeType: z.string().max(100) }).strict();
+export const assetCreateSchema = z.object({ kind: z.enum(["plan_thumb", "thumb", "final", "srt", "column", "card"]), fileName: z.string().trim().min(1).max(240), fileSize: z.number().int().positive(), mimeType: z.string().max(100) }).strict();
 export async function createYoutubeAssetUpload(actor: RequestActor, id: string, input: z.infer<typeof assetCreateSchema>) {
   const project = await getYoutubeProject(actor, id);
   const spec = ASSET_KINDS[input.kind];
@@ -487,7 +489,7 @@ export async function createYoutubeAssetUpload(actor: RequestActor, id: string, 
 /** A short-lived link to one of this project's files (the project must be readable by the caller). */
 export async function youtubeAssetUrl(actor: RequestActor, id: string, path: string) {
   const project = await getYoutubeProject(actor, id);
-  if (!new RegExp(`^youtube/${project.id}/(plan_thumb|thumb|final|srt|column)/[0-9a-f-]{36}\\.[a-z0-9]+$`).test(path)) throw new ApiError(400, "ASSET_PATH_INVALID", "파일 주소를 확인해 주세요.");
+  if (!new RegExp(`^youtube/${project.id}/(plan_thumb|thumb|final|srt|column|card)/[0-9a-f-]{36}\\.[a-z0-9]+$`).test(path)) throw new ApiError(400, "ASSET_PATH_INVALID", "파일 주소를 확인해 주세요.");
   const { data, error } = await createServiceSupabase().storage.from(MEDIA_BUCKET).createSignedUrl(path, 3600);
   if (error || !data) throw new ApiError(404, "ASSET_NOT_FOUND", "파일을 찾지 못했습니다.");
   return data.signedUrl;

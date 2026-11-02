@@ -47,7 +47,7 @@ export interface YpFeedbackView {
 export type YpFeedbackInput = Partial<Pick<YpFeedbackView, "t" | "range" | "text" | "kind" | "sug" | "reaction" | "marks" | "files">> & Pick<YpFeedbackView, "target" | "ver">;
 export interface YpScheduleItem { project: YpProject; makeVersion: number; editDue: string; uploadPlan: string; publishAt?: string; log: { at: string; by: string; from: string; to: string; why: string; field?: string }[]; waiting: { gate: YpGate; requestedAt: string } | null }
 export interface YpLegacyTopic { id: string; title: string; updatedAt: string; step: string; assigneeId: string | null }
-export type YpAssetKind = "plan_thumb" | "thumb" | "final" | "srt" | "column";
+export type YpAssetKind = "plan_thumb" | "thumb" | "final" | "srt" | "column" | "card";
 export interface YpClient {
   list(): Promise<YpProject[]>;
   /** 한눈에 보기: the videos, the open staff-AI jobs on them, and whether I confirm. */

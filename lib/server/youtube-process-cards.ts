@@ -11,7 +11,7 @@ import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { CardSlideView } from "@/lib/cardnews/card-slide";
 import { CardError, cardsMissing, nextCards, pickedDraft } from "@/lib/cardnews/cards";
-import { CAPTION_MAX, CARD_FORMAT_IDS, CARD_MAX_SLIDES, CARD_SIZE, cardSignature, type CardDraft } from "@/lib/cardnews/formats";
+import { CAPTION_MAX, CARD_FORMAT_IDS, CARD_MAX_SLIDES, CARD_SIZE, CARD_SLIDE_TYPES, cardSignature, plainCardText, type CardDraft } from "@/lib/cardnews/formats";
 import { storedZip } from "@/lib/cardnews/zip";
 import { projectCardSources, visibleThreadSource, type CardSourceChoice } from "@/lib/cardnews/sources";
 import { applyGateAction, quietHours } from "@/lib/youtube-process/confirm";
@@ -24,7 +24,7 @@ import type { RequestActor } from "./auth";
 import { generateContentText } from "./content-model";
 import { creditTier } from "./openai-credit";
 import { approverIds, getYoutubeProject, insertProject, listYoutubeProjects, notify, recordConfirmation } from "./youtube-process";
-import { readStages, writeStage } from "./youtube-process-stages";
+import { MEDIA_BUCKET, readStages, writeStage } from "./youtube-process-stages";
 
 const SOURCE_MAX = 60_000;
 
@@ -119,7 +119,8 @@ export async function createCardProject(actor: RequestActor, input: z.infer<type
 const fieldText = z.string().max(400);
 const draftSchema = z.object({
   id: z.string().min(1).max(40), format: z.enum(CARD_FORMAT_IDS as [CardDraft["format"], ...CardDraft["format"][]]),
-  slides: z.array(z.object({ type: z.enum(["cover", "item", "summary", "pair", "line", "end"]), fields: z.record(fieldText) }).strict()).min(1).max(CARD_MAX_SLIDES),
+  slides: z.array(z.object({ type: z.enum(CARD_SLIDE_TYPES), fields: z.record(fieldText),
+    photo: z.object({ path: z.string().max(200), w: z.number().int().min(1).max(20_000), h: z.number().int().min(1).max(20_000) }).strict().optional() }).strict()).min(1).max(CARD_MAX_SLIDES),
   caption: z.string().max(CAPTION_MAX + 400), hashtags: z.array(z.string().trim().min(1).max(60)).max(30),
 }).strict();
 export const cardsPatchSchema = z.object({
@@ -131,6 +132,8 @@ export const cardsPatchSchema = z.object({
 }).partial().strict();
 
 export function nextCardsOnServer(project: YpProject, current: YpCards, patch: z.infer<typeof cardsPatchSchema>, actor: RequestActor, now: string) {
+  const photo = new RegExp(`^youtube/${project.id}/card/[0-9a-f-]{36}\\.(jpg|png)$`);
+  if (patch.draft?.slides.some(slide => slide.photo && !photo.test(slide.photo.path))) throw new ApiError(400, "ASSET_PATH_INVALID", "사진을 다시 올려 주세요.");
   try { return nextCards(project, current, patch, actor.name, now, () => crypto.randomUUID().slice(0, 8)); }
   catch (error) { throw error instanceof CardError ? new ApiError(error.status, error.code, error.message) : error; }
 }
@@ -167,7 +170,7 @@ export async function checkCardScreens(project: YpProject, who: { id: string; te
   let data: YpScreenCheck;
   try {
     const images = await Promise.all(draft.slides.map(async (_, index) => `data:image/png;base64,${Buffer.from(await cardPng(draft, index)).toString("base64")}`));
-    const hints = draft.slides.map((slide, index) => `#${index + 1} ${slide.type}: ${Object.values(slide.fields).filter(Boolean).join(" / ").replace(/\s+/g, " ").slice(0, 160)}`).join("\n");
+    const hints = draft.slides.map((slide, index) => `#${index + 1} ${slide.type}: ${Object.values(slide.fields).filter(Boolean).map(plainCardText).join(" / ").replace(/\s+/g, " ").slice(0, 160)}`).join("\n");
     const text = await generateContentText({ model, effort: effort === "high" ? "medium" : "low", maxTokens: 8_000, timeoutMs, jsonSchema: SCREEN_SCHEMA, prompt: cardScreenPrompt(hints), images });
     const result = parseScreen(text, draft.slides.length);
     data = result ? { ...base, state: "done", ...result } : { ...base, state: "failed", error: "GPT 답을 읽지 못했어요. 다시 검사해 주세요." };
@@ -190,13 +193,17 @@ export async function checkCardsAgain(actor: RequestActor, id: string, tier: Gpt
 }
 
 // ── PNG · ZIP ──
-let fonts: Promise<{ name: string; data: Buffer; weight: 400 | 700 | 800; style: "normal" }[]> | null = null;
-// The same Pretendard the browser preview uses (public/fonts/pretendard), cut to three static weights: Satori reads no woff2.
-const loadFonts = () => fonts ??= Promise.all(([400, 700, 800] as const).map(async weight =>
+let fonts: Promise<{ name: string; data: Buffer; weight: 400 | 500 | 600; style: "normal" }[]> | null = null;
+// The same Pretendard the browser preview uses (public/fonts/pretendard), cut to the three weights the 디자인 정본 uses: Satori reads no woff2.
+const loadFonts = () => fonts ??= Promise.all(([400, 500, 600] as const).map(async weight =>
   ({ name: "Pretendard", data: await readFile(join(process.cwd(), "lib/cardnews/fonts", `Pretendard-${weight}.woff`)), weight, style: "normal" as const })));
 
 export async function cardPng(draft: CardDraft, index: number) {
-  const response = new ImageResponse(createElement(CardSlideView, { draft, index }), { ...CARD_SIZE, fonts: await loadFonts() });
+  // The card's photo goes into the drawing as a data URL: next/og would otherwise fetch it from a signed address.
+  const photo = draft.slides[index]?.photo;
+  const file = photo ? (await createServiceSupabase().storage.from(MEDIA_BUCKET).download(photo.path)).data : null;
+  const photos = photo && file ? { [photo.path]: `data:${photo.path.endsWith(".png") ? "image/png" : "image/jpeg"};base64,${Buffer.from(await file.arrayBuffer()).toString("base64")}` } : undefined;
+  const response = new ImageResponse(createElement(CardSlideView, { draft, index, photos }), { ...CARD_SIZE, fonts: await loadFonts() });
   return new Uint8Array(await response.arrayBuffer());
 }
 /** One card as PNG, or every card of the draft as a ZIP; the confirmed draft unless another is named. */

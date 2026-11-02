@@ -1,71 +1,171 @@
 // One card of a 카드뉴스 (content centred top to bottom), drawn the same way in the browser preview and in the PNG (next/og). Satori reads only flex layouts and
 // inline styles, so every box with more than one child is display:flex and nothing here uses hooks, classes or grid.
 // Each text field has a fixed number of lines: past it the text is cut, and the editor marks that field (data-card-field) as 넘침.
+// The look is the MYIN 카드뉴스 디자인 정본 (2026-11-02): white body cards, a blue cover and ending, Pretendard 400 · 500 · 600 at its
+// sizes for 1080 × 1350, 96px text margins, photos and diagrams within 80% of the width, and the explanation right under what it explains.
 import type { CSSProperties, ReactNode } from "react";
-import { CARD_SIZE, type CardDraft, type CardSlide } from "./formats.ts";
+import { CARD_MARK, CARD_SIZE, plainCardText, type CardDraft, type CardPhoto, type CardSlide } from "./formats.ts";
 
-/** ponytail: one theme until the owner picks the account (브랜디액션 / 마이인); a theme is just these values. */
-export const CARD_THEME = { bg: "#F6F4EF", ink: "#16181D", sub: "#5B606B", accent: "#2F5BFF", line: "#DAD6CC", brand: "BRANDYACTION" };
+/** 디자인 정본 §2. Blue cards carry white text and gold only for the marked phrase; gold never sits on a light card. */
+export const CARD_THEME = { paper: "#FFFFFF", soft: "#EFEFF1", blue: "#212CB0", gold: "#EED467", title: "#151D2C", ink: "#1E1D1D", sub: "#43474C", white: "#FFFFFF" };
 type Theme = typeof CARD_THEME;
+const PAD = 96, VISUAL = 864;   // 텍스트 좌우 안전 여백 80~96px · 도식 그룹은 카드 너비의 80% 이내
 
-/** Font size, line height and lines of each field: the PNG and the preview cut at the same place. */
+/** Font size, weight, line height and lines of each field (디자인 정본 §3–4): the PNG and the preview cut at the same place. */
 export const CARD_FIELD_STYLE: Record<string, { size: number; weight: number; leading: number; lines: number }> = {
-  "cover.head": { size: 76, weight: 800, leading: 1.25, lines: 3 }, "cover.sub": { size: 40, weight: 400, leading: 1.45, lines: 2 },
-  "item.title": { size: 56, weight: 700, leading: 1.3, lines: 2 }, "item.body": { size: 40, weight: 400, leading: 1.5, lines: 4 },
-  "summary.line": { size: 50, weight: 800, leading: 1.35, lines: 2 },
-  "pair.myth": { size: 46, weight: 600, leading: 1.35, lines: 2 }, "pair.fact": { size: 46, weight: 700, leading: 1.45, lines: 3 }, "pair.basis": { size: 30, weight: 400, leading: 1.45, lines: 2 },
-  "line.text": { size: 64, weight: 700, leading: 1.4, lines: 4 }, "line.note": { size: 34, weight: 400, leading: 1.5, lines: 2 },
-  "end.line": { size: 54, weight: 800, leading: 1.35, lines: 2 }, "end.action": { size: 36, weight: 700, leading: 1.3, lines: 1 },
+  "cover.head": { size: 68, weight: 600, leading: 1.3, lines: 3 }, "cover.sub": { size: 30, weight: 400, leading: 1.5, lines: 2 },
+  "item.title": { size: 52, weight: 600, leading: 1.3, lines: 2 }, "item.body": { size: 30, weight: 400, leading: 1.55, lines: 4 },
+  "summary.line": { size: 52, weight: 600, leading: 1.3, lines: 3 },
+  "pair.myth": { size: 36, weight: 500, leading: 1.4, lines: 2 }, "pair.fact": { size: 36, weight: 500, leading: 1.4, lines: 3 }, "pair.basis": { size: 26, weight: 400, leading: 1.5, lines: 2 },
+  "line.text": { size: 52, weight: 600, leading: 1.35, lines: 4 }, "line.note": { size: 26, weight: 400, leading: 1.5, lines: 2 },
+  "compare.title": { size: 52, weight: 600, leading: 1.3, lines: 2 }, "compare.leftLabel": { size: 24, weight: 500, leading: 1.3, lines: 1 }, "compare.rightLabel": { size: 24, weight: 500, leading: 1.3, lines: 1 },
+  "compare.left": { size: 30, weight: 500, leading: 1.45, lines: 4 }, "compare.right": { size: 30, weight: 500, leading: 1.45, lines: 4 }, "compare.note": { size: 28, weight: 400, leading: 1.5, lines: 2 },
+  "step.title": { size: 52, weight: 600, leading: 1.3, lines: 2 }, "step.body": { size: 30, weight: 400, leading: 1.55, lines: 4 },
+  "map.center": { size: 40, weight: 500, leading: 1.3, lines: 2 }, "map.note": { size: 28, weight: 400, leading: 1.5, lines: 2 },
+  "part.title": { size: 52, weight: 600, leading: 1.3, lines: 2 }, "part.body": { size: 30, weight: 400, leading: 1.55, lines: 4 },
+  "end.line": { size: 52, weight: 600, leading: 1.3, lines: 3 }, "end.action": { size: 28, weight: 500, leading: 1.3, lines: 1 },
 };
 
-function Field({ slide, name, style, theme }: { slide: CardSlide; name: string; style?: CSSProperties; theme: Theme }) {
+// The MYIN wordmark (마이인_로고.ai, 2026-11-02) as paths, so it takes the card's colour in the browser and in next/og alike.
+const LOGO: [string, string][] = [
+  ["matrix(1,0,0,-1,48.7267,45.5048)", "M0 0C-2.325 0-4.26 .272-5.808 .81-7.357 1.348-8.585 2.173-9.487 3.293-10.394 4.412-11.03 5.852-11.394 7.618-11.758 9.383-11.943 11.47-11.943 13.877V38.729L-28.074 2.907H-29.367L-46.146 39.371V2.907H-48.727V45.505H-42.598L-27.107 11.943-11.943 45.505H-6.134V13.877C-6.134 9.965-5.64 6.884-4.651 4.651-3.657 2.413-2.108 1.293 0 1.293Z"],
+  ["matrix(1,0,0,-1,68.1811,43.2446)", "M0 0-10.323 25.173C-10.97 26.809-11.904 28.031-13.132 28.851-14.36 29.667-15.789 30.161-17.425 30.335V31.628H-11.937C-10.003 31.628-8.4 31.172-7.128 30.27-5.862 29.368-4.879 28.096-4.194 26.461L3.162 8.585 11.296 30.982H14.524L1.94-3.548C1.293-5.314 .614-6.765-.092-7.905-.804-9.047-1.559-9.938-2.353-10.584-3.151-11.231-4.021-11.671-4.966-11.905-5.917-12.143-6.949-12.263-8.063-12.263H-10.003V-10.324C-9.057-10.324-8.15-10.231-7.292-10.035-6.433-9.84-5.645-9.497-4.933-9.003-4.227-8.508-3.569-7.819-2.966-6.938-2.363-6.053-1.804-4.923-1.288-3.548Z"],
+  ["matrix(1,0,0,-1,98.1954,5.4875986)", "M0 0C0-.902-.266-1.614-.804-2.13-1.342-2.646-2.065-2.902-2.967-2.902-3.955-2.902-4.809-2.494-5.515-1.679-6.227-.859-6.58 .109-6.58 1.228-6.58 2.13-6.313 2.842-5.776 3.358-5.238 3.874-4.515 4.13-3.613 4.13-2.624 4.13-1.771 3.722-1.065 2.907-.353 2.087 0 1.119 0 0M.386-37.11H-5.422V-14.524C-5.422-12.584-5.689-11.024-6.227-9.84-6.765-8.661-8.003-8.069-9.938-8.069H-11.231V-6.775H-5.422C-4.303-6.775-3.369-6.873-2.613-7.069-1.858-7.259-1.255-7.65-.804-8.226-.353-8.808-.043-9.606 .13-10.617 .304-11.628 .386-12.932 .386-14.524Z"],
+  ["matrix(1,0,0,-1,111.2301,20.0112)", "M0 0C0 1.94-.266 3.499-.804 4.684-1.342 5.863-2.581 6.455-4.515 6.455H-5.808V7.748H0C1.636 7.748 2.874 7.52 3.711 7.069 4.553 6.618 5.146 5.982 5.488 5.167H5.808C6.629 5.982 7.748 6.727 9.166 7.395 10.585 8.058 12.263 8.395 14.203 8.395 15.578 8.395 16.92 8.232 18.235 7.911 19.55 7.585 20.718 6.982 21.75 6.102 22.782 5.222 23.614 4.026 24.239 2.521 24.858 1.011 25.173-.902 25.173-3.222V-22.587H19.365V-3.222C19.365-1.636 19.158-.277 18.751 .842 18.343 1.961 17.805 2.864 17.137 3.553 16.469 4.238 15.719 4.733 14.877 5.037 14.04 5.336 13.171 5.488 12.263 5.488 10.976 5.488 9.78 5.145 8.683 4.456 7.585 3.765 6.629 2.972 5.808 2.07V-22.587H0Z"],
+];
+const Logo = ({ color, height }: { color: string; height: number }) => <svg width={Math.round(height * 136.403 / 55.5076)} height={height} viewBox="0 0 136.403 55.5076">
+  {LOGO.map(([transform, d]) => <path key={transform} transform={transform} d={d} fill={color} />)}</svg>;
+
+/** The words of one line, each split where the `*marked*` phrase starts or stops. */
+function markedWords(line: string) {
+  const words: { text: string; em: boolean }[][] = [[]];
+  line.split(CARD_MARK).forEach((piece, at) => {
+    for (const char of piece) {
+      const word = words[words.length - 1];
+      if (char === " ") { if (word.length) words.push([]); continue; }
+      const last = word[word.length - 1];
+      if (last?.em === (at % 2 === 1)) last.text += char; else word.push({ text: char, em: at % 2 === 1 });
+    }
+  });
+  return words.filter(word => word.length);
+}
+
+type Tone = { color: string; accent: string };
+function Field({ slide, name, tone, style }: { slide: CardSlide; name: string; tone: Tone; style?: CSSProperties }) {
   const value = slide.fields[name]?.trim();
   const spec = CARD_FIELD_STYLE[`${slide.type}.${name}`];
   if (!value || !spec) return null;
-  return <div data-card-field={name} style={{ display: "flex", wordBreak: "keep-all", color: theme.ink, fontSize: spec.size, fontWeight: spec.weight, lineHeight: spec.leading,
-    letterSpacing: spec.size >= 46 ? "-0.02em" : "0", whiteSpace: "pre-wrap", maxHeight: Math.ceil(spec.size * spec.leading * spec.lines), overflow: "hidden", ...style }}>{value}</div>;
+  const box: CSSProperties = { display: "flex", color: tone.color, fontSize: spec.size, fontWeight: spec.weight, lineHeight: spec.leading,
+    maxHeight: Math.ceil(spec.size * spec.leading * spec.lines), overflow: "hidden", ...style };
+  if (!CARD_MARK.test(value)) return <div data-card-field={name} style={{ ...box, wordBreak: "keep-all", whiteSpace: "pre-wrap" }}>{value}</div>;
+  // Satori lays spans out as boxes, not inline text, so a field with a marked phrase is drawn word by word and still breaks between words.
+  return <div data-card-field={name} style={{ ...box, flexDirection: "column" }}>{value.split("\n").map((line, at) =>
+    <div key={at} style={{ display: "flex", flexWrap: "wrap", columnGap: Math.round(spec.size * 0.25), minHeight: Math.round(spec.size * spec.leading) }}>
+      {markedWords(line).map((word, n) => <div key={n} style={{ display: "flex" }}>{word.map((part, k) => <span key={k} style={part.em ? { color: tone.accent } : undefined}>{part.text}</span>)}</div>)}</div>)}</div>;
 }
 const Label = ({ children, color }: { children: ReactNode; color: string }) =>
-  <div style={{ display: "flex", fontSize: 28, fontWeight: 700, color, letterSpacing: "0.04em", marginBottom: 20 }}>{children}</div>;
+  <div style={{ display: "flex", fontSize: 24, fontWeight: 500, color, marginBottom: 16 }}>{children}</div>;
+const Arrow = ({ color, size = 48 }: { color: string; size?: number }) => <div style={{ display: "flex", justifyContent: "center", padding: "16px 0" }}>
+  <svg width={size * 0.75} height={size} viewBox="0 0 36 48"><path d="M18 4v38M6 30l12 12 12-12" fill="none" stroke={color} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" /></svg></div>;
+const Count = ({ n, color }: { n: number; color: string }) => <div style={{ display: "flex", fontSize: 36, fontWeight: 500, color, lineHeight: 1 }}>{String(n).padStart(2, "0")}</div>;
 
-function Body({ draft, slide, index, theme }: { draft: CardDraft; slide: CardSlide; index: number; theme: Theme }) {
-  const f = (name: string, style?: CSSProperties) => <Field slide={slide} name={name} style={style} theme={theme} />;
+/** The PD's photo at its own ratio inside the 864px visual width; until its address is known (or in a list thumbnail) a grey box of the same size. */
+function Photo({ photo, src, maxHeight, theme, style }: { photo?: CardPhoto; src?: string; maxHeight: number; theme: Theme; style?: CSSProperties }) {
+  if (!photo) return null;
+  const scale = Math.min(VISUAL / photo.w, maxHeight / photo.h), width = Math.round(photo.w * scale), height = Math.round(photo.h * scale);
+  const box: CSSProperties = { display: "flex", alignSelf: "center", width, height, borderRadius: 16, ...style };
+  // eslint-disable-next-line @next/next/no-img-element -- next/og draws plain <img>; next/image does not exist there.
+  return src ? <img src={src} alt="" width={width} height={height} style={{ ...box, objectFit: "cover" }} /> : <div style={{ ...box, background: theme.soft }} />;
+}
+
+/** The titles of the body cards, in order: 정리 lists them and the 구조도 draws them as its branches. */
+const bodyTitles = (draft: CardDraft, types: CardSlide["type"][]) =>
+  draft.slides.filter(row => types.includes(row.type)).map(row => plainCardText(row.fields.title ?? "").trim()).filter(Boolean);
+const countOf = (draft: CardDraft, index: number) => draft.slides.slice(0, index + 1).filter(row => row.type === draft.slides[index].type).length;
+
+const ON_BLUE = new Set(["cover", "end"]);
+function Body({ draft, slide, index, theme, src }: { draft: CardDraft; slide: CardSlide; index: number; theme: Theme; src?: string }) {
+  const title = { color: theme.title, accent: theme.blue }, ink = { color: theme.ink, accent: theme.blue }, sub = { color: theme.sub, accent: theme.blue }, blue = { color: theme.white, accent: theme.gold };
+  const f = (name: string, tone: Tone, style?: CSSProperties) => <Field slide={slide} name={name} tone={tone} style={style} />;
+  const photo = (maxHeight: number) => <Photo photo={slide.photo} src={src} maxHeight={maxHeight} theme={theme} style={{ marginTop: 40 }} />;
+  const after = slide.photo ? 48 : 40;   // 이미지 · 도식 → 약 40~64px → 설명
+  const column: CSSProperties = { display: "flex", flexDirection: "column", flex: 1, justifyContent: "center" };
+  const visual: CSSProperties = { display: "flex", flexDirection: "column", alignSelf: "center", width: VISUAL };
+  const box = (background: string): CSSProperties => ({ display: "flex", flexDirection: "column", background, borderRadius: 24, padding: "36px 40px" });
   switch (slide.type) {
-    case "cover": return <div style={{ display: "flex", flexDirection: "column", flex: 1, justifyContent: "center" }}>
-      <div style={{ display: "flex", width: 96, height: 10, background: theme.accent, marginBottom: 56 }} />{f("head")}{f("sub", { color: theme.sub, marginTop: 40 })}</div>;
-    case "item": {
-      const number = draft.slides.slice(0, index + 1).filter(row => row.type === "item").length;
-      return <div style={{ display: "flex", flexDirection: "column", flex: 1, justifyContent: "center" }}>
-        <div style={{ display: "flex", fontSize: 120, fontWeight: 800, color: theme.accent, lineHeight: 1 }}>{String(number).padStart(2, "0")}</div>
-        {f("title", { marginTop: 48 })}{f("body", { marginTop: 36 })}</div>;
-    }
-    case "pair": return <div style={{ display: "flex", flexDirection: "column", flex: 1, justifyContent: "center" }}>
-      <Label color={theme.sub}>흔한 생각</Label>{f("myth", { color: theme.sub })}
-      <div style={{ display: "flex", height: 2, background: theme.line, margin: "56px 0" }} />
-      <Label color={theme.accent}>실제로는</Label>{f("fact")}{f("basis", { color: theme.sub, marginTop: 32 })}</div>;
+    case "cover": return <div style={column}>{f("head", blue)}{f("sub", blue, { marginTop: 40 })}{slide.photo ? <Photo photo={slide.photo} src={src} maxHeight={520} theme={theme} style={{ marginTop: 64 }} /> : null}</div>;
+    case "item": return <div style={column}>
+      <Count n={countOf(draft, index)} color={theme.blue} />{f("title", title, { marginTop: 32 })}{photo(480)}{f("body", ink, { marginTop: after })}</div>;
+    // 전후 변화 도식: the common thought, then what is actually so, with the basis right under it.
+    case "pair": return <div style={column}><div style={visual}>
+      <div style={box(theme.soft)}><Label color={theme.sub}>흔한 생각</Label>{f("myth", sub)}</div>
+      <Arrow color={theme.blue} />
+      <div style={box(theme.blue)}><Label color={theme.white}>실제로는</Label>{f("fact", blue)}</div>
+      {f("basis", sub, { marginTop: 48 })}</div></div>;
+    // 병렬 항목: the one line first, then the body titles side by side in weight; only 단계 are joined by arrows (they are an order).
     case "summary": {
-      const titles = draft.slides.filter(row => row.type === "item").map(row => row.fields.title?.trim()).filter(Boolean);
-      return <div style={{ display: "flex", flexDirection: "column", flex: 1, justifyContent: "center" }}>
-        <Label color={theme.accent}>정리</Label>
-        {titles.map((title, at) => <div key={at} style={{ display: "flex", fontSize: 36, fontWeight: 600, lineHeight: 1.4, color: theme.ink, padding: "14px 0", borderBottom: `2px solid ${theme.line}`, wordBreak: "keep-all" }}>
-          {`${String(at + 1).padStart(2, "0")}  ${title}`}</div>)}
-        {f("line", { marginTop: titles.length ? 64 : 0 })}</div>;
+      const titles = bodyTitles(draft, ["item", "compare", "step"]), steps = draft.format === "steps";
+      return <div style={column}>
+        <Label color={theme.blue}>정리</Label>{f("line", title)}
+        {titles.length ? <div style={{ ...visual, marginTop: 56 }}>{titles.map((text, at) => <div key={at} style={{ display: "flex", flexDirection: "column" }}>
+          {at && steps ? <Arrow color={theme.blue} size={28} /> : null}
+          <div style={{ display: "flex", alignItems: "center", background: theme.paper, borderRadius: 20, padding: "24px 36px", marginTop: at && !steps ? 16 : 0 }}>
+            <div style={{ display: "flex", width: 64, fontSize: 28, fontWeight: 500, color: theme.blue }}>{String(at + 1).padStart(2, "0")}</div>
+            <div style={{ display: "flex", flex: 1, fontSize: 36, fontWeight: 500, lineHeight: 1.4, color: theme.title, wordBreak: "keep-all" }}>{text}</div></div></div>)}</div> : null}</div>;
     }
-    case "line": return <div style={{ display: "flex", flexDirection: "column", flex: 1, justifyContent: "center" }}>{f("text")}{f("note", { color: theme.sub, marginTop: 40 })}</div>;
-    case "end": return <div style={{ display: "flex", flexDirection: "column", flex: 1, justifyContent: "center" }}>
-      {f("line")}
+    case "line": return <div style={column}>{f("text", title)}{photo(520)}{f("note", sub, { marginTop: after })}</div>;
+    // 차이 도식: one 기준, the two sides the same size side by side, the explanation under them.
+    case "compare": return <div style={column}>{f("title", title)}
+      <div style={{ ...visual, marginTop: 40 }}>
+        <div style={{ display: "flex", gap: 24 }}>
+          <div style={{ ...box(theme.soft), flex: 1, padding: "32px 32px" }}>{f("leftLabel", sub, { marginBottom: 16 })}{f("left", title)}</div>
+          <div style={{ ...box(theme.blue), flex: 1, padding: "32px 32px" }}>{f("rightLabel", blue, { marginBottom: 16 })}{f("right", blue)}</div></div>
+        {f("note", sub, { marginTop: 48 })}</div></div>;
+    // 과정 도식: where this step sits in the whole, then the step, its photo and what to do.
+    case "step": {
+      const total = draft.slides.filter(row => row.type === "step").length, n = countOf(draft, index);
+      return <div style={column}>
+        <div style={{ display: "flex", alignItems: "center" }}>{Array.from({ length: total }, (_, at) => <div key={at} style={{ display: "flex", alignItems: "center" }}>
+          {at ? <div style={{ display: "flex", width: 32, height: 4, background: theme.soft }} /> : null}
+          <div style={{ display: "flex", width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center", fontSize: 24, fontWeight: 500,
+            background: at + 1 === n ? theme.blue : theme.soft, color: at + 1 === n ? theme.white : theme.sub }}>{at + 1}</div></div>)}</div>
+        {f("title", title, { marginTop: 48 })}{photo(440)}{f("body", ink, { marginTop: after })}</div>;
+    }
+    // 구성 요소 도식: the concept, and a branch to each 요소 card's name (the names come from those cards, so they always match).
+    case "map": {
+      const parts = bodyTitles(draft, ["part"]), line = `4px solid ${theme.blue}`;
+      return <div style={column}><div style={visual}>
+        <div style={{ ...box(theme.blue), alignSelf: "flex-start", padding: "28px 40px" }}>{f("center", blue)}</div>
+        {parts.map((text, at) => <div key={at} style={{ display: "flex" }}>
+          <div style={{ display: "flex", flexDirection: "column", width: 64, marginLeft: 40 }}>
+            <div style={{ display: "flex", flex: 1, borderLeft: line, borderBottom: line }} /><div style={{ display: "flex", flex: 1, borderLeft: at < parts.length - 1 ? line : "none" }} /></div>
+          <div style={{ display: "flex", flex: 1, alignItems: "center", background: theme.soft, borderRadius: 20, padding: "22px 32px", margin: "10px 0" }}>
+            <div style={{ display: "flex", width: 60, fontSize: 28, fontWeight: 500, color: theme.blue }}>{String(at + 1).padStart(2, "0")}</div>
+            <div style={{ display: "flex", flex: 1, fontSize: 36, fontWeight: 500, lineHeight: 1.4, color: theme.title, wordBreak: "keep-all" }}>{text}</div></div></div>)}
+        {f("note", sub, { marginTop: 48 })}</div></div>;
+    }
+    case "part": {
+      const center = plainCardText(draft.slides.find(row => row.type === "map")?.fields.center ?? "").trim();
+      return <div style={column}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}><Count n={countOf(draft, index)} color={theme.blue} />
+          {center ? <div style={{ display: "flex", fontSize: 26, color: theme.sub }}>{center}</div> : null}</div>
+        {f("title", title, { marginTop: 32 })}{photo(480)}{f("body", ink, { marginTop: after })}</div>;
+    }
+    case "end": return <div style={column}>
+      {f("line", blue)}
       {slide.fields.action?.trim() ? <div style={{ display: "flex", marginTop: 56 }}>
-        <div style={{ display: "flex", background: theme.accent, borderRadius: 999, padding: "20px 40px" }}>{f("action", { color: "#FFFFFF" })}</div></div> : null}</div>;
+        <div style={{ display: "flex", background: theme.white, borderRadius: 999, padding: "18px 36px" }}>{f("action", { color: theme.blue, accent: theme.blue })}</div></div> : null}</div>;
   }
 }
 
-/** Card `index` of `draft` at 1080 × 1350. */
-export function CardSlideView({ draft, index, theme = CARD_THEME }: { draft: CardDraft; index: number; theme?: Theme }) {
+/** Card `index` of `draft` at 1080 × 1350; `photos` maps a photo's path to an address the drawing can load (a signed URL, or a data URL in the PNG). */
+export function CardSlideView({ draft, index, photos, theme = CARD_THEME }: { draft: CardDraft; index: number; photos?: Record<string, string>; theme?: Theme }) {
   const slide = draft.slides[index];
-  return <div style={{ display: "flex", flexDirection: "column", position: "relative", boxSizing: "border-box", width: CARD_SIZE.width, height: CARD_SIZE.height, padding: "120px 80px 140px",
-    background: theme.bg, color: theme.ink, fontFamily: "Pretendard" }}>
-    {slide ? <Body draft={draft} slide={slide} index={index} theme={theme} /> : null}
-    <div style={{ display: "flex", position: "absolute", left: 80, right: 80, bottom: 60, justifyContent: "space-between", fontSize: 26, color: theme.sub, letterSpacing: "0.04em" }}>
-      <span>{theme.brand}</span><span>{`${index + 1} / ${draft.slides.length}`}</span></div>
+  const onBlue = ON_BLUE.has(slide?.type ?? "");
+  return <div style={{ display: "flex", flexDirection: "column", position: "relative", boxSizing: "border-box", width: CARD_SIZE.width, height: CARD_SIZE.height, padding: `128px ${PAD}px 160px`,
+    background: onBlue ? theme.blue : slide?.type === "summary" ? theme.soft : theme.paper, color: theme.ink, fontFamily: "Pretendard" }}>
+    {slide ? <Body draft={draft} slide={slide} index={index} theme={theme} src={slide.photo ? photos?.[slide.photo.path] : undefined} /> : null}
+    <div style={{ display: "flex", position: "absolute", left: PAD, right: PAD, bottom: 64, justifyContent: "space-between", alignItems: "center", fontSize: 16, color: onBlue ? theme.white : theme.sub }}>
+      <Logo color={onBlue ? theme.white : theme.title} height={28} /><span>{`${index + 1} / ${draft.slides.length}`}</span></div>
   </div>;
 }
