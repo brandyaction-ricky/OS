@@ -17,9 +17,6 @@
 
 /* Scoped finance prototype surfaces use the OS theme; no global resets. */
 .finance-workspace {
-  --s1: #3987e5;
-  --s2: #eb6834;
-  --s3: #199e70;
   --mono: ui-monospace, Menlo, monospace;
   font-size: 14px;
   line-height: 1.55;
@@ -645,19 +642,6 @@
 .page-content .finance-workspace .status-pill > [aria-hidden] { /* 배지 앞 기호(✓ ! ✕)와 글자 사이 */
   margin-right: 3px;
 }
-.page-content .finance-workspace .fin-bz {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-}
-.page-content .finance-workspace .fin-bz i {
-  width: 9px;
-  height: 9px;
-  border-radius: 3px;
-  display: inline-block;
-  flex-shrink: 0;
-}
 .page-content .finance-workspace .fin-blank {
   color: var(--warning);
   background: var(--warning-soft);
@@ -930,10 +914,10 @@
   font-family: inherit;
 }
 .page-content .finance-workspace .fin-chart .fin-s1 {
-  fill: var(--s1);
+  fill: var(--biz-myin); /* 마이인 — 공통 사업 색 (.os-biz 와 같음) */
 }
 .page-content .finance-workspace .fin-chart .fin-s2 {
-  fill: var(--s2);
+  fill: var(--biz-edu); /* 에듀 */
 }
 .page-content .finance-workspace .fin-chart .fin-hit {
   fill: transparent;
@@ -963,17 +947,6 @@
   flex-wrap: wrap;
   font-size: 12px;
   color: var(--text-2);
-}
-.page-content .finance-workspace .fin-legend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.page-content .finance-workspace .fin-legend i {
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
-  display: inline-block;
 }
 .page-content .finance-workspace .fin-hbar {
   display: grid;
