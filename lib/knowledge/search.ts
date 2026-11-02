@@ -3,6 +3,20 @@ import { documentSpace,type Space } from "./model.ts";
 const GROUPS=[["쇼츠","숏츠","쇼트","shorts"],["썸네일","섬네일","thumbnail"],["회의","회의록","meeting"],["수강생","학생","회원"],["정본","기준"]];
 export interface KnowledgeSearchHit {id:string;title:string;space:Space;group:"title"|"body"|"partial";excerpt:string;hits:number;updatedAt:string}
 export function queryTerms(query:string){return query.toLowerCase().trim().split(/\s+/).filter(Boolean).map(word=>GROUPS.find(group=>group.includes(word))??[word]);}
+/**
+ * 문서 찾기's database pre-filter: documents whose title or body contains any searched word (or a word from its group), so only
+ * those bodies leave the database; searchWorkspace still decides the matches. Characters that PostgREST's or=(...) syntax reserves
+ * are not sent: such a word is narrowed to its longest plain run (a document containing the word contains that run too).
+ * null: nothing is searched. "": a word has no plain run, so every document is read as before.
+ * A word split by markdown inside the raw body (정**본**) is the one match this can miss.
+ */
+export function searchPrefilter(query:string){
+  const words=[...new Set(queryTerms(query.replace(/결정/g,"").trim()).flat())].filter(Boolean).slice(0,16);
+  if(!words.length)return null;
+  const runs=words.map(word=>word.split(/[,.:()"'\\]+/).sort((a,b)=>b.length-a.length)[0]??"");
+  if(runs.some(run=>!run))return "";
+  return [...new Set(runs)].flatMap(run=>[`title.ilike.*${run}*`,`content_md.ilike.*${run}*`]).join(",");
+}
 export function plainMarkdown(value:string){return value.replace(/!\[[^\]]*\]\([^)]*\)/g,"").replace(/\[([^\]]+)\]\([^)]*\)/g,"$1").replace(/[#*_>|]/g,"").replace(/\s+/g," ").trim();}
 export function searchWorkspace(documents:KnowledgeDocument[],query:string,{space="all",includeMine=false,includeAI=false,ownerId="",titleOnly=false}:{space?:string;includeMine?:boolean;includeAI?:boolean;ownerId?:string;titleOnly?:boolean}={}):KnowledgeSearchHit[]{
   const terms=queryTerms(query.replace(/결정/g,"").trim());if(!terms.length)return [];
