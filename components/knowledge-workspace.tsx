@@ -564,17 +564,17 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
     // The folder tree can render from this tab's last inventory; loading stays on until the fresh pass ends.
     if (recentInventory) setInventory(recentInventory.folders);
     try {
-      const result = await readDocumentFolders(accessToken, ownerFilter);
-      if (revision !== epoch.current) return;
-      setInventory(result.folders);
+      // Restore the saved tree before loading; direct folder URLs also need their ancestors. Which folders to open is known
+      // from the saved tree and the address, so they load alongside the folder inventory instead of after it.
       setDocuments(current => current.filter(row => row.id === selectedIdRef.current));
-      // Restore the saved tree before loading; direct folder URLs also need their ancestors.
       const foldersToLoad = new Set(expandedFoldersRef.current);
       if (vault && managedFolderRef.current) {
         for (const path of knowledgeFolderOptions([managedFolderRef.current])) foldersToLoad.add(path);
         if (!hasStoredExpansion.current) setExpandedFolders(current => new Set([...current, ...foldersToLoad]));
       }
-      await Promise.all([...foldersToLoad].map(loadFolder));
+      const [result] = await Promise.all([readDocumentFolders(accessToken, ownerFilter), Promise.all([...foldersToLoad].map(loadFolder))]);
+      if (revision !== epoch.current) return;
+      setInventory(result.folders);
       setError("");
     } catch (reason) { setError(reason instanceof Error ? reason.message : "문서를 불러오지 못했습니다."); }
     finally { if (revision === epoch.current) setListLoading(false); }
