@@ -178,8 +178,8 @@
   .os-avatar[data-tone="6"] { background: var(--danger-soft);  color: var(--danger); }
   .os-biz { display: inline-flex; align-items: center; gap: 5px; font-size: var(--os-text-meta); color: var(--text-2); white-space: nowrap; }
   .os-biz::before { content: ""; width: 7px; height: 7px; border-radius: 2px; flex: none; background: var(--muted); }
-  .os-biz[data-biz="myin"]::before    { background: var(--cyan); }
-  .os-biz[data-biz="edu"]::before     { background: var(--mint); }
+  .os-biz[data-biz="myin"]::before    { background: var(--biz-myin); } /* 11-02 대표: 마이인 브랜드 블루 · 에듀 브랜디액션 레드 */
+  .os-biz[data-biz="edu"]::before     { background: var(--biz-edu); }
   .os-biz[data-biz="company"]::before { background: var(--purple); }
   .os-due { font-size: var(--os-text-meta); color: var(--text-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
   .os-due[data-state="over"] { color: var(--danger); font-weight: var(--os-weight-semibold); }

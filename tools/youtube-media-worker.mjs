@@ -523,6 +523,37 @@ export function readVoiceDictionaries(dir) {
     tests: Array.isArray(tests?.items) ? tests.items : [] };
 }
 
+/**
+ * 자막 한꺼번에 고치기 (유쓰 요청 1/8): the OS sends stage 1's subtitles with the words people changed (same lines, same times). His
+ * renderer draws the video's subtitles and writes subs_youtube.srt from this one file, so both follow it. An OS without edits sends none.
+ */
+export function writeSubtitles(videoDir, ass) {
+  if (typeof ass === "string" && ass.includes("Dialogue:")) writeFileSync(path.join(videoDir, "subs_myin.ass"), ass);
+}
+
+/**
+ * 채널 모양 (유쓰 요청 5/8): the video's pinned style laid over a copy of the storyboard, used only for drawing — the storyboard file
+ * (and what goes back to the OS after the music match) stays as written. A tone goes into this run's own 톤앤매너.json as "os_channel"
+ * for the diagram scenes that name none (only where the package has his tone tool); ending and logo where the storyboard says nothing.
+ * Returns the storyboard file name for STORY.
+ */
+export const STYLE_THEME = "os_channel";
+export function styleStoryboard(videoDir, myinDir, style) {
+  if (!style) return "myin_storyboard.json";
+  const story = JSON.parse(readFileSync(path.join(videoDir, "myin_storyboard.json"), "utf8"));
+  if (style.tone && existsSync(path.join(myinDir, "myin_tone.py"))) {
+    const toneFile = path.join(myinDir, "톤앤매너.json");
+    let tones = {};
+    try { tones = JSON.parse(readFileSync(toneFile, "utf8")); } catch { tones = {}; }
+    writeFileSync(toneFile, `${JSON.stringify({ ...tones, [STYLE_THEME]: style.tone }, null, 1)}\n`);
+    for (const scene of story.scenes ?? []) if (String(scene.type ?? "").startsWith("lib_") && !scene.theme) scene.theme = STYLE_THEME;
+  }
+  if (style.ending && story.ending === undefined) story.ending = style.ending;
+  if (typeof style.logo === "boolean" && story.logo === undefined) story.logo = style.logo ? "on" : "off";
+  writeFileSync(path.join(videoDir, "myin_storyboard_styled.json"), JSON.stringify(story, null, 1));
+  return "myin_storyboard_styled.json";
+}
+
 /** Process one v13 words job; returns false when there is none (or this PC has no v13 package). */
 export async function processMyinWords() {
   if (!myinPkg) return false;
@@ -704,6 +735,7 @@ export async function processMyinPrep() {
     const env = layoutEnv(myinEnv(), job.layout);
     const storyFile = path.join(videoDir, "myin_storyboard.json");
     writeFileSync(storyFile, JSON.stringify(job.storyboard, null, 1));
+    writeSubtitles(videoDir, job.subtitlesAss);
     for (const spot of job.placeholders ?? []) {
       const file = path.join(work, "assets", spot.kind, spot.file);
       if (existsSync(file)) continue;
@@ -751,7 +783,7 @@ export async function processMyinPrep() {
     }
     if (job.siteCapture) await runAsync(myinPython, ["capture_site.py"], { cwd: myinDir, env });
     current.step = "drawing";
-    const log = await runCapture(myinPython, ["render_myin.py", "os_myin", "preview"], { cwd: myinDir, env });
+    const log = await runCapture(myinPython, ["render_myin.py", "os_myin", "preview"], { cwd: myinDir, env: { ...env, STORY: styleStoryboard(videoDir, myinDir, job.style) } });
     const misses = [...missingMusic, ...log.split("\n").filter((line) => line.includes("못 찾음"))];
     const sheets = readdirSync(videoDir).filter((name) => /^preview_\d+\.png$/.test(name)).sort().slice(0, job.sheetUploadUrls.length);
     current.step = "upload";
@@ -798,13 +830,15 @@ export async function processMyinClips() {
     if (job.seed) await myinRebuild(job.runId, job.seed);
     const { videoDir, myinDir } = myinDirs(job.runId);
     const env = layoutEnv(myinEnv(), job.layout);
+    writeSubtitles(videoDir, job.subtitlesAss);
+    const drawEnv = { ...env, STORY: styleStoryboard(videoDir, myinDir, job.style) };
     const out = await runCapture(myinPython, ["-c", RESOLVE_PY], { cwd: myinDir, env });
     const times = JSON.parse(out.split("\n").find((line) => line.startsWith("TIMES ")).slice(6));
     const names = [];
     for (const clip of job.clips) {
       const [t0, t1] = times[clip.scene - 1];
       const [a, b] = clip.name === "clip_short" ? [0, times.at(-1)[1] + 0.3] : clip.name === "clip_opening" ? [0, times[1][0] + 0.3] : [Math.max(0, t0 - 0.5), t1 + 0.3];
-      await runAsync(myinPython, ["render_myin.py", "os_myin", "clip", a.toFixed(2), b.toFixed(2), clip.name, "4"], { cwd: myinDir, env });
+      await runAsync(myinPython, ["render_myin.py", "os_myin", "clip", a.toFixed(2), b.toFixed(2), clip.name, "4"], { cwd: myinDir, env: drawEnv });
       current.step = "upload";
       await upload(clip.uploadUrl, path.join(videoDir, `${clip.name}.mp4`), "video/mp4");
       current.step = "drawing";
@@ -833,7 +867,9 @@ export async function processMyinFinal() {
     const env = layoutEnv(myinEnv(), job.layout);
     // ④ sound edits made after the preparation reach the render in the storyboard the OS hands out with the job.
     if (job.storyboard) writeFileSync(path.join(videoDir, "myin_storyboard.json"), JSON.stringify(job.storyboard, null, 1));
-    await runAsync(myinPython, ["render_myin.py", "os_myin", "render", "4"], { cwd: myinDir, env: { ...env, OUTNAME: "final_myin_v1_raw.mp4" } });
+    writeSubtitles(videoDir, job.subtitlesAss);
+    const drawEnv = { ...env, STORY: styleStoryboard(videoDir, myinDir, job.style) };
+    await runAsync(myinPython, ["render_myin.py", "os_myin", "render", "4"], { cwd: myinDir, env: { ...drawEnv, OUTNAME: "final_myin_v1_raw.mp4" } });
     const video = path.join(videoDir, "final_myin_v1.mp4");
     if (job.layout === "short") {
       // 숏폼: his picture with the voice alone, as the pilots A1–A3 (no music, no effects), brought to the longform's −14 LUFS
@@ -842,8 +878,8 @@ export async function processMyinFinal() {
       execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-i", path.join(videoDir, "myin_video_final_myin_v1_raw.mp4"), "-i", path.join(work, "voice", "os_voice", "voice.wav"),
         "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-af", "pan=stereo|c0=c0|c1=c0,loudnorm=I=-14:TP=-1.5:LRA=11", "-ar", "48000", "-c:a", "aac", "-b:a", "192k", ...(end > 0 ? ["-t", String(end)] : []), video], { env });
     } else {
-      await runAsync(myinPython, ["render_myin.py", "os_myin", "remix", "../../voice/os_myin/myin_video_final_myin_v1_raw.mp4", "final_myin_v1.mp4"], { cwd: myinDir, env });
-      await runAsync(myinPython, ["render_myin.py", "os_myin", "handouts"], { cwd: myinDir, env });
+      await runAsync(myinPython, ["render_myin.py", "os_myin", "remix", "../../voice/os_myin/myin_video_final_myin_v1_raw.mp4", "final_myin_v1.mp4"], { cwd: myinDir, env: drawEnv });
+      await runAsync(myinPython, ["render_myin.py", "os_myin", "handouts"], { cwd: myinDir, env: drawEnv });
     }
     // Per-frame lines go to the verbose log: a 12-minute video printed 1.2 MB of them and overflowed spawnSync's buffer before the summary.
     const report = spawnSync("ffmpeg", ["-hide_banner", "-nostats", "-i", video, "-vn", "-af", "ebur128=peak=true:framelog=verbose", "-f", "null", "-"], { encoding: "utf8", env, maxBuffer: 16 * 1024 * 1024 }).stderr ?? "";

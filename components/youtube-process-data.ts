@@ -75,8 +75,8 @@ export interface YpClient {
   /** N06: stores one reference image or PDF for a comment and returns what to attach. */
   feedbackUpload(id: string, file: File): Promise<FeedbackFile>;
   feedbackFileUrl(id: string, path: string): Promise<string>;
-  uploadSession(id: string, input: { fileName: string; fileSize: number; mimeType: string; connectionOwnerId?: string }): Promise<{ uploadUrl: string; finalV: number }>;
-  uploadComplete(id: string, input: { videoId: string; connectionOwnerId?: string }): Promise<{ videoId: string; videoUrl: string; thumbnail: string }>;
+  uploadSession(id: string, input: { fileName: string; fileSize: number; mimeType: string; connectionOwnerId?: string; finalAt?: string }): Promise<{ uploadUrl: string; finalV: number }>;
+  uploadComplete(id: string, input: { videoId: string; connectionOwnerId?: string; finalAt?: string }): Promise<{ videoId: string; videoUrl: string; thumbnail: string }>;
   uploadStatus(id: string, input: { connectionOwnerId?: string }): Promise<{ processing: string; percent: number | null; privacy: string; publishAt: string | null }>;
   /** The 대표's decision on a waiting step, or a note on one the PD confirmed (note · memo). */
   confirm(id: string, gate: YpGate, action: YpApproverAction | "note", expectedVersion: number, extra?: YpConfirmExtra): Promise<YpProject>;
@@ -162,11 +162,12 @@ function apiClient(token: string): YpClient {
     assetUrl,
     finalSrt: async final => {
       if (final.source !== "myin" || !final.runId) return null;
-      const url = (await apiRequest<{ srt: string | null }>(`/api/v1/content/youtube-automation/myin?outputs=${final.runId}`, { token })).srt;
+      const url = (await apiRequest<{ srt: string | null }>(`/api/v1/content/youtube-automation/myin?outputs=${final.runId}&at=${encodeURIComponent(final.at)}`, { token })).srt;
       return url ? await fetch(url).then(response => response.ok ? response.text() : null, () => null) : null;
     },
     finalUrl: async (id, final) => final.source === "short" && final.runId ? shortVideoUrl(id, final.runId)
-      : final.runId ? (await apiRequest<{ video: string | null }>(`/api/v1/content/youtube-automation/myin?outputs=${final.runId}`, { token })).video
+      // A run keeps its earlier finished videos (유쓰 요청 2/8): each version is found by when it was made.
+      : final.runId ? (await apiRequest<{ video: string | null }>(`/api/v1/content/youtube-automation/myin?outputs=${final.runId}&at=${encodeURIComponent(final.at)}`, { token })).video
       : final.path ? assetUrl(id, final.path) : null,
     feedback: async id => (await apiRequest<{ items: YpFeedbackView[] }>(`${base}/${id}/feedback`, { token })).items,
     addFeedback: async (id, input) => (await apiRequest<{ item: YpFeedbackView }>(`${base}/${id}/feedback`, { token, method: "POST", body: json(input) })).item,

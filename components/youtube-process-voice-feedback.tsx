@@ -7,7 +7,7 @@ import { stepHref } from "@/lib/youtube-process/project";
 import { useCostConfirm, useCostModels, voiceEstimate } from "./cost-notice";
 import type { YpFeedbackView, YpFinalView } from "./youtube-process-data";
 
-interface VoiceRun { id: string; stage: string; voiceFixable?: boolean; voiceFixes?: { memo: string }[]; voiceChanged?: { at: string; count: number } | null }
+interface VoiceRun { id: string; stage: string; voiceFixable?: boolean; voiceFixes?: { memo: string }[]; voiceChanged?: { at: string; count: number } | null; final?: { at: string } | null }
 const fmt = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 
 /**
@@ -30,7 +30,8 @@ export function VoiceFeedbackBox({ projectId, final, items, token, onSeek }: {
       .then(result => { if (live) setRun(result.run?.id === runId ? result.run : null); }, () => undefined);
     return () => { live = false; };
   }, [projectId, runId, token]);
-  if (!final || !runId || !run) return null;
+  // Only the run's current video maps back to its voice: an earlier version (유쓰 요청 2/8 keeps them) is only watched.
+  if (!final || !runId || !run || (run.final && run.final.at !== final.at)) return null;
   const voice = items.filter(item => item.target === "video" && item.ver === final.v && !feedbackClosed(item) && voiceFeedback(item.text));
   const pending = run.stage === "words_pending" && run.voiceFixes?.length;
   if (!pending && !run.voiceChanged && !voice.length) return null;

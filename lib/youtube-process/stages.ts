@@ -96,7 +96,7 @@ export interface YpUpload {
   publishAt?: string | null;
   /** 광고 성과 1단계 (로건 QA 10/30): an ad's numbers per period, copied from Meta Ads Manager. */
   ads?: AdResult[];
-  run: { at: string; by: string; status: "done" | "failed"; videoId?: string; videoUrl?: string; finalV?: number; thumbnail?: "ok" | "fail" | "skip"; error?: string;
+  run: { at: string; by: string; status: "done" | "failed"; videoId?: string; videoUrl?: string; finalV?: number; /** Which final was sent (its time), 유쓰 요청 공통 조건 3. */ finalAt?: string; thumbnail?: "ok" | "fail" | "skip"; error?: string;
     /** What YouTube reports after the upload: a project not yet audited by YouTube can only upload private. */
     privacy?: string; publishAt?: string } | null;
 }
@@ -252,6 +252,17 @@ export function stageData<K extends YpStageKind>(kind: K, stored: unknown, proje
   const base = emptyStage(kind, projectKind);
   return stored && typeof stored === "object" ? { ...base, ...(stored as object) } as YpStageData[K] : base;
 }
+
+// ── 올라갈 최종본 (유쓰 요청 공통 조건 3·4, 2026-11-02) ──
+/**
+ * The final that goes up: the newest one, except a video the OS made after the 최종 검토 컨펌 — it waits as a candidate until the PD
+ * reopens and confirms again. A file put in by hand after the confirm stays the exception it is today (lateMakeOk).
+ */
+export function uploadFinal<T extends { at: string; source: string; aspect?: string }>(finals: T[], reviewOkAt?: string | null): T | null {
+  return finals.filter(final => !final.aspect && (final.source === "upload" || !reviewOkAt || final.at <= reviewOkAt)).at(-1) ?? null;
+}
+/** When the 최종 검토 was confirmed, if it is. */
+export const reviewOkAt = (gate: { state: string; decidedAt?: string }) => gate.state === "ok" ? gate.decidedAt ?? null : null;
 
 // ── 제작 (S5) ──
 /** 업로드 전 급한 수정 (로건 요청 2026-10-30): after the 최종 검토 컨펌, until the video is on YouTube, a new final or a thumbnail file still goes in
