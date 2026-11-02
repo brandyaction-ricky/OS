@@ -48,7 +48,8 @@ const finalSchema = z.object({ video: z.string(), summary: z.string().optional()
   durationSeconds: z.number().positive(), lufs: z.number(), peak: z.number(), at: z.string().datetime(),
   /** Which subtitle edits it was made with (자막 한꺼번에 고치기); none = the subtitles as stage 1 made them. */
   subtitles: hex.optional() }).strict();
-const leaseSchema = z.object({ token: z.string().uuid(), expiresAt: z.string().datetime(), startedAt: z.string().datetime().optional() }).strict();
+// input: what the job was handed (for the preparation, our images) — a result made from other input is not taken (유쓰 요청 2/8).
+const leaseSchema = z.object({ token: z.string().uuid(), expiresAt: z.string().datetime(), startedAt: z.string().datetime().optional(), input: z.string().regex(/^[a-f0-9]{64}$/).optional() }).strict();
 const runSchema = z.object({
   kind: z.literal(MYIN_RUN_KIND), runKey: hex, sourceId: z.string().uuid(), inputKey: hex, script: versionRef, scriptMarkdownHash: hex,
   // 숏폼 (2026-10-28): drawn 9:16 by the render PC's vertical copy of Logan's engine (MYIN_PKG_SHORT); no handouts, no staff-Mac drafts.
@@ -304,7 +305,7 @@ async function scriptChanged(supabase: RequestActor["supabase"], run: MyinRun) {
   catch (error) { return error instanceof ApiError && error.code === "MYIN_RUN_STALE"; }
 }
 
-async function claim(service: Service, stage: string, leaseMs: number, accept: (run: MyinRun) => boolean = () => true) {
+async function claim(service: Service, stage: string, leaseMs: number, accept: (run: MyinRun) => boolean = () => true, input?: (run: MyinRun) => string) {
   const { data } = await service.from("os_records").select("*").eq("record_type", "ai_job").eq("metadata->>kind", MYIN_RUN_KIND)
     .eq("stage", stage).in("status", ["backlog", "in_progress"]).is("archived_at", null).order("created_at").limit(10);
   for (const candidate of (data ?? []) as OsRecord[]) {
@@ -312,7 +313,7 @@ async function claim(service: Service, stage: string, leaseMs: number, accept: (
     if (!accept(run)) continue;
     if (run.lease && Date.parse(run.lease.expiresAt) > Date.now()) continue;
     if (run.attempts >= 3) { await save(service, candidate, "blocked", stage, run).catch(() => null); continue; }
-    const lease = { token: randomUUID(), expiresAt: new Date(Date.now() + leaseMs).toISOString(), startedAt: new Date().toISOString() };
+    const lease = { token: randomUUID(), expiresAt: new Date(Date.now() + leaseMs).toISOString(), startedAt: new Date().toISOString(), ...(input ? { input: input(run) } : {}) };
     const claimed = await save(service, candidate, "in_progress", stage, { ...run, lease, attempts: run.attempts + 1 }).catch(() => null);
     if (claimed) return { record: claimed, run: parse(claimed), lease };
   }
@@ -785,9 +786,12 @@ const assertLocalReady = (run: MyinRun) => {
   if (!run.words?.voice) throw new ApiError(409, "MYIN_LOCAL_VOICE_MISSING", "이 영상은 내 컴퓨터로 만들 음성 파일이 없어요. 영상 만드는 컴퓨터로 만들어 주세요.");
 };
 
+/** Our images as the preparation was handed them: one put in while it runs makes that preparation's result stale. */
+const oursKey = (run: MyinRun) => sha(JSON.stringify(Object.entries(run.ours ?? {}).map(([file, image]) => [file, image.path]).sort()));
+
 /** Render PC (or, with `owner`, that member's own Mac for a ③ draft): storyboard, approved files, CTA voice and where the sheets and report go. */
 export async function claimMyinPrep(service: Service = createServiceSupabase(), owner?: string, short = false) {
-  const claimed = await claim(service, "prep_pending", WORDS_LEASE_MS, (run) => draftFilter(owner)(run) && (!owner || Boolean(run.words?.voice)) && fits(short)(run));
+  const claimed = await claim(service, "prep_pending", WORDS_LEASE_MS, (run) => draftFilter(owner)(run) && (!owner || Boolean(run.words?.voice)) && fits(short)(run), oursKey);
   if (!claimed) return { idle: true as const };
   const { record, run, lease } = claimed;
   try {
@@ -822,6 +826,12 @@ export async function claimMyinPrep(service: Service = createServiceSupabase(), 
 /** Render PC: the preview ran. Its "문구 못 찾음" lines decide whether the run may go on to the preview clips. */
 export async function completeMyinPrep(input: { runId: string; lease: string }, service: Service = createServiceSupabase()) {
   const { record, run } = await leased(service, input.runId, input.lease);
+  // An image was put in while this preparation ran: its result is from the old picture, so it prepares again (유쓰 요청 2/8).
+  if (run.lease?.input && run.lease.input !== oursKey(run)) {
+    const again: MyinRun = { ...run, attempts: 0 }; delete again.lease; delete again.lastError;
+    await save(service, record, "backlog", "prep_pending", again);
+    return { runId: record.id, stage: "prep_pending", misses: 0, again: true };
+  }
   const { data } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).download(prepBundlePath(record, run, input.lease));
   if (!data) throw new ApiError(409, "MYIN_BUNDLE_MISSING", "준비 결과 파일을 찾지 못했습니다.");
   const bundle = z.object({ misses: z.array(z.string()), sheets: z.number().int().min(0), musicCredits: z.array(z.string()).default([]),
@@ -885,26 +895,30 @@ async function ourImageRun(actor: RequestActor, runId: string, file?: string) {
   const { record, run } = await visibleRun(actor, runId);
   if (!run.storyboard) throw new ApiError(409, "MYIN_STORYBOARD_MISSING", "기획표가 나온 뒤에 이미지를 올릴 수 있어요.");
   const service = createServiceSupabase();
-  const folders = myinPhotoFolders(await storyboardJson(service, run));
+  const story = await storyboardJson(service, run);
+  const folders = myinPhotoFolders(story);
   if (file !== undefined && !folders.has(file)) throw new ApiError(400, "MYIN_OUR_IMAGE_FILE", `기획표에 없는 사진 파일이에요: ${file}`);
-  return { service, record, run, folders, open: !["final_pending", "final_ready"].includes(record.stage ?? "") };
+  // 문제 장면의 그림 바꾸기 (유쓰 요청 2/8): also after the finished video — the run goes back to ④ and that video stays a version.
+  return { service, record, run, folders, scenes: story.scenes, open: record.stage !== "final_pending" };
 }
 
 /** The photo files the storyboard uses and where each comes from: ours, a listed Unsplash · 위키미디어 photo, or neither. */
-function photoSources(run: MyinRun, folders: Map<string, unknown>) {
+function photoSources(run: MyinRun, folders: Map<string, unknown>, scenes: Record<string, unknown>[] = []) {
   const listed = new Set((run.storyboard?.assets ?? []).filter((a) => myinPhotoFetchUrl(a.url)).map((a) => a.file));
+  // The scene numbers (1-based, as the 점검 시트 and 장면 미리보기 name them) that show each file.
+  const usedIn = (file: string) => scenes.flatMap((scene, i) => myinPhotoFolders(scene).has(file) ? [i + 1] : []);
   return [...folders.keys()].map((file) => ({ file, from: run.ours?.[file] ? "ours" as const : listed.has(file) ? "list" as const : "none" as const,
-    by: run.ours?.[file]?.name ?? null }));
+    by: run.ours?.[file]?.name ?? null, scenes: usedIn(file) }));
 }
 
 export async function myinPhotos(actor: RequestActor, runId: string) {
-  const { run, folders, open } = await ourImageRun(actor, runId);
-  return { open, photos: photoSources(run, folders) };
+  const { record, run, folders, scenes, open } = await ourImageRun(actor, runId);
+  return { open, finished: record.stage === "final_ready", photos: photoSources(run, folders, scenes) };
 }
 
 export async function myinOurImageUpload(actor: RequestActor, runId: string, file: string, type: string) {
   const { service, record, run, open } = await ourImageRun(actor, runId, file);
-  if (!open) throw new ApiError(409, "MYIN_OUR_IMAGE_CLOSED", "전체 영상을 만드는 중이거나 나온 뒤예요. 4단계로 돌아간 뒤 올려 주세요.");
+  if (!open) throw new ApiError(409, "MYIN_OUR_IMAGE_CLOSED", "전체 영상을 만드는 중이에요. 끝난 뒤에 올려 주세요.");
   const ext = OUR_IMAGE_TYPES[type];
   if (!ext) throw new ApiError(400, "MYIN_OUR_IMAGE_TYPE", "JPG · PNG · WEBP 이미지만 올릴 수 있어요.");
   const path = `${ourImageFolder(record, run)}/${md5(file).slice(0, 12)}-${Date.now().toString(36)}.${ext}`;
@@ -925,9 +939,11 @@ export async function saveMyinOurImage(actor: RequestActor, runId: string, file:
     throw new ApiError(400, "MYIN_OUR_IMAGE_SIZE", "20MB 이하 이미지만 올릴 수 있어요.");
   }
   const next: MyinRun = { ...run, ours: { ...run.ours, [file]: { path, bytes, by: actor.id, name: actor.name, at: new Date().toISOString() } } };
-  const saved = await save(service, record, record.status, record.stage ?? "", next);
+  // After the finished video the run goes back to ④ (as 「4단계로 돌아가기」); that video stays a version and the new one is made from here.
+  const back = record.stage === "final_ready" && Boolean(run.clipsReview && run.prepared);
+  const saved = await save(service, record, back ? "done" : record.status, back ? "prep_ready" : record.stage ?? "", next);
   const again = run.clipsReview && photoSources(next, folders).every((photo) => photo.from !== "none")
-    && (record.stage === "prep_ready" || (record.status === "blocked" && ["cta_pending", "prep_pending"].includes(record.stage ?? "")));
+    && (back || record.stage === "prep_ready" || (record.status === "blocked" && ["cta_pending", "prep_pending"].includes(record.stage ?? "")));
   return again ? startMyinPrep(actor, runId) : presentMyinRun(saved);
 }
 
