@@ -61,3 +61,36 @@ export async function readIndexSnapshot(documentClient: SupabaseClient, jobClien
     return { documents, jobs, truncated };
 }
 export async function getIndexCoverage(client: SupabaseClient) { const snapshot = await readIndexSnapshot(client); return summarizeIndexCoverage(snapshot.documents, snapshot.jobs, snapshot.truncated); }
+/** Active documents whose current index job failed, the one number 작동 상태 shows. Only a document with a failed job for its
+ * current text can count, so failed jobs, their documents and those documents' jobs give the same answer as the full
+ * coverage (every document and job, about forty reads). null when there are too many failed jobs to read. */
+export async function countIndexFailures(db: SupabaseClient): Promise<number | null> {
+    const unavailable = () => new ApiError(503, "INDEX_PROGRESS_UNAVAILABLE", "검색 준비 현황을 확인하지 못했습니다.");
+    const PAGE = 1000;
+    const failed: Pick<IndexJob, "document_id" | "content_hash">[] = [];
+    for (let offset = 0;; offset += PAGE) {
+        if (offset >= 10000)
+            return null;
+        const { data, error } = await db.from("os_embedding_jobs").select("document_id,content_hash").eq("status", "failed").order("id").range(offset, offset + PAGE - 1);
+        if (error)
+            throw unavailable();
+        failed.push(...(data ?? []));
+        if ((data?.length ?? 0) < PAGE)
+            break;
+    }
+    const inChunks = async <T>(ids: string[], read: (chunk: string[]) => PromiseLike<{ data: T[] | null; error: unknown }>) => {
+        const chunks: string[][] = [];
+        for (let start = 0; start < ids.length; start += 200)
+            chunks.push(ids.slice(start, start + 200));
+        return Promise.all(chunks.map(async chunk => { const { data, error } = await read(chunk); if (error)
+            throw unavailable(); return data ?? []; }));
+    };
+    const documents = (await inChunks<IndexDocument>([...new Set(failed.map(job => job.document_id))], chunk => db.from("os_documents").select("id,content_hash,status").in("id", chunk))).flat();
+    const current = new Map(documents.filter(row => row.status !== "archived").map(row => [row.id, row.content_hash]));
+    const candidates = [...new Set(failed.filter(job => current.get(job.document_id) === job.content_hash).map(job => job.document_id))];
+    // A newer job for the same text (a retry) decides whether the failure still stands.
+    const jobs = await inChunks<IndexJob>(candidates, chunk => db.from("os_embedding_jobs").select("id,document_id,content_hash,status,last_error,created_at").in("document_id", chunk).limit(PAGE));
+    if (jobs.some(rows => rows.length >= PAGE))
+        return null;
+    return summarizeIndexCoverage(documents.filter(row => candidates.includes(row.id)), jobs.flat()).failed;
+}
