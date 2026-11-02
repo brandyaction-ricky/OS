@@ -279,7 +279,7 @@
 .linear-shell .ui-v2.yp .yp-chstyle legend{font-weight:700;font-size:13px;padding:0 4px}
 .linear-shell .ui-v2.yp .yp-chstyle-row{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
 .linear-shell .ui-v2.yp .yp-chstyle-row label{display:grid;gap:4px;font-size:12px;flex:1 1 160px}
-.linear-shell .ui-v2.yp .yp-chstyle-check{display:flex;gap:6px;align-items:center;font-size:13px}
+.linear-shell .ui-v2.yp .yp-chstyle .yp-chstyle-check{display:flex;gap:6px;align-items:center;font-size:13px;flex:0 0 auto}
 .linear-shell .ui-v2.yp .yp-chstyle-color{display:flex;gap:6px;align-items:center}
 .linear-shell .ui-v2.yp .yp-chstyle-color input[type=color]{width:36px;height:32px;padding:0;border:1px solid var(--line);border-radius:6px;background:transparent}
 /* 할 일로 묶어 보기 (유쓰 요청 7/8) */
