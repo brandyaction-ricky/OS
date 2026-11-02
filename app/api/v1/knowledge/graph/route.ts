@@ -17,8 +17,12 @@ export async function GET(request: Request) {
     const documents: KnowledgeLinkSource[] = [];
     const pageSize = 500;
     let stewardReady = true;
+    // Server-Timing: which stage of this read is slow (12 s on 2026-11-02 before the pages and ignore checks ran together).
+    const timing: string[] = [], started = performance.now();
+    let mark = started;
+    const lap = (name: string) => { const now = performance.now(); timing.push(`${name};dur=${Math.round(now - mark)}`); mark = now; };
 
-    for (let offset = 0; ; offset += pageSize) {
+    const readPage = async (offset: number) => {
       let { data, error } = await service
         .from("os_documents")
         .select("id,title,content_md,folder,status,owner_id,source_ref,parent_document_id,current_version,steward_id,source,meeting_record_id,updated_at")
@@ -40,23 +44,31 @@ export async function GET(request: Request) {
         error = legacy.error;
       }
       if (error) throw new ApiError(400, "KNOWLEDGE_GRAPH_FAILED", "지식 연결을 불러오지 못했습니다.", error.message);
-      const rows = (data ?? []) as KnowledgeLinkSource[];
-      documents.push(...rows);
-      if (!data || data.length < pageSize) break;
-    }
+      return (data ?? []) as KnowledgeLinkSource[];
+    };
+    // Every page at once (the bodies make each page heavy); a document added meanwhile is picked up by the tail read.
+    const { count } = await service.from("os_documents").select("id", { count: "exact", head: true }).neq("status", "archived");
+    const pages = await Promise.all(Array.from({ length: Math.max(1, Math.ceil((count ?? 0) / pageSize)) }, (_, i) => readPage(i * pageSize)));
+    for (let offset = pages.length * pageSize; pages[pages.length - 1].length === pageSize; offset += pageSize) pages.push(await readPage(offset));
+    const seen = new Set<string>();
+    for (const row of pages.flat()) if (!seen.has(row.id)) { seen.add(row.id); documents.push(row); }
+    lap("documents");
 
     const readable = await readableKnowledgePages(actor, documents);
+    lap("access");
+    // Hidden links are few: read them once and keep the ones on visible pages (was one query per 100 visible ids).
     const ignored:Array<{action:string;target_id:string;detail:Record<string,unknown>}>=[];
-    const ids=[...readable];
-    for(let start=0;start<ids.length;start+=100){
-      for(let offset=0;;offset+=500){
-        const result=await service.from("os_knowledge_events").select("action,target_id,detail").eq("action","link_ignore").in("target_id",ids.slice(start,start+100)).order("id").range(offset,offset+499);
-        if(result.error){if(result.error.code==="42P01"||result.error.code==="PGRST205")break;throw new ApiError(503,"KNOWLEDGE_GRAPH_FAILED","연결 숨김 기록을 확인하지 못했습니다.");}
-        ignored.push(...(result.data??[]));if(!result.data||result.data.length<500)break;
-      }
+    for(let offset=0;;offset+=1000){
+      const result=await service.from("os_knowledge_events").select("action,target_id,detail").eq("action","link_ignore").order("id").range(offset,offset+999);
+      if(result.error){if(result.error.code==="42P01"||result.error.code==="PGRST205")break;throw new ApiError(503,"KNOWLEDGE_GRAPH_FAILED","연결 숨김 기록을 확인하지 못했습니다.");}
+      ignored.push(...(result.data??[]).filter(row=>readable.has(row.target_id)));if(!result.data||result.data.length<1000)break;
     }
+    lap("ignored");
     const graph = { ...withIgnoredLinks(buildKnowledgeGraph(documents, readable),ignored), stewardReady };
-    return NextResponse.json(new URL(request.url).searchParams.get("format") === "compact" ? packKnowledgeGraph(graph) : graph,{headers:{"Cache-Control":"private, no-store"}});
+    const body = new URL(request.url).searchParams.get("format") === "compact" ? packKnowledgeGraph(graph) : graph;
+    lap("build");
+    timing.push(`total;dur=${Math.round(performance.now() - started)}`);
+    return NextResponse.json(body,{headers:{"Cache-Control":"private, no-store","Server-Timing":timing.join(", ")}});
   } catch (error) {
     return apiErrorResponse(error);
   }
