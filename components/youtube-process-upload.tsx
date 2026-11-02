@@ -6,6 +6,7 @@ import { Check, Copy, ExternalLink, FileText, Plus, RefreshCw, Sparkles, Upload,
 import { apiRequest, uploadYoutubeFile } from "@/lib/api-client";
 import { ENDSCREEN_CARD_DEFAULT, type EndscreenCard } from "@/lib/youtube-process/endscreen-card";
 import type { ChannelConnection } from "@/lib/channel-types";
+import { channelMismatch } from "@/lib/youtube-process/channel-style";
 import { projectName, stepHref } from "@/lib/youtube-process/project";
 import { DESC_TEMPLATE, descChecks, descWritten, diagnosisLink, finalPair, reviewOkAt, uploadFinal, linksMissing, pinnedDraft, publishAtProblem, shortLinkProblem, SLOTS, UTM_DESTS, UTM_OPTIONS, utmBase, utmCode, utmUrl, withLinks, type YpMake, type YpUpload } from "@/lib/youtube-process/stages";
 import { errorMessage } from "./youtube-process-data";
@@ -34,6 +35,8 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
   const [owner, setOwner] = useState("");
   // The previews show the channel the video will go up on (유쓰 요청 6/8).
   const uploadChannel = channels.find(row => row.ownerId === owner)?.accountName;
+  // 채널 모양 (유쓰 요청 5/8): the channel the video's style was made for, compared with the one it goes up on.
+  const [runStyle, setRunStyle] = useState<{ name: string; channel: string } | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
   const [bytes, setBytes] = useState<{ loaded: number; total: number; since: number } | null>(null);
   const [step, setStep] = useState("");
@@ -61,6 +64,13 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
   const editable = (project?.yp.stage === "upload" || early) && !done;
   const reloadAll = useCallback(() => { setDirty(false); void page.reload(); }, [page]);
   const job = useStaffJob(page, "kit", reloadAll);
+  useEffect(() => {
+    if (page.demo || !page.accessToken || !project?.id || !last?.runId) { setRunStyle(null); return; }
+    let active = true;
+    apiRequest<{ run: { style?: { name: string; channel: string } | null } | null }>(`/api/v1/content/youtube-automation/myin?sourceId=${project.id}`, { token: page.accessToken })
+      .then(result => { if (active) setRunStyle(result.run?.style ?? null); }, () => undefined);
+    return () => { active = false; };
+  }, [page.demo, page.accessToken, project?.id, last?.runId]);
 
   useEffect(() => {
     if (page.demo || !page.accessToken) return;
@@ -242,6 +252,7 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
           {form.publishAt ? <label className="yp-lbl">공개할 때 <span className="yp-gq">한국 시간 · 비공개로 올라가고 이 시각에 공개돼요</span>
             <input className="yp-in yp-w-auto" type="datetime-local" value={localInput(form.publishAt)} readOnly={!editable} onChange={event => { const at = new Date(event.target.value); if (!Number.isNaN(at.getTime())) edit({ publishAt: at.toISOString() }, true); }} aria-label="공개 예약 시각" /></label> : null}
           {form.privacy === "public" && !form.publishAt ? <p className="yp-hint">올리자마자 모두에게 보여요.</p> : null}
+          {channelMismatch(runStyle, uploadChannel) ? <p className="yp-note yp-warn" role="status">이 영상은 「{runStyle!.name}」 모양({runStyle!.channel} 채널용)으로 만들었는데, 올릴 채널은 「{uploadChannel}」이에요. 맞는지 확인해 주세요.</p> : null}
           {channels.length > 1 ? <label className="yp-lbl">올릴 채널<select className="yp-in" value={owner} onChange={event => setOwner(event.target.value)}>{channels.map(row => <option key={row.ownerId} value={row.ownerId}>{row.accountName}{row.teamShared ? " · 팀 공유" : " · 나만"}</option>)}</select></label> : null}
           <div style={{ marginTop: 12 }}>{channels.length ? <span className="yp-chan"><Youtube size={15} aria-hidden="true" /> 유튜브 채널 연결됨 · {channels.find(row => row.ownerId === owner)?.accountName}</span>
             : page.demo ? <span className="yp-hint">데모에서는 채널 연결이 없어요</span> : <span className="yp-hint">유튜브 채널이 연결되지 않았어요. <Link className="yp-lnk" href="/settings/account">내 계정 › 채널 연결</Link>에서 연결해요.</span>}</div>
