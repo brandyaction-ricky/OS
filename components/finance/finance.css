@@ -1963,4 +1963,52 @@
   .page-content .finance-react .fin-tile .fin-v { font-size: 17px; }
 }
 
+
+/* 화면 HTML 속 인라인 style → 클래스 (11-02 L2-4 마무리). 인라인처럼 이기도록 두 번 겹친 선택자 */
+.page-content .finance-workspace .fin-g12.fin-g12 { gap: 12px; }
+.page-content .finance-workspace .fin-g6.fin-g6 { gap: 6px; }
+.page-content .finance-workspace .fin-b0.fin-b0 { border: 0; }
+.page-content .finance-workspace .fin-p12.fin-p12 { padding: 12px; }
+.page-content .finance-workspace .fin-mt2.fin-mt2 { margin-top: 2px; }
+.page-content .finance-workspace .fin-mt3.fin-mt3 { margin-top: 3px; }
+.page-content .finance-workspace .fin-mt4.fin-mt4 { margin-top: 4px; }
+.page-content .finance-workspace .fin-mt8.fin-mt8 { margin-top: 8px; }
+.page-content .finance-workspace .fin-mt10.fin-mt10 { margin-top: 10px; }
+.page-content .finance-workspace .fin-mt12.fin-mt12 { margin-top: 12px; }
+.page-content .finance-workspace .fin-mt14.fin-mt14 { margin-top: 14px; }
+.page-content .finance-workspace .fin-mt24.fin-mt24 { margin-top: 24px; }
+.page-content .finance-workspace .fin-mb4.fin-mb4 { margin-bottom: 4px; }
+.page-content .finance-workspace .fin-mb6.fin-mb6 { margin-bottom: 6px; }
+.page-content .finance-workspace .fin-mb8.fin-mb8 { margin-bottom: 8px; }
+.page-content .finance-workspace .fin-mb14.fin-mb14 { margin-bottom: 14px; }
+.page-content .finance-workspace .fin-mb16.fin-mb16 { margin-bottom: 16px; }
+.page-content .finance-workspace .fin-m4-8.fin-m4-8 { margin: 4px 0 8px; }
+.page-content .finance-workspace .fin-m4-10.fin-m4-10 { margin: 4px 0 10px; }
+.page-content .finance-workspace .fin-fs13.fin-fs13 { font-size: 13px; }
+.page-content .finance-workspace .fin-drawer .fin-tiles .fin-tile .fin-v.fin-vtext { font-size: 15px; } /* 서랍 칸의 글자 값(분류 · 상태)은 숫자보다 작게 */
+.page-content .finance-workspace .fin-w400.fin-w400 { font-weight: 400; }
+.page-content .finance-workspace .fin-w700.fin-w700 { font-weight: 700; }
+.page-content .finance-workspace .fin-row6.fin-row6 { display: flex; gap: 6px; align-items: center; }
+.page-content .finance-workspace .fin-row8.fin-row8 { display: flex; gap: 8px; align-items: center; }
+.page-content .finance-workspace .fin-row8top.fin-row8top { display: flex; gap: 8px; align-items: flex-start; }
+.page-content .finance-workspace .fin-irow6.fin-irow6 { display: inline-flex; gap: 6px; align-items: center; }
+.page-content .finance-workspace .fin-wrap8.fin-wrap8 { display: flex; gap: 8px; flex-wrap: wrap; }
+.page-content .finance-workspace .fin-wrap.fin-wrap { flex-wrap: wrap; }
+.page-content .finance-workspace .fin-col6.fin-col6 { display: flex; flex-direction: column; gap: 6px; }
+.page-content .finance-workspace .fin-flex1.fin-flex1 { flex: 1; min-width: 200px; }
+.page-content .finance-workspace .fin-start.fin-start { align-items: start; }
+.page-content .finance-workspace .fin-maxw200.fin-maxw200 { max-width: 200px; }
+.page-content .finance-workspace .fin-maxw240.fin-maxw240 { max-width: 240px; }
+.page-content .finance-workspace .fin-h140.fin-h140 { height: 140px; }
+.page-content .finance-workspace .fin-h180.fin-h180 { height: 180px; }
+.page-content .finance-workspace .fin-tall.fin-tall { height: auto; padding: 10px 12px; align-items: flex-start; }
+.page-content .finance-workspace .fin-big.fin-big { font-size: 20px; font-weight: 700; color: var(--text-2); }
+.page-content .finance-workspace .fin-linkrow.fin-linkrow { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; margin: 12px 0 0; text-decoration: none; color: inherit; }
+.page-content .finance-workspace .fin-static.fin-static { cursor: default; background: var(--panel-2); }
+.page-content .finance-workspace .fin-warn-b.fin-warn-b { color: var(--warning); font-weight: 700; }
+.page-content .finance-workspace .fin-acc-b.fin-acc-b { color: var(--accent-2); font-weight: 700; }
+.page-content .finance-workspace .fin-ring.fin-ring { border: 2px solid var(--accent); }
+.page-content .finance-workspace .fin-dn.fin-dn { color: var(--danger); }
+.page-content .finance-workspace .fin-up.fin-up { color: var(--mint); }
+
 }
