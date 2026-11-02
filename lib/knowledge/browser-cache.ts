@@ -1,5 +1,5 @@
 // 회사 문서 목록 브라우저 저장 (대표 결정 2026-11-02): a company PC keeps the last document list and 연결 map — titles, folders,
-// dates and links, never bodies — so the knowledge screens open at once and ask the server only for what changed since. One
+// dates and links, never bodies — so the knowledge screens ask the server only for what changed since and the map opens at once. One
 // person's copy per browser; signing out clears it. Storage can be missing or refused (private window): every call then quietly does nothing.
 import type { KnowledgeActor } from "./access";
 import type { KnowledgeDocument } from "../types";

@@ -87,15 +87,13 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
         const recent = workspaceReadyRef.current ? undefined : recentRead<Synced>("/api/v1/knowledge/workspace", token);
         if (recent) { applyWorkspace(recent); if (recent.syncedAt) { syncedAt.current = recent.syncedAt; base = recent.state.documents; } }
         // 회사 문서 목록 브라우저 저장 (대표 결정 2026-11-02): this PC's sync time is read at once so the request below asks for
-        // changes only; the kept list itself loads meanwhile and shows until the fresh one arrives.
+        // changes only; the kept list loads meanwhile to merge them into. It is never drawn on its own: it holds documents only, so
+        // decisions, meetings and reviews would show as empty until the fresh answer.
         let kept: Promise<KnowledgeDocument[] | null> | null = null;
         const keptAt = workspaceReadyRef.current ? null : keptSyncedAt(actor.ownerId);
         if (keptAt) {
           syncedAt.current = keptAt;
-          kept = readWorkspaceCache(actor.ownerId).then(value => {
-            if (value && isCurrent() && !workspaceReadyRef.current) applyWorkspace({ state: { ...emptyKnowledgeState(), documents: value.documents }, actor: value.actor, schemaReady: true });
-            return value?.syncedAt === keptAt ? value.documents : null;
-          });
+          kept = readWorkspaceCache(actor.ownerId).then(value => value?.syncedAt === keptAt ? value.documents : null);
         }
         const meetingId = /^\/knowledge\/meetings\/([0-9a-f-]{36})$/i.exec(pathname)?.[1];
         if (meetingId && !initialMeetingRead.current && !stateRef.current.meetings.some(row => row.id === meetingId)) {
