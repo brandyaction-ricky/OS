@@ -100,6 +100,11 @@ export const CARD_MARK = /\*{1,2}([^*\n]+?)\*{1,2}/;
 export const plainCardText = (value: string) => value.split(CARD_MARK).join("");
 export const cardLetters = (value: string) => [...plainCardText(value)].length;
 const letters = (value: string) => [...value].length;
+/** A field name with 을/를 · 이/가 · 은/는 as its last letter takes them (받침 or not); anything but a Hangul syllable counts as 받침. */
+const josa = (word: string, batchim: string, open: string) => {
+  const code = word.charCodeAt(word.length - 1) - 0xac00;
+  return word + (code >= 0 && code < 11172 && code % 28 === 0 ? open : batchim);
+};
 // Owner rules carried into every format: the 진단 is paid (발행 키트 정본 · 2026-10-26), and '여러분' is not our voice (말투 정본).
 const BANNED: [RegExp, string][] = [[/무료\s*(진단|검사)/, "진단은 유료예요 — ‘무료 진단’이라고 쓰지 않아요"], [/여러분/, "‘여러분’은 쓰지 않아요 (말투 정본)"]];
 const HASHTAGS = { min: 3, max: 5 };
@@ -116,7 +121,7 @@ export function cardProblems(draft: Pick<CardDraft, "format" | "slides" | "capti
   if (draft.slides.length > CARD_MAX_SLIDES) blocking.push(`카드는 ${CARD_MAX_SLIDES}장까지예요`);
   for (const spec of format.slides) {
     const count = draft.slides.filter(slide => slide.type === spec.type).length;
-    if (count < spec.min || count > spec.max) blocking.push(spec.min === spec.max ? `${spec.label} 장이 ${spec.min}장 있어야 해요` : `${spec.label}은 ${spec.min}~${spec.max}장이에요 (지금 ${count}장)`);
+    if (count < spec.min || count > spec.max) blocking.push(spec.min === spec.max ? `${spec.label} 장이 ${spec.min}장 있어야 해요` : `${josa(spec.label, "은", "는")} ${spec.min}~${spec.max}장이에요 (지금 ${count}장)`);
   }
   const order = format.slides.map(spec => spec.type);
   if (draft.slides.some((slide, index) => index && order.indexOf(slide.type) < order.indexOf(draft.slides[index - 1].type))) blocking.push("카드 순서가 포맷과 달라요");
@@ -129,8 +134,8 @@ export function cardProblems(draft: Pick<CardDraft, "format" | "slides" | "capti
     if (draft.format === "webtoon" && spec.photo && !slide.photo) warnings.push(`${index + 1}장 그림이 아직 없어요 — 「AI로 그리기」로 그려요`);
     for (const field of spec.fields) {
       const value = (slide.fields[field.key] ?? "").trim();
-      if (!value && !field.optional) blocking.push(`${index + 1}장 ${field.label}을 써 주세요`);
-      if (cardLetters(value) > field.max) blocking.push(`${index + 1}장 ${field.label}이 ${cardLetters(value) - field.max}자 넘쳐요 (${field.max}자까지)`);
+      if (!value && !field.optional) blocking.push(`${index + 1}장 ${josa(field.label, "을", "를")} 써 주세요`);
+      if (cardLetters(value) > field.max) blocking.push(`${index + 1}장 ${josa(field.label, "이", "가")} ${cardLetters(value) - field.max}자 넘쳐요 (${field.max}자까지)`);
       if (value.length >= 8) { if (seen.has(value)) warnings.push(`${seen.get(value)! + 1}장과 ${index + 1}장에 같은 문장이 있어요`); else seen.set(value, index); }
     }
     const marks = Object.values(slide.fields).reduce((sum, value) => sum + (value.split(CARD_MARK).length - 1) / 2, 0);

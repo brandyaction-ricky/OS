@@ -176,3 +176,14 @@ test("a 웹툰 화 is 8 to 10 cards and 카드 확정 waits for every picture", 
   assert.equal(cards.cardsMissing(cardsRecord(drawn)), "");
   assert.equal(formats.toonArtMissing({ ...drawn, format: "list" }), -1, "only 웹툰형 asks for pictures");
 });
+
+// The 웹툰 checks name 화 · 한 줄 정리 with 를, and a field with a 받침 keeps 을 (2026-11-02: 「1장 화을 써 주세요」 on production).
+test("card problems put 을/를 and 이/가 after the field name the Korean way", () => {
+  const d = { ...formats.emptyCardDraft("webtoon", "w", "QA", "t"), caption: "", hashtags: [] };
+  const blocking = formats.cardProblems(d).blocking;
+  assert.ok(blocking.includes("1장 화를 써 주세요"));
+  assert.ok(blocking.includes("7장 한 줄 정리를 써 주세요"));
+  assert.ok(blocking.includes("1장 제목을 써 주세요"));
+  d.slides[0].fields = { episode: "1234567", title: "제목" };
+  assert.ok(formats.cardProblems(d).blocking.includes("1장 화가 1자 넘쳐요 (6자까지)"));
+});
