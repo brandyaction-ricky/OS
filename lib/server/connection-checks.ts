@@ -1,4 +1,4 @@
-import {getIndexCoverage} from "./indexing-diagnostics";
+import { countIndexFailures } from "./indexing-diagnostics";
 import { CONNECTIONS, connectionState, type ConnectionCheck, type ConnectionId } from "@/lib/connection-status";
 import { OPENAI_ANSWER_MODEL, hasPublicSupabaseConfig, hasServerSupabaseConfig } from "@/lib/config";
 import { createServiceSupabase } from "@/lib/supabase/server";
@@ -18,9 +18,9 @@ export async function readConnectionChecks() {
   const configured = connectionConfiguration();
   // Owners are read alongside the checks instead of before them.
   const ownersRead = db.from("os_connection_owners").select("service,primary_owner,backup_owner,version");
-  // The index coverage (about half a second) starts with the probe history instead of after it.
+  // The failed-index count starts with the probe history instead of after it.
   const embeddingsRead = Promise.all([
-    getIndexCoverage(db).catch(()=>null),
+    countIndexFailures(db).catch(() => null),
     db.from("os_embedding_jobs").select("finished_at").eq("status", "done").is("last_error", null).order("finished_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
   return Promise.all(CONNECTIONS.map(async ({ id }): Promise<ConnectionCheck> => {
@@ -35,10 +35,10 @@ export async function readConnectionChecks() {
     let evidenceAvailable = !lastOk.error && !latest.error && !failures.error;
     // Existing failed jobs take precedence over a successful credentials probe.
     if (id === "embeddings") {
-      const [coverage, success] = await embeddingsRead;
-      blockedJobs = !coverage || coverage.truncated ? null : coverage.failed;
+      const [failedIndex, success] = await embeddingsRead;
+      blockedJobs = failedIndex;
       if (success.data?.finished_at && (!lastOkAt || success.data.finished_at > lastOkAt)) lastOkAt = success.data.finished_at;
-      evidenceAvailable &&= Boolean(coverage&&!coverage.truncated) && !success.error;
+      evidenceAvailable &&= failedIndex !== null && !success.error;
     }
     if (id === "advertising") {
       const [failed, success] = await Promise.all([

@@ -108,3 +108,12 @@ test("two-phase search logs only the complete request while preserving the API r
 test("queue storage read failures expose only a fixed error",async()=>{
  const state=setup({queueReadError:true});await assert.rejects(state.processEmbeddingQueue(),error=>error.code==="INDEX_QUEUE_UNAVAILABLE"&&!error.message.includes("private"));
 });
+test("the 작동 상태 failed count reads failed jobs only and matches the full coverage",async()=>{
+ const documents=[doc("a"),doc("b"),doc("c"),doc("d","current","archived"),doc("e"),doc("f")];
+ const jobs=[job(1,"current","failed","a"),job(2,"current","failed","b"),job(3,"current","done","b"),job(4,"old","failed","c"),job(5,"current","failed","d"),job(6,"current","done","e"),job(7,"current","pending","f"),job(8,"current","failed","f")];
+ const db=fail=>({from(table){const filters=[];let limit=Infinity,from=0;const chain={select(){return chain;},eq(key,value){filters.push(row=>row[key]===value);return chain;},in(key,values){filters.push(row=>values.includes(row[key]));return chain;},order(){return chain;},range(start,end){from=start;limit=end-start+1;return chain;},limit(value){limit=value;return chain;},then(resolve,reject){return Promise.resolve(fail?{data:null,error:{message:"private database"}}:{data:(table==="os_documents"?documents:jobs).filter(row=>filters.every(filter=>filter(row))).slice(from,from+limit),error:null}).then(resolve,reject);}};return chain;}});
+ const loaded=await loadModule("../lib/server/indexing-diagnostics.ts",{"@/lib/http":{ApiError},"@/lib/supabase/server":{createServiceSupabase:()=>db()},"@/lib/indexing-diagnostics":diagnostics});
+ assert.equal(await loaded.countIndexFailures(db()),diagnostics.summarizeIndexCoverage(documents,jobs).failed);
+ assert.equal(await loaded.countIndexFailures(db()),2,"a and f: b was retried, c failed on old text, d is archived");
+ await assert.rejects(loaded.countIndexFailures(db(true)),{code:"INDEX_PROGRESS_UNAVAILABLE"});
+});
