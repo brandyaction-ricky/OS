@@ -29,6 +29,8 @@
   --purple: #c1a3ed;
   --purple-soft: #292236;
   --cyan: #83cee1;
+  --biz-myin: #4069ff;  /* 사업 색 — 마이인 브랜드 블루 (어두운 바탕용 밝은 블루) */
+  --biz-edu: #e5484d;   /* 사업 색 — 브랜디액션 레드 (어두운 바탕에서 보이게 밝힘) */
   --cyan-soft: #192d33;
   --on-accent: #ffffff;
   --overlay: rgba(0, 0, 0, .6);
@@ -99,6 +101,8 @@ html[data-theme="light"] {
   --purple: #755096;
   --purple-soft: #eee7f5;
   --cyan: #246573;
+  --biz-myin: #212cb0;  /* 마이인 브랜드 블루 (MYIN --brand) */
+  --biz-edu: #c9232d;   /* 브랜디액션 레드 (EDU --ba-red) */
   --cyan-soft: #e2eff2;
   --overlay: rgba(40, 42, 48, .35);
   --shadow: 0 16px 48px rgba(40, 42, 48, .12);
