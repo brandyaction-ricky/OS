@@ -3,7 +3,7 @@ import {ApiError,apiErrorResponse} from "@/lib/http";
 import {authenticateRequest} from "@/lib/server/auth";
 import {POLICY_FIELDS,readableKnowledgePages} from "@/lib/server/knowledge-page-access";
 import {knowledgeAccessContext} from "@/lib/server/knowledge-access";
-import {searchWorkspace} from "@/lib/knowledge/search";
+import {searchPrefilter,searchWorkspace} from "@/lib/knowledge/search";
 import type {KnowledgeDocument} from "@/lib/types";
 export const dynamic="force-dynamic";
 export async function GET(request:Request){
@@ -12,6 +12,9 @@ export async function GET(request:Request){
     if(!q)return NextResponse.json({results:[],total:0});
     const policy=await knowledgeAccessContext(actor,[]);
     const options={space:url.searchParams.get("space")??"all",includeMine:url.searchParams.get("includeMine")==="true",includeAI:policy.actor.memberKind!=="partner"&&url.searchParams.get("includeAI")==="true",ownerId:actor.ownerId,titleOnly:url.searchParams.get("titleOnly")==="true"};
+    // Only documents containing a searched word leave the database (all bodies were read and sent before: ~1 s of the 1.5 s).
+    const prefilter=searchPrefilter(q);
+    if(prefilter===null)return NextResponse.json({results:[],total:0});
     const documents:KnowledgeDocument[]=[],timing:string[]=[],started=performance.now();
     // Keep actor RLS in place without rescanning earlier pages on every request. Only what the search and the
     // access check read (bodies included): every column of every page made this 1.7 s on 2026-11-02.
@@ -19,7 +22,7 @@ export async function GET(request:Request){
       let builder=actor.supabase.from("os_documents").select(`${POLICY_FIELDS},title,content_md,updated_at`).neq("status","archived").gt("id",cursor).order("id").limit(500);
       if(!options.includeMine)builder=builder.neq("status","draft");
       if(!options.includeAI)builder=builder.neq("source","mcp");
-      const {data,error}=await builder;
+      const {data,error}=await (prefilter?builder.or(prefilter):builder);
       if(error)throw new ApiError(503,"KNOWLEDGE_SEARCH_UNAVAILABLE","문서 검색을 완료하지 못했습니다.");
       const rows=(data??[]) as KnowledgeDocument[];
       documents.push(...rows);
