@@ -13,6 +13,7 @@ import { oneArrow,
 import { checkColumnHtml, cleanColumnHtml, columnForMyin, type ColumnFill } from "@/lib/seo-column";
 import { shortsAction } from "@/lib/youtube-process/short";
 import { GateError } from "@/lib/youtube-process/confirm";
+import { markReviewed, MAX_REVIEWERS, reviewerInput, setReviewers, type YpReviewer } from "@/lib/youtube-process/reviewers";
 import type { RequestActor } from "./auth";
 import { assertSpokenScript } from "./youtube-script-canon";
 import { callMyin, MYIN_BODY_MAX, MYIN_SLUG, myinSourceId, type MyinArticle } from "./myin-articles";
@@ -512,6 +513,32 @@ export async function moveYoutubeDates(actor: RequestActor, id: string, input: z
   const saved = await writeStage(actor.supabase, actor.id, actor.team, project, "make", stages.make, data);
   // 4-9: someone else moving a date tells the PD.
   if (project.assigneeId && project.assigneeId !== actor.id) await notify([project.assigneeId], "yt_due", project.id, `dates:${project.id}:${saved.version}`);
+  return { ...saved, data };
+}
+
+// ── 검토할 사람 · 날짜 (유쓰 요청 8/8) ──
+export const reviewersSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("set"), expectedVersion: z.number().int().min(0), reviewers: z.array(reviewerInput).max(MAX_REVIEWERS) }).strict(),
+  z.object({ action: z.enum(["done", "undo"]), expectedVersion: z.number().int().min(0) }).strict(),
+]);
+/** The PD names who checks which part by when; a reviewer marks their own 검토 끝. Neither moves the video or confirms anything. */
+export async function setYoutubeReviewers(actor: RequestActor, id: string, input: z.infer<typeof reviewersSchema>) {
+  const project = await getYoutubeProject(actor, id);
+  if (!["make", "review"].includes(project.yp.stage)) throw locked("최종 검토가 끝나서 검토 담당을 바꿀 수 없어요.");
+  const stages = await readStages(actor.supabase, project);
+  if (stages.make.version !== input.expectedVersion) throw conflict();
+  const prev = stages.make.data.reviewers ?? [];
+  let reviewers: YpReviewer[], told: string[] = [];
+  if (input.action === "set") ({ list: reviewers, told } = setReviewers(prev, input.reviewers));
+  else {
+    const marked = markReviewed(prev, actor.id, input.action === "done", new Date().toISOString());
+    if (!marked) throw new ApiError(403, "NOT_A_REVIEWER", "검토 담당으로 정해진 사람만 검토 끝을 표시할 수 있어요.");
+    reviewers = marked;
+  }
+  const data = { ...stages.make.data, reviewers };
+  const saved = await writeStage(actor.supabase, actor.id, actor.team, project, "make", stages.make, data);
+  const others = told.filter(member => member !== actor.id);
+  if (others.length) await notify(others, "yt_feedback_request", project.id, `review-assign:${project.id}:${saved.version}`);
   return { ...saved, data };
 }
 

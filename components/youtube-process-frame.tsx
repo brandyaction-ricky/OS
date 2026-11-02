@@ -48,7 +48,7 @@ export function useYpBundle() {
       if (target?.closest(".yp") && !target.closest("[data-yp-free]") && !ask.current()) event.preventDefault();
     };
     document.addEventListener("beforeinput", onInput, true);
-    setEditGuard(path => !(path.includes(id) || path.startsWith("/api/v1/content/youtube-automation/")) || path.includes("/feedback") || ask.current());
+    setEditGuard(path => !(path.includes(id) || path.startsWith("/api/v1/content/youtube-automation/")) || path.includes("/feedback") || path.includes("/reviewers") || ask.current());
     return () => { document.removeEventListener("beforeinput", onInput, true); setEditGuard(null); };
   }, [id]);
   const client = useMemo(() => youtubeProcessClient(accessToken, demo), [accessToken, demo]);

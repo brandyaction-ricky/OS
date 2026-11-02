@@ -6,6 +6,7 @@ import { youtubeV1AllowedFor, youtubeV1Enabled, youtubeV1Users } from "@/lib/you
 import { newProjectMeta, projectFromRecord, projectName, TOPIC_FIELD_OF, topicFieldEditable, topicLines, topicMissing, YP_MAX_LINES, type YpGate, type YpMeta, type YpProject, type YpTopic } from "@/lib/youtube-process/project";
 import { applyGateAction, confirmTab, dueReminders, GateError, nextRemindAt, quietHours, type YpApproverAction, type YpGateInput } from "@/lib/youtube-process/confirm";
 import { isDesignatedApprover } from "./document-proposals";
+import { dueReviewers, kstDay, type YpReviewer } from "@/lib/youtube-process/reviewers";
 
 const COLUMNS = "id,version,title,assignee_id,owner_id,updated_at,metadata";
 const ref = z.object({ url: z.string().url().max(300), videoId: z.string().max(20).optional(), title: z.string().max(200).optional() }).strict();
@@ -252,6 +253,24 @@ export async function remindConfirmations(now = new Date().toISOString()) {
     await service.from("os_records").update({ metadata: { ...(current?.metadata ?? {}), workflow: "youtube_v1", yp } }).eq("id", project.id).eq("version", project.version);
   }
   return { reminded: due.length, batched: due.length > 1 };
+}
+
+/** Hourly too: a 최종 검토 reviewer who has not finished hears it once a day from the date set, until done or taken off the list. */
+export async function remindReviewers(now = new Date().toISOString()) {
+  if (quietHours(now)) return { reviewers: 0 };
+  const ids = (await allProjects()).filter(project => project.yp.stage === "review").map(project => project.id);
+  if (!ids.length) return { reviewers: 0 };
+  const { data } = await createServiceSupabase().from("os_records").select("parent_id,metadata").in("parent_id", ids)
+    .eq("record_type", "content_package").eq("metadata->>packageKind", "yp_make").is("archived_at", null);
+  const today = kstDay(now);
+  let reviewers = 0;
+  for (const row of data ?? []) {
+    const due = dueReviewers(((row.metadata as { yp?: { reviewers?: YpReviewer[] } })?.yp?.reviewers) ?? [], today);
+    if (!due.length) continue;
+    await notify(due, "yt_feedback_request", row.parent_id as string, `review-due:${row.parent_id}:${today}`);
+    reviewers += due.length;
+  }
+  return { reviewers };
 }
 
 export async function approverIds() {
