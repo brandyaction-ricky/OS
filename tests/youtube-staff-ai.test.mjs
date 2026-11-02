@@ -4,11 +4,12 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import ts from "typescript";
 import { z } from "zod";
+import * as kosis from "../lib/kosis.ts";
 
 // Staff AI jobs reach the OS only through these two MCP tools (owner decision 2026-10-17, method B).
 const compiled = { exports: {} };
 vm.runInNewContext(ts.transpileModule(readFileSync(new URL("../lib/server/mcp.ts", import.meta.url), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText,
-  { module: compiled, exports: compiled.exports, require: (name) => { if (name === "zod") return { z }; throw Error(name); }, URLSearchParams, encodeURIComponent });
+  { module: compiled, exports: compiled.exports, require: (name) => { if (name === "zod") return { z }; if (name === "../kosis.ts") return kosis; throw Error(name); }, URLSearchParams, encodeURIComponent });
 const { MCP_TOOLS, callMcpTool } = compiled.exports;
 const job = "11111111-1111-4111-8111-111111111111";
 const lease = "22222222-2222-4222-8222-222222222222";

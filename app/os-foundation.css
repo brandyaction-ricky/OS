@@ -126,6 +126,8 @@
     color: var(--text-2); font: inherit; font-size: var(--os-text-meta); line-height: normal; white-space: nowrap; text-decoration: none; cursor: pointer;
   }
   .os-chip:hover { background: var(--surface-hover); }
+  .os-chip:has(.os-avatar) { padding-left: 4px; } /* 사람 동그라미가 든 칩 (팀 참석자 고르기) */
+  .os-count { font-weight: var(--os-weight-regular); color: var(--muted); } /* 묶음 머리 · 열 머리 옆 개수 */
   .os-chip :is(b, .os-count) { font-weight: var(--os-weight-bold); color: var(--text); }
   .os-chip:is([aria-pressed="true"], [aria-current="page"]) { background: var(--accent-soft); border-color: var(--accent-2); color: var(--accent-2); }
   .os-chip:is([aria-pressed="true"], [aria-current="page"]) :is(b, .os-count) { color: var(--accent-2); }

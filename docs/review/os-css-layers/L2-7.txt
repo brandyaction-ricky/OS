@@ -1,0 +1,19 @@
+공통 CSS 구조 L2-7 — 개발 (2026-11-01)
+기준: main e6254f34 · 지시서 00_공통CSS_개발지시서.md 4장 7
+
+1. 한 일
+   - 단추 17개: .dev-button (+ primary) → 키트 .secondary-button · .primary-button. development-workspace.css 의 단추 모양 규칙 지움(아이콘 배치만 남김)
+   - 「내 요청」 켜고 끄는 단추: .selected → aria-pressed. 키트에 켜진 보조 단추 모양 한 줄(.secondary-button[aria-pressed="true"]) 더함
+   - 크기 단계 밖 글자 6 → 0: 프로젝트 이름 17 → 18, 기록 제목 16 → 15, 창 제목 21 → 18, 화면 제목 25 → 22(E2) · 휴대폰 덮기 2줄 지움
+     (화면 제목 · 창 제목은 키트 fullscreen-operations.css 가 이미 덮고 있어 화면 값은 그대로)
+   - 개발 CSS 는 옛 층(os.legacy) 그대로: 키트 fullscreen-operations.css 가 개발 화면을 31곳 덮고 있어 화면 층으로 올리면 옛 값이 드러남.
+     화면 층으로 옮기려면 그 31곳을 개발 CSS 로 합치는 일이 먼저 (남은 일)
+
+2. 화면에서 바뀌는 것 (의도)
+   - 개발 단추: 바탕 연회색 → 흰색, 글자 굵기 500 → 400 (다른 메뉴 공통 단추와 같게). 높이 32 그대로
+   - 프로젝트 이름 1px 커짐, 기록 제목 1px 작아짐
+   - 「내 요청」이 켜지면 공통 켜짐 모양(연한 강조 바탕). 스레드 레퍼런스 「전체」 거름도 같은 켜짐 바탕이 생김
+
+3. 확인 (같은 main 을 따로 빌드한 체험판, 모든 기능 켬, 화면 80개, 밝은 · 어두운 테마)
+   - 바뀐 곳은 /knowledge/development 두 화면의 단추 · 제목과 /automation/references 거름 단추 1개뿐 (+ 알려진 잡음)
+   - npm test 1340 · tsc · eslint 통과

@@ -41,6 +41,29 @@
   --media-shadow: #000000;
   --rail: 64px;
   --sidebar: 240px;
+  /* Approved grouped navigation study: navigation, document tree and reading canvas are separate planes. */
+  --os-nav-background: #151319;
+  --os-nav-text: #f1edf7;
+  --os-nav-muted: #b2a9bf;
+  --os-nav-line: #34303d;
+  --os-nav-hover: #2a2533;
+  --os-nav-selected: #293c56;
+  --os-nav-on-selected: #c4dcff;
+  --os-nav-content: #c2a0ed;
+  --os-nav-knowledge: #a1c4fa;
+  --os-nav-operations: #92cdb5;
+  --os-nav-system: #bcb5c7;
+  --os-nav-longform: #f28a96;
+  --os-nav-short: #c8a3ef;
+  --os-nav-ad: #8bcad8;
+  --os-nav-card: #efba79;
+  --os-document-tree: #1c2029;
+  --os-document-paper: #211e28;
+  --os-document-canvas: #18161d;
+  --os-document-line: #39343f;
+  --os-document-selection: #293c56;
+  --os-document-on-selection: #c4dcff;
+  --os-document-accent: #8db9fb;
   /* 사진 위 안내선 · 꼬리표 (카드 편집 칸). 사진 위라 두 테마 모두 같은 흰색 · 검정 */
   --canvas-guide: #ffffff;
   --canvas-guide-ink: #111111;
@@ -79,6 +102,19 @@ html[data-theme="light"] {
   --cyan-soft: #e2eff2;
   --overlay: rgba(40, 42, 48, .35);
   --shadow: 0 16px 48px rgba(40, 42, 48, .12);
+  --os-nav-background: #292531;
+  --os-nav-muted: #b5acc2;
+  --os-nav-line: #48414f;
+  --os-nav-hover: #393341;
+  --os-nav-selected: #e6eefb;
+  --os-nav-on-selected: #254d8a;
+  --os-document-tree: #f6f8fc;
+  --os-document-paper: #ffffff;
+  --os-document-canvas: #f7f6f9;
+  --os-document-line: #e4e0e9;
+  --os-document-selection: #e6eefb;
+  --os-document-on-selection: #254d8a;
+  --os-document-accent: #326bc0;
 }
 
 ::selection { background: var(--accent-soft); color: var(--text); }

@@ -115,8 +115,7 @@
 .linear-shell .ui-v2.yp .primary-button { color: var(--on-accent); }
 .linear-shell .primary-button:is(:disabled, [aria-disabled="true"]),
 .linear-shell .ui-v2 .primary-button:is(:disabled, [aria-disabled="true"]),
-.linear-shell .ui-v2.yp :is(.primary-button, .yp-btn.yp-pri):is(:disabled, [aria-disabled="true"]),
-:is(.hr-workspace, .hr-drawer) .hr-button.primary:disabled {
+.linear-shell .ui-v2.yp :is(.primary-button, .yp-btn.yp-pri):is(:disabled, [aria-disabled="true"]) {
   opacity: 1; background: var(--panel-3); border-color: var(--line); color: var(--muted); box-shadow: none;
 }
 

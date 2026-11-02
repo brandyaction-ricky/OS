@@ -2,10 +2,10 @@
 @layer os.screen {
 .linear-shell .page-content.ui-v2.screen-vault { display:flex; flex-direction:column; height:calc(100dvh - 48px); min-height:0; padding:0; overflow:hidden; }
 .screen-vault .menu-guide { display:none; }
-.screen-vault .vault-toolbar { height:48px; flex:none; display:grid; grid-template-columns:var(--knowledge-tree-width, 300px) minmax(0,1fr) auto; align-items:center; border-bottom:1px solid var(--line-soft); background:var(--panel); color:var(--text); }
+.screen-vault .vault-toolbar { height:48px; flex:none; display:grid; grid-template-columns:var(--knowledge-tree-width, 300px) minmax(0,1fr) auto; align-items:center; border-bottom:1px solid var(--os-document-line); background:var(--os-document-paper); color:var(--text); }
 .screen-vault .vault-toolbar button,.screen-vault .vault-toolbar summary { cursor:pointer; }
 .screen-vault .vault-toolbar-tree,.screen-vault .vault-toolbar-actions { height:100%; display:flex; align-items:center; gap:3px; padding:0 7px; }
-.screen-vault .vault-toolbar-tree { border-right:1px solid var(--line-soft); }
+.screen-vault .vault-toolbar-tree { border-right:1px solid var(--os-document-line); background:var(--os-document-tree); }
 .screen-vault .vault-toolbar-tree > button,.screen-vault .vault-toolbar-actions > button,.screen-vault .vault-more summary { width:30px; height:30px; flex:none; display:grid; place-items:center; border:0; border-radius:6px; color:var(--muted); background:transparent; }
 .screen-vault .vault-toolbar-tree > button:hover,.screen-vault .vault-toolbar-actions > button:hover,.screen-vault .vault-more summary:hover { color:var(--text); background:var(--surface-hover); }
 .screen-vault .vault-scope-count { min-width:0; flex:1; display:flex; align-items:center; gap:3px; }
@@ -33,9 +33,9 @@
 .screen-vault .knowledge-workspace.vault-workspace.vault-panel-open { grid-template-columns:var(--knowledge-tree-width, 300px) minmax(0,1fr) 300px; }
 .screen-vault .knowledge-workspace.vault-workspace.tree-hidden { grid-template-columns:minmax(0,1fr); }
 .screen-vault .knowledge-workspace.vault-workspace.tree-hidden.vault-panel-open { grid-template-columns:minmax(0,1fr) 300px; }
-.screen-vault .vault-workspace .knowledge-tree-pane { background:var(--panel); border-right:1px solid var(--line-soft); }
+.screen-vault .vault-workspace .knowledge-tree-pane { background:var(--os-document-tree); border-right:1px solid var(--os-document-line); }
 .screen-vault .vault-tree-top { flex:none; height:48px; display:flex; align-items:center; gap:5px; padding:7px 8px; }
-.screen-vault .vault-tree-top label { flex:1; min-width:0; height:32px; display:flex; align-items:center; gap:6px; padding:0 8px; border:1px solid var(--line-soft); border-radius:7px; background:var(--panel-2); color:var(--muted); }
+.screen-vault .vault-tree-top label { flex:1; min-width:0; height:32px; display:flex; align-items:center; gap:6px; padding:0 8px; border:1px solid var(--os-document-line); border-radius:7px; background:var(--os-document-paper); color:var(--muted); }
 .screen-vault .vault-tree-top label:focus-within { border-color:var(--accent); }
 .screen-vault .vault-tree-top input { flex:1; min-width:0; border:0; outline:0; background:transparent; color:var(--text); font-size:12px; }
 .screen-vault .vault-tree-top button { width:28px; height:28px; flex:none; display:grid; place-items:center; border:0; border-radius:6px; background:transparent; color:var(--muted); }
@@ -45,7 +45,7 @@
 .screen-vault .vault-workspace .vault-folder-expand { width:24px; height:28px; flex:none; display:grid; place-items:center; border:0; border-radius:6px; background:transparent; color:var(--muted); }
 .screen-vault .vault-workspace .vault-folder-expand:hover { background:var(--surface-hover); color:var(--text); }
 .screen-vault .vault-workspace .knowledge-tree-scroll .folder-row { height:30px; min-height:30px; }
-.screen-vault .vault-workspace .editor-pane { background:var(--bg); }
+.screen-vault .vault-workspace .editor-pane { background:var(--os-document-canvas); }
 .screen-vault .vault-workspace .document-meta-line { min-height:34px; padding:6px 28px; border-bottom:1px solid var(--line-soft); }
 .screen-vault .vault-workspace .document-reader { width:100%; padding:32px clamp(24px,5vw,64px) 140px; }
 .screen-vault .vault-workspace .document-reader > :is(h1,.vault-reader-meta,.vault-reader-content,.reader-metadata,.knowledge-child-pages,.development-document-live-log) { width:100%; max-width:720px; margin-left:auto; margin-right:auto; }
@@ -64,7 +64,7 @@
 .screen-vault .vault-reader-content .markdown-table-wrap { max-width:100%; }
 .screen-vault .vault-reader-content .markdown-table-wrap :is(th,td) { padding:7px 10px; }
 .screen-vault .vault-workspace .document-editor { padding:24px clamp(24px,5vw,64px) 120px; }
-.screen-vault .vault-side-panel { min-width:0; display:flex; flex-direction:column; border-left:1px solid var(--line-soft); background:var(--panel); }
+.screen-vault .vault-side-panel { min-width:0; display:flex; flex-direction:column; border-left:1px solid var(--os-document-line); background:var(--os-document-paper); }
 .screen-vault .vault-side-tabs { height:44px; flex:none; display:flex; align-items:stretch; padding:0 6px; border-bottom:1px solid var(--line-soft); }
 .screen-vault .vault-side-tabs button { flex:1; padding:0 3px; border:0; border-bottom:2px solid transparent; background:transparent; color:var(--muted); font-size:12px; cursor:pointer; }
 .screen-vault .vault-side-tabs button[aria-selected=true] { border-bottom-color:var(--accent); color:var(--text); font-weight:700; }
@@ -308,5 +308,11 @@
 .screen-vault .vault-help .form-fields { display: block; }
 .screen-vault .vault-help dl { display: grid; grid-template-columns: auto 1fr; gap: 8px 20px; }
 @media(max-width: 600px) { .screen-vault .vault-save-status { display: none; } .screen-vault .vault-property-chips details:has(.vault-folder-chooser) { position: static; } .screen-vault .vault-property-chips .vault-folder-chooser { left: 20px; top: 100px; } }
+
+/* Navigation-study colours only; paths, tree order, document IDs and actions are unchanged. */
+.screen-vault .vault-tree-folder-icon { color:var(--os-document-accent); }
+.screen-vault .vault-tree-row:hover { background:var(--os-document-paper); }
+.screen-vault .vault-tree-row[aria-selected="true"] { background:var(--os-document-selection); color:var(--os-document-on-selection); box-shadow:inset 3px 0 var(--os-document-accent); }
+.screen-vault .vault-tree-row[aria-selected="true"] :is(svg,small) { color:inherit; }
 
 }

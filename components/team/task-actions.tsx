@@ -119,11 +119,11 @@ export function TeamTaskInbox({ tasks, allTasks, meetings, members, userId, admi
     catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); }
   }
   return <section className="panel">
-    <div className="tm-inbox-group-head">담당 미정 업무 <span className="tm-count">{tasks.length}</span></div>
+    <div className="tm-inbox-group-head">담당 미정 업무 <span className="os-count">{tasks.length}</span></div>
     {tasks.length ? [...groups].map(([group, rows]) => {
       const meeting = meetings.find(item => item.id === group);
       return <div key={group}>
-        <div className="tm-inbox-group-head">{meeting ? <Link href={`/organization/meetings?meeting=${encodeURIComponent(meeting.id)}`}>{meeting.title}</Link> : "직접 요청 · 그 외"}<span className="tm-count">{rows.length}</span></div>
+        <div className="tm-inbox-group-head">{meeting ? <Link href={`/organization/meetings?meeting=${encodeURIComponent(meeting.id)}`}>{meeting.title}</Link> : "직접 요청 · 그 외"}<span className="os-count">{rows.length}</span></div>
         {rows.map(task => {
           const similar = duplicateOf(task);
           const canMerge = similar && (admin || (task.owner_id === userId || task.assignee_id === userId) && (similar.owner_id === userId || similar.assignee_id === userId));

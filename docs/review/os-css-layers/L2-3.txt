@@ -1,0 +1,18 @@
+공통 CSS 구조 L2-3 — 인사 (2026-11-01)
+기준: main e6254f34 · 지시서 00_공통CSS_개발지시서.md 4장 3
+
+1. 한 일
+   - 단추: components/hr/ui.tsx 의 Button 한 곳 → 키트 .primary-button · .secondary-button (+ .danger). hr.css 의 단추 모양 규칙 지움,
+     .hr-button 은 아이콘 · 글자 배치(inline-flex · gap)와 눌림 표시만 남김
+   - 배지: Pill 한 곳 → 키트 .status-pill[data-tone] (good → ok · warn · danger · muted, 공통 가이드 5장 휴가 대응표)
+   - 인사 전용 색 변수 --hr-* 5개 → OS 토큰 직접 (68곳)
+   - 키트 파일(fullscreen-shell.css)이 인사 단추를 따로 덮던 줄 지움 — 이제 키트 꺼진 단추 규칙이 그대로 적용
+   - !important 1 → 0, 키트 덮기 22 → 3, 접두어 밖 클래스 15 → 13
+
+2. 화면에서 바뀌는 것 (의도)
+   - 단추 바탕 연회색(--panel) → 흰색(키트 --card), 안쪽 여백 5·11 → 6·10px. 높이 32 그대로
+   - 배지 모양 알약(둥글기 99) · 굵기 600 → 키트 배지(둥글기 4 · 굵기 500). 배지가 조금 낮아져 표 줄 높이 2~7px 줄어듦
+
+3. 확인 (같은 main 을 따로 빌드한 체험판, 모든 기능 켬, 화면 80개, 밝은 · 어두운 테마)
+   - 바뀐 곳은 /hr/* 다섯 화면의 단추 · 배지 · 그에 따른 줄 높이뿐 (+ 알려진 표 칸 너비 잡음)
+   - npm test 1340 · tsc · eslint 통과

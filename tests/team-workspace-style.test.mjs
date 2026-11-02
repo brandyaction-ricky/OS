@@ -43,7 +43,9 @@ test("team css: 글자는 11px 이상", () => {
 
 test("team css: 새 클래스는 .tm- 접두어만 만든다", () => {
   // 기존 OS 클래스(재사용 허용 목록) — 스타일 가이드 2장 표와 같음
-  const reused = new Set(["linear-shell","ui-v2","workspace-tabs","segmented","task-board","record-drawer","drawer-head","form-modal","data-table","metric-value","card-head","active"]);
+  const reused = new Set(["linear-shell","ui-v2","workspace-tabs","segmented","task-board","record-drawer","drawer-head","form-modal","data-table","metric-value","card-head","active",
+    // 공통 CSS L2-6: 팀 부품(.tm-chip · .tm-callout …)은 키트 .os-* 로 옮겼다. 팀 화면만의 배치(겹친 동그라미 · 열 머리 개수)만 여기서 덮는다
+    "os-biz","os-avatar","os-count","os-search","os-due"]);
   root.walkRules(rule => {
     for (const cls of rule.selector.matchAll(/\.([a-z][\w-]*)/g)) {
       const name = cls[1];

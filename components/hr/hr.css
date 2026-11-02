@@ -2,13 +2,7 @@
 @layer os.screen {
 .hr-workspace,
 .hr-drawer {
-  --hr-bg: var(--bg);
-  --hr-panel: var(--panel);
-  --hr-line: var(--line);
-  --hr-text: var(--text);
-  --hr-muted: var(--muted);
-  --hr-accent: var(--accent);
-  color: var(--hr-text);
+  color: var(--text);
   font-size: 13px;
   line-height: 1.5;
 }
@@ -42,7 +36,7 @@
   margin: 0 0 16px;
 }
 .hr-head p {
-  color: var(--hr-muted);
+  color: var(--muted);
   margin: 4px 0 0;
 }
 .hr-actions,
@@ -66,8 +60,8 @@
   margin-bottom: 14px;
 }
 .hr-card {
-  background: var(--hr-panel);
-  border: 1px solid var(--hr-line);
+  background: var(--panel);
+  border: 1px solid var(--line);
   border-radius: 10px;
   padding: 11px 13px;
   min-width: 0;
@@ -76,7 +70,7 @@
 .hr-card small {
   display: block;
   font-size: 12px;
-  color: var(--hr-muted);
+  color: var(--muted);
 }
 .hr-card strong {
   display: block;
@@ -86,8 +80,8 @@
 }
 .hr-card strong.warn { color: var(--warning); font-size: 16px; }
 .hr-panel {
-  background: var(--hr-panel);
-  border: 1px solid var(--hr-line);
+  background: var(--panel);
+  border: 1px solid var(--line);
   border-radius: 10px;
   overflow: hidden;
   margin: 0 0 14px;
@@ -99,7 +93,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--hr-line);
+  border-bottom: 1px solid var(--line);
 }
 .hr-body {
   padding: 12px 14px;
@@ -115,17 +109,17 @@
 }
 .hr-workspace th {
   text-align: left;
-  background: color-mix(in srgb, var(--hr-bg) 80%, transparent);
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
   font-size: 11.5px;
-  color: var(--hr-muted);
+  color: var(--muted);
   font-weight: 600;
   padding: 7px 10px;
-  border-bottom: 1px solid var(--hr-line);
+  border-bottom: 1px solid var(--line);
 }
 .hr-workspace td {
   padding: 8px 10px;
   vertical-align: middle;
-  border-bottom: 1px solid var(--hr-line);
+  border-bottom: 1px solid var(--line);
   font-size: 12px;
 }
 .hr-workspace tbody tr:last-child td {
@@ -133,7 +127,7 @@
 }
 .hr-workspace td small {
   display: block;
-  color: var(--hr-muted);
+  color: var(--muted);
   font-size: 11px;
 }
 .hr-workspace td a {
@@ -147,7 +141,7 @@
   text-decoration: underline;
 }
 .hr-workspace tr.selected td {
-  background: color-mix(in srgb, var(--hr-accent) 8%, var(--hr-panel));
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel));
 }
 .hr-row-button {
   background: none;
@@ -183,75 +177,29 @@
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--hr-muted) 10%, var(--hr-panel));
+  background: color-mix(in srgb, var(--muted) 10%, var(--panel));
   display: inline-grid;
   place-items: center;
   flex-shrink: 0;
-}
-.hr-pill {
-  display: inline-block;
-  padding: 2px 7px;
-  border-radius: 99px;
-  font-size: 11px;
-  font-weight: 600;
-  background: color-mix(in srgb, var(--hr-muted) 10%, var(--hr-panel));
-  color: var(--hr-muted);
-  white-space: nowrap;
-}
-.hr-pill.good {
-  color: var(--mint);
-  background: color-mix(in srgb, var(--mint) 12%, var(--hr-panel));
-}
-.hr-pill.warn {
-  color: var(--warning);
-  background: color-mix(in srgb, var(--warning) 12%, var(--hr-panel));
-}
-.hr-pill.danger {
-  color: var(--danger);
-  background: color-mix(in srgb, var(--danger) 10%, var(--hr-panel));
 }
 .hr-danger,
 .hr-card .danger {
   color: var(--danger);
 }
 .hr-muted {
-  color: var(--hr-muted);
+  color: var(--muted);
 }
+/* 공통 CSS L2-3: 모양은 키트 단추(.primary-button · .secondary-button). 여기는 아이콘과 글자를 나란히 놓는 배치만 */
 .hr-button {
-  font: inherit;
-  font-size: 12px;
-  background: var(--hr-panel);
-  color: inherit;
-  border: 1px solid var(--hr-line);
-  border-radius: 6px;
-  padding: 5px 11px;
-  cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 5px;
-  white-space: nowrap;
-  min-height: 32px;
-}
-.hr-button:hover {
-  filter: brightness(0.97);
-}
-.hr-button.primary {
-  background: var(--hr-accent);
-  border-color: var(--hr-accent);
-  color: var(--on-accent);
-}
-.hr-button.danger {
-  color: var(--danger);
-}
-.hr-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 .hr-button[aria-pressed="true"] {
-  border-color: var(--hr-accent);
+  border-color: var(--accent);
   color: var(--accent-2);
-  background: color-mix(in srgb, var(--hr-accent) 8%, var(--hr-panel));
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel));
 }
 .hr-workspace input,
 .hr-workspace select,
@@ -260,9 +208,9 @@
 .hr-drawer select,
 .hr-drawer textarea {
   font: inherit;
-  background: var(--hr-panel);
-  color: var(--hr-text);
-  border: 1px solid var(--hr-line);
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
   border-radius: 6px;
   padding: 6px 9px;
   max-width: 100%;
@@ -284,7 +232,7 @@
   color: var(--danger);
 }
 .hr-field small {
-  color: var(--hr-muted);
+  color: var(--muted);
   font-size: 12px;
 }
 .hr-field input,
@@ -319,20 +267,20 @@
   gap: 7px;
   min-width: 0;
   padding: 8px 9px;
-  border: 1px solid var(--hr-line);
+  border: 1px solid var(--line);
   border-radius: 7px;
-  background: var(--hr-panel);
+  background: var(--panel);
   cursor: pointer;
 }
 .hr-leave-type-option:hover {
-  border-color: var(--hr-accent);
+  border-color: var(--accent);
 }
 .hr-leave-type-option:has(input:checked) {
-  border-color: var(--hr-accent);
-  background: color-mix(in srgb, var(--hr-accent) 5%, var(--hr-panel));
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 5%, var(--panel));
 }
 .hr-leave-type-option:focus-within {
-  outline: 2px solid var(--hr-accent);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 .hr-leave-type-option input[type="radio"] {
@@ -341,7 +289,7 @@
   height: 13px;
   margin: 3px 0 0;
   padding: 0;
-  accent-color: var(--hr-accent);
+  accent-color: var(--accent);
   cursor: pointer;
 }
 .hr-leave-type-option > span {
@@ -357,7 +305,7 @@
 .hr-tabs {
   display: flex;
   gap: 6px;
-  border-bottom: 1px solid var(--hr-line);
+  border-bottom: 1px solid var(--line);
   margin: 0 0 14px;
   overflow-x: auto;
 }
@@ -368,39 +316,39 @@
   font-size: 12px;
 }
 .hr-tabs a:where([class], :not(.linear-shell .ui-v2 *)) {
-  color: var(--hr-muted);
+  color: var(--muted);
 }
 .hr-tabs a[aria-current="page"] {
-  border-bottom: 2px solid var(--hr-accent);
-  color: var(--hr-text);
+  border-bottom: 2px solid var(--accent);
+  color: var(--text);
   font-weight: 600;
 }
 .hr-empty {
   padding: 38px 18px;
   text-align: center;
-  color: var(--hr-muted);
+  color: var(--muted);
 }
 .hr-empty strong {
-  color: var(--hr-text);
+  color: var(--text);
 }
 .hr-empty p {
   margin: 8px 0;
 }
 .hr-banner {
   padding: 9px 12px;
-  background: color-mix(in srgb, var(--hr-accent) 7%, var(--hr-panel));
-  border: 1px solid var(--hr-line);
+  background: color-mix(in srgb, var(--accent) 7%, var(--panel));
+  border: 1px solid var(--line);
   border-radius: 6px;
   margin: 0 0 14px;
   font-size: 12px;
 }
 .hr-banner.error {
   color: var(--danger);
-  background: color-mix(in srgb, var(--danger) 6%, var(--hr-panel));
+  background: color-mix(in srgb, var(--danger) 6%, var(--panel));
 }
 .hr-banner.warning {
   color: var(--warning);
-  background: color-mix(in srgb, var(--warning) 10%, var(--hr-panel));
+  background: color-mix(in srgb, var(--warning) 10%, var(--panel));
 }
 .hr-grid2 {
   display: grid;
@@ -414,7 +362,7 @@
   margin: 0;
 }
 .hr-detail-list dt {
-  color: var(--hr-muted);
+  color: var(--muted);
 }
 .hr-detail-list dd {
   margin: 0;
@@ -432,9 +380,9 @@
 }
 .hr-foot {
   padding: 10px 14px;
-  color: var(--hr-muted);
+  color: var(--muted);
   font-size: 12px;
-  border-top: 1px solid var(--hr-line);
+  border-top: 1px solid var(--line);
   white-space: normal;
 }
 .hr-drawer-backdrop {
@@ -456,7 +404,7 @@
 }
 .hr-drawer > header {
   padding: 15px 20px;
-  border-bottom: 1px solid var(--hr-line);
+  border-bottom: 1px solid var(--line);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -479,7 +427,7 @@
 }
 .hr-drawer footer {
   padding: 13px 20px;
-  border-top: 1px solid var(--hr-line);
+  border-top: 1px solid var(--line);
   display: flex;
   justify-content: flex-end;
   gap: 8px;
@@ -493,8 +441,8 @@
 }
 .hr-calc {
   padding: 12px;
-  background: color-mix(in srgb, var(--hr-accent) 7%, var(--hr-panel));
-  border: 1px solid var(--hr-line);
+  background: color-mix(in srgb, var(--accent) 7%, var(--panel));
+  border: 1px solid var(--line);
   border-radius: 6px;
   margin: 12px 0;
 }
@@ -513,7 +461,7 @@
 }
 .hr-workspace :focus-visible,
 .hr-drawer :focus-visible {
-  outline: 2px solid var(--hr-accent);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 .hr-promo-steps {
@@ -523,18 +471,18 @@
 }
 .hr-promo-steps > span {
   padding: 6px;
-  border: 1px solid var(--hr-line);
+  border: 1px solid var(--line);
   border-radius: 6px;
   font-size: 11px;
   white-space: normal;
 }
 .hr-promo-steps > span.current {
   border-color: var(--warning);
-  background: color-mix(in srgb, var(--warning) 10%, var(--hr-panel));
+  background: color-mix(in srgb, var(--warning) 10%, var(--panel));
 }
 .hr-promo-steps > span.done {
   border-color: var(--mint);
-  background: color-mix(in srgb, var(--mint) 8%, var(--hr-panel));
+  background: color-mix(in srgb, var(--mint) 8%, var(--panel));
 }
 .hr-calendar {
   display: grid;
@@ -543,8 +491,8 @@
 }
 .hr-day {
   min-height: 106px;
-  border-right: 1px solid var(--hr-line);
-  border-bottom: 1px solid var(--hr-line);
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
   padding: 7px;
   min-width: 0;
 }
@@ -552,13 +500,13 @@
   opacity: 0.5;
 }
 .hr-day.today {
-  box-shadow: inset 0 0 0 2px var(--hr-accent);
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 .hr-day.holiday {
-  background: color-mix(in srgb, var(--danger) 7%, var(--hr-panel));
+  background: color-mix(in srgb, var(--danger) 7%, var(--panel));
 }
 .hr-day.weekend {
-  background: color-mix(in srgb, var(--hr-muted) 7%, var(--hr-panel));
+  background: color-mix(in srgb, var(--muted) 7%, var(--panel));
 }
 .hr-designation-calendar {
   display: grid;
@@ -566,23 +514,23 @@
   gap: 4px;
   max-width: 420px;
 }
-.hr-designation-calendar > span { text-align: center; color: var(--hr-muted); }
+.hr-designation-calendar > span { text-align: center; color: var(--muted); }
 .hr-designation-calendar > button {
   min-height: 36px;
-  background: var(--hr-panel);
-  border: 1px solid var(--hr-line);
+  background: var(--panel);
+  border: 1px solid var(--line);
   border-radius: 5px;
-  color: var(--hr-text);
+  color: var(--text);
   cursor: pointer;
 }
 .hr-designation-calendar > button[aria-pressed="true"] {
-  background: var(--hr-accent);
+  background: var(--accent);
   color: var(--on-accent);
 }
 .hr-designation-calendar > button:disabled { opacity: .35; cursor: default; }
 .hr-designation-calendar > button.other { opacity: .55; }
 .hr-clickable-row { cursor: pointer; }
-.hr-clickable-row:hover td { background: color-mix(in srgb, var(--hr-accent) 6%, var(--hr-panel)); }
+.hr-clickable-row:hover td { background: color-mix(in srgb, var(--accent) 6%, var(--panel)); }
 .hr-day > header {
   display: flex;
   gap: 6px;
@@ -604,7 +552,7 @@
   white-space: nowrap;
   text-align: left;
   border: 1px solid var(--warning);
-  background: color-mix(in srgb, var(--warning) 12%, var(--hr-panel));
+  background: color-mix(in srgb, var(--warning) 12%, var(--panel));
   border-radius: 4px;
   color: inherit;
   font: inherit;
@@ -621,19 +569,19 @@
   text-align: center;
   padding: 7px;
   font-size: 12px;
-  color: var(--hr-muted);
-  border-bottom: 1px solid var(--hr-line);
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
 }
 .hr-legend {
   display: flex;
   gap: 12px;
   padding: 10px;
   flex-wrap: wrap;
-  color: var(--hr-muted);
+  color: var(--muted);
   font-size: 12px;
 }
 .hr-subheading {
-  margin: 18px 0 10px !important;
+  margin: 18px 0 10px;
 }
 .hr-file {
   display: flex;
@@ -674,7 +622,7 @@
 }
 .hr-row-small {
   font-size: 11px;
-  color: var(--hr-muted);
+  color: var(--muted);
   white-space: normal;
 }
 @media (max-width: 800px) {
@@ -730,14 +678,14 @@
 }
 .hr-letter {
   padding: 10px 0;
-  border-bottom: 1px solid var(--hr-line);
+  border-bottom: 1px solid var(--line);
 }
 .hr-letter:last-child {
   border: 0;
 }
 .hr-self-links a[aria-current="page"] {
   font-weight: 700;
-  color: var(--hr-text);
+  color: var(--text);
   text-decoration: underline;
 }
 .hr-workspace .hr-row-small {
