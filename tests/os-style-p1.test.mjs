@@ -89,7 +89,7 @@ test("P1-5 상태색(--danger · --mint · --warning · --cyan · --purple)으�
 test("P1-6 작은 누를 곳은 최소 24px", () => {
   const need = [
     ["components/fullscreen-shell.css", ".linear-shell.shell-v2 .guide-strip .guide-strip-close"],
-    ["components/finance/finance.css", ".page-content .finance-workspace .rowbtn"],
+    ["components/finance/finance.css", ".page-content .finance-workspace .fin-rowbtn"],
     ["components/fullscreen-operations.css", ".linear-shell .ui-v2 .fullscreen-connection-list button"],
   ];
   for (const [file, selector] of need) {
