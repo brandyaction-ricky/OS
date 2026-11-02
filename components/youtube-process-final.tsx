@@ -11,9 +11,10 @@ import type { YpFeedbackView } from "./youtube-process-data";
 import { useSession } from "./session-provider";
 import { ApiRequestError } from "@/lib/api-client";
 import { feedbackNotice, compareTime, FEEDBACK_KIND_LABEL, feedbackKind, FEEDBACK_FILES_PER_ITEM, FEEDBACK_FILTER_LABEL, feedbackClosed, feedbackMatches, type FeedbackAction, type FeedbackFile, type FeedbackFilter, type FeedbackMark } from "@/lib/youtube-process/feedback";
-import { YtCard } from "./youtube-process-media";
+import { YtCard, YtLookPicker } from "./youtube-process-media";
 import { VoiceFeedbackBox } from "./youtube-process-voice-feedback";
 import { FeedbackTodo } from "./youtube-process-feedback-todo";
+import { ReviewersBar } from "./youtube-process-reviewers";
 import { alignVersions, mapTime, srtCues, type Anchor, type VersionChange } from "@/lib/youtube-process/compare";
 
 const fmt = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
@@ -214,6 +215,7 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
       <GateBanner page={page} gate="review" okExtra={project.yp.stage === "upload" ? <> · <Link className="yp-lnk" href={stepHref(5, project.id)}>{short ? "내보내기로" : "업로드로"} →</Link></> : null} />
       <ReplyForm control={control} />
       <Subject page={page} />
+      {short ? null : <ReviewersBar page={page} />}
       <div className="yp-rvbar"><span style={{ flex: 1 }} />
         <button type="button" className="yp-btn yp-sm yp-pc-only" onClick={() => setHidePanel(value => !value)}>{hidePanel ? "피드백 보이기" : "피드백 숨기기"}</button>
         <div className="yp-seg2 yp-sm yp-pc-only" role="group" aria-label="플레이어 크기"><button type="button" className={size === "s" ? "yp-on" : ""} onClick={() => setSize("s")}>작게</button><button type="button" className={size === "l" ? "yp-on" : ""} onClick={() => setSize("l")}>크게</button></div></div>
@@ -273,6 +275,7 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
                 video.current?.pause(); videoB.current?.pause(); hold.current = change.a[0]; seek(change.a[0]); if (videoB.current) videoB.current.currentTime = change.b[0];
               }}>A {fmt(change.a[0])} · B {fmt(change.b[0])}</button> <span>{change.bText ? `B 「${change.bText.slice(0, 60)}${change.bText.length > 60 ? "…" : ""}」` : ""}{change.aText ? `${change.bText ? " · " : ""}A에만 「${change.aText.slice(0, 40)}${change.aText.length > 40 ? "…" : ""}」` : ""}</span></li>)}</ul></details> : null}
           </> : <div className="yp-tview2" style={{ padding: 12, display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))" }}>
+            <div className="yp-yt-pick yp-yt-pick-row"><YtLookPicker /></div>
             {SLOTS.filter(slot => confirmed?.[slot]).map(slot => <button key={slot} type="button" className={`yp-abc${thumbTarget === slot ? " yp-on" : ""}`} style={{ textAlign: "left" }} onClick={() => setThumbTarget(slot)}>
               <div className="yp-abc-h"><span className={`yp-ltag${slot === "C" ? " yp-c" : ""}`}>{slot}</span>{finalPair(plan, make, slot)?.changed ? <span className="yp-tag yp-warn">컨펌본과 다름</span> : null}</div>
               <YtCard page={page} thumb={finalPair(plan, make, slot)?.thumb} path={make.thumbs[slot]?.path} title={finalPair(plan, make, slot)?.title ?? ""} /></button>)}</div>}

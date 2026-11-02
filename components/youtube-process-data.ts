@@ -3,6 +3,7 @@
 import { ctaPlan, type CtaVideo } from "@/lib/youtube-process/cta";
 import { rankAds, type AdHistoryRow, type AdResult } from "@/lib/youtube-process/ad-results";
 import { apiRequest, ApiRequestError, listMembers, listRecords, uploadContentMedia } from "@/lib/api-client";
+import type { ChannelConnection } from "@/lib/channel-types";
 import type { OsRecord } from "@/lib/record-types";
 import type { OvJob } from "@/lib/youtube-process/overview";
 import { newProjectMeta, projectName, TOPIC_FIELD_OF, topicFieldEditable, topicLines, topicMissing, trashDaysLeft, YP_MAX_LINES, type YpGate, type YpKind, type YpProject, type YpRef, type YpTrashed } from "@/lib/youtube-process/project";
@@ -10,6 +11,7 @@ import { applyGateAction, confirmTab, GateError, type YpApproverAction } from "@
 import { columnSignature, confirmPlan, draftMissing, emptyStage, outlineMissing, scriptFromPlan, scriptKey, thumbsMissing, withScriptVersion, type YpStageData, type YpStageKind, type YpStoredFormula } from "@/lib/youtube-process/stages";
 import { shortScriptMissing, type YpShortRefFetch } from "@/lib/youtube-process/short-script";
 import { columnMeta } from "@/lib/seo-column";
+import { markReviewed, setReviewers, type YpReviewer } from "@/lib/youtube-process/reviewers";
 import { applyFeedback, cleanMarks, FEEDBACK_FILE_MAX, FEEDBACK_FILE_TYPES, FeedbackRuleError, type FeedbackAction, type FeedbackFile, type FeedbackMark, type FeedbackReply } from "@/lib/youtube-process/feedback";
 import { cutsFromScenes, scenesFromCuts, shortsAction, type YpShortAppeal, type YpShortBrief, type YpShortScene } from "@/lib/youtube-process/short";
 import { CardError, cardsMissing, nextCards, type CardsPatch } from "@/lib/cardnews/cards";
@@ -82,9 +84,13 @@ export interface YpClient {
   /** 쇼츠 확정 by the PD, or a comment on its record (owner decision 2026-10-25). */
   shorts(id: string, expectedVersion: number, input: { action: "confirm"; note?: string } | { action: "comment"; text: string }): Promise<YpProject>;
   members(): Promise<YpMember[]>;
+  /** The connected YouTube channel's name for the list previews (유쓰 요청 6/8); null when none is connected. */
+  channelName(): Promise<string | null>;
   legacy(): Promise<YpLegacyTopic[]>;
   schedule(): Promise<YpScheduleItem[]>;
   moveDates(id: string, makeVersion: number, patch: { editDue?: string; uploadPlan?: string; why?: string }): Promise<void>;
+  /** 최종 검토 검토 담당 (유쓰 요청 8/8): the PD's list, or my own 검토 끝 · 다시 열기. */
+  reviewers(id: string, makeVersion: number, input: { action: "set"; reviewers: Omit<YpReviewer, "doneAt">[] } | { action: "done" | "undo" }): Promise<YpStageView<"make">>;
   /** 광고 성과 1단계: one period's numbers of an ad added (or changed, or removed), and every ad's numbers best first. */
   saveAdResult(id: string, uploadVersion: number, change: { entry?: Omit<AdResult, "at" | "by" | "appeal" | "headCopy" | "id"> & { id?: string }; remove?: string }): Promise<{ ads: AdResult[]; version: number }>;
   adHistory(): Promise<AdHistoryRow[]>;
@@ -182,6 +188,7 @@ function apiClient(token: string): YpClient {
     legacy: async () => (await apiRequest<{ topics: YpLegacyTopic[] }>("/api/v1/content/youtube/legacy", { token })).topics,
     schedule: async () => (await apiRequest<{ items: YpScheduleItem[] }>("/api/v1/content/youtube/schedule", { token })).items,
     moveDates: async (id, makeVersion, patch) => { await apiRequest(`${base}/${id}/dates`, { token, method: "PATCH", body: json({ expectedVersion: makeVersion, ...patch }) }); },
+    reviewers: async (id, makeVersion, input) => (await apiRequest<{ stage: YpStageView<"make"> }>(`${base}/${id}/reviewers`, { token, method: "PATCH", body: json({ expectedVersion: makeVersion, ...input }) })).stage,
     saveAdResult: (id, uploadVersion, change) => apiRequest(`${base}/${id}/ads`, { token, method: "POST", body: json({ expectedVersion: uploadVersion, ...change }) }),
     adHistory: async () => (await apiRequest<{ rows: AdHistoryRow[] }>("/api/v1/content/youtube/ads", { token })).rows,
     cta: (ownerId, videos) => apiRequest(`/api/v1/content/youtube/cta?${new URLSearchParams({ ...(ownerId ? { ownerId } : {}), ...(videos ? { videos: "1" } : {}) })}`, { token }),
@@ -230,6 +237,11 @@ function apiClient(token: string): YpClient {
     members: async () => (await listMembers(token)).members
       .filter(member => member.is_active && !member.is_shared_account && member.member_kind !== "partner")
       .map(member => ({ id: member.id, name: member.display_name })),
+    channelName: async () => {
+      const { connections } = await apiRequest<{ connections: ChannelConnection[] }>("/api/v1/channels", { token });
+      const rows = connections.filter(row => row.platform === "youtube" && row.status === "connected");
+      return (rows.find(row => row.teamShared) ?? rows[0])?.accountName ?? null;
+    },
   };
 }
 
@@ -596,6 +608,7 @@ function demoClient(): YpClient {
       catch (error) { throw error instanceof GateError ? demoError(error.status, error.code, error.message) : error; }
     },
     members: async () => DEMO_MEMBERS,
+    channelName: async () => "브랜디액션",
     legacy: async () => [],
     schedule: async () => demoProjects().map(project => {
       const make = stagesOf(project).make;
@@ -630,6 +643,16 @@ function demoClient(): YpClient {
       const log = [...(patch.editDue !== undefined ? [{ at: now, by: "리키", from: make.data.editDue, to: patch.editDue, why: patch.why ?? "", field: "editDue" as const }] : []),
         ...(patch.uploadPlan !== undefined ? [{ at: now, by: "리키", from: make.data.uploadPlan ?? "", to: patch.uploadPlan, why: patch.why ?? "", field: "uploadPlan" as const }] : []), ...make.data.log];
       demoStages.set(id, { ...stages, make: { ...make, version: make.version + 1, data: { ...make.data, editDue, uploadPlan, log } } });
+    },
+    reviewers: async (id, makeVersion, input) => {
+      const project = find(id); const stages = stagesOf(project); const make = stages.make;
+      checkVersion(make.version, makeVersion);
+      const prev = make.data.reviewers ?? [];
+      const reviewers = input.action === "set" ? setReviewers(prev, input.reviewers).list : markReviewed(prev, DEMO_ME, input.action === "done", new Date().toISOString());
+      if (!reviewers) throw demoError(403, "NOT_A_REVIEWER", "검토 담당으로 정해진 사람만 검토 끝을 표시할 수 있어요.");
+      const next = { ...make, version: make.version + 1, data: { ...make.data, reviewers } };
+      demoStages.set(id, { ...stages, make: next });
+      return structuredClone(next);
     },
     adopt: async () => { throw demoError(409, "DEMO", "데모에는 이전 화면 영상이 없어요."); },
     copy: async () => { throw demoError(409, "DEMO", "데모에서는 영상을 복제하지 않아요."); },
