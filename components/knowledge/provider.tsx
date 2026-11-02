@@ -8,6 +8,7 @@ import { emptyKnowledgeState, kstDay, type Command, type KnowledgeState, type Me
 import type { KnowledgeActor } from "@/lib/knowledge/access";
 import type { KnowledgeDocument } from "@/lib/types";
 import type { CanonListSnapshot } from "@/lib/knowledge/canon-list";
+import { mergeWorkspaceDocuments, readWorkspaceCache, writeWorkspaceCache } from "@/lib/knowledge/browser-cache";
 
 import { KnowledgeShortcuts } from "./shortcuts";
 
@@ -37,6 +38,8 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   const generation = useRef({ canon: 0, workspace: 0 });
   const routeEpoch = useRef(0);
+  // When the list now on screen was last synced with the server; 바뀐 것만 asks from there.
+  const syncedAt = useRef<string | null>(null);
   const initialMeetingRead = useRef(false);
   const refresh = useCallback(async (requestedScope: ReadScope = scope) => {
     if (sessionLoading || !profile) return;
@@ -77,9 +80,21 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
           workspaceReadyRef.current = true; setWorkspaceReady(true);
           setCanonList(null);
         };
+        type Synced = WorkspaceSnapshot & { syncedAt?: string; delta?: { visibleIds: string[] } };
+        // The list the server's changes are merged into: what is on screen, this tab's last read, or this PC's kept list.
+        let base: KnowledgeDocument[] | null = workspaceReadyRef.current && syncedAt.current ? stateRef.current.documents : null;
         // Drafts in a remembered snapshot are this tab's own: any save clears the memory.
-        const recent = workspaceReadyRef.current ? undefined : recentRead<WorkspaceSnapshot>("/api/v1/knowledge/workspace", token);
-        if (recent) applyWorkspace(recent);
+        const recent = workspaceReadyRef.current ? undefined : recentRead<Synced>("/api/v1/knowledge/workspace", token);
+        if (recent) { applyWorkspace(recent); if (recent.syncedAt) { syncedAt.current = recent.syncedAt; base = recent.state.documents; } }
+        // 회사 문서 목록 브라우저 저장 (대표 결정 2026-11-02): this PC's last list shows at once; the read below brings it up to date.
+        if (!workspaceReadyRef.current) {
+          const kept = await readWorkspaceCache(actor.ownerId);
+          if (!isCurrent()) return;
+          if (kept && !workspaceReadyRef.current) {
+            applyWorkspace({ state: { ...emptyKnowledgeState(), documents: kept.documents }, actor: kept.actor, schemaReady: true });
+            syncedAt.current = kept.syncedAt; base = kept.documents;
+          }
+        }
         const meetingId = /^\/knowledge\/meetings\/([0-9a-f-]{36})$/i.exec(pathname)?.[1];
         if (meetingId && !initialMeetingRead.current && !stateRef.current.meetings.some(row => row.id === meetingId)) {
           try {
@@ -91,9 +106,16 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
             setPartialMeetingId(meetingId);
           } catch { /* The full workspace read below remains the fallback for old or inaccessible meetings. */ }
         }
-        const result = await apiRequest<WorkspaceSnapshot>("/api/v1/knowledge/workspace", { token });
+        let result = await apiRequest<Synced>(`/api/v1/knowledge/workspace${base && syncedAt.current ? `?since=${encodeURIComponent(syncedAt.current)}` : ""}`, { token });
         if (!isCurrent()) return;
+        if (result.delta) {
+          // Only what changed came back; a visible document the kept list never had means reading everything once.
+          const documents = base ? mergeWorkspaceDocuments(base, result.state.documents, result.delta.visibleIds) : null;
+          result = documents ? { ...result, state: { ...result.state, documents } } : await apiRequest<Synced>("/api/v1/knowledge/workspace", { token });
+          if (!isCurrent()) return;
+        }
         applyWorkspace(result); setWorkspaceFresh(true);
+        if (result.syncedAt) { syncedAt.current = result.syncedAt; void writeWorkspaceCache(actor.ownerId, { syncedAt: result.syncedAt, actor: result.actor, documents: result.state.documents }); }
       }
       setError("");
     } catch (e) { if (isCurrent()) { if (!demo) { setState(emptyKnowledgeState()); setRemoteActor(null); setCanonList(null); workspaceReadyRef.current = false; setWorkspaceReady(false); setWorkspaceFresh(false); setPartialMeetingId(""); } setError(e instanceof Error ? e.message : "회사 문서를 불러오지 못했습니다."); } }

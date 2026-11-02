@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { getBrowserSupabase } from "@/lib/supabase/client";
 import type { SessionProfile } from "@/lib/types";
+import { clearWorkspaceCache } from "@/lib/knowledge/browser-cache";
 
 interface SessionContextValue {
   loading: boolean;
@@ -131,6 +132,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       accessToken: session?.access_token ?? null,
       signOut: async () => {
         if (demo) return;
+        // The company document list kept on this PC (회사 문서 목록 브라우저 저장) leaves with the person.
+        await clearWorkspaceCache();
         await getBrowserSupabase()?.auth.signOut();
         router.replace("/login");
       },
