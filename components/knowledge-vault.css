@@ -6,8 +6,8 @@
 .screen-vault .vault-toolbar button,.screen-vault .vault-toolbar summary { cursor:pointer; }
 .screen-vault .vault-toolbar-tree,.screen-vault .vault-toolbar-actions { height:100%; display:flex; align-items:center; gap:3px; padding:0 7px; }
 .screen-vault .vault-toolbar-tree { border-right:1px solid var(--os-document-line); background:var(--os-document-tree); }
-.screen-vault .vault-toolbar-tree > button,.screen-vault .vault-toolbar-actions > button,.screen-vault .vault-more summary { width:30px; height:30px; flex:none; display:grid; place-items:center; border:0; border-radius:6px; color:var(--muted); background:transparent; }
-.screen-vault .vault-toolbar-tree > button:hover,.screen-vault .vault-toolbar-actions > button:hover,.screen-vault .vault-more summary:hover { color:var(--text); background:var(--surface-hover); }
+.screen-vault .vault-toolbar-tree > button,.screen-vault .vault-toolbar-actions > button:where(:not(.primary-button)),.screen-vault .vault-more summary { width:30px; height:30px; flex:none; display:grid; place-items:center; border:0; border-radius:6px; color:var(--muted); background:transparent; }
+.screen-vault .vault-toolbar-tree > button:hover,.screen-vault .vault-toolbar-actions > button:where(:not(.primary-button)):hover,.screen-vault .vault-more summary:hover { color:var(--text); background:var(--surface-hover); }
 .screen-vault .vault-scope-count { min-width:0; flex:1; display:flex; align-items:center; gap:3px; }
 .screen-vault .vault-scope { min-width:0; max-width:calc(100% - 32px); flex:0 1 auto; }
 .screen-vault .vault-scope select { width:auto; max-width:100%; min-height:32px; padding:0 23px 0 7px; border:0; border-radius:6px; background-color:transparent; color:var(--text); font-weight:650; font-size:12px; text-overflow:ellipsis; }
@@ -20,8 +20,7 @@
 .screen-vault .vault-breadcrumbs button:hover { background:var(--surface-hover); color:var(--text); }
 .screen-vault .vault-breadcrumbs strong { color:var(--text); }
 .screen-vault .vault-toolbar-actions { padding-right:12px; gap:5px; }
-.screen-vault .vault-toolbar-actions .vault-proposal,.screen-vault .vault-toolbar-actions .vault-save,.screen-vault .vault-toolbar-actions .vault-edit { width:auto; min-height:30px; padding:0 9px; display:inline-flex; align-items:center; gap:5px; border:1px solid var(--line); border-radius:7px; color:var(--text-2); background:var(--panel-2); text-decoration:none; font-size:11px; font-weight:600; white-space:nowrap; }
-.screen-vault .vault-toolbar-actions .vault-proposal,.screen-vault .vault-toolbar-actions .vault-save { border-color:var(--accent); background:var(--accent); color:#fff; }
+.screen-vault .vault-toolbar-actions .primary-button { white-space:nowrap; text-decoration:none; } /* 공통 단추 (변경 제안 · 저장) */
 .screen-vault .vault-more { position:relative; }
 .screen-vault .vault-more summary { list-style:none; }
 .screen-vault .vault-more summary::-webkit-details-marker { display:none; }
@@ -44,7 +43,6 @@
 .screen-vault .vault-workspace .folder-tree-item .folder-tree-row { flex:1; min-width:0; width:auto; margin-left:0; grid-template-columns:17px minmax(0,1fr) auto; padding-right:36px; }
 .screen-vault .vault-workspace .vault-folder-expand { width:24px; height:28px; flex:none; display:grid; place-items:center; border:0; border-radius:6px; background:transparent; color:var(--muted); }
 .screen-vault .vault-workspace .vault-folder-expand:hover { background:var(--surface-hover); color:var(--text); }
-.screen-vault .vault-workspace .knowledge-tree-scroll .folder-row { height:30px; min-height:30px; }
 .screen-vault .vault-workspace .editor-pane { background:var(--os-document-canvas); }
 .screen-vault .vault-workspace .document-meta-line { min-height:34px; padding:6px 28px; border-bottom:1px solid var(--line-soft); }
 .screen-vault .vault-workspace .document-reader { width:100%; padding:32px clamp(24px,5vw,64px) 140px; }
@@ -109,7 +107,6 @@
 .screen-vault .vault-item-name > svg { flex:none; color:var(--muted); }
 .screen-vault .vault-item-name strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; }
 .screen-vault .vault-folder-table :is(.vault-item-muted,.vault-folder-kind) { color:var(--muted); font-size:11.5px; }
-.screen-vault .vault-folder-table .status-pill { border-radius:99px; }
 .screen-vault .vault-row-more { display:grid; place-items:center; width:28px; height:28px; border:0; border-radius:6px; background:transparent; color:var(--muted); cursor:pointer; }
 .screen-vault .vault-row-more:hover { background:var(--panel); color:var(--text); }
 .screen-vault .vault-folder-table .vault-folder-empty { padding:25px 14px; color:var(--muted); text-align:center; }
@@ -141,12 +138,7 @@
 /* S1-1  윗줄과 작업 공간 사이 10px 틈 없애기 (page-content의 flex gap) */
 .linear-shell .page-content.ui-v2.screen-vault { gap:0; }
 
-/* S1-2  ‘읽기’ 단추 글자가 두 줄로 깨지는 문제 (30px 고정폭 → 글자 단추) */
-.screen-vault .vault-toolbar-actions > button:not([aria-label]) {
-  width:auto; min-height:30px; padding:0 9px; display:inline-flex; align-items:center; gap:5px;
-  border:1px solid var(--line); border-radius:7px; background:var(--panel-2); color:var(--text-2);
-  font-size:11px; font-weight:600; white-space:nowrap;
-}
+/* S1-2  글자 단추(저장)는 공통 단추 .primary-button.compact — 23줄 (11-02 L2-5) */
 
 /* S1-3  편집 화면을 읽기 화면과 같은 780px 한 단으로 */
 .screen-vault .vault-workspace .document-editor > :is(.canonical-edit-banner,.title-input,.meta-input-grid,.vault-property-chips,.knowledge-insert-toolbar,.knowledge-attachment-progress,.knowledge-live-editor,.knowledge-child-pages) {
@@ -258,7 +250,7 @@
 .screen-vault .vault-folder-view h1 { position: relative; }
 .screen-vault .vault-folder-view h1 button { font: inherit; color: inherit; border: 0; background: none; padding: 0; text-align: left; }
 .screen-vault .vault-save-status { color: var(--muted); font-size: 11px; margin-left: 12px; white-space: nowrap; }
-.screen-vault .vault-drop-hint { position: absolute; right: 5px; top: 25px; z-index: 4; padding: 3px 8px; background: var(--accent); color: white; border-radius: 4px; pointer-events: none; }
+.screen-vault .vault-drop-hint { position: absolute; right: 5px; top: 25px; z-index: 4; padding: 3px 8px; background: var(--accent); color: var(--on-accent); border-radius: 4px; pointer-events: none; }
 .screen-vault .vault-folder-chooser { width: 100%; min-width: 0; }
 .screen-vault .vault-folder-chooser label { display: grid; gap: 8px; }
 .screen-vault .vault-folder-chooser input { width: 100%; padding: 9px; min-width: 0; border: 1px solid var(--line); background: var(--panel); color: var(--text); }
