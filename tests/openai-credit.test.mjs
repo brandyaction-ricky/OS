@@ -88,12 +88,11 @@ test("the credit is read from OpenAI at most once per 5 minutes; a failed read s
   assert.equal((await readOpenAiCredit()).spent, 4, "a failed read is not kept: the next call asks again");
 });
 
-test("Claude's Cost API page: cents as decimal strings per daily bucket, summed in dollars", async () => {
-  const { anthropicCosts } = await import("../lib/anthropic-cost.ts");
-  const page = { data: [
-    { starting_at: "2026-11-01T00:00:00Z", ending_at: "2026-11-02T00:00:00Z", results: [{ amount: "123.5", currency: "USD" }, { amount: "76.5", currency: "USD" }] },
-    { starting_at: "2026-11-02T00:00:00Z", ending_at: "2026-11-03T00:00:00Z", results: [] },
-  ], has_more: false, next_page: null };
-  assert.deepEqual(anthropicCosts(page), { spent: 2, daily: [{ day: "2026-11-01", usd: 2 }, { day: "2026-11-02", usd: 0 }] });
-  assert.deepEqual(anthropicCosts(null), { spent: 0, daily: [] });
+test("Claude's cost analytics: one total row, cents as a decimal string with six places, in dollars", async () => {
+  const { anthropicTotal } = await import("../lib/anthropic-cost.ts");
+  const page = { data: [{ starting_at: "2026-11-01T00:00:00Z", ending_at: "2026-11-02T11:00:00Z", group: {}, cost: { currency: "USD", amount: "41280.000000", list_amount: "51600.000000", requests: 12 } }],
+    has_more: false, next_page: null, data_refreshed_at: "2026-11-02T10:12:00Z" };
+  assert.equal(anthropicTotal(page), 412.8);
+  assert.equal(anthropicTotal({ data: [] }), 0);
+  assert.equal(anthropicTotal(null), 0);
 });
