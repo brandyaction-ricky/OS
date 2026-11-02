@@ -36,6 +36,26 @@ test("한눈에 보기 groups open work, confirms from the panel and switches to
   await expect(detail.getByRole("link", { name: "화면 열기 →" })).toHaveAttribute("href", /\/content\/make\?project=/);
 });
 
+// 시안 P3: 지도 (never the default), a branch per channel, 채널 확대 with 어제 · 오늘 · 다음, and 지켜보기.
+test("지도 shows a branch per channel, zooms into one and watches for changes", async ({ page }) => {
+  await page.goto("/content/overview");
+  await page.getByRole("button", { name: "지도" }).click();
+  await expect(page).toHaveURL(/view=map/);
+  for (const name of ["롱폼", "숏폼 · 릴스", "광고", "카드뉴스", "스레드"]) await expect(page.getByRole("region", { name, exact: true })).toBeVisible();
+  await page.locator(".yp-map-ch", { hasText: "롱폼" }).click();
+  await expect(page).toHaveURL(/ch=longform/);
+  await expect(page.locator(".yp-map-branch")).toHaveCount(1);
+  const zoom = page.locator(".yp-ov-pane");
+  await expect(zoom).toContainText("어제 · 오늘 · 다음");
+  await expect(zoom).toContainText("AI가 가져감");
+  await page.locator(".yp-map-leaf[data-s=ai]").first().click();
+  await expect(page.getByRole("complementary", { name: "고른 일" })).toContainText("AI가 가져감");
+  await page.getByRole("button", { name: "지켜보기" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "지켜보는 중" })).toContainText("마지막 갱신");
+  await page.getByRole("button", { name: "목록" }).click();
+  await expect(page).not.toHaveURL(/view=|ch=/);
+});
+
 test("새 일 시작하기 opens the right first step for each platform", async ({ page }) => {
   await page.goto("/content/overview");
   await page.getByLabel("새로 만들 것").fill("월요일이 무거운 이유");

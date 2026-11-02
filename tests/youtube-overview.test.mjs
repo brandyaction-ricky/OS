@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { decisionsToday, overviewCounts, overviewRows } from "../lib/youtube-process/overview.ts";
+import { changedRows, channelDay, channelNext, decisionsToday, mapBranches, overviewCounts, overviewRows } from "../lib/youtube-process/overview.ts";
 import { newProjectMeta } from "../lib/youtube-process/project.ts";
 
 const NOW = Date.parse("2026-10-31T03:00:00Z");
@@ -83,4 +83,36 @@ test("an AI result with a report is the sender's or PD's decision and drops out 
   const someone = overviewRows([projects[0]], [arrived("p", "other")], { id: "boss", canConfirm: true }, NOW).rows;
   assert.deepEqual(someone.map(row => [row.state, row.now]), [["human", "AI 결과 도착 · 기획안 · 담당자 확인 중"]]);
   assert.equal(overviewRows([projects[0]], [arrived("p", "other")], { id: "pd", canConfirm: false }, NOW).rows[0].state, "decide");
+});
+
+// 시안 P3 지도 보기 · 채널 확대 · 지켜보기
+test("어제 is the same list for the Korean day before, and each decision knows its channel", () => {
+  const today = project("i", "live", "draft", { gates: { topic: { state: "ok", round: 1, decidedAt: ago(30) } } });
+  const yesterday = project("j", "card", "draft", { gates: { topic: { state: "changes", round: 1, decidedAt: ago(60 * 20) } } });
+  assert.deepEqual(decisionsToday([today, yesterday], NOW, 1).map(item => [item.title, item.channel]), [["영상 j", "card"]]);
+  assert.equal(decisionsToday([today, yesterday], NOW)[0].channel, "longform");
+});
+
+test("the map keeps the 새 일 order and changed rows ignore the ticking minutes", () => {
+  const projects = [project("a", "live", "outline"), project("c", "card", "outline")];
+  const job = { sourceId: "a", task: "원고", status: "active", requestedAt: ago(9), claimedAt: ago(4), failReason: null };
+  const first = overviewRows(projects, [job], { id: "me", canConfirm: false }, NOW).rows;
+  assert.deepEqual(mapBranches(first).map(branch => [branch.channel, branch.rows.map(row => row.id)]),
+    [["longform", ["a"]], ["short", []], ["ad", []], ["card", ["c"]], ["threads", []]]);
+  // ten minutes later nothing changed but the clock
+  const later = overviewRows(projects, [job], { id: "me", canConfirm: false }, NOW + 600_000).rows;
+  assert.deepEqual(changedRows(first, later), []);
+  // the job's result arrives: that leaf lights up
+  const arrived = overviewRows(projects, [{ ...job, status: "done", doneAt: ago(1), ownerId: "me" }], { id: "me", canConfirm: false }, NOW).rows;
+  assert.deepEqual(changedRows(first, arrived), ["a"]);
+});
+
+test("채널 확대 lists that channel's day — decisions and AI job moments — and what comes next", () => {
+  const projects = [project("a", "live", "outline", { gates: { topic: { state: "ok", round: 1, decidedAt: ago(90) } } }), project("c", "card", "outline")];
+  const job = { sourceId: "a", task: "원고", status: "active", requestedAt: ago(40), claimedAt: ago(20), failReason: null };
+  const { rows } = overviewRows(projects, [job], { id: "me", canConfirm: false }, NOW);
+  const today = channelDay(rows, decisionsToday(projects, NOW), "longform", NOW);
+  assert.deepEqual(today.map(item => item.what), ["원고 · AI가 가져감", "원고 · 맡김", "주제 컨펌 → 컨펌"]);
+  assert.deepEqual(channelDay(rows, decisionsToday(projects, NOW, 1), "longform", NOW, 1), []);
+  assert.deepEqual(channelNext(rows, "card").map(row => row.id), ["c"]);
 });
