@@ -3,6 +3,7 @@
 import { ctaPlan, type CtaVideo } from "@/lib/youtube-process/cta";
 import { rankAds, type AdHistoryRow, type AdResult } from "@/lib/youtube-process/ad-results";
 import { apiRequest, ApiRequestError, listMembers, listRecords, uploadContentMedia } from "@/lib/api-client";
+import type { ChannelConnection } from "@/lib/channel-types";
 import type { OsRecord } from "@/lib/record-types";
 import type { OvJob } from "@/lib/youtube-process/overview";
 import { newProjectMeta, projectName, TOPIC_FIELD_OF, topicFieldEditable, topicLines, topicMissing, trashDaysLeft, YP_MAX_LINES, type YpGate, type YpKind, type YpProject, type YpRef, type YpTrashed } from "@/lib/youtube-process/project";
@@ -83,6 +84,8 @@ export interface YpClient {
   /** 쇼츠 확정 by the PD, or a comment on its record (owner decision 2026-10-25). */
   shorts(id: string, expectedVersion: number, input: { action: "confirm"; note?: string } | { action: "comment"; text: string }): Promise<YpProject>;
   members(): Promise<YpMember[]>;
+  /** The connected YouTube channel's name for the list previews (유쓰 요청 6/8); null when none is connected. */
+  channelName(): Promise<string | null>;
   legacy(): Promise<YpLegacyTopic[]>;
   schedule(): Promise<YpScheduleItem[]>;
   moveDates(id: string, makeVersion: number, patch: { editDue?: string; uploadPlan?: string; why?: string }): Promise<void>;
@@ -234,6 +237,11 @@ function apiClient(token: string): YpClient {
     members: async () => (await listMembers(token)).members
       .filter(member => member.is_active && !member.is_shared_account && member.member_kind !== "partner")
       .map(member => ({ id: member.id, name: member.display_name })),
+    channelName: async () => {
+      const { connections } = await apiRequest<{ connections: ChannelConnection[] }>("/api/v1/channels", { token });
+      const rows = connections.filter(row => row.platform === "youtube" && row.status === "connected");
+      return (rows.find(row => row.teamShared) ?? rows[0])?.accountName ?? null;
+    },
   };
 }
 
@@ -600,6 +608,7 @@ function demoClient(): YpClient {
       catch (error) { throw error instanceof GateError ? demoError(error.status, error.code, error.message) : error; }
     },
     members: async () => DEMO_MEMBERS,
+    channelName: async () => "브랜디액션",
     legacy: async () => [],
     schedule: async () => demoProjects().map(project => {
       const make = stagesOf(project).make;
