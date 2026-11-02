@@ -50,3 +50,47 @@ test("the forecast uses the last 7 days' pace and only counts days inside the cy
   assert.equal(idle.perDay, 0);
   assert.equal(idle.runOutAt, null);
 });
+
+// 2026-11-02: every GPT job asked OpenAI for the credit and the 작동 상태 panel got 429 — one read per 5 minutes, last good on failure.
+test("the credit is read from OpenAI at most once per 5 minutes; a failed read shows the last good one from the past hour", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const { runInNewContext } = await import("node:vm");
+  const ts = (await import("typescript")).default;
+  const lib = await import("../lib/openai-credit.ts");
+  class ApiError extends Error { constructor(status, code, message) { super(message); this.status = status; this.code = code; } }
+  const source = await readFile(new URL("../lib/server/openai-credit.ts", import.meta.url), "utf8");
+  let clock = Date.UTC(2026, 10, 2, 8), calls = 0, fail = false;
+  class FakeDate extends Date { constructor(...args) { super(...(args.length ? args : [clock])); } static now() { return clock; } }
+  const fetch = async () => { calls++; return fail ? { ok: false, status: 429, json: async () => ({ error: { code: "rate_limit_exceeded" } }) }
+    : { ok: true, json: async () => ({ data: [{ start_time: Date.UTC(2026, 10, 1) / 1000, results: [{ amount: { value: calls, currency: "usd" } }] }], next_page: null }) }; };
+  const compiled = { exports: {} };
+  runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, {
+    module: compiled, exports: compiled.exports, console: { error: () => undefined }, Date: FakeDate, fetch, URL, URLSearchParams, AbortSignal, Math, Number, String, Promise,
+    process: { env: { OPENAI_ADMIN_KEY: "test-admin-key" } },
+    require: (name) => ({ "@/lib/http": { ApiError }, "@/lib/openai-credit": lib, "@/lib/youtube-process/gpt-draft": { GPT_SAVING_BELOW_USD: 20 } })[name],
+  });
+  const { readOpenAiCredit } = compiled.exports;
+  const [a, b] = await Promise.all([readOpenAiCredit(), readOpenAiCredit()]);
+  assert.equal(calls, 1, "calls made at once share one read");
+  assert.equal(a.spent, 1); assert.equal(b.spent, 1);
+  clock += 4 * 60_000;
+  assert.equal((await readOpenAiCredit()).spent, 1);
+  assert.equal(calls, 1, "still fresh after 4 minutes");
+  clock += 2 * 60_000; fail = true;
+  assert.equal((await readOpenAiCredit()).spent, 1, "OpenAI said 429: the last good read");
+  assert.equal(calls, 2);
+  clock += 61 * 60_000;
+  await assert.rejects(readOpenAiCredit(), /429/, "over an hour old: the error shows");
+  fail = false;
+  assert.equal((await readOpenAiCredit()).spent, 4, "a failed read is not kept: the next call asks again");
+});
+
+test("Claude's Cost API page: cents as decimal strings per daily bucket, summed in dollars", async () => {
+  const { anthropicCosts } = await import("../lib/anthropic-cost.ts");
+  const page = { data: [
+    { starting_at: "2026-11-01T00:00:00Z", ending_at: "2026-11-02T00:00:00Z", results: [{ amount: "123.5", currency: "USD" }, { amount: "76.5", currency: "USD" }] },
+    { starting_at: "2026-11-02T00:00:00Z", ending_at: "2026-11-03T00:00:00Z", results: [] },
+  ], has_more: false, next_page: null };
+  assert.deepEqual(anthropicCosts(page), { spent: 2, daily: [{ day: "2026-11-01", usd: 2 }, { day: "2026-11-02", usd: 0 }] });
+  assert.deepEqual(anthropicCosts(null), { spent: 0, daily: [] });
+});

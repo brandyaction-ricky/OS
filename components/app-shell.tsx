@@ -36,6 +36,7 @@ import { fullscreenScreen } from "@/lib/fullscreen-screen";
 import { roleLabel } from "@/lib/company-settings";
 import { DevelopmentRequestDrawer } from "./development-request-drawer";
 import { ServerConnectionStatus } from "./server-connection-status";
+import { ApiCreditChips } from "./api-credit-chips";
 import { useHrShell } from "./hr/use-hr-shell";
 import { CommandPalette } from "./command-palette";
 import { DevelopmentRequestNotifications } from "./development-request-notifications";
@@ -336,6 +337,7 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
         <div className="unified-sidebar-foot sidebar-foot" data-ui="sidebar-foot">
           <button className="sidebar-request" onClick={() => { setRequestOpen(true); setMobileOpen(false); }} title="수정 요청"><MessageSquarePlus size={17} /><span>수정 요청 남기기</span></button>
           <div className="sidebar-status"><ServerConnectionStatus demo={demo} onStatusChange={setServerOk} /></div>
+          <ApiCreditChips />
           <button ref={profileTriggerRef} className="profile-trigger" data-ui="profile-row" aria-label="내 계정 메뉴" aria-haspopup="dialog" aria-controls={profileOpen ? profileMenuId : undefined} aria-expanded={profileOpen} onClick={toggleProfileMenu}>
             <span className="avatar" data-ui="avatar"><Initials name={profile?.displayName ?? "B"} /></span>
             <span className="profile-copy"><b>{profile?.displayName ?? "구성원"}</b><span>내 계정 · 채널 연결</span></span><ChevronsUpDown size={14} />
