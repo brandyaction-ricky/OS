@@ -54,7 +54,7 @@
   font-weight: 700;
 }
 .page-content .finance-workspace h2 {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
 }
 .page-content .finance-workspace h3 {
@@ -124,50 +124,6 @@
   display: block;
   font-size: 11px;
   color: var(--muted);
-}
-.page-content .finance-workspace .fin-nav {
-  padding: 12px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1;
-}
-.page-content .finance-workspace .fin-nav-gh {
-  padding: 4px 8px 8px;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--muted);
-  letter-spacing: 0.04em;
-}
-.page-content .finance-workspace .fin-nav a {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border-radius: 6px;
-  color: var(--text-2);
-  text-decoration: none;
-  font-size: 13.5px;
-}
-.page-content .finance-workspace .fin-nav a svg {
-  width: 16px;
-  height: 16px;
-  stroke: currentColor;
-  fill: none;
-  stroke-width: 1.7;
-  flex-shrink: 0;
-}
-.page-content .finance-workspace .fin-nav a .fin-cnt {
-  margin-left: auto;
-}
-.page-content .finance-workspace .fin-nav a:hover {
-  background: var(--panel-2);
-  color: var(--text);
-}
-.page-content .finance-workspace .fin-nav a[aria-current="page"] {
-  background: var(--accent-soft);
-  color: var(--accent-2);
-  font-weight: 700;
 }
 .page-content .finance-workspace .fin-side-foot {
   border-top: 1px solid var(--line);
@@ -407,7 +363,7 @@
   color: var(--muted);
 }
 .page-content .finance-workspace .fin-tile .fin-v {
-  font-size: 21px;
+  font-size: 20px;
   font-weight: 700;
   letter-spacing: -0.01em;
   white-space: nowrap;
@@ -578,33 +534,6 @@
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--panel);
-}
-.page-content .finance-workspace .fin-seg {
-  display: inline-flex;
-  background: var(--panel-3);
-  border-radius: 8px;
-  padding: 3px;
-  gap: 2px;
-}
-.page-content .finance-workspace .fin-seg-b {
-  appearance: none;
-  border: 0;
-  background: transparent;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-2);
-  padding: 0 12px;
-  height: 28px;
-  border-radius: 6px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.page-content .finance-workspace .fin-seg-b[aria-pressed="true"] {
-  background: var(--panel);
-  color: var(--text);
-  font-weight: 700;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 .page-content .finance-workspace .fin-mpick,
 .page-content .finance-workspace .fin-crange {
@@ -1391,9 +1320,6 @@
   .page-content .finance-workspace .fin-samplebar .fin-sw {
     margin-left: 0;
   }
-  .page-content .finance-workspace .fin-seg-b {
-    padding: 0 9px;
-  }
 }
 @media (prefers-reduced-motion: reduce) {
   .page-content .finance-workspace * {
@@ -1438,7 +1364,7 @@
   color: var(--muted);
 }
 .page-content .finance-workspace .fin-eq .fin-term .fin-v {
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -1520,7 +1446,7 @@
   color: var(--muted);
 }
 .page-content .finance-workspace .fin-srctab .fin-v {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -1669,7 +1595,7 @@
   white-space: nowrap;
 }
 .page-content .finance-workspace .fin-drawer .fin-tiles .fin-tile .fin-v {
-  font-size: 17px;
+  font-size: 18px;
   overflow: visible;
   text-overflow: clip;
 }
@@ -1688,7 +1614,7 @@
   padding: 10px 11px;
 }
 .page-content .finance-workspace .fin-eq .fin-term .fin-v {
-  font-size: 16px;
+  font-size: 15px;
 }
 .page-content .finance-workspace .fin-eq .fin-term.fin-result .fin-v {
   font-size: 22px;
@@ -1759,7 +1685,7 @@
   text-overflow: ellipsis;
 }
 .page-content .finance-workspace .fin-acct-bal {
-  font-size: 19px;
+  font-size: 18px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -1933,7 +1859,7 @@
 .page-content .finance-react .fin-tbl .fin-nw { white-space: nowrap; }
 @media (max-width: 640px) {
   .page-content .finance-react .fin-tiles.fin-t4, .page-content .finance-react .fin-tiles.fin-t5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .page-content .finance-react .fin-tile .fin-v { font-size: 17px; }
+  .page-content .finance-react .fin-tile .fin-v { font-size: 18px; }
 }
 
 
