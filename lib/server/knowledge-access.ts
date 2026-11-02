@@ -18,11 +18,13 @@ export async function knowledgeAccessContext(actor: RequestActor, documents: Acc
   const context: KnowledgeAccessContext = { categories: new Map(), meetings: new Map(), noteGrants: new Set() };
   if(actor.type==="user"&&actor.role==="admin"){
     const privateIds=documents.filter(d=>d.owner_id!==actor.ownerId&&(d.status==="draft"||d.archived_from_status==="draft")).map(d=>d.id).filter((id):id is string=>Boolean(id));
-    const granted=new Set<string>();
-    for(let offset=0;offset<privateIds.length;offset+=200){
-      const result=await service.from("os_note_access_grants").select("document_id").eq("admin_id",actor.ownerId).gt("expires_at",new Date().toISOString()).in("document_id",privateIds.slice(offset,offset+200));
+    // This admin's live grants are few: read them once instead of one query per 200 private notes.
+    const wanted=new Set(privateIds),granted=new Set<string>();
+    for(let offset=0;wanted.size;offset+=1000){
+      const result=await service.from("os_note_access_grants").select("document_id").eq("admin_id",actor.ownerId).gt("expires_at",new Date().toISOString()).order("document_id").range(offset,offset+999);
       if(result.error)throw new ApiError(503,"KNOWLEDGE_ACCESS_UNAVAILABLE","임시 열람 권한을 확인하지 못했습니다.");
-      for(const row of result.data??[])granted.add(row.document_id);
+      for(const row of result.data??[])if(wanted.has(row.document_id))granted.add(row.document_id);
+      if(!result.data||result.data.length<1000)break;
     }
     context.noteGrants=granted;
   }
@@ -60,11 +62,13 @@ export async function knowledgeAccessContext(actor: RequestActor, documents: Acc
   const restricted = [...new Set(documents.filter(doc => doc.owner_id !== actor.ownerId && (
     !admin && doc.status === "canonical" && doc.reader_scope !== "all" && doc.steward_id !== actor.ownerId
     || actor.type === "user" && doc.status === "draft")).map(doc => doc.id).filter((id): id is string => Boolean(id)))];
-  const readers = new Set<string>();
-  for (let offset = 0; !anonymous && offset < restricted.length; offset += 200) {
-    const result = await service.from("os_document_readers").select("document_id").eq("user_id", actor.ownerId).in("document_id", restricted.slice(offset, offset + 200));
+  // The documents naming this person as a reader, read once and kept where they matter (was one query per 200 restricted ids).
+  const wanted = new Set(restricted), readers = new Set<string>();
+  for (let offset = 0; !anonymous && wanted.size; offset += 1000) {
+    const result = await service.from("os_document_readers").select("document_id").eq("user_id", actor.ownerId).order("document_id").range(offset, offset + 999);
     if (result.error) throw new ApiError(503, "KNOWLEDGE_ACCESS_UNAVAILABLE", "문서 열람 권한을 확인하지 못했습니다.");
-    for (const row of result.data ?? []) readers.add(row.document_id);
+    for (const row of result.data ?? []) if (wanted.has(row.document_id)) readers.add(row.document_id);
+    if (!result.data || result.data.length < 1000) break;
   }
   context.canonReaders = readers;
   return { actor: policyActor, context };
