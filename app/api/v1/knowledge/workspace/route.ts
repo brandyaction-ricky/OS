@@ -32,6 +32,10 @@ export async function GET(request: Request) {
     const user = await authenticateRequest(request);
     const db = user.supabase, service = createServiceSupabase();
     const state = emptyKnowledgeState();
+    // Server-Timing: which stage is slow (1.25–2 s and 3 MB on 2026-11-02).
+    const timing: string[] = [], started = Date.now();
+    let mark = started;
+    const lap = (name: string) => { const now = Date.now(); timing.push(`${name};dur=${Math.round(now - mark)}`); mark = now; };
     // RLS filters each page; do not accept client supplied actor or permissions.
     // Supporting reads do not depend on the document list; start them together.
     const resourcesRead = Promise.all([
@@ -66,21 +70,33 @@ export async function GET(request: Request) {
     })();
     // A failed document read must not leave these as unhandled rejections.
     void resourcesRead.catch(()=>undefined); void proposalsRead.catch(()=>undefined);
-    // Keyset pagination avoids re-evaluating hierarchical RLS for every skipped row.
-    const rows: KnowledgeDocument[] = [];
-    for (let cursor="00000000-0000-0000-0000-000000000000";;) {
-      const result = await db.from("os_documents").select("id,title,folder,parent_document_id,page_order,status,brand,team,tags,source,source_ref,owner_id,steward_id,created_by,current_version,created_at,updated_at,category_id,work_state,due_on,daily_on,review_due_on,archived_at,archived_by,archived_from_status,retention_hold,meeting_record_id,reader_scope").gt("id",cursor).order("id").limit(1000);
-      if(result.error) throw readError(result.error,"documents");
-      const batch = (result.data ?? []).map(row=>({...row,content_md:""})) as KnowledgeDocument[];
-      rows.push(...batch);
-      if(batch.length<1000) break;
-      cursor=batch[batch.length-1].id;
-    }
+    // Keyset pagination avoids re-evaluating hierarchical RLS for every skipped row. Ids are random UUIDs, so eight
+    // id ranges read side by side cover the same rows in about one round trip instead of one page after another.
+    const DOCUMENT_COLUMNS="id,title,folder,parent_document_id,page_order,status,brand,team,tags,source,source_ref,owner_id,steward_id,created_by,current_version,created_at,updated_at,category_id,work_state,due_on,daily_on,review_due_on,archived_at,archived_by,archived_from_status,retention_hold,meeting_record_id,reader_scope";
+    const bounds=["0","2","4","6","8","a","c","e"].map((from,index,all)=>({from:`${from}0000000-0000-0000-0000-000000000000`,to:all[index+1]?`${all[index+1]}0000000-0000-0000-0000-000000000000`:null}));
+    const slices=await Promise.all(bounds.map(async({from,to})=>{
+      const slice: KnowledgeDocument[]=[];
+      for(let cursor=from,first=true;;first=false){
+        let query=db.from("os_documents").select(DOCUMENT_COLUMNS);
+        query=first?query.gte("id",cursor):query.gt("id",cursor);
+        if(to)query=query.lt("id",to);
+        const result=await query.order("id").limit(1000);
+        if(result.error) throw readError(result.error,"documents");
+        const batch=(result.data ?? []).map(row=>({...row,content_md:""})) as KnowledgeDocument[];
+        slice.push(...batch);
+        if(batch.length<1000) return slice;
+        cursor=batch[batch.length-1].id;
+      }
+    }));
+    const rows: KnowledgeDocument[] = slices.flat();
+    lap("documents");
     // One ancestor check over every page: parents from other pages are already loaded.
     const readable = await readableKnowledgePages(user,rows);
+    lap("access");
     state.documents.push(...rows.filter(d=>readable.has(d.id)));
     const access = await knowledgeAccessContext(user,state.documents);
     const resources = await resourcesRead;
+    lap("resources");
     const stages=["categories","templates","inbox","pins","drafts","meetings","attendees","candidates","events","people","decisions"];
     for(const [index,result] of resources.entries()) if(result.error) throw readError(result.error,stages[index]);
     const [categories,templates,inbox,pins,drafts,meetings,attendees,candidates,events,people,decisions]=resources.map(r=>r.data ?? []);
@@ -118,7 +134,9 @@ export async function GET(request: Request) {
     const visibleTargets=new Set([...ids,...state.categories.map(c=>c.id),...state.templates.map(t=>t.id),...state.meetings.map(m=>m.id),...state.candidates.map(c=>c.id),...state.proposals.map(p=>p.id)]);
     // Keep the audit fact without exposing an inaccessible target ID, title, reason or link.
     state.events=state.events.map(e=>visibleTargets.has(e.target_id)?e:{...e,target_id:"",detail:{title:"볼 수 없는 항목"}});
-    return NextResponse.json({state,actor:access.actor,schemaReady:true},{headers:{"Cache-Control":"private, no-store"}});
+    lap("rest");
+    timing.push(`total;dur=${Date.now() - started}`);
+    return NextResponse.json({state,actor:access.actor,schemaReady:true},{headers:{"Cache-Control":"private, no-store","Server-Timing":timing.join(", ")}});
   } catch(error) { return apiErrorResponse(error instanceof ApiError ? error : readError({}, "workspace")); }
 }
 const commandSchema=z.object({action:z.enum([
