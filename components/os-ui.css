@@ -459,4 +459,13 @@ html[data-guidance="off"] .guide-strip, html[data-guidance="off"] .guide-no, htm
   .linear-shell.shell-v2 .process-bar { overflow-x: auto; }
 }
 
+
+/* GPT 크레딧 예측 (관제실 시안 P3, 11-02): 최근 7일 막대 + 이 속도면 언제 바닥 — 연결 상태 · 한눈에 보기가 같이 씀 */
+.os-credit { display: grid; gap: 4px; margin: 8px 0 4px; font-size: 12px; color: var(--text-2); }
+.os-credit p { margin: 0; }
+.os-credit-week { width: 112px; height: 32px; }
+.os-credit-week rect { fill: var(--accent-2); }
+.os-credit-week rect.empty { fill: var(--line); }
+.os-credit-out { color: var(--warning); font-weight: 600; }
+
 }
