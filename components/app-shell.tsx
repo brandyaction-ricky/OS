@@ -164,6 +164,19 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
   }, []);
 
   useEffect(() => {
+    // The server draws the boot screen, so a page's own CSS arrives only as a preload hint. React counts a hinted sheet as
+    // not loaded, shows the loading skeleton and holds it 300 ms once the page is ready; attaching the sheets here, while the
+    // profile loads, lets the page appear (and request its data) at once.
+    for (const hint of document.querySelectorAll<HTMLLinkElement>('link[rel="preload"][as="style"]')) {
+      const href = hint.getAttribute("href");
+      if (!href || document.querySelector(`link[rel="stylesheet"][href="${CSS.escape(href)}"]`)) continue;
+      const sheet = Object.assign(document.createElement("link"), { rel: "stylesheet", href });
+      sheet.dataset.precedence = "next";
+      document.head.appendChild(sheet);
+    }
+  }, []);
+
+  useEffect(() => {
     const savedTheme = document.documentElement.dataset.theme;
     const savedGuidance = document.documentElement.dataset.guidance;
     setTheme(savedTheme === "light" ? "light" : "dark");
