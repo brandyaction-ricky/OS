@@ -81,6 +81,29 @@ test("mobile sidebar search uses the existing palette without competing focus tr
   expect(await page.evaluate(() => document.body.style.overflow)).toBe("");
 });
 
+for (const theme of ["light", "dark"]) {
+  test(`hover and keyboard focus keep inactive menu labels readable in ${theme}`, async ({ page }) => {
+    await page.addInitScript(theme => localStorage.setItem("brandy-os-theme", theme), theme);
+    await page.goto("/knowledge/vault");
+    const sidebar = page.locator("#main-navigation");
+    const selected = sidebar.locator('a.page-link[href="/knowledge/vault"]');
+    const other = sidebar.locator('a.page-link[href="/knowledge/canon"]');
+    for (const state of ["hover", "focus"] as const) {
+      if (state === "hover") await other.hover();
+      else { await page.mouse.move(600, 20); await other.focus(); }
+      await expect(other).toHaveCSS("background-color", theme === "light" ? "rgb(57, 51, 65)" : "rgb(42, 37, 51)");
+      const colors = await other.evaluate(el => {
+        const style = getComputedStyle(el);
+        return [style.color, style.backgroundColor];
+      });
+      expect(contrast(colors[0], colors[1])).toBeGreaterThanOrEqual(4.5);
+    }
+    await selected.hover();
+    await expect(selected).toHaveCSS("color", theme === "light" ? "rgb(37, 77, 138)" : "rgb(196, 220, 255)");
+    await expect(selected).toHaveCSS("background-color", theme === "light" ? "rgb(230, 238, 251)" : "rgb(41, 60, 86)");
+  });
+}
+
 for (const width of [1440, 390]) for (const theme of ["light", "dark"]) {
   test(`grouped sidebar remains readable, collapsible and keyboard accessible at ${width}px in ${theme}`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 1000 });
