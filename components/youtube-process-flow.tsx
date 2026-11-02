@@ -1,12 +1,12 @@
 "use client";
 import Link from "next/link";
-import { Fragment, useState } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { ArrowRight, ChevronDown, ChevronRight, Clock, Folder } from "lucide-react";
 import { flowOf, projectName, stepHref, YP_FLOW, YP_STAGE_INDEX, type YpProject } from "@/lib/youtube-process/project";
 
 /** The one 'what to do now' control at the right of the progress line (지시서 4-1 표). */
 export type YpAction =
-  | { kind: "button"; label: string; onClick: () => void; reason?: string; busy?: boolean }
+  | { kind: "button"; label: string; onClick: () => void; reason?: string; busy?: boolean; /** Shown before the button at the end of the step only. */ extra?: ReactNode }
   | { kind: "status"; status: string; secondary?: { label: string; onClick: () => void } }
   | { kind: "link"; label: string; href: string };
 

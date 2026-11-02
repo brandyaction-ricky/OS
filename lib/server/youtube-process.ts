@@ -22,7 +22,7 @@ const topicFields = {
 };
 export const projectCreateSchema = z.object(topicFields).partial().strict();
 export const projectPatchSchema = z.object({ ...topicFields, expectedVersion: z.number().int().positive() }).partial().required({ expectedVersion: true }).strict();
-export const gateActionSchema = z.object({ action: z.enum(["confirm", "request", "cancel", "reopen"]), expectedVersion: z.number().int().positive(), reply: z.string().max(200).optional() }).strict();
+export const gateActionSchema = z.object({ action: z.enum(["confirm", "request", "cancel", "reopen"]), expectedVersion: z.number().int().positive(), reply: z.string().max(200).optional(), to: z.string().uuid().optional() }).strict();
 // note: the 대표 leaves a note on a step the PD confirmed (owner decision 2026-10-26); it changes nothing else.
 export const confirmActionSchema = z.object({ action: z.enum(["ok", "changes", "hold", "revert", "note"]), expectedVersion: z.number().int().positive(),
   fields: z.array(z.string().max(40)).max(20).optional(), memo: z.string().max(1000).optional(), reason: z.string().max(300).optional() }).strict();
@@ -142,7 +142,7 @@ export async function actOnGate(actor: RequestActor, id: string, gate: YpGate, i
   const project = await getYoutubeProject(actor, id);
   if (project.version !== input.expectedVersion) throw conflict();
   const now = new Date().toISOString();
-  const gateInput = { actor: actor.ownerId, now, reply: input.reply };
+  const gateInput = { actor: actor.ownerId, now, reply: input.reply, to: input.action === "request" ? input.to : undefined };
   if (input.action === "cancel") {
     const yp = apply(project, gate, "cancel", gateInput);
     return { project: await saveProject(actor, project, input.expectedVersion, { yp }), created: [] as YpProject[] };
@@ -155,13 +155,14 @@ export async function actOnGate(actor: RequestActor, id: string, gate: YpGate, i
   }
   const reason = gate === "topic" ? topicMissing(project.title, project.yp.topic) : await missing(project);
   if (reason) throw new ApiError(400, gate === "topic" ? "TOPIC_INCOMPLETE" : "GATE_INCOMPLETE", reason);
-  // confirm (owner decision 2026-10-26): the PD confirms and the step opens; the 대표 is told and may leave a note. request stays for
-  // anything still sent the old way.
+  if (gateInput.to && !(await approverIds()).includes(gateInput.to)) throw new ApiError(400, "NOT_APPROVER", "컨펌 요청은 회사 승인자에게만 보낼 수 있어요.");
+  // confirm (owner decision 2026-10-26): the PD confirms and the step opens; the 대표 is told and may leave a note. request (back on
+  // 2026-11-02, owner request): the PD may instead ask an approver they pick, who decides in 대표 메뉴 › 컨펌 › 컨펌 대기.
   const action = input.action;
   const told = async (row: YpProject, yp: YpProject["yp"]) => {
     if (quietHours(now)) return;
     if (action === "confirm") await notify(await approverIds(), "yt_confirm_result", row.id, `self:${row.id}:${gate}:${yp.gates[gate].round}`);
-    else await notify(await approverIds(), "yt_confirm_request", row.id, `confirm:${row.id}:${gate}:${yp.gates[gate].round}:0`);
+    else await notify(gateInput.to ? [gateInput.to] : await approverIds(), "yt_confirm_request", row.id, `confirm:${row.id}:${gate}:${yp.gates[gate].round}:0`);
   };
   if (gate !== "topic") {
     const yp = apply(project, gate, action, gateInput);
@@ -179,7 +180,7 @@ export async function actOnGate(actor: RequestActor, id: string, gate: YpGate, i
   const created: YpProject[] = [];
   for (const line of rest) {
     const meta = newProjectMeta(project.yp.topic, now, project.id);
-    meta.yp = applyGateAction({ yp: meta.yp }, "topic", action, { actor: actor.ownerId, now });
+    meta.yp = applyGateAction({ yp: meta.yp }, "topic", action, { actor: actor.ownerId, now, to: gateInput.to });
     created.push(await insertProject(actor, line, project.assigneeId, meta));
   }
   for (const row of [saved, ...created]) await recordConfirmation(row, "topic", action, actor.ownerId, { memo: input.reply });
@@ -244,7 +245,9 @@ export async function remindConfirmations(now = new Date().toISOString()) {
   if (!due.length) return { reminded: 0 };
   const approvers = await approverIds();
   const first = due[0].project;
-  await notify(approvers, "yt_confirm_request", first.id, due.length > 1 ? `confirm-batch:${now.slice(0, 13)}` : `confirm:${first.id}:${due[0].gate}:${first.yp.gates[due[0].gate].round}:${now.slice(0, 13)}`);
+  // Each request reminds the approver it was sent to (all approvers for one sent without a pick, or to someone no longer one).
+  const to = [...new Set(due.flatMap(({ project, gate }) => { const id = project.yp.gates[gate].requestedTo; return id && approvers.includes(id) ? [id] : approvers; }))];
+  await notify(to, "yt_confirm_request", first.id, due.length > 1 ? `confirm-batch:${now.slice(0, 13)}` : `confirm:${first.id}:${due[0].gate}:${first.yp.gates[due[0].gate].round}:${now.slice(0, 13)}`);
   const service = createServiceSupabase();
   for (const { project, gate } of due) {
     const yp = { ...project.yp, gates: { ...project.yp.gates, [gate]: { ...project.yp.gates[gate], remindAt: nextRemindAt(now) } } };

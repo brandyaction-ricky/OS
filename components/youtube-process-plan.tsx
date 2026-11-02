@@ -11,7 +11,7 @@ import { apiRequest } from "@/lib/api-client";
 import { useSession } from "./session-provider";
 import { errorMessage, isConflict, youtubeProcessClient, type YpClient, type YpMember, type YpTopicInput } from "./youtube-process-data";
 import { YoutubeFlow, type YpAction } from "./youtube-process-flow";
-import { GateNotes, ReopenButton, StepFooter, useLeaveGuard } from "./youtube-process-frame";
+import { AskApprover, askedName, CancelAsk, GateNotes, ReopenButton, StepFooter, useLeaveGuard } from "./youtube-process-frame";
 import { ConfirmActions } from "./youtube-process-confirm";
 import { useYoutubeCanConfirm } from "./use-youtube-confirm";
 import { canReopen, editedSinceDecision, GATE_FIELDS, gateName } from "@/lib/youtube-process/confirm";
@@ -176,8 +176,10 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
   const open = (key: "title" | "kind" | "target" | "refs" | "note" | "purpose") => project ? topicFieldEditable(project, key) : projectParam === "new";
   const editAndSave = (patch: Partial<Form>, make = false) => { editRev.current += 1; const next = { ...form, ...patch }; setForm(next); setDirty(true); if (make || ready(next)) void save(next); };
 
-  async function gate(action: "confirm" | "request" | "cancel", reply?: string) {
+  const askTo = useRef<string | undefined>(undefined);
+  async function gate(action: "confirm" | "request" | "cancel", reply?: string, to?: string) {
     if (!client) return;
+    if (to) askTo.current = to;
     setBusy(true); setError(""); setCreated([]);
     try {
       // A save still running may carry older text than the screen (로건 QA 10/30: 「정밀 타겟을 써 주세요」 with the box filled):
@@ -187,7 +189,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
       if (!base) return;
       // S11-5: after 수정 요청, re-requesting without changing anything needs a one-line reason.
       if (action === "request" && !reply && base.yp.gates.topic.state === "changes" && !editedSinceDecision(base, "topic")) { setReplyOpen(true); return; }
-      const result = await client.topicGate(base.id, action, base.version, reply);
+      const result = await client.topicGate(base.id, action, base.version, reply, action === "request" ? askTo.current : undefined);
       setReplyOpen(false); setReplyText("");
       setProject(result.project); setForm(formOf(result.project)); setDirty(false); setCreated(result.created);
       if (result.created.length) setProjects(list => [...result.created, ...list]);
@@ -205,10 +207,11 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
   const lines = topicLines(form.title);
   const short = form.kind === "short";
   const confirmLabel = gateName("topic", form.kind);
+  const topicReason = topicMissing(form.title, { type: form.kind, target: form.target }) || (!short ? "" : !research.refs ? "참고 영상을 찾아 주세요" : !research.formula ? "공식을 고르고 주제를 정해 주세요" : "");
   const action: YpAction = view !== current && current < YP_FLOW.length
     ? { kind: "link", label: `이어서 하기 · ${stepName(current, shell.yp.topic.type)}`, href: stepHref(current, shell.id) }
-    : { kind: "button", label: `${confirmLabel}하고 다음으로${lines.length > 1 ? ` (${lines.length}개)` : ""}`, busy, onClick: () => void gate("confirm"),
-      reason: topicMissing(form.title, { type: form.kind, target: form.target }) || (!short ? "" : !research.refs ? "참고 영상을 찾아 주세요" : !research.formula ? "공식을 고르고 주제를 정해 주세요" : "") };
+    : { kind: "button", label: `${confirmLabel}하고 다음으로${lines.length > 1 ? ` (${lines.length}개)` : ""}`, busy, onClick: () => void gate("confirm"), reason: topicReason,
+      extra: client && topicGate.state !== "wait" ? <AskApprover client={client} members={members} disabled={busy || Boolean(topicReason)} onSend={to => void gate("request", undefined, to)} /> : null };
   const others = projects.filter(row => row.id !== shell.id);
   // 로건 QA 10/30: a longform's list held 숏폼 and 복사본 — only the same kind of video, without copies, newest first.
   const family = (kind: YpKind | null | undefined) => kind === "short" || kind === "card" ? kind : "long";
@@ -225,17 +228,18 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
   return <>
     {loading ? null : <YoutubeFlow project={shell} view={view} action={action} />}
     <header className="page-header"><div className="page-title-group"><h1 className="page-title" data-ui="page-title">주제</h1>
-      <p>{topicGate.state === "wait" ? "대표 컨펌 요청이 남아 있어요. 이제 PD가 직접 컨펌하면 다음으로 넘어가요." : topicGate.state === "changes" ? "대표 수정 요청을 반영하고 컨펌해요. 모든 칸을 고칠 수 있어요." : topicGate.state === "ok" ? `${confirmLabel}이 끝났어요. ${shell.yp.topic.type === "short" ? "대본으로" : "기획안으로"} 넘어가요.` : short ? "키워드나 링크로 참고 영상을 찾고, 공식을 뽑아 주제를 확정해요." : "주제 · 유형 · 정밀 타겟 세 칸을 채우고 컨펌해요."}</p></div>
+      <p>{topicGate.state === "wait" ? "대표 컨펌을 기다리고 있어요. 기다리지 않고 직접 컨펌해도 돼요." : topicGate.state === "changes" ? "대표 수정 요청을 반영하고 컨펌해요. 모든 칸을 고칠 수 있어요." : topicGate.state === "ok" ? `${confirmLabel}이 끝났어요. ${shell.yp.topic.type === "short" ? "대본으로" : "기획안으로"} 넘어가요.` : short ? "키워드나 링크로 참고 영상을 찾고, 공식을 뽑아 주제를 확정해요." : "주제 · 유형 · 정밀 타겟 세 칸을 채우고 컨펌해요."}</p></div>
       <div className="header-actions yp-stool">{unsaved ? <span className="yp-stamp yp-unsaved" role="alert">저장 안 됨 · 위 안내를 봐 주세요</span> : savedAt ? <span className="yp-stamp"><i />저장됨 {savedAt}</span> : !project && dirty ? <span className="yp-stamp">아직 저장 전 · 필수 칸을 채우면 저장돼요</span> : null}{editable ? <button type="button" className="yp-btn yp-sm" disabled={!dirty} onClick={() => void save()}>임시 저장</button> : null}</div></header>
     {loading ? <p className="yp-hint" role="status">영상을 불러오는 중이에요…</p> : <>
       {conflict ? <div className="yp-note yp-warn" role="alert"><div>다른 사람이 먼저 고쳤어요. <button type="button" className="yp-lnk" onClick={() => void load(true)}>새로 불러오기</button> (지금 쓴 내용은 사라져요)</div></div> : null}
       {error ? <div className="yp-note yp-warn" role="alert"><div>{error}</div></div> : null}
       {created.length ? <div className="yp-note" role="status"><Info size={16} className="yp-i" aria-hidden="true" /><div>영상 {created.length}개를 더 만들어 함께 컨펌했어요: {created.map((row, index) => <span key={row.id}>{index ? ", " : ""}<Link href={stepHref(0, row.id)}>{projectName(row)}</Link></span>)}</div></div> : null}
       {view === 0 ? <div onBlur={saveIfDirty}>
-        {topicGate.state === "wait" ? <div className="yp-cwait" role="status"><div className="yp-cwait-h"><b>주제 컨펌 대기</b><span className="yp-hint">{md(topicGate.requestedAt)} 요청{daysSince(topicGate.requestedAt) ? ` · ${daysSince(topicGate.requestedAt)}일째` : ""}</span></div>
+        {topicGate.state === "wait" ? <div className="yp-cwait" role="status"><div className="yp-cwait-h"><b>주제 컨펌 대기</b><span className="yp-hint">{md(topicGate.requestedAt)} {askedName(members, topicGate.requestedTo)}요청{daysSince(topicGate.requestedAt) ? ` · ${daysSince(topicGate.requestedAt)}일째` : ""}</span></div>
           {(topicGate as { pdReply?: string }).pdReply ? <p className="yp-reply-note"><b>PD 답글</b> · 고친 칸 없이 다시 요청: “{(topicGate as { pdReply?: string }).pdReply}”</p> : null}
           {canConfirm && client && project ? <ConfirmActions project={project} gate="topic" client={client} onDone={next => { setProject(next); setForm(formOf(next)); }} />
-            : <p className="yp-hint">아래 [{confirmLabel}하고 다음으로]를 누르면 PD 컨펌으로 넘어가요.</p>}</div> : null}
+            : <p className="yp-hint">기다리지 않고 아래 [{confirmLabel}하고 다음으로]를 눌러 직접 컨펌해도 돼요.{client && project ? <> <CancelAsk project={project} gate="topic" client={client}
+              onDone={next => { setProject(next); setForm(formOf(next)); }} onError={reason => isConflict(reason) ? setConflict(true) : setError(errorMessage(reason))} /></> : null}</p>}</div> : null}
         {topicGate.state === "changes" ? <div className="yp-note yp-warn" role="status"><div><b>대표 수정 요청</b> · {md(topicGate.decidedAt)} — “{topicGate.memo}”<br />{topicGate.fields?.length ? `특히 볼 칸: ${topicGate.fields.map(field => GATE_FIELDS.topic[field] ?? field).join(", ")} · ` : ""}모든 칸을 고칠 수 있어요</div></div> : null}
         {topicGate.state === "hold" ? <div className="yp-note yp-warn" role="status"><div><b>대표 보류</b> · {md(topicGate.decidedAt)} — 사유: {topicGate.reason}. 손본 뒤 컨펌할 수 있어요.</div></div> : null}
         {project && client && canReopen(project, "topic") ? <div className="yp-note yp-ok" role="status"><div><b>{confirmLabel} OK · PD 컨펌</b> <ReopenButton project={project} gate="topic" client={client}

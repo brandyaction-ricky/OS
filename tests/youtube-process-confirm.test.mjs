@@ -17,6 +17,15 @@ test("request → OK opens the 기획안 step; the round counts requests", () =>
   assert.equal(ok.yp.gates.topic.decidedBy, "ceo");
 });
 
+test("컨펌 요청 (owner request 2026-11-02): the PD picks an approver; the request waits in 컨펌 대기 and the PD may still confirm", () => {
+  const waiting = act(project(), "request", { to: "ceo" });
+  assert.deepEqual([waiting.yp.gates.topic.state, waiting.yp.gates.topic.requestedTo, waiting.yp.gates.topic.requestedBy], ["wait", "ceo", "pd"]);
+  assert.equal(act(project(), "request").yp.gates.topic.requestedTo, undefined);
+  assert.deepEqual(confirmTab([waiting], "wait", "ceo").map(row => row.gate), ["topic"]);
+  assert.equal(act(waiting, "confirm").yp.stage, "draft");
+  assert.equal(act(waiting, "cancel").yp.gates.topic.state, "none");
+});
+
 test("수정 요청 needs ticked fields and a memo; every field stays open until the step is confirmed (staff feedback 2026-10-26)", () => {
   const waiting = act(project(), "request");
   assert.throws(() => act(waiting, "changes", { fields: [], memo: "x" }), /고칠 칸/);

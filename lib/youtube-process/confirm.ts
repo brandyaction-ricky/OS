@@ -20,7 +20,8 @@ export const GATE_FIELDS: Record<YpGate, Record<string, string>> = {
 };
 export type YpPdAction = "request" | "cancel" | "confirm" | "reopen";
 export type YpApproverAction = "ok" | "changes" | "hold" | "revert";
-export interface YpGateInput { actor: string; now: string; fields?: string[]; memo?: string; reason?: string; reply?: string }
+/** `to`: the approver a 컨펌 요청 goes to (owner request 2026-11-02: the PD picks who to ask). */
+export interface YpGateInput { actor: string; now: string; fields?: string[]; memo?: string; reason?: string; reply?: string; to?: string }
 
 export class GateError extends Error {
   readonly code: string;
@@ -83,7 +84,7 @@ export function applyGateAction(project: Pick<YpProject, "yp">, gate: YpGate, ac
       if (yp.stage !== GATE_STAGE[gate] || !["none", "changes", "hold"].includes(info.state)) throw new GateError("INVALID_TRANSITION", info.state === "wait" ? "이미 대표 컨펌을 기다리고 있어요." : "지금은 이 컨펌을 요청할 수 없어요.");
       const reply = input.reply?.trim();
       if (info.state === "changes" && !editedSinceDecision(project, gate) && !reply) throw new GateError("REPLY_REQUIRED", "고친 칸이 없어요. 다시 요청하는 이유를 한 줄 써 주세요.", 400);
-      return put({ state: "wait", round: info.round + 1, requestedAt: input.now, requestedBy: input.actor, remindAt: firstRemindAt(input.now),
+      return put({ state: "wait", round: info.round + 1, requestedAt: input.now, requestedBy: input.actor, ...(input.to ? { requestedTo: input.to } : {}), remindAt: firstRemindAt(input.now),
         prev: { state: info.state, fields: info.fields, memo: info.memo, reason: info.reason }, ...(reply ? { pdReply: reply.slice(0, 200) } : {}),
         ...(info.revertedFrom ? { revertedFrom: info.revertedFrom } : {}) });
     }
