@@ -139,15 +139,17 @@ test("a revisit shows the remembered list at once, but editors wait for the fres
   assert.equal(app.render().draftsReady, true);
 });
 
-// 회사 문서 목록 브라우저 저장 (2026-11-02): this PC's list renders at once and the read asks only for what changed since.
-test("this PC's kept list shows at once and only the changes are read and merged", async () => {
+// 회사 문서 목록 브라우저 저장 (2026-11-02): the read asks only for what changed since and merges it into this PC's list.
+test("only the changes are read and merged into this PC's kept list, which is never drawn on its own", async () => {
   const doc = (id, title) => ({ id, title, folder: "규칙", current_version: 1, updated_at: "2026-11-01T00:00:00Z", content_md: "" });
   const kept = { syncedAt: "2026-11-02T00:00:00.000Z", actor, documents: [doc("a", "가"), doc("b", "나")] };
   const app = setup({}, kept);
   app.render("/knowledge/docs");
   assert.equal(app.requests[0].path, "/api/v1/knowledge/workspace?since=2026-11-02T00%3A00%3A00.000Z");
   await turn();
-  assert.deepEqual(app.render().state.documents.map(d => d.title), ["가", "나"], "the kept list renders before the network answers");
+  const early = app.render();
+  assert.equal(early.loading, true, "documents alone would show decisions and meetings as empty");
+  assert.deepEqual(early.state.documents, []);
   app.requests[0].resolve({ ...workspace(), state: { ...model.emptyKnowledgeState(), documents: [doc("b", "나 고침")] }, syncedAt: "2026-11-02T01:00:00.000Z", delta: { visibleIds: ["b", "a"] } });
   await turn(); await turn();
   assert.deepEqual(app.render().state.documents.map(d => d.title), ["나 고침", "가"]);
