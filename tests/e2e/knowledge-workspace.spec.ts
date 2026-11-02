@@ -340,6 +340,21 @@ test("canonical proposal persists without changing the original, forbids self ap
  await expect(page.locator(".document-reader")).toContainText("목적과 근거");
 });
 
+// 관제실 시안 P3 회사 기억 지도: 문서에 물어보기 answers with numbered sources, and a number lights its point.
+test("문서에 물어보기 lists numbered sources that select their point on the map",async({page})=>{
+ await page.goto("/knowledge/graph");
+ await expect(page.getByText(/회사 기억 · 문서 2 · 연결 1/)).toBeVisible();
+ await page.getByRole("textbox",{name:"문서에 물어보기",exact:true}).fill("기준");
+ await page.getByRole("button",{name:"찾기",exact:true}).click();
+ const found=page.getByRole("list",{name:"찾은 문서"});
+ await expect(found.getByRole("button").first()).toHaveText(/^\[1\] /);
+ await found.getByRole("button",{name:/\[1\] 문서 작성 기준/}).click();
+ await expect(page).toHaveURL(/sel=example-canonical/);
+ await page.getByRole("textbox",{name:"문서에 물어보기",exact:true}).fill("없는낱말쿼리");
+ await page.getByRole("button",{name:"찾기",exact:true}).click();
+ await expect(page.getByText("「없는낱말쿼리」에 맞는 문서가 없어요.")).toBeVisible();
+});
+
 test("graph filters, zoom, keyboard selection and reduced motion remain usable",async({page},info)=>{
  await page.emulateMedia({reducedMotion:"reduce"});await page.goto("/knowledge/graph");
  const canvas=page.getByRole("application");await expect(canvas).toHaveAttribute("data-node-count","2");
