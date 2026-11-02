@@ -120,7 +120,7 @@ export function TaxInvoicePanel({ token, mode }: { token: string | null; mode: "
     <div className="fin-card-h"><div>
       <h2>{mode === "sales" ? "세금계산서 (홈택스)" : "계산서 · 실제 입금 확인"}</h2>
       <p className="fin-small fin-muted">{md(from)} ~ {md(to)}{biz ? ` · ${TAX_BIZ[biz]}` : " · 모든 사업자"} · 위에서 고른 기간 · {mode === "sales" ? "계산서 작성일자 기준" : "작성일 3일 전 ~ 90일 뒤 같은 금액 입금을 찾아요"}</p>
-    </div><button type="button" className="fin-btn fin-sm" disabled={!invoices.length} onClick={download}>CSV 내보내기</button></div>
+    </div><button type="button" className="secondary-button compact" disabled={!invoices.length} onClick={download}>CSV 내보내기</button></div>
     {mode === "sales" && data ? <div className="fin-tiles fin-t5">
       {([["토스 결제", "취소 뺀 금액", data.totals.toss], ["세금계산서", "홈택스에서 올린 것", data.totals.invoices], ["외부 매출", "직접 입력한 매출", data.totals.external], ["겹친 매출", "같은 매출이라 한 번만 셈", data.totals.linkedExcluded ? -data.totals.linkedExcluded : 0]] as const).map(([label, hint, value]) =>
         <div key={label} className="fin-tile"><span className="fin-l">{label}</span><span className="fin-v">{won(value)}</span><span className="fin-d">{hint}</span></div>)}
@@ -130,16 +130,16 @@ export function TaxInvoicePanel({ token, mode }: { token: string | null; mode: "
     {mode === "sales" ? <div className="fin-upload">
       <b>계산서 올리기</b>
       <label className="fin-field"><span>사업자</span><select className="fin-sel" value={uploadBiz} onChange={event => setUploadBiz(event.target.value as Biz | "")}><option value="">고르세요</option>{BIZ_KEYS.map(key => <option key={key} value={key}>{TAX_BIZ[key]}</option>)}</select></label>
-      <label className="fin-btn fin-sm fin-pri">홈택스 엑셀 올리기<input type="file" accept=".xlsx,.xls,.csv" hidden onChange={event => { void pick(event.target.files?.[0]); event.target.value = ""; }} /></label>
-      <button type="button" className="fin-btn fin-sm" onClick={() => void copyAside()}>Aside에 맡기기 (지침 복사)</button>
+      <label className="primary-button compact">홈택스 엑셀 올리기<input type="file" accept=".xlsx,.xls,.csv" hidden onChange={event => { void pick(event.target.files?.[0]); event.target.value = ""; }} /></label>
+      <button type="button" className="secondary-button compact" onClick={() => void copyAside()}>Aside에 맡기기 (지침 복사)</button>
     </div> : null}
     {stale.length && mode === "sales" ? <div className="fin-callout fin-warn"><b>오래됨</b><span className="fin-grow">마지막으로 올린 지 한 달이 넘었어요: {stale.map(key => TAX_BIZ[key]).join(", ")}</span></div> : null}
     {preview ? <div className="fin-card fin-flat fin-preview" role="status">
       <p><b>{preview.file}</b> · 계산서 {preview.invoices.length}건 · 합계 {won(totalOf(preview.invoices as Invoice[]))}{preview.invoices.some(row => row.is_modified) ? ` · 수정계산서 ${preview.invoices.filter(row => row.is_modified).length}건` : ""}</p>
       {preview.errors.length ? <ul className="fin-callout fin-bad">{preview.errors.slice(0, 8).map(item => <li key={item}>{item}</li>)}{preview.errors.length > 8 ? <li>외 {preview.errors.length - 8}건</li> : null}</ul> : null}
       <div className="fin-ph-a">
-        <button type="button" className="fin-btn fin-sm fin-pri" disabled={busy || !uploadBiz || !preview.invoices.length || preview.supplierRegNos.length > 1} onClick={() => void save()}>{busy ? "저장하는 중…" : uploadBiz ? `${TAX_BIZ[uploadBiz]}로 저장` : "사업자를 먼저 고르세요"}</button>
-        <button type="button" className="fin-btn fin-sm fin-ghost" onClick={() => setPreview(null)}>취소</button>
+        <button type="button" className="primary-button compact" disabled={busy || !uploadBiz || !preview.invoices.length || preview.supplierRegNos.length > 1} onClick={() => void save()}>{busy ? "저장하는 중…" : uploadBiz ? `${TAX_BIZ[uploadBiz]}로 저장` : "사업자를 먼저 고르세요"}</button>
+        <button type="button" className="secondary-button compact fin-ghost" onClick={() => setPreview(null)}>취소</button>
       </div>
     </div> : null}
     {note ? <p className="fin-callout fin-note" role="status">{note}</p> : null}
@@ -151,20 +151,20 @@ export function TaxInvoicePanel({ token, mode }: { token: string | null; mode: "
       <tbody>{invoices.map(row => <tr key={row.id}>
         <td className="fin-num">{md(row.written_date)}{row.issued_date && row.issued_date !== row.written_date ? <span className="fin-sub2">발급 {md(row.issued_date)}</span> : null}</td>
         <td>{TAX_BIZ[row.biz]}</td>
-        <td>{row.buyer_name || "공급받는자 미기재"}{row.is_modified ? <span className="fin-pill fin-warn">수정</span> : null}{row.invoice_class === "exempt" ? <span className="fin-pill fin-out">면세</span> : null}<span className="fin-sub2">{row.item_summary}</span></td>
+        <td>{row.buyer_name || "공급받는자 미기재"}{row.is_modified ? <span className="status-pill" data-tone="warn">수정</span> : null}{row.invoice_class === "exempt" ? <span className="status-pill" data-tone="muted">면세</span> : null}<span className="fin-sub2">{row.item_summary}</span></td>
         {money(row.total_amount)}{money(row.supply_amount)}{money(row.tax_amount)}
         {mode === "sales" ? <td><b>{STATE_LABEL[row.match.state]}</b>
           {row.match.linked ? <span className="fin-sub2">{row.match.linked.label} · {md(row.match.linked.date)}</span> : null}
           {row.match.candidates.map(candidate => <div key={`${candidate.type}:${candidate.ref}`} className="fin-candidate"><span className="fin-small fin-muted">{candidate.type === "payment" ? "토스" : "외부 매출"} · {candidate.label} · {md(candidate.date)} · {won(candidate.amount)}</span>
-            <button type="button" className="fin-btn fin-sm" disabled={busy} onClick={() => void act({ action: "link", invoiceId: row.id, targetType: candidate.type, targetRef: candidate.ref, state: "confirmed" }, "같은 매출로 확인했어요. 합계에서 한 번만 셉니다.")}>같은 매출</button>
-            <button type="button" className="fin-btn fin-sm fin-ghost" disabled={busy} onClick={() => void act({ action: "link", invoiceId: row.id, targetType: candidate.type, targetRef: candidate.ref, state: "rejected" }, "다른 매출로 표시했어요.")}>다른 매출</button></div>)}
+            <button type="button" className="secondary-button compact" disabled={busy} onClick={() => void act({ action: "link", invoiceId: row.id, targetType: candidate.type, targetRef: candidate.ref, state: "confirmed" }, "같은 매출로 확인했어요. 합계에서 한 번만 셉니다.")}>같은 매출</button>
+            <button type="button" className="secondary-button compact fin-ghost" disabled={busy} onClick={() => void act({ action: "link", invoiceId: row.id, targetType: candidate.type, targetRef: candidate.ref, state: "rejected" }, "다른 매출로 표시했어요.")}>다른 매출</button></div>)}
         </td> : <td><b>{DEPOSIT_LABEL[row.deposit.state]}</b>{row.deposit.bank ? <span className="fin-sub2">{md(row.deposit.bank.tx_date)} · {row.deposit.bank.description}</span> : null}</td>}
         <td className="fin-r">{mode === "sales"
-          ? row.match.state === "linked" && row.match.linked ? <button type="button" className="fin-btn fin-sm fin-ghost" disabled={busy} onClick={() => void act({ action: "link", invoiceId: row.id, targetType: row.match.linked!.type, targetRef: row.match.linked!.ref, state: "clear" }, "되돌렸어요.")}>되돌리기</button> : null
+          ? row.match.state === "linked" && row.match.linked ? <button type="button" className="secondary-button compact fin-ghost" disabled={busy} onClick={() => void act({ action: "link", invoiceId: row.id, targetType: row.match.linked!.type, targetRef: row.match.linked!.ref, state: "clear" }, "되돌렸어요.")}>되돌리기</button> : null
           : row.deposit.state === "likely" && row.deposit.bank ? <span className="fin-ph-a">
-            <button type="button" className="fin-btn fin-sm" disabled={busy} onClick={() => void act({ action: "link", invoiceId: row.id, targetType: "bank_tx", targetRef: row.deposit.bank!.id, state: "confirmed" }, "입금을 확인했어요.")}>입금 맞음</button>
-            <button type="button" className="fin-btn fin-sm fin-ghost" disabled={busy} onClick={() => void act({ action: "link", invoiceId: row.id, targetType: "bank_tx", targetRef: row.deposit.bank!.id, state: "rejected" }, "이 입금이 아니라고 표시했어요.")}>아님</button></span>
-          : row.deposit.state === "confirmed" && row.deposit.bank ? <button type="button" className="fin-btn fin-sm fin-ghost" disabled={busy} onClick={() => void act({ action: "link", invoiceId: row.id, targetType: "bank_tx", targetRef: row.deposit.bank!.id, state: "clear" }, "되돌렸어요.")}>되돌리기</button> : null}</td>
+            <button type="button" className="secondary-button compact" disabled={busy} onClick={() => void act({ action: "link", invoiceId: row.id, targetType: "bank_tx", targetRef: row.deposit.bank!.id, state: "confirmed" }, "입금을 확인했어요.")}>입금 맞음</button>
+            <button type="button" className="secondary-button compact fin-ghost" disabled={busy} onClick={() => void act({ action: "link", invoiceId: row.id, targetType: "bank_tx", targetRef: row.deposit.bank!.id, state: "rejected" }, "이 입금이 아니라고 표시했어요.")}>아님</button></span>
+          : row.deposit.state === "confirmed" && row.deposit.bank ? <button type="button" className="secondary-button compact fin-ghost" disabled={busy} onClick={() => void act({ action: "link", invoiceId: row.id, targetType: "bank_tx", targetRef: row.deposit.bank!.id, state: "clear" }, "되돌렸어요.")}>되돌리기</button> : null}</td>
       </tr>)}</tbody>
     </table></div> : null}
   </div></section>;

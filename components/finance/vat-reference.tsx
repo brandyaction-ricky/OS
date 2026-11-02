@@ -75,10 +75,10 @@ export function VatReference({ token }: { token: string | null }) {
     <div className="fin-ph"><div className="fin-ph-t"><h1>부가세 신고 참고 자료</h1>
       <p className="fin-ph-s">토스 결제·취소, 홈택스 계산서, 외부 매출을 증빙별로 묶은 참고 자료예요. 실제 신고는 세무사와 홈택스 자료로 확인해 주세요.</p></div>
       <div className="fin-ph-a">
-        <button type="button" className="fin-btn fin-sm" disabled={!result?.rows.length} onClick={csv}>CSV 내보내기</button>
-        <button type="button" className="fin-btn fin-sm fin-pri" disabled={!result?.rows.length || busy} onClick={() => void excel()}>{busy ? "만드는 중…" : "엑셀 내려받기"}</button>
+        <button type="button" className="secondary-button compact" disabled={!result?.rows.length} onClick={csv}>CSV 내보내기</button>
+        <button type="button" className="primary-button compact" disabled={!result?.rows.length || busy} onClick={() => void excel()}>{busy ? "만드는 중…" : "엑셀 내려받기"}</button>
       </div></div>
-    <div className="fin-toolbar">
+    <div className="os-toolbar">
       <label className="fin-field"><span>사업자</span><select className="fin-sel" value={biz} onChange={event => setBiz(event.target.value as Biz)}>{BIZ_KEYS.map(key => <option key={key} value={key}>{TAX_BIZ[key]}</option>)}</select></label>
       <label className="fin-field"><span>기간</span><select className="fin-sel" value={period} onChange={event => setPeriod(event.target.value)}>
         <optgroup label="신고기간 (예정·확정)">{options.quarters.map(key => <option key={key} value={key}>{labelOf(key)}</option>)}</optgroup>
@@ -90,7 +90,7 @@ export function VatReference({ token }: { token: string | null }) {
     {error ? <p className="fin-callout fin-bad" role="alert">{error}</p> : null}
     {!result && !error ? <p className="fin-small fin-muted" role="status">자료를 모으는 중이에요…</p> : null}
     {result ? <>
-      {result.review ? <div className="fin-callout fin-warn"><b>확인 필요</b><span className="fin-grow">같은 매출인지 확인하지 않은 계산서가 {result.review}건 있어요. 확인 전에는 결제·외부 매출 줄과 계산서 줄에 둘 다 들어갈 수 있어요.</span><Link href="/finance/sales" className="fin-btn fin-sm">매출내역에서 확인</Link></div> : null}
+      {result.review ? <div className="fin-callout fin-warn"><b>확인 필요</b><span className="fin-grow">같은 매출인지 확인하지 않은 계산서가 {result.review}건 있어요. 확인 전에는 결제·외부 매출 줄과 계산서 줄에 둘 다 들어갈 수 있어요.</span><Link href="/finance/sales" className="secondary-button compact">매출내역에서 확인</Link></div> : null}
       <div className="fin-tiles fin-t4 fin-gap">
         <div className="fin-tile"><span className="fin-l">공급가액</span><span className="fin-v">{won(sum("supply"))}원</span></div>
         <div className="fin-tile"><span className="fin-l">세액</span><span className="fin-v">{won(sum("tax"))}원</span></div>
