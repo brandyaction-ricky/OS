@@ -1,5 +1,6 @@
 // 유튜브 공정 v1 stage records (지시서 6-1 · 6-2): 기획안 · 구성안 · 제작 · 업로드 (+ SEO 칼럼, 2026-10-25), one child record each under the project.
 // Rules here are shared by the API, the screens and the demo store.
+import type { YpReviewer } from "./reviewers";
 import type { YpKind, YpRef } from "./project";
 import type { AdResult } from "./ad-results";
 import type { CardDraft, CardFormatId } from "../cardnews/formats.ts";
@@ -61,6 +62,8 @@ export interface YpMake {
   edits?: Partial<Record<YpSlot, YpPairEdit>>;
   /** [공식대로 다시 뽑기]: the staff AI's last candidates for one slot, from the 패키징 정본 formula. */
   redo?: Partial<Record<YpSlot, YpRedo>>;
+  /** 검토할 사람 · 날짜 (유쓰 요청 8/8): who checks which part of the 최종 검토 by when. */
+  reviewers?: YpReviewer[];
 }
 export interface YpPairEdit { title: string; copy: string; reason: string; at: string; by: string }
 /** The formulas behind AI titles and copies (패키징 정본 작업 순서 2): the repeated words with [slots], how many references share them, and which. */

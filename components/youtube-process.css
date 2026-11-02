@@ -282,6 +282,34 @@
 .linear-shell .ui-v2.yp .yp-chstyle-check{display:flex;gap:6px;align-items:center;font-size:13px}
 .linear-shell .ui-v2.yp .yp-chstyle-color{display:flex;gap:6px;align-items:center}
 .linear-shell .ui-v2.yp .yp-chstyle-color input[type=color]{width:36px;height:32px;padding:0;border:1px solid var(--line);border-radius:6px;background:transparent}
+/* 할 일로 묶어 보기 (유쓰 요청 7/8) */
+.linear-shell .ui-v2.yp .yp-todo{margin:0 0 10px;padding:8px 10px;border:1px solid var(--line-soft);border-radius:10px;background:var(--card);font-size:13px}
+.linear-shell .ui-v2.yp .yp-todo summary{cursor:pointer;font-weight:700;display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
+.linear-shell .ui-v2.yp .yp-todo summary .yp-muted{font-weight:400;font-size:12px}
+.linear-shell .ui-v2.yp .yp-todo-g{margin-top:8px}
+.linear-shell .ui-v2.yp .yp-todo-g ul{list-style:none;margin:4px 0 0;padding:0;display:grid;gap:4px}
+.linear-shell .ui-v2.yp .yp-todo-g li{display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
+.linear-shell .ui-v2.yp .yp-todo-g li .yp-muted{font-size:12px}
+/* 검토 담당 (유쓰 요청 8/8) */
+.linear-shell .ui-v2.yp .yp-revw{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin:0 0 10px;font-size:13px}
+.linear-shell .ui-v2.yp .yp-revw-p{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:6px;background:var(--panel-2);color:var(--text-2)}
+.linear-shell .ui-v2.yp .yp-revw-p.yp-done{background:var(--mint-soft);color:var(--mint)}
+.linear-shell .ui-v2.yp .yp-revw-ed{flex-basis:100%;display:grid;gap:6px;padding:10px;border:1px solid var(--line-soft);border-radius:10px;background:var(--card)}
+.linear-shell .ui-v2.yp .yp-revw-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.linear-shell .ui-v2.yp .yp-revw-row .yp-in{width:auto;flex:1 1 140px}
+/* 작게 보기 (유쓰 요청 6/8): PC 검색 결과 줄, 시청 화면 옆 추천 목록 */
+.linear-shell .ui-v2.yp .yp-yt.yp-yt-search,.linear-shell .ui-v2.yp .yp-yt.yp-yt-side{display:flex;gap:12px;align-items:flex-start}
+.linear-shell .ui-v2.yp .yp-yt.yp-yt-search{width:560px}
+.linear-shell .ui-v2.yp .yp-yt.yp-yt-side{width:402px;gap:8px}
+.linear-shell .ui-v2.yp .yp-yt-search .yp-thumb{width:56%;flex:none}
+.linear-shell .ui-v2.yp .yp-yt-side .yp-thumb{width:168px;flex:none;border-radius:8px}
+.linear-shell .ui-v2.yp .yp-yt-b{min-width:0;flex:1}
+.linear-shell .ui-v2.yp .yp-yt-pick{margin-bottom:8px}
+.linear-shell .ui-v2.yp .yp-yt-pick-row{grid-column:1/-1;margin:0}
+.linear-shell .ui-v2.yp .yp-yt-search .yp-yt-t{font-size:18px;font-weight:400}
+.linear-shell .ui-v2.yp .yp-yt-side .yp-yt-t{font-size:14px}
+.linear-shell .ui-v2.yp .yp-yt-search .yp-yt-m:last-child{display:flex;align-items:center;gap:6px;margin-top:10px}
+.linear-shell .ui-v2.yp .yp-yt-search .yp-yt-av{width:24px;height:24px}
 
 /* 서식 편집기 (§5 · §6) */
 .linear-shell .ui-v2.yp .yp-rte{border:1px solid var(--line);border-radius:8px;background:var(--card);overflow:hidden}

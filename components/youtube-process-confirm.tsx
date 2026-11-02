@@ -10,7 +10,7 @@ import { checkShortScript } from "@/lib/youtube-process/short-script";
 import { useSession } from "./session-provider";
 import { YP_CONFIRM_EVENT } from "./use-youtube-confirm";
 import { errorMessage, youtubeProcessClient, type YpBundle, type YpClient, type YpMember } from "./youtube-process-data";
-import { YtCard } from "./youtube-process-media";
+import { YtCard, YtLookPicker } from "./youtube-process-media";
 import { ShortConfirmDetail } from "./youtube-process-short";
 import { ShortsLog } from "./youtube-process-shorts";
 import { clipConfirmed, clipParts, clipSeconds, formatParts } from "@/lib/youtube-process/short";
@@ -194,6 +194,7 @@ function StepDetail({ project, gate, client }: { project: YpProject; gate: YpGat
   const final = bundle.finals.at(-1);
   return <div style={{ marginBottom: 12 }}>
     <div className="yp-fld-h"><b>제목 · 썸네일 A · B · (C)</b><span className="yp-gq">{gate === "draft" ? "유튜브에서 보이는 모습" : "최종 썸네일. 컨펌본과 다르면 표시돼요"}</span></div>
+    <div className="yp-yt-pick"><YtLookPicker /></div>
     <div className="yp-g3">{pairs.map(pair => <div key={pair.slot} className="yp-abc"><div className="yp-abc-h"><span className={`yp-ltag${pair.slot === "C" ? " yp-c" : ""}`}>{pair.slot}</span>
       {gate === "review" ? "pair" in pair && pair.pair.changed ? <span className="yp-tag yp-warn">컨펌본과 다름</span> : <span className="yp-tag yp-ok">컨펌본 그대로</span> : null}</div>
       <YtCard page={media} thumb={pair.thumb} path={pair.path} title={pair.title} />

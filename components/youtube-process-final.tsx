@@ -10,9 +10,11 @@ import { CardReviewScreen } from "./youtube-process-card";
 import type { YpFeedbackView } from "./youtube-process-data";
 import { useSession } from "./session-provider";
 import { ApiRequestError } from "@/lib/api-client";
-import { feedbackNotice, compareTime, FEEDBACK_FILES_PER_ITEM, FEEDBACK_FILTER_LABEL, feedbackClosed, feedbackMatches, type FeedbackAction, type FeedbackFile, type FeedbackFilter, type FeedbackMark } from "@/lib/youtube-process/feedback";
-import { YtCard } from "./youtube-process-media";
+import { feedbackNotice, compareTime, FEEDBACK_KIND_LABEL, feedbackKind, FEEDBACK_FILES_PER_ITEM, FEEDBACK_FILTER_LABEL, feedbackClosed, feedbackMatches, type FeedbackAction, type FeedbackFile, type FeedbackFilter, type FeedbackMark } from "@/lib/youtube-process/feedback";
+import { YtCard, YtLookPicker } from "./youtube-process-media";
 import { VoiceFeedbackBox } from "./youtube-process-voice-feedback";
+import { FeedbackTodo } from "./youtube-process-feedback-todo";
+import { ReviewersBar } from "./youtube-process-reviewers";
 import { alignVersions, mapTime, srtCues, type Anchor, type VersionChange } from "@/lib/youtube-process/compare";
 
 const fmt = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
@@ -194,7 +196,7 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
   };
   const exportList = () => {
     const rows = items.filter(item => item.target === "video" && item.ver === ver && !item.reaction).sort((a, b) => (a.t ?? a.range?.[0] ?? 0) - (b.t ?? b.range?.[0] ?? 0));
-    const csv = ["시간,내용,누가,상태", ...rows.map(item => [label(item).replace("▷ ", ""), `"${item.text.replace(/"/g, '""')}"`, item.who, item.status === "done" ? "반영" : item.status === "declined" ? "반영 안 함" : "남음"].join(","))].join("\n");
+    const csv = ["시간,종류,내용,누가,상태", ...rows.map(item => [label(item).replace("▷ ", ""), FEEDBACK_KIND_LABEL[feedbackKind(item.text)], `"${item.text.replace(/"/g, '""')}"`, item.who, item.status === "done" ? "반영" : item.status === "declined" ? "반영 안 함" : "남음"].join(","))].join("\n");
     const link = document.createElement("a");
     link.href = URL.createObjectURL(new Blob([`﻿${csv}`], { type: "text/csv" })); link.download = `feedback_v${ver}.csv`; link.click();
   };
@@ -216,6 +218,7 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
       <GateBanner page={page} gate="review" okExtra={project.yp.stage === "upload" ? <> · <Link className="yp-lnk" href={stepHref(5, project.id)}>{short ? "내보내기로" : "업로드로"} →</Link></> : null} />
       <ReplyForm control={control} />
       <Subject page={page} />
+      {short ? null : <ReviewersBar page={page} />}
       <div className="yp-rvbar"><span style={{ flex: 1 }} />
         <button type="button" className="yp-btn yp-sm yp-pc-only" onClick={() => setHidePanel(value => !value)}>{hidePanel ? "피드백 보이기" : "피드백 숨기기"}</button>
         <div className="yp-seg2 yp-sm yp-pc-only" role="group" aria-label="플레이어 크기"><button type="button" className={size === "s" ? "yp-on" : ""} onClick={() => setSize("s")}>작게</button><button type="button" className={size === "l" ? "yp-on" : ""} onClick={() => setSize("l")}>크게</button></div></div>
@@ -275,6 +278,7 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
                 video.current?.pause(); videoB.current?.pause(); hold.current = change.a[0]; seek(change.a[0]); if (videoB.current) videoB.current.currentTime = change.b[0];
               }}>A {fmt(change.a[0])} · B {fmt(change.b[0])}</button> <span>{change.bText ? `B 「${change.bText.slice(0, 60)}${change.bText.length > 60 ? "…" : ""}」` : ""}{change.aText ? `${change.bText ? " · " : ""}A에만 「${change.aText.slice(0, 40)}${change.aText.length > 40 ? "…" : ""}」` : ""}</span></li>)}</ul></details> : null}
           </> : <div className="yp-tview2" style={{ padding: 12, display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))" }}>
+            <div className="yp-yt-pick yp-yt-pick-row"><YtLookPicker /></div>
             {SLOTS.filter(slot => confirmed?.[slot]).map(slot => <button key={slot} type="button" className={`yp-abc${thumbTarget === slot ? " yp-on" : ""}`} style={{ textAlign: "left" }} onClick={() => setThumbTarget(slot)}>
               <div className="yp-abc-h"><span className={`yp-ltag${slot === "C" ? " yp-c" : ""}`}>{slot}</span>{finalPair(plan, make, slot)?.changed ? <span className="yp-tag yp-warn">컨펌본과 다름</span> : null}</div>
               <YtCard page={page} thumb={finalPair(plan, make, slot)?.thumb} path={make.thumbs[slot]?.path} title={finalPair(plan, make, slot)?.title ?? ""} /></button>)}</div>}
@@ -286,6 +290,9 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
         <div className="yp-fbsearch"><Search size={14} aria-hidden="true" /><input className="yp-in" value={query} onChange={event => setQuery(event.target.value)} placeholder="피드백·답글·쓴 사람 찾기" aria-label="피드백 찾기" />
           <div className="yp-seg2 yp-sm" role="group" aria-label="상태">{(Object.keys(FEEDBACK_FILTER_LABEL) as FeedbackFilter[]).map(key => <button key={key} type="button" className={filter === key ? "yp-on" : ""} aria-pressed={filter === key} onClick={() => setFilter(key)}>{FEEDBACK_FILTER_LABEL[key]}</button>)}</div></div>
         {view === "video" && !short && !page.demo && project ? <VoiceFeedbackBox projectId={project.id} final={finals.find(item => item.v === ver)} items={items} token={page.accessToken} onSeek={seek} /> : null}
+        {view === "video" && !searching ? <FeedbackTodo items={openItems} total={items.length} ver={ver} onPick={item => {
+          setOpen(item.id); seek(item.t ?? item.range?.[0] ?? 0); window.setTimeout(() => document.getElementById(`fb-${item.id}`)?.scrollIntoView({ block: "center", behavior: "smooth" }), 50);
+        }} /> : null}
         {searching ? <div className="yp-fbl">{matched.length ? matched.map(item => <FeedbackItem key={item.id} item={item} open={open === item.id} latest={latest} onOpen={() => setOpen(open === item.id ? null : item.id)}
             onSeek={() => { if (item.target === "video") { setView("video"); seek(item.t ?? item.range?.[0] ?? 0); } else setThumbTarget(item.target as YpSlot); }} onAct={(action, value, replyId) => act(item, action, value, replyId)} onOpenFile={openFile} />)
           : <p className="yp-muted" style={{ padding: 8 }}>맞는 피드백이 없어요</p>}</div> :

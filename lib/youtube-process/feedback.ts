@@ -134,3 +134,20 @@ const VOICE_WORDS = /음성|나레이션|내레이션|목소리|말투|AI\s?스�
 const HEARD_SHAPE = /(?:[가-힣]{1,8}\.\s+){2,}/;
 const NOT_VOICE = /구독|쇼릴|화면|도식|장면|썸네일|자막|글자|사진|그림|음악|배경/;
 export const voiceFeedback = (text: string) => (VOICE_WORDS.test(text) || HEARD_SHAPE.test(`${text} `)) && !NOT_VOICE.test(text);
+
+/**
+ * 댓글을 할 일로 모으기 (유쓰 요청 7/8, 2026-11-02): which fix a note asks for, read from its words — 자막 first (a 띄어쓰기 in the
+ * subtitles is not the voice), then 화면, then 소리 (the voice notes above, music and effects). Only a grouping to read by: the note
+ * itself, its status and the voice fix stay as they are.
+ */
+export type FeedbackKind = "subtitle" | "screen" | "sound" | "other";
+export const FEEDBACK_KIND_LABEL: Record<FeedbackKind, string> = { subtitle: "자막", screen: "화면", sound: "소리", other: "기타" };
+const SUBTITLE_WORDS = /자막|글자|오타|맞춤법|줄\s?바꿈|폰트|글씨/;
+const SCREEN_WORDS = /화면|도식|장면|그림|사진|이미지|영상\s?속|컷|전환|색|배치|위치|썸네일|로고|애니메이션/;
+const SOUND_WORDS = /음악|배경음|브금|BGM|효과음|사운드|소리|볼륨|음량|잡음/i;
+export function feedbackKind(text: string): FeedbackKind {
+  if (SUBTITLE_WORDS.test(text)) return "subtitle";
+  if (SOUND_WORDS.test(text) || voiceFeedback(text)) return "sound";
+  if (SCREEN_WORDS.test(text)) return "screen";
+  return "other";
+}

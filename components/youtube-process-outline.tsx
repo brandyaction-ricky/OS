@@ -10,7 +10,7 @@ import { checkScriptBody } from "@/lib/youtube-script-check";
 import { KnowledgeRichEditor, type KnowledgeRichEditorMethods } from "./knowledge-rich-editor";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
 import { GateBanner, hhmm, LockedStep, stepAction, Subject, useYpBundle, YpFrame, YpSection } from "./youtube-process-frame";
-import { YtCard } from "./youtube-process-media";
+import { YtCard, YtLookPicker } from "./youtube-process-media";
 import { ScriptReview2 } from "./youtube-process-review2";
 
 const WHY: Record<string, string> = { manual: "", ai: " · 내 AI", make: " · 제작 시작", restore: " · 되돌림" };
@@ -177,6 +177,7 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
       <aside className="yp-rside"><section className="yp-card"><div className="yp-rtabs"><button type="button" className={tab === "flow" ? "yp-on" : ""} onClick={() => setTab("flow")}>영상 흐름</button><button type="button" className={tab === "refs" ? "yp-on" : ""} onClick={() => setTab("refs")}>참고 영상</button></div>
         <div className="yp-card-b">{tab === "flow" ? <>
           <div className="yp-muted" style={{ fontSize: 12, marginBottom: 6 }}>컨펌본 · 제목 A × 썸네일 A</div>
+          <div className="yp-yt-pick"><YtLookPicker /></div>
           <YtCard page={page} thumb={confirmed?.A?.thumb} title={confirmed?.A?.title ?? ""} />
           <ul className="yp-fl2" style={{ marginTop: 10 }}><li><b>오프닝</b>{plan?.opening || "—"}</li><li><b>본론</b><div style={{ fontSize: 13, whiteSpace: "pre-wrap" }}>{plan?.body || "—"}</div></li><li><b>클로징 · 다음 행동</b>{plan?.closing || "—"}</li></ul>
         </> : <ul className="yp-open-list">{[...project.yp.topic.refs, ...(plan?.extraRefs ?? [])].map((ref, index) => <li key={`${ref.url}-${index}`}><a href={ref.url} target="_blank" rel="noreferrer">{ref.title ?? ref.url}</a></li>)}

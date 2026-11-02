@@ -15,7 +15,7 @@ import { CostTag } from "./cost-notice";
 import { GateBanner, hhmm, LockedStep, stepAction, Subject, useYpBundle, YpFrame, YpSection, type YpPage } from "./youtube-process-frame";
 import { ShortExportScreen } from "./youtube-process-short";
 import { CardExportScreen } from "./youtube-process-card";
-import { useAssetUrl, YtCard, type YpMediaSource } from "./youtube-process-media";
+import { useAssetUrl, YtCard, YtLookPicker, type YpMediaSource } from "./youtube-process-media";
 
 /** S7 업로드, or 내보내기 for a 숏폼 (download, no YouTube upload). */
 export function YoutubeUploadScreen({ header }: { header: ReactNode }) {
@@ -32,6 +32,8 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
   const [send, setSend] = useState<false | SendTab>(false);
   const [channels, setChannels] = useState<ChannelConnection[]>([]);
   const [owner, setOwner] = useState("");
+  // The previews show the channel the video will go up on (유쓰 요청 6/8).
+  const uploadChannel = channels.find(row => row.ownerId === owner)?.accountName;
   const [progress, setProgress] = useState<number | null>(null);
   const [bytes, setBytes] = useState<{ loaded: number; total: number; since: number } | null>(null);
   const [step, setStep] = useState("");
@@ -255,8 +257,9 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
             <small>{bytes ? `${progress}% · ${mb(bytes.loaded)} / ${mb(bytes.total)}${left(bytes) ? ` · 남은 시간 ${left(bytes)}` : ""}` : `${step}…`}</small></div> : null}</section>
       </div>
       <aside className="yp-rside"><section className="yp-card"><div className="yp-card-h">제목 · 썸네일 테스트</div><div className="yp-card-b">
+        <div className="yp-yt-pick"><YtLookPicker /></div>
         {SLOTS.filter(slot => confirmed?.[slot]).map(slot => <div key={slot} className="yp-tst" style={{ marginBottom: 12 }}><div className="yp-abc-h" style={{ marginBottom: 6 }}><span className={`yp-ltag${slot === "C" ? " yp-c" : ""}`}>{slot}</span>{finalPair(plan, make, slot)?.changed ? <span className="yp-tag yp-warn">컨펌본과 다름</span> : null}</div>
-          <YtCard page={page} thumb={finalPair(plan, make, slot)?.thumb} path={make.thumbs[slot]?.path} title={finalPair(plan, make, slot)?.title ?? ""} /></div>)}
+          <YtCard page={page} thumb={finalPair(plan, make, slot)?.thumb} path={make.thumbs[slot]?.path} title={finalPair(plan, make, slot)?.title ?? ""} channel={uploadChannel} /></div>)}
         {/* 로건 요청 10/30: YouTube offers no API for 테스트 및 비교, so the OS names the kind of test and hands over the B · C files. */}
         {testKind(plan, make) ? <p className="yp-hint">올린 뒤 스튜디오(PC) › 테스트 및 비교에서 <b>「{testKind(plan, make)}」</b> 방식으로 걸어요.
           {SLOTS.filter(slot => slot !== "A" && confirmed?.[slot] && make.thumbs[slot]?.path).map(slot => <ThumbFile key={slot} page={page} slot={slot} path={make.thumbs[slot]!.path} />)}</p> : null}
