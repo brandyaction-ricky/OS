@@ -149,3 +149,144 @@ def ios_chat(sc, t, size):
     phone += _rr(cx - pw * 0.16, sy + bez * 0.55, pw * 0.32, pw * 0.085, pw * 0.045, BEZEL)
     out = g(phone, 0, dy, 0.96 + 0.04 * spring(t, t0), cx, top + 200, 0, a)
     return svg(size, out, DEFS)
+
+
+# ================================================================ 카톡 대화 (대표 2026-11-03 「카톡 대화 장면 만들자」)
+# 한국 시청자에게 가장 익숙한 메신저 화면: 하늘빛 회색 바탕 · 받은 말 흰 말풍선(프로필 · 이름) · 보낸 말 노란 말풍선 · 시각과 안 읽은 「1」.
+# 로고 · 앱 이름 글자는 쓰지 않는다. 색은 rgb(…)로 적어 채널 톤이 바꾸지 않는다. 효과음: 받을 때 bell_notify · 보낼 때 pop_soft.
+K_BG = "rgb(186,206,224)"; K_THEM = "rgb(255,255,255)"; K_ME = "rgb(254,229,0)"
+K_INK = "rgb(25,25,25)"; K_SUB = "rgb(85,96,107)"; K_TIME = "rgb(90,104,117)"; K_UNREAD = "rgb(255,196,0)"; K_AV = "rgb(160,175,190)"
+
+
+def _k_bubble(x, y, w, h, fill, mine, tail, r):
+    """카톡 말풍선: 덜 둥근 네모 + 첫 말풍선 위 모서리의 작은 꼬리(받은 것은 왼쪽 위, 보낸 것은 오른쪽 위)."""
+    out = _rr(x, y, w, h, r, fill)
+    if tail:
+        if mine:
+            tx = x + w
+            out += f'<path d="M{f2(tx - r * 0.9)},{f2(y)} L{f2(tx + r * 0.55)},{f2(y)} Q{f2(tx)},{f2(y + r * 0.35)} {f2(tx - r * 0.1)},{f2(y + r * 1.1)} Z" fill="{fill}"/>'
+        else:
+            out += f'<path d="M{f2(x + r * 0.9)},{f2(y)} L{f2(x - r * 0.55)},{f2(y)} Q{f2(x)},{f2(y + r * 0.35)} {f2(x + r * 0.1)},{f2(y + r * 1.1)} Z" fill="{fill}"/>'
+    return out
+
+
+@diagram("kakao_chat", "화면·도구", "카톡 대화",
+         when="「단톡방에 공지가 올라왔다」 · 「팀장님 카톡에 답했다」 · 「약속을 카톡으로 잡았다」 — 한국 시청자에게 익숙한 메신저 대화 장면(실제 카톡 화면처럼, 마이인 색으로 바꾸지 않음)",
+         slots="messages 1~6개: from(me=보냄 · them=받음) + text 4~40자 + t(초) · name: 상대(방) 이름 2~8자 · time: 시각 글(기본 오후 3:12) · read: 보낸 말의 안 읽은 숫자가 사라지는 초(없으면 남음) · unread: 그 숫자(기본 1, 단톡방은 인원 − 1)",
+         motion="폰이 아래에서 올라오고 → 받는 말은 프로필 옆에 흰 말풍선이 튀어나오고(효과음 bell_notify) → 보내는 말은 아래 입력칸에 글자가 찍힌 뒤(keyboard_type) 노란 말풍선이 올라가며 옆에 「1」(pop_soft) → read 시각에 「1」이 사라짐",
+         sample={"t0": 0, "name": "팀장님", "messages": [{"from": "them", "text": "내일 회의 10시로 당겨도 될까요?", "t": 0.9},
+                                                         {"from": "me", "text": "네 가능합니다!", "t": 2.5},
+                                                         {"from": "them", "text": "자료는 오늘 중으로 부탁해요", "t": 3.8}], "read": 3.2},
+         variants={"단톡방": {"name": "기획팀 4", "messages": [{"from": "them", "text": "이번 주 발표 누가 하죠?", "t": 0.9, "who": "김대리"},
+                                                            {"from": "them", "text": "저는 금요일이 어려워요", "t": 1.9, "who": "박주임"},
+                                                            {"from": "me", "text": "제가 해 볼게요", "t": 3.2}], "read": None, "unread": 3},
+                   "안 읽음": {"read": None},
+                   "보낸 말로 끝": {"name": "친구", "messages": [{"from": "them", "text": "이번 주말 시간 돼?", "t": 0.9}, {"from": "me", "text": "토요일 오후 괜찮아", "t": 2.4}], "read": None}},
+         dur=5.6, avoid="여러 앱 알림이 쌓이는 장면(폰 알림 도식) · 아이폰 문자로 보낸 장면(아이폰 문자 대화 도식)")
+def kakao_chat(sc, t, size):
+    w, h = size; vertical = h > w
+    raw = sc.get("messages", [])
+    msgs = []
+    for i, m in enumerate(raw):
+        m = m if isinstance(m, dict) else {"text": str(m)}
+        msgs.append({"from": "me" if m.get("from") in ("me", "나", "보냄") else "them", "text": str(m.get("text", ""))[:60],
+                     "t": float(m.get("t", sc.get("t0", 0) + 0.8 + 1.1 * i)), "who": str(m.get("who", ""))[:8]})
+    name = str(sc.get("name", "")).strip()[:10] or "상대"; clock = str(sc.get("time", "오후 3:12"))[:8]
+    read_at = sc.get("read"); unread = str(sc.get("unread", 1))[:3]; t0 = sc.get("t0", 0)
+    if vertical:
+        pw, top, fs, bez = 800, 60, 40, 22
+    else:
+        pw, top, fs, bez = 560, 34, 29, 16
+    cx = w / 2; px = cx - pw / 2; ph = h * 1.4
+    sx, sy, sw = px + bez, top + bez, pw - 2 * bez
+    vis_bottom = h - 4
+    pad = sw * 0.04; r = fs * 0.42; lh = fs * 1.3; av = fs * 1.55
+    maxw = sw * 0.62 - 2 * fs * 0.55
+    a, dy = E(t, t0, 0.55), (1 - E(t, t0, 0.55)) * 60
+    inner = f'<rect x="{f2(sx)}" y="{f2(sy)}" width="{f2(sw)}" height="{f2(ph)}" fill="{K_BG}"/>'
+    sb = fs * 0.62
+    inner += T(sx + pad * 1.8, sy + sb * 1.9, "10:24", sb, 700, K_INK, "start")
+    inner += _rr(sx + sw - pad * 1.8 - sb * 1.9, sy + sb * 1.05, sb * 1.9, sb * 0.9, sb * 0.22, "none", f'stroke="{K_INK}" stroke-width="2"')
+    inner += _rr(sx + sw - pad * 1.8 - sb * 1.9 + 3, sy + sb * 1.05 + 3, sb * 1.3, sb * 0.9 - 6, sb * 0.12, K_INK)
+    # 위 줄: < · 방 이름 · 돋보기 · 메뉴
+    hy = sy + sb * 3.6
+    inner += f'<path d="M{f2(sx + pad * 2.2)},{f2(hy - fs * 0.42)} l{f2(-fs * 0.42)},{f2(fs * 0.42)} l{f2(fs * 0.42)},{f2(fs * 0.42)}" fill="none" stroke="{K_INK}" stroke-width="{f2(fs * 0.11)}" stroke-linecap="round" stroke-linejoin="round"/>'
+    inner += T(sx + pad * 2.2 + fs * 0.7, hy + fs * 0.34, name, fs * 0.95, 700, K_INK, "start")
+    mx = sx + sw - pad * 2.2
+    inner += f'<circle cx="{f2(mx - fs * 1.9)}" cy="{f2(hy - fs * 0.06)}" r="{f2(fs * 0.3)}" fill="none" stroke="{K_INK}" stroke-width="{f2(fs * 0.08)}"/>'
+    inner += f'<line x1="{f2(mx - fs * 1.68)}" y1="{f2(hy + fs * 0.16)}" x2="{f2(mx - fs * 1.48)}" y2="{f2(hy + fs * 0.36)}" stroke="{K_INK}" stroke-width="{f2(fs * 0.08)}" stroke-linecap="round"/>'
+    for j in range(3):
+        inner += f'<line x1="{f2(mx - fs * 0.6)}" y1="{f2(hy - fs * 0.3 + j * fs * 0.28)}" x2="{f2(mx)}" y2="{f2(hy - fs * 0.3 + j * fs * 0.28)}" stroke="{K_INK}" stroke-width="{f2(fs * 0.08)}" stroke-linecap="round"/>'
+    area_top = hy + fs * 1.1
+    # 아래: 입력칸
+    ib_h = fs * 1.75; bar_y = vis_bottom - ib_h - fs * 0.9
+    inner += _rr(sx, bar_y - fs * 0.35, sw, ph, 0, K_THEM)
+    inner += T(sx + pad + fs * 0.55, bar_y + ib_h / 2 + fs * 0.38, "+", fs * 1.25, 400, K_SUB)
+    field_x = sx + pad + fs * 1.5; field_w = sw - pad * 2 - fs * 1.5 - fs * 1.9
+    inner += _rr(field_x, bar_y, field_w, ib_h, ib_h / 2, "rgb(244,244,244)")
+    send_x = field_x + field_w + fs * 0.25
+    typing_now = None
+    for m in msgs:
+        if m["from"] == "me" and m["t"] - 0.95 <= t < m["t"]:
+            typing_now = m
+    if typing_now:
+        k = E(t, typing_now["t"] - 0.95, 0.7)
+        shown_text = typing_now["text"][:max(1, int(len(typing_now["text"]) * k + 0.999))]
+        inner += T(field_x + fs * 0.6, bar_y + ib_h / 2 + fs * 0.34, shown_text, fs * 0.9, 400, K_INK, "start")
+        inner += _rr(send_x, bar_y, fs * 1.6, ib_h, fs * 0.4, K_ME)
+        ax, ay = send_x + fs * 0.8, bar_y + ib_h / 2
+        inner += f'<path d="M{f2(ax)},{f2(ay + fs * 0.32)} V{f2(ay - fs * 0.3)} M{f2(ax - fs * 0.25)},{f2(ay - fs * 0.05)} L{f2(ax)},{f2(ay - fs * 0.32)} L{f2(ax + fs * 0.25)},{f2(ay - fs * 0.05)}" fill="none" stroke="{K_INK}" stroke-width="{f2(fs * 0.1)}" stroke-linecap="round" stroke-linejoin="round"/>'
+    else:
+        inner += T(field_x + fs * 0.6, bar_y + ib_h / 2 + fs * 0.34, "메시지 입력", fs * 0.9, 400, "rgb(160,160,160)", "start")
+        inner += _rr(send_x, bar_y, fs * 1.6, ib_h, fs * 0.4, "rgb(244,244,244)")
+        inner += T(send_x + fs * 0.8, bar_y + ib_h / 2 + fs * 0.36, "#", fs * 0.95, 500, "rgb(170,170,170)")
+
+    floor = bar_y - fs * 1.1
+    shown = [m for m in msgs if t >= m["t"]]
+    blocks = []
+    for i, m in enumerate(shown):
+        mine = m["from"] == "me"
+        prev = shown[i - 1] if i else None; nxt = shown[i + 1] if i + 1 < len(shown) else None
+        first = not (prev and prev["from"] == m["from"] and (mine or prev.get("who") == m.get("who")))
+        last = not (nxt and nxt["from"] == m["from"] and (mine or nxt.get("who") == m.get("who")))
+        ls = lines(m["text"], maxw, fs, 400)
+        bw = max(text_w(x, fs, 400) for x in ls) + 2 * fs * 0.55; bh = len(ls) * lh + fs * 0.62
+        label = (fs * 0.95) if (not mine and first) else 0
+        blocks.append((m, ls, bw, bh, mine, first, last, label, E(t, m["t"], 0.32)))
+    y = floor; rows = []
+    for (m, ls, bw, bh, mine, first, last, label, grow) in reversed(blocks):
+        gap = fs * 0.55 if first else fs * 0.2
+        y -= (bh + label + gap) * grow
+        if y + bh < area_top - fs:
+            continue
+        by = y + label
+        bx = sx + sw - pad * 1.6 - bw if mine else sx + pad + av + fs * 0.45
+        piece = ""
+        if not mine and first:
+            piece += _rr(sx + pad, y, av, av, av * 0.38, K_AV)
+            piece += f'<circle cx="{f2(sx + pad + av / 2)}" cy="{f2(y + av * 0.4)}" r="{f2(av * 0.18)}" fill="rgb(232,238,244)"/>'
+            piece += f'<path d="M{f2(sx + pad + av * 0.2)},{f2(y + av * 0.86)} q{f2(av * 0.3)},{f2(-av * 0.34)} {f2(av * 0.6)},0" fill="rgb(232,238,244)"/>'
+            piece += T(bx, y + fs * 0.62, m.get("who") or name, fs * 0.62, 500, K_SUB, "start")
+        piece += _k_bubble(bx, by, bw, bh, K_ME if mine else K_THEM, mine, first, r)
+        for j, ln in enumerate(ls):
+            piece += T(bx + fs * 0.55, by + fs * 0.31 + fs * 0.95 + j * lh, ln, fs, 400, K_INK, "start")
+        if last:
+            if mine:
+                tx = bx - fs * 0.3
+                piece += T(tx, by + bh - fs * 0.12, clock, fs * 0.52, 400, K_TIME, "end")
+                if read_at is None or t < read_at:
+                    piece += T(tx, by + bh - fs * 0.78, unread, fs * 0.55, 700, K_UNREAD, "end")
+            else:
+                piece += T(bx + bw + fs * 0.3, by + bh - fs * 0.12, clock, fs * 0.52, 400, K_TIME, "start")
+        s = 0.55 + 0.45 * min(1.2, spring(t, m["t"], 2.2, 0.58))
+        ox = bx + bw if mine else bx
+        rows.append(g(piece, 0, 0, s, ox, by, 0, min(1.0, E(t, m["t"], 0.2) * 1.4)))
+    inner += f'<clipPath id="kcArea"><rect x="{f2(sx)}" y="{f2(area_top)}" width="{f2(sw)}" height="{f2(floor - area_top + fs * 0.8)}"/></clipPath>'
+    inner += '<g clip-path="url(#kcArea)">' + "".join(rows) + "</g>"
+
+    phone = _rr(px, top, pw, ph, pw * 0.15, BEZEL, 'filter="url(#icShadow)"')
+    phone += f'<clipPath id="kcScreen"><rect x="{f2(sx)}" y="{f2(sy)}" width="{f2(sw)}" height="{f2(ph - 2 * bez)}" rx="{f2(pw * 0.12)}"/></clipPath>'
+    phone += f'<g clip-path="url(#kcScreen)">{inner}</g>'
+    phone += _rr(cx - pw * 0.16, sy + bez * 0.55, pw * 0.32, pw * 0.085, pw * 0.045, BEZEL)
+    out = g(phone, 0, dy, 0.96 + 0.04 * spring(t, t0), cx, top + 200, 0, a)
+    return svg(size, out, DEFS)
