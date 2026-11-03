@@ -62,7 +62,7 @@ const patchSchema = z.discriminatedUnion("action", [
   // 우리 이미지 올리기: an upload address for one storyboard photo file, then the upload kept for it.
   z.object({ action: z.literal("our_image_url"), runId: z.string().uuid(), file: z.string().min(1).max(200), type: z.string().max(40) }),
   z.object({ action: z.literal("our_image"), runId: z.string().uuid(), file: z.string().min(1).max(200), path: z.string().min(1).max(400) }),
-  z.object({ action: z.literal("clips_ok"), runId: z.string().uuid(), note: z.string().max(2000).default("") }),
+  z.object({ action: z.literal("clips_ok"), runId: z.string().uuid(), note: z.string().max(2000).default(""), place: z.enum(["pc", "local"]).default("pc") }),
   z.object({ action: z.literal("screen_check"), runId: z.string().uuid(), tier: z.enum(["precise", "saving"]).default("precise") }),
   // ④ 자료 준비 (2026-10-27): the full video after the sound check, ⑤ → ④ for another sound pass, and the sound plan itself.
   z.object({ action: z.literal("final"), runId: z.string().uuid() }),
@@ -86,7 +86,7 @@ export async function PATCH(request: Request) {
     const input = patchSchema.parse(await parseJson(request, 60_000));
     const result = input.action === "review" ? { run: await reviewMyinStoryboard(actor, input.runId, input.decision, input.note, input.place) }
       : input.action === "place" ? { run: await setMyinDraftPlace(actor, input.runId, input.place) }
-      : input.action === "clips_ok" ? { run: await confirmMyinClips(actor, input.runId, input.note) }
+      : input.action === "clips_ok" ? { run: await confirmMyinClips(actor, input.runId, input.note, input.place) }
       // [다시 검사]: only someone who can read the run (myinScreenCheck checks it) asks GPT again.
       : input.action === "screen_check" ? await myinScreenCheck(actor, input.runId).then(() => checkMyinScreens(input.runId, input.tier)).then((stage) => ({ check: stage?.data ?? null }))
       : input.action === "final" ? { run: await startMyinFinal(actor, input.runId) }

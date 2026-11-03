@@ -5,7 +5,8 @@ import { apiRequest } from "@/lib/api-client";
 import { localBlocker, type LocalRenderStatus } from "@/lib/myin-local";
 export { localBlocker } from "@/lib/myin-local";
 
-// 내 컴퓨터로 시안 (owner decision 2026-10-27): ③'s drafts can be made on the member's own Mac with the render PC's engine.
+// 내 컴퓨터로 시안 (owner decision 2026-10-27): ③'s drafts can be made on the member's own Mac with the render PC's engine; from
+// 2026-11-03 (직원 요청) ④ 자료 준비 with the full video too.
 // This file is the place picker, the member's computer status and the one-time connection; the panel only places them.
 export type DraftPlace = "pc" | "local";
 
@@ -26,16 +27,16 @@ export function useLocalRender(token: string | null, enabled: boolean) {
   return { status, reload: load };
 }
 
-/** 시안을 만들 곳: 영상 만드는 컴퓨터 (default) or this member's own Mac, with a one-line state for the latter. */
-export function DraftPlacePicker({ value, onChange, status, ready, token, onConnected }: { value: DraftPlace; onChange: (place: DraftPlace) => void;
-  status: LocalRenderStatus | null; ready: boolean; token: string | null; onConnected: () => void }) {
+/** 만들 곳: 영상 만드는 컴퓨터 (default) or this member's own computer, with a one-line state for the latter. */
+export function DraftPlacePicker({ value, onChange, status, ready, token, onConnected, label = "미리보기 영상을 만들 곳" }: { value: DraftPlace; onChange: (place: DraftPlace) => void;
+  status: LocalRenderStatus | null; ready: boolean; token: string | null; onConnected: () => void; label?: string }) {
   const blocker = localBlocker(status, ready);
   const [connect, setConnect] = useState(false);
   useEffect(() => { if (blocker && value === "local") onChange("pc"); }, [blocker, value, onChange]);
   return <div style={{ display: "grid", gap: 6 }}>
     <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-      <span>미리보기 영상을 만들 곳</span>
-      <div className="segmented" role="group" aria-label="미리보기 영상을 만들 곳">
+      <span>{label}</span>
+      <div className="segmented" role="group" aria-label={label}>
         <button type="button" aria-pressed={value === "pc"} onClick={() => onChange("pc")}>영상 만드는 컴퓨터</button>
         <button type="button" aria-pressed={value === "local"} disabled={Boolean(blocker)} title={blocker ?? undefined} onClick={() => onChange("local")}>내 컴퓨터</button>
       </div>

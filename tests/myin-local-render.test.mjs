@@ -6,16 +6,43 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
-import { draftFilter, localBlocker, localDraft } from "../lib/myin-local.ts";
+import { localBlocker, localOwner, placeFilter } from "../lib/myin-local.ts";
 
 // 내 컴퓨터로 시안 (owner decision 2026-10-27): ③ drafts sent to a member's own Mac are only theirs; the render PC keeps the rest.
-test("the render PC skips drafts sent to a member's Mac, and a Mac takes only its owner's", () => {
+// 직원 요청 2026-11-03: ④ with the full video is placed on its own (localFinish), once the drafts are confirmed.
+test("the render PC skips steps sent to a member's computer, and a computer takes only its owner's", () => {
   const mine = { local: { by: "u1" } }, theirs = { local: { by: "u2" } }, pc = {}, confirmed = { local: { by: "u1" }, clipsReview: { by: "x" } };
-  assert.equal(localDraft(mine), true);
-  assert.equal(localDraft(confirmed), false, "after the drafts are confirmed (④ and the full video) the run is the render PC's again");
-  const renderPc = draftFilter(), myMac = draftFilter("u1");
-  assert.deepEqual([mine, theirs, pc, confirmed].map(renderPc), [false, false, true, true]);
-  assert.deepEqual([mine, theirs, pc, confirmed].map(myMac), [true, false, false, false]);
+  const finishMine = { local: { by: "u2" }, localFinish: { by: "u1" }, clipsReview: { by: "x" } };
+  assert.equal(localOwner(mine), "u1");
+  assert.equal(localOwner(confirmed), undefined, "the ③ place does not carry over to ④");
+  assert.equal(localOwner(finishMine), "u1");
+  const renderPc = placeFilter(), myMac = placeFilter("u1");
+  assert.deepEqual([mine, theirs, pc, confirmed, finishMine].map(renderPc), [false, false, true, true, false]);
+  assert.deepEqual([mine, theirs, pc, confirmed, finishMine].map(myMac), [true, false, false, false, true]);
+});
+
+// The member's computer has no Fish key or Logan's voice tools: the render PC makes the 구독 대사 lines first, and the computer takes
+// ④ only when each line is a file; the full video goes to the same computer, which prepared the folder it is drawn from.
+test("④ on a member's computer: the render PC makes the 구독 대사 first, then the computer prepares and makes the video", async () => {
+  const run = readFileSync("lib/server/myin-run.ts", "utf8");
+  const section = (from, to) => run.slice(run.indexOf(from), run.indexOf(to));
+  const begin = section("async function beginPrep", "/** [자료 준비 다시 하기]");
+  assert.match(begin, /kept && \(kept\.path \|\| !run\.localFinish\)/, "a line without a file is made again for a member's computer");
+  assert.match(begin, /run\.voiceOn && !run\.localFinish \? "ready" as const : "pending" as const/);
+  assert.match(run, /claim\(service, "cta_pending", 240_000, \(run\) => !run\.voiceOn\)/,
+    "the server's plain Fish request never makes a render-PC voice run's lines");
+  assert.match(section("export async function claimMyinCta", "export async function completeMyinCta"), /claim\(service, "cta_pending", WORDS_LEASE_MS, \(run\) => Boolean\(run\.voiceOn\)/);
+  const prep = section("export async function claimMyinPrep", "/** Render PC: the preview ran.");
+  assert.match(prep, /\(!owner \|\| !run\.clipsReview \|\| \(run\.cta \?\? \[\]\)\.every\(\(c\) => c\.path\)\)/);
+  assert.match(prep, /c\.pc \? \{ made: true \}/);
+  assert.match(section("export async function claimMyinFinal", "export async function completeMyinFinal"), /placeFilter\(owner\)\(run\) && fits\(short\)\(run\)/);
+  const worker = readFileSync("tools/youtube-media-worker.mjs", "utf8");
+  assert.match(worker, /if \(cta\.made\) \{ await fetchTo\(cta\.url, path\.join\(ctaDir, `cta_\$\{k\}\.wav`\)\)/, "a finished line is not tightened again");
+  assert.match(worker, /processMyinPrep\(\)\.then\(\(done\) => done \|\| processMyinClips\(\)\)\.then\(\(done\) => done \|\| processMyinFinal\(\)\)/, "the member's computer also makes the full video");
+  assert.match(worker, /rendered \|\| processMyinCta\(\)\)\.then\(\(rendered\) => rendered \|\| processMyinPrep\(\)\)/, "the render PC makes the lines");
+  assert.match(worker, /action: "myin_final_claim", \.\.\.\(local \? \{ engine: engine\(\) \} : shortClaim\)/);
+  const route = readFileSync("app/api/v1/content/youtube-automation/local-render/route.ts", "utf8");
+  assert.match(route, /input\.action === "myin_final_claim"\) await assertLocalEngine/, "only on the render PC's engine");
 });
 
 test("내 컴퓨터 can take drafts only while on and on the render PC's engine", () => {
@@ -101,6 +128,11 @@ test("a staff Mac rebuilds the run's work folder from the render PC's own voice 
     writeFileSync(path.join(videoDir, "words.json"), "[]");
     await worker.myinRebuild("run-1", { ...seed, wordsUrl: `${base}/never` });
     assert.equal(readFileSync(path.join(videoDir, "words.json"), "utf8"), "[]");
+    // A voice fixed since (최종 검토 피드백 → the render PC voiced it again): this computer's copy differs, so it is taken again with its words.
+    writeFileSync(path.join(voiceDir, "voice.wav"), "the voice before the fix");
+    await worker.myinRebuild("run-1", seed);
+    assert.deepEqual(readFileSync(path.join(voiceDir, "voice.wav")), voice);
+    assert.deepEqual(JSON.parse(readFileSync(path.join(videoDir, "words.json"), "utf8")), words.words);
     await assert.rejects(worker.myinRebuild("run-2", { ...seed, voice: { ...seed.voice, sha256: "0".repeat(64) } }), { code: "MYIN_VOICE_MISMATCH" });
     assert.equal(existsSync(path.join(work, "run-2", "voice", "os_myin", "words.json")), false, "a voice that does not match is never used");
   } finally { server.close(); }

@@ -438,7 +438,8 @@ export async function uploadVoiceParts(file, urls) {
  */
 export async function myinRebuild(runId, seed) {
   const work = path.join(myinWork, runId), voiceDir = path.join(work, "voice", "os_voice"), videoDir = path.join(work, "voice", "os_myin");
-  if (existsSync(path.join(videoDir, "words.json")) && existsSync(path.join(voiceDir, "voice.wav"))) return;
+  // A voice fixed since this computer last took the run (최종 검토 피드백 → the render PC voiced it again) is taken again with its words.
+  if (existsSync(path.join(videoDir, "words.json")) && existsSync(path.join(voiceDir, "voice.wav")) && sha256(readFileSync(path.join(voiceDir, "voice.wav"))) === seed.voice.sha256) return;
   if (!existsSync(work)) { mkdirSync(myinWork, { recursive: true }); copyEngine(myinPkg, work); }
   mkdirSync(voiceDir, { recursive: true }); mkdirSync(videoDir, { recursive: true });
   const parts = [];
@@ -769,6 +770,8 @@ export async function processMyinPrep() {
     mkdirSync(ctaDir, { recursive: true });
     for (const cta of job.cta.filter((line) => line.url)) {
       const k = String(cta.index).padStart(2, "0");
+      // Made by the render PC's stage_cta for a member's own computer (2026-11-03): already the finished line, used as it is.
+      if (cta.made) { await fetchTo(cta.url, path.join(ctaDir, `cta_${k}.wav`)); writeFileSync(path.join(ctaDir, `cta_${k}.txt`), cta.tag); continue; }
       const raw = path.join(ctaDir, `cta_${k}_raw.wav`), pcm = path.join(ctaDir, `cta_${k}_48k.wav`);
       await fetchTo(cta.url, raw);
       execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-i", raw, "-ar", "48000", "-ac", "1", "-c:a", "pcm_s16le", pcm]);
@@ -801,6 +804,35 @@ export async function processMyinPrep() {
   } catch (error) {
     console.error(`myin prep failed: ${job.runId}: ${error.message}${error.cause ? ` · cause: ${error.cause.code ?? error.cause.message}` : ""}`);
     await call({ action: "myin_prep_fail", ...lease, code: String(error.code ?? "WORKER_MYIN_FAILED") }).catch(() => {});
+  } finally {
+    current = null;
+  }
+  return true;
+}
+
+/**
+ * 내 컴퓨터로 ④ (2026-11-03): the 구독 대사 lines of a run whose ④ goes to a member's own computer, which has neither the Fish key nor
+ * his voice tools. His stage_cta makes them here in the run's stage-1 folder, like the narration, and the files go to the OS.
+ */
+export async function processMyinCta() {
+  if (!myinPkg || local) return false;
+  const job = await call({ action: "myin_cta_claim", ...shortClaim });
+  if (job.idle) return false;
+  current = { step: "voice" };
+  const lease = { runId: job.runId, lease: job.lease };
+  try {
+    const { videoDir, myinDir } = myinDirs(job.runId);
+    const env = layoutEnv(myinEnv(), job.layout);
+    writeFileSync(path.join(videoDir, "myin_storyboard.json"), JSON.stringify(job.storyboard, null, 1));
+    const speaker = myinVoiceEnv({ paragraphs: [], fishVoice: job.fishVoice }, env);
+    await runAsync(speaker.python, ["stage_cta.py", "os_myin"], { cwd: myinDir, env: speaker.env });
+    current.step = "upload";
+    for (const line of job.lines) await upload(line.uploadUrl, path.join(videoDir, "cta", `cta_${String(line.index).padStart(2, "0")}.wav`), "audio/wav");
+    await call({ action: "myin_cta_complete", ...lease });
+    console.log(`myin cta ready: ${job.runId} (${job.lines.length})`);
+  } catch (error) {
+    console.error(`myin cta failed: ${job.runId}: ${error.message}`);
+    await call({ action: "myin_stage_fail", ...lease, code: String(error.code ?? "WORKER_MYIN_FAILED") }).catch(() => {});
   } finally {
     current = null;
   }
@@ -858,11 +890,12 @@ export async function processMyinClips() {
 /** v13 stage 4b: his full render, mix and handouts; the OS gets the video, 한장정리.png, 덱_전체.pdf, subs_youtube.srt and a loudness check. */
 export async function processMyinFinal() {
   if (!myinPkg) return false;
-  const job = await call({ action: "myin_final_claim", ...shortClaim });
+  const job = await call({ action: "myin_final_claim", ...(local ? { engine: engine() } : shortClaim) });
   if (job.idle) return false;
   current = { step: "drawing" };
   const lease = { runId: job.runId, lease: job.lease };
   try {
+    if (job.seed) await myinRebuild(job.runId, job.seed);
     const { work, videoDir, myinDir } = myinDirs(job.runId);
     const env = layoutEnv(myinEnv(), job.layout);
     // ④ sound edits made after the preparation reach the render in the storyboard the OS hands out with the job.
@@ -950,7 +983,7 @@ async function fetchShortformTo(url,file,max){
   }finally{await reader.cancel().catch(()=>{});reader.releaseLock();}
 }
 
-/** A member's own Mac: only the ③ drafts they sent to it, one step at a time; nothing of the render PC's queue or catalogs. */
+/** A member's own computer: only the steps they sent to it (③ drafts, ④ with the full video), one at a time; nothing of the render PC's queue or catalogs. */
 async function runLocal() {
   if (!osUrl.startsWith("https://") || !secret.startsWith("bos_pat_")) throw new Error("OS_URL (https) and MYIN_LOCAL_KEY (내 컴퓨터 렌더 키) are required");
   if (!existsSync(path.join(myinPkg, "tools", "myin_pipeline", "render_myin.py"))) throw new Error("MYIN_PKG must point at the same v13 engine as the render PC");
@@ -958,7 +991,7 @@ async function runLocal() {
   void heartbeat();
   setInterval(() => void heartbeat(), 60_000).unref();
   do {
-    const worked = await processMyinPrep().then((done) => done || processMyinClips()).catch((error) => {
+    const worked = await processMyinPrep().then((done) => done || processMyinClips()).then((done) => done || processMyinFinal()).catch((error) => {
       // The render PC moved to another engine: exit 3 between jobs, so the runner (public/myin-local) installs it and starts again.
       if (error.code === "MYIN_ENGINE_DIFFERENT") { console.error(`${error.message} (engine ${engine()})`); process.exit(3); }
       console.error(error.message);
@@ -982,7 +1015,7 @@ else if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).h
   setInterval(() => void reportSoundCatalog(), 60 * 60_000).unref();
   do {
     // No render ready? Advance the voice queue one step (review or one paragraph) so no separate scheduler is needed.
-    const worked = await (shortsOnly?processShortform():processOne().then((rendered) => rendered || processMyinBreath()).then((rendered) => rendered || processShortRefs()).then((rendered) => rendered || processMyinWords()).then((rendered) => rendered || processMyinPrep())
+    const worked = await (shortsOnly?processShortform():processOne().then((rendered) => rendered || processMyinBreath()).then((rendered) => rendered || processShortRefs()).then((rendered) => rendered || processMyinWords()).then((rendered) => rendered || processMyinCta()).then((rendered) => rendered || processMyinPrep())
       .then((rendered) => rendered || processMyinClips()).then((rendered) => rendered || processMyinFinal()).then((rendered) => rendered || (current = { step: "voice" }, call(runId ? { runId } : {}, "worker")).then((step) => {
       if (step.processed) console.log(`voice step: ${JSON.stringify(step).slice(0, 300)}`);
       return step.processed;
