@@ -73,7 +73,7 @@ test("project context is authenticated, uncached and returns categorized history
 test("Work can load project context and write a request-linked structured development log", async () => {
   const [mcp, route, navigation, workspace, links] = await Promise.all([
     read("lib/server/mcp.ts"),
-    read("app/(os)/[stage]/[page]/page.tsx"),
+    Promise.all(["app/(os)/[stage]/[page]/page.tsx","app/(os)/content/[page]/page.tsx","app/(os)/automation/[page]/page.tsx"].map(file=>read(file))).then(parts=>parts.join("\n")),
     read("lib/navigation.ts"),
     read("components/project-hub-workspace.tsx"),
     read("lib/development-links.ts"),

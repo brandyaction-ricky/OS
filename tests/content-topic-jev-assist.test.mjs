@@ -105,7 +105,7 @@ test("provider adapter returns explainable advisory scores and sends no record i
 
 test("route and UI remain read-only and show the TypeSafe transmission scope before consent", async () => {
   const route = await readFile(new URL("../app/api/v1/content/topic-jev-assist/route.ts", import.meta.url), "utf8");
-  const page = await readFile(new URL("../app/(os)/[stage]/[page]/page.tsx", import.meta.url), "utf8");
+  const page = await Promise.all(["app/(os)/[stage]/[page]/page.tsx","app/(os)/content/[page]/page.tsx","app/(os)/automation/[page]/page.tsx"].map(file=>readFile(new URL(`../${file}`, import.meta.url), "utf8"))).then(parts=>parts.join("\n"));
   const ui = await readFile(new URL("../components/content-topic-jev-assist.tsx", import.meta.url), "utf8");
   assert.match(route, /if \(!canUseContentTopicJevAssist\(process\.env\)\)/);
   assert.match(route, /allowAgent: false/);
