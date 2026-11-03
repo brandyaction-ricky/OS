@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
-import { claimMyinClips, claimMyinPrep, completeMyinClips, completeMyinPrep, failMyinPrep, failMyinStage } from "@/lib/server/myin-run";
+import { claimMyinClips, claimMyinFinal, claimMyinPrep, completeMyinClips, completeMyinFinal, completeMyinPrep, failMyinPrep, failMyinStage } from "@/lib/server/myin-run";
 import { assertLocalEngine, renderPcEngine, renderPcSignalSchema, saveLocalRenderSignal } from "@/lib/server/youtube-render-pc";
 import { currentEngineDownload } from "@/lib/server/render-engine";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
@@ -23,13 +23,17 @@ const inputSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("myin_prep_fail"), ...lease, code: z.string().max(80) }).strict(),
   z.object({ action: z.literal("myin_clips_claim"), engine }).strict(),
   z.object({ action: z.literal("myin_clips_complete"), ...lease, names: z.array(z.string().max(40)).max(201) }).strict(),
+  // ④ on this computer (2026-11-03): the full video, from the folder its own preparation filled.
+  z.object({ action: z.literal("myin_final_claim"), engine }).strict(),
+  z.object({ action: z.literal("myin_final_complete"), ...lease, bytes: z.number().int().positive(), durationSeconds: z.number().positive().max(14_400),
+    lufs: z.number().min(-70).max(0), peak: z.number().min(-70).max(6) }).strict(),
   z.object({ action: z.literal("myin_stage_fail"), ...lease, code: z.string().max(80) }).strict(),
 ]);
 
 /**
  * 내 컴퓨터로 시안 (owner decision 2026-10-27): a member's own Mac runs the render PC's worker with --local and their
- * 「내 컴퓨터 렌더」 key (never the render PC's secret). It only ever gets the ③ drafts that member sent to their own computer,
- * and only while its engine fingerprint equals the render PC's.
+ * 「내 컴퓨터 렌더」 key (never the render PC's secret). It only ever gets the steps that member sent to their own computer — the ③
+ * drafts and, from 2026-11-03, ④ with the full video — and only while its engine fingerprint equals the render PC's.
  */
 export async function POST(request: Request) {
   try {
@@ -37,7 +41,7 @@ export async function POST(request: Request) {
     const actor = await authenticateRequest(request, { allowAgent: true, requiredAgentScope: "records.write" });
     if (actor.type !== "agent") throw new ApiError(403, "LOCAL_RENDER_KEY_REQUIRED", "「내 컴퓨터 연결」 키로만 쓸 수 있어요.");
     const input = inputSchema.parse(await parseJson(request, 8_000));
-    if (input.action === "myin_prep_claim" || input.action === "myin_clips_claim") await assertLocalEngine(input.engine);
+    if (input.action === "myin_prep_claim" || input.action === "myin_clips_claim" || input.action === "myin_final_claim") await assertLocalEngine(input.engine);
     const result = input.action === "heartbeat" ? await saveLocalRenderSignal(actor.ownerId, input)
       : input.action === "engine" ? await currentEngineDownload(await renderPcEngine())
       : input.action === "myin_prep_claim" ? await claimMyinPrep(undefined, actor.ownerId)
@@ -45,6 +49,8 @@ export async function POST(request: Request) {
       : input.action === "myin_prep_fail" ? await failMyinPrep(input)
       : input.action === "myin_clips_claim" ? await claimMyinClips(undefined, actor.ownerId)
       : input.action === "myin_clips_complete" ? await completeMyinClips(input)
+      : input.action === "myin_final_claim" ? await claimMyinFinal(undefined, false, actor.ownerId)
+      : input.action === "myin_final_complete" ? await completeMyinFinal(input)
       : await failMyinStage(input);
     return NextResponse.json(result, { headers: { "cache-control": "no-store" } });
   } catch (error) {

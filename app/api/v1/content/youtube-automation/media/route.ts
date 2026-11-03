@@ -4,7 +4,7 @@ import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { safeSecretMatch } from "@/lib/server/auth";
 import { buildYoutubeRenderBrief, claimYoutubeRender, completeYoutubeRender, failYoutubeRender } from "@/lib/server/youtube-render-run";
-import { MYIN_VOICE_PARTS, claimMyinBreath, claimMyinClips, claimMyinFinal, claimMyinPrep, claimMyinWords, completeMyinBreath, completeMyinClips, completeMyinFinal, completeMyinPrep, completeMyinVoiceBackfill, completeMyinWords, failMyinPrep, failMyinStage, failMyinWords, myinVoiceBackfill } from "@/lib/server/myin-run";
+import { MYIN_VOICE_PARTS, claimMyinBreath, claimMyinClips, claimMyinCta, claimMyinFinal, claimMyinPrep, claimMyinWords, completeMyinBreath, completeMyinClips, completeMyinCta, completeMyinFinal, completeMyinPrep, completeMyinVoiceBackfill, completeMyinWords, failMyinPrep, failMyinStage, failMyinWords, myinVoiceBackfill } from "@/lib/server/myin-run";
 import { renderPcSignalSchema, saveRenderPcSignal } from "@/lib/server/youtube-render-pc";
 import { engineReadySchema, engineUploadSchema, engineUploadUrls, saveEngineManifest } from "@/lib/server/render-engine";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
@@ -42,6 +42,9 @@ const inputSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("myin_voice_backfill_complete"), runId: z.string().uuid(), parts: z.number().int().min(1).max(MYIN_VOICE_PARTS),
     bytes: z.number().int().positive(), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
   // Stage 3: approved photos and music, CTA voice, Logan's preview check.
+  // 내 컴퓨터로 ④ (2026-11-03): the 구독 대사 lines a member's own computer cannot make.
+  z.object({ action: z.literal("myin_cta_claim"), short: z.literal(true).optional() }).strict(),
+  z.object({ action: z.literal("myin_cta_complete"), runId: z.string().uuid(), lease: z.string().uuid() }).strict(),
   z.object({ action: z.literal("myin_prep_claim"), short: z.literal(true).optional() }).strict(),
   z.object({ action: z.literal("myin_prep_complete"), runId: z.string().uuid(), lease: z.string().uuid() }).strict(),
   z.object({ action: z.literal("myin_prep_fail"), runId: z.string().uuid(), lease: z.string().uuid(), code: z.string().max(80) }).strict(),
@@ -84,6 +87,8 @@ export async function POST(request: Request) {
       : input.action === "myin_fail" ? await failMyinWords(input)
       : input.action === "myin_voice_backfill" ? await myinVoiceBackfill(input)
       : input.action === "myin_voice_backfill_complete" ? await completeMyinVoiceBackfill(input)
+      : input.action === "myin_cta_claim" ? await claimMyinCta(undefined, Boolean(input.short))
+      : input.action === "myin_cta_complete" ? await completeMyinCta(input)
       : input.action === "myin_prep_claim" ? await claimMyinPrep(undefined, undefined, Boolean(input.short))
       : input.action === "myin_prep_complete" ? await completeMyinPrep(input)
       : input.action === "myin_prep_fail" ? await failMyinPrep(input)

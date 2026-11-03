@@ -1,14 +1,15 @@
-// 내 컴퓨터로 시안 (owner decision 2026-10-27): who may take a v13 run's ③ draft step, and when a member's own Mac can take one.
+// 내 컴퓨터로 만들기: who may take a v13 run's step, and when a member's own computer can take one. The ③ drafts (owner decision
+// 2026-10-27) and, from 2026-11-03 (직원 요청), ④ 자료 준비 with the full video are each placed on their own.
 
-interface PlacedRun { local?: { by: string } | null; clipsReview?: unknown }
+interface PlacedRun { local?: { by: string } | null; localFinish?: { by: string } | null; clipsReview?: unknown }
 
-/** A ③ draft promised to a member's own Mac (after the drafts are confirmed, everything is the render PC's again). */
-export const localDraft = (run: PlacedRun) => Boolean(run.local) && !run.clipsReview;
+/** The member whose own computer takes the run's current step: ③ by `local`, ④ and the full video (drafts confirmed) by `localFinish`. */
+export const localOwner = (run: PlacedRun) => (run.clipsReview ? run.localFinish : run.local)?.by;
 
-/** The render PC (no owner) takes everything but those drafts; a member's Mac takes only its own. */
-export const draftFilter = (owner?: string) => owner
-  ? (run: PlacedRun) => localDraft(run) && run.local!.by === owner
-  : (run: PlacedRun) => !localDraft(run);
+/** The render PC (no owner) takes every step no member's computer was given; a member's computer takes only its own. */
+export const placeFilter = (owner?: string) => owner
+  ? (run: PlacedRun) => localOwner(run) === owner
+  : (run: PlacedRun) => !localOwner(run);
 
 export interface LocalRenderStatus { state: "online" | "offline" | "unknown"; ageSeconds: number | null; engine: "same" | "different" | "unknown"; job: { step: string } | null }
 
