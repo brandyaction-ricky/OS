@@ -44,7 +44,7 @@ export async function GET(request: Request) {
     const syncedAt = new Date(started - 30_000).toISOString();
     // RLS filters each page; do not accept client supplied actor or permissions.
     // Supporting reads do not depend on the document list; start them together.
-    const resourcesRead = Promise.all([
+    const resourceReads = [
       db.from("os_doc_categories").select("*").is("archived_at",null).order("sort_order"),
       db.from("os_doc_templates").select("*").order("sort_order"),
       db.from("os_note_inbox").select("*").eq("owner_id",user.ownerId).is("processed_at",null).order("created_at",{ascending:false}),
@@ -63,19 +63,23 @@ export async function GET(request: Request) {
       const data: NonNullable<Awaited<typeof builder>["data"]>=[];
       for(let offset=0;;offset+=500){const page=await builder.range(offset,offset+499);if(page.error)return {data:null,error:page.error};data.push(...(page.data??[]));if(!page.data||page.data.length<500)break;}
       return {data,error:null};
-    }));
+    });
+    const resourcesRead = Promise.all(resourceReads);
     // Proposals are few; read them once alongside the documents and keep those on
     // visible documents instead of one request per 100 visible document ids.
-    const proposalsRead = (async()=>{
+    // Decided proposals are sent without their text (135 approved bodies were ~2 MB), so only open and returned ones read it.
+    const PROPOSAL_COLUMNS="id,document_id,base_version,title,folder,brand,team,tags,author_id,agent_key_id,status,reviewer_id,decided_at,note,created_at,updated_at,requested_approver_id,return_kind,author_note,proxy_reason,rebased_from_version,ai_assist,review_due_on";
+    const readProposals = async(columns: string,statuses: string[])=>{
       const pages=[];
       for(let pageOffset=0;;pageOffset+=500){
-        const page=await service.from("os_document_proposals").select("*").order("created_at",{ascending:false}).order("id").range(pageOffset,pageOffset+499);
+        const page=await service.from("os_document_proposals").select(columns as "*").in("status",statuses).order("created_at",{ascending:false}).order("id").range(pageOffset,pageOffset+499);
         pages.push(page);
         if(page.error||!page.data||page.data.length<500) return pages;
       }
-    })();
+    };
+    const proposalsRead = Promise.all([readProposals("*",["open","returned"]),readProposals(PROPOSAL_COLUMNS,["approved","withdrawn"])]).then(reads=>reads.flat());
     // Who may approve, and which person owns each agent key, follow from these reads alone: ask as soon as they arrive.
-    const approversRead = resourcesRead.then(resources=>Promise.all((resources[9].data ?? []).map(async row=>{
+    const approversRead = resourceReads[9].then(profiles=>Promise.all((profiles.data ?? []).map(async row=>{
       const result=await db.rpc("os_can_approve",{p_actor:row.id,p_author:null});
       if(result.error) throw readError(result.error,"approvers");
       const canApprove=row.member_kind==="staff"&&result.data===true;
@@ -147,6 +151,7 @@ export async function GET(request: Request) {
     state.candidates=(candidates as KnowledgeState["candidates"]).filter(c=>ids.has(c.document_id));
     state.events=events as KnowledgeState["events"];
     state.people=await approversRead;
+    lap("people");
     const me=state.people.find(p=>p.id===user.ownerId);
     access.actor.canApprove=me?.can_approve===true;
     for(const page of await proposalsRead){
@@ -155,6 +160,9 @@ export async function GET(request: Request) {
       // knowledge page load); the review screen reads one body by id when it is opened.
       state.proposals.push(...(page.data ?? []).filter(row=>ids.has(row.document_id)).map(row=>["open","returned"].includes(row.status)?row:{...row,content_md:"",content_omitted:true}));
     }
+    // Newest first across both reads, as the review lists show them.
+    state.proposals.sort((a,b)=>a.created_at===b.created_at?(a.id<b.id?-1:1):(a.created_at<b.created_at?1:-1));
+    lap("proposals");
     if(state.proposals.some(p=>p.agent_key_id)){
       const agentOwners=await agentOwnersRead;
       state.proposals=state.proposals.map(p=>({...p,agent_owner_id:p.agent_key_id?agentOwners.get(p.agent_key_id) ?? null:null}));
