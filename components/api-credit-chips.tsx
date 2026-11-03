@@ -12,9 +12,16 @@ const DEMO: Credits = {
 };
 const dollars = (value: number) => `$${value < 10 ? value.toFixed(1) : Math.round(value)}`;
 const state = (value: Credits[keyof Credits]) => !value ? "…" : value === "error" ? "확인 필요" : !value.configured ? "키 연결 전" : null;
-const gptText = (value: Credits["gpt"]) => state(value) ?? `${dollars((value as ApiCredit).remaining ?? 0)} 남음 · ${dollars((value as ApiCredit).spent ?? 0)} 씀`;
+type Row = { name: string; Icon: LucideIcon; cells: string | string[]; note: string };
+const gptRow = (value: Credits["gpt"]): Row => {
+  const v = value as ApiCredit, cells = state(value) ?? [dollars(v.spent ?? 0), dollars(v.remaining ?? 0)];
+  return { name: "GPT", Icon: Hexagon, cells, note: typeof cells === "string" ? `GPT API: ${cells}` : `GPT API: 이달 ${cells[0]} 씀 · ${cells[1]} 남음 (매월 1일 $${v.credit} 충전)` };
+};
 // Claude: spend only (owner 2026-11-02) — the balance mixes the Ultra grant with card top-ups and has no API.
-const claudeText = (value: Credits["claude"]) => state(value) ?? `이달 ${dollars((value as ClaudeSpend).spent ?? 0)} · 30일 ${dollars((value as ClaudeSpend).spent30 ?? 0)}`;
+const claudeRow = (value: Credits["claude"]): Row => {
+  const v = value as ClaudeSpend, cells = state(value) ?? [dollars(v.spent ?? 0), "–"];
+  return { name: "Claude", Icon: Asterisk, cells, note: typeof cells === "string" ? `Claude API: ${cells}` : `Claude API: 이달 ${cells[0]} 씀 · 최근 30일 ${dollars(v.spent30 ?? 0)} · 남은 금액은 Claude Console에서 봐요` };
+};
 
 /**
  * 왼쪽 아래 프로필 위 (owner request 2026-11-02 — the 작동 상태 panel was too hidden): the GPT credit left and spent this cycle
@@ -36,9 +43,10 @@ export function ApiCreditChips() {
     return () => { live = false; window.clearInterval(timer); };
   }, [accessToken, demo, shown]);
   if (!shown) return null;
-  const rows: [string, LucideIcon, string][] = [["GPT", Hexagon, gptText(credits.gpt)], ["Claude", Asterisk, claudeText(credits.claude)]];
   return <Link className="sidebar-credits" href="/settings/connections" title="AI API 크레딧 자세히 보기">
-    {rows.map(([name, Icon, line]) => <span key={name} className="sidebar-credit" title={`${name} API: ${line}`}>
-      <Icon size={15} aria-hidden="true" /><span>{name}</span><b>{line}</b></span>)}
+    <span className="sidebar-credit sidebar-credit-head"><span /><span /><small>이달 씀</small><small>남음</small></span>
+    {[gptRow(credits.gpt), claudeRow(credits.claude)].map(({ name, Icon, cells, note }) => <span key={name} className="sidebar-credit" title={note}>
+      <Icon size={15} aria-hidden="true" /><span>{name}</span>
+      {typeof cells === "string" ? <b className="sidebar-credit-wide">{cells}</b> : cells.map((cell, i) => <b key={i}>{cell}</b>)}</span>)}
   </Link>;
 }
