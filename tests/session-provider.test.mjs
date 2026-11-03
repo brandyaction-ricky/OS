@@ -70,7 +70,7 @@ function setup() {
     "next/navigation": { useRouter: () => router, usePathname: () => pathname },
     "@/lib/supabase/client": { getBrowserSupabase: () => client },
     "@/lib/knowledge/browser-cache": { clearWorkspaceCache: async () => {}, firstWorkspaceRead },
-    "@/lib/api-client": { startEarlyRead: (path, token) => early.push({ path, token }) },
+    "@/lib/api-client": { startEarlyRead: (path, token) => early.push({ path, token }), firstMetricRead: path => path === "/content/performance" ? "/api/v1/content/metrics?from=a&to=b" : null },
   };
   const mod = { exports: {} };
   runInNewContext(`(function(require, module, exports) { ${code}\n})`, {
@@ -134,6 +134,15 @@ test("a knowledge page opened directly asks for its documents beside the profile
     assert.deepEqual(other.early, [], path);
     other.unmount();
   }
+});
+
+test("영상 성과 opened directly asks for its first figures beside the profile", async () => {
+  const app = setup();
+  app.render("/content/performance");
+  app.emit("INITIAL_SESSION", session("one"));
+  await turn();
+  assert.deepEqual(app.early, [{ path: "/api/v1/content/metrics?from=a&to=b", token: "one-token" }]);
+  app.unmount();
 });
 
 test("sign-out clears identity immediately and ignores an older profile response", async () => {

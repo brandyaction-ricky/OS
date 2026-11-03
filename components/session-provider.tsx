@@ -6,7 +6,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { getBrowserSupabase } from "@/lib/supabase/client";
 import type { SessionProfile } from "@/lib/types";
 import { clearWorkspaceCache, firstWorkspaceRead } from "@/lib/knowledge/browser-cache";
-import { startEarlyRead } from "@/lib/api-client";
+import { firstMetricRead, startEarlyRead } from "@/lib/api-client";
 
 interface SessionContextValue {
   loading: boolean;
@@ -108,8 +108,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       // Keep database work outside the synchronous auth callback/lock. This also
       // coalesces auth events arriving together into one profile request.
       timer = setTimeout(() => {
-        // A knowledge page opened directly asks for its documents now instead of after the profile arrives.
-        const early = earlyDone ? null : firstWorkspaceRead(window.location.pathname, nextSession.user.id);
+        // A knowledge page or 영상 성과 opened directly asks for its first data now instead of after the profile arrives.
+        const early = earlyDone ? null : firstWorkspaceRead(window.location.pathname, nextSession.user.id) ?? firstMetricRead(window.location.pathname);
         earlyDone = true;
         if (early) startEarlyRead(early, nextSession.access_token);
         void hydrate(nextSession, requestGeneration, controller);

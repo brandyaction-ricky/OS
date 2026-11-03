@@ -57,7 +57,7 @@ async function sharedRead<T>(path: string, token: string | null): Promise<T> {
   const key = JSON.stringify([token, path]);
   let pending = pendingReads.get(key);
   if (!pending) {
-    pending = apiRequest<T>(path, { token });
+    pending = takeEarlyRead<T>(path, token) ?? apiRequest<T>(path, { token });
     // Bound the map even if a connection takes a long time to settle.
     if (pendingReads.size >= 100) pendingReads.clear();
     pendingReads.set(key, pending);
@@ -288,6 +288,16 @@ export function metricWindowPath(from?: string, to?: string) {
   if (from) params.set("from", from);
   if (to) params.set("to", to);
   return `/api/v1/content/metrics${params.size ? `?${params}` : ""}`;
+}
+/** The 30 days 영상 성과 opens with (UTC days, inclusive). */
+export function defaultMetricWindow(now = Date.now()) {
+  return { from: new Date(now - 29 * 86400000).toISOString().slice(0, 10), to: new Date(now).toISOString().slice(0, 10) };
+}
+/** On a full load of 영상 성과 the session asks for these figures beside the profile (startEarlyRead). */
+export function firstMetricRead(pathname: string) {
+  if (pathname !== "/content/performance") return null;
+  const { from, to } = defaultMetricWindow();
+  return metricWindowPath(from, to);
 }
 export function recentMetricWindow(token: string | null, from?: string, to?: string) {
   const hit = recentRead<{ records: OsRecord[] }>(metricWindowPath(from, to), token);

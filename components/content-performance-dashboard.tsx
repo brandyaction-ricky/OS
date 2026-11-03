@@ -6,7 +6,7 @@ import {useContentWork} from "./content-work-provider";
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { archiveRecord, createDocument, createRecord, listAllRecordsOfType, listMetricWindow, recentAllRecordsOfType, recentMetricWindow, updateRecord } from "@/lib/api-client";
+import { archiveRecord, createDocument, createRecord, defaultMetricWindow, listAllRecordsOfType, listMetricWindow, recentAllRecordsOfType, recentMetricWindow, updateRecord } from "@/lib/api-client";
 import { dedupeMetricSnapshots, fixedWeek, groupMetricDimension, metricDisplay, metricValue, summarizeMetrics } from "@/lib/content-metrics";
 import { isYoutubeMetricPlatform } from "@/lib/channel-metrics";
 import type { OsRecord } from "@/lib/record-types";
@@ -29,7 +29,7 @@ export function ContentPerformanceDashboard({ youtubeOnly = false }: { youtubeOn
   const [brand, setBrand] = useState("all"); const [platform, setPlatform] = useState("all"); const [hierarchy, setHierarchy] = useState("all"); const [localSourceId, setLocalSourceId] = useState("all");
   const sourceId=work?work.topicId||"all":localSourceId;
   const setSourceId=(id:string)=>{setLocalSourceId(id);work?.select(id==="all"?"":id);};
-  const [from, setFrom] = useState(new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10)); const [to, setTo] = useState(today());
+  const [from, setFrom] = useState(() => defaultMetricWindow().from); const [to, setTo] = useState(today());
   const [dimension, setDimension] = useState("video"); const [weekA, setWeekA] = useState(""); const [weekB, setWeekB] = useState("");
   const [editing, setEditing] = useState<OsRecord | null>(null); const [open, setOpen] = useState(false);
   const [hypothesis, setHypothesis] = useState(""); const [hypothesisEdit, setHypothesisEdit] = useState<OsRecord | null>(null); const [learningTargetId, setLearningTargetId] = useState("");

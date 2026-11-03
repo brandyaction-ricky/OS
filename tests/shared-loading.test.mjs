@@ -154,6 +154,22 @@ test("a shared content provider and its page reuse the same first record page", 
   assert.equal(all.length, 1); assert.equal(page.total, 1);
 });
 
+test("a read the session started beside the profile is taken once by the screen that asks for it", async () => {
+  const { api, calls } = await clientFixture();
+  const { from, to } = api.defaultMetricWindow();
+  const path = api.firstMetricRead("/content/performance");
+  assert.equal(path, api.metricWindowPath(from, to));
+  assert.equal(api.firstMetricRead("/content/topics"), null);
+  api.startEarlyRead(path, "one");
+  const screen = api.listMetricWindow("one", from, to);
+  assert.equal(calls.length, 1, "the screen joins the read already on its way");
+  calls[0].reply({ records: [{ ...recordBody.records[0], record_type: "content_metric" }] });
+  assert.equal((await screen).length, 1);
+  const again = api.listMetricWindow("one", from, to);
+  assert.equal(calls.length, 2, "it is taken once; the next read asks again");
+  calls[1].reply({ records: [] }); await again;
+});
+
 test("whole-type pagination counts only the first page and keeps exact-boundary termination", async () => {
   const { api, calls } = await clientFixture();
   const all = api.listAllRecordsOfType("one", "content_topic");
