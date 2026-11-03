@@ -10,14 +10,17 @@ interface RunRecord {
   storyboard: { at: string; model: string; scenes: number; kept: boolean | null; review: { decision: string; name: string; at: string } | null } | null;
   photos: { file: string; from: string; url: string | null; kept: boolean | null }[];
   sound: { at: string; edited: { name: string; at: string } | null } | null;
-  prepared: { at: string; sheets: number; sheetsKept: number } | null;
-  clips: { at: string; count: number; kept: number; review: { name: string; at: string } | null } | null;
-  final: { at: string; durationSeconds: number; bytes: number; lufs: number; peak: number; files: { name: string; kept: boolean }[] } | null;
+  prepared: { at: string; sheets: number; sheetsKept: number; changed?: string[] | null } | null;
+  clips: { at: string; count: number; kept: number; changed?: string[] | null; review: { name: string; at: string } | null } | null;
+  final: { at: string; durationSeconds: number; bytes: number; lufs: number; peak: number; changed?: string[] | null; files: { name: string; kept: boolean }[] } | null;
 }
 const when = (iso: string) => new Intl.DateTimeFormat("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
 const length = (seconds: number) => `${Math.floor(seconds / 60)}분 ${Math.round(seconds % 60)}초`;
 /** 「파일 있음」 or 「기록만」: a file the record names that storage no longer holds is never offered back. */
 const Kept = ({ value }: { value: boolean | null }) => value === null ? null : <span className="status-pill" data-status={value ? "approved" : "review"}>{value ? "파일 있음" : "기록만"}</span>;
+/** 재료 고정 (유쓰 요청 3/8 보완): whether a result was made from the materials the video has now; nothing for one made before they were kept. */
+const Changed = ({ value }: { value?: string[] | null }) => !value ? null : <span className="status-pill" data-status={value.length ? "review" : "approved"}
+  title={value.length ? "다시 만들어야 지금 재료가 들어가요" : undefined}>{value.length ? `바뀐 재료: ${value.join(" · ")}` : "지금 재료와 같아요"}</span>;
 
 /**
  * 만든 재료 · 설정 보기 (유쓰 요청 4/8, 2026-11-02): this video's own production record in one place — the 원고 version, voice, storyboard,
@@ -46,13 +49,13 @@ export function MyinRunRecord({ runId, token }: { runId: string; token: string |
       {record.photos.length ? <><dt>사진 {record.photos.length}장</dt><dd><ul className="yt-list">{record.photos.map((photo) => <li key={photo.file}>{photo.file} · {photo.from}
         {photo.url ? <> · <a href={photo.url} target="_blank" rel="noreferrer">출처</a></> : null} <Kept value={photo.kept} /></li>)}</ul></dd></> : null}
       {record.sound ? <><dt>사운드</dt><dd>자동 선곡 {when(record.sound.at)}{record.sound.edited ? ` · ${personName(record.sound.edited.name)} 수정 ${when(record.sound.edited.at)}` : ""}</dd></> : null}
-      {record.prepared ? <><dt>점검 시트</dt><dd>{when(record.prepared.at)} · {record.prepared.sheets}장 중 {record.prepared.sheetsKept}장 파일 있음</dd></> : null}
-      {record.clips ? <><dt>미리보기</dt><dd>{when(record.clips.at)} · {record.clips.count}개 중 {record.clips.kept}개 파일 있음{record.clips.review ? ` · 확인 ${personName(record.clips.review.name)} ${when(record.clips.review.at)}` : ""}</dd></> : null}
-      {record.final ? <><dt>완성</dt><dd>{when(record.final.at)} · {length(record.final.durationSeconds)} · {(record.final.bytes / 1e6).toFixed(1)}MB · 음량 {record.final.lufs} LUFS · 최대 {record.final.peak} dB
+      {record.prepared ? <><dt>점검 시트</dt><dd>{when(record.prepared.at)} · {record.prepared.sheets}장 중 {record.prepared.sheetsKept}장 파일 있음 <Changed value={record.prepared.changed} /></dd></> : null}
+      {record.clips ? <><dt>미리보기</dt><dd>{when(record.clips.at)} · {record.clips.count}개 중 {record.clips.kept}개 파일 있음{record.clips.review ? ` · 확인 ${personName(record.clips.review.name)} ${when(record.clips.review.at)}` : ""} <Changed value={record.clips.changed} /></dd></> : null}
+      {record.final ? <><dt>완성</dt><dd>{when(record.final.at)} · {length(record.final.durationSeconds)} · {(record.final.bytes / 1e6).toFixed(1)}MB · 음량 {record.final.lufs} LUFS · 최대 {record.final.peak} dB <Changed value={record.final.changed} />
         <ul className="yt-list">{record.final.files.map((file) => <li key={file.name}>{file.name} <Kept value={file.kept} /></li>)}</ul>
         {record.earlierFinals ? <small>예전 완성본 {record.earlierFinals}개도 최종 검토의 버전으로 남아 있어요.</small> : null}</dd></> : null}
       <dt>엔진 버전</dt><dd>아직 기록하지 않아요. 영상 만드는 컴퓨터가 버전을 알려 주게 되면 여기에 남아요.</dd>
     </dl>}
-    <p className="yt-note">이 영상에 실제로 쓴 것만 보여 줘요. 「기록만」은 파일이 지워져 다시 받을 수 없다는 뜻이에요. 열어 보기만 해서는 아무것도 바뀌거나 비용이 들지 않아요.</p>
+    <p className="yt-note">이 영상에 실제로 쓴 것만 보여 줘요. 「기록만」은 파일이 지워져 다시 받을 수 없다는 뜻이에요. 「바뀐 재료」는 그 결과를 만든 뒤 바뀐 재료예요 — 다시 만들어야 들어가요. 열어 보기만 해서는 아무것도 바뀌거나 비용이 들지 않아요.</p>
   </details>;
 }

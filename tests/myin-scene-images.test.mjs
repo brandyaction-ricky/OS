@@ -19,7 +19,9 @@ test("after the finished video, an image takes the run back to ④ and keeps tha
 });
 
 test("a preparation handed other images than the run has now is made again, not taken", () => {
-  assert.match(section("export async function claimMyinPrep", "/** Render PC: the preview ran."), /oursKey\);/);
+  // 2026-11-03 (3/8 보완): our images are one of the materials the preparation is handed (materialsKey keeps oursKey in it).
+  assert.match(section("export async function claimMyinPrep", "/** Render PC: the preview ran."), /materialsKey\);/);
+  assert.match(section("const materials = ", "const materialsKey"), /ours: oursKey\(run\)/);
   const complete = section("export async function completeMyinPrep", "export async function failMyinPrep");
-  assert.match(complete, /run\.lease\?\.input && run\.lease\.input !== oursKey\(run\)[\s\S]*"prep_pending"/);
+  assert.match(complete, /if \(staleResult\(run\)\)[\s\S]*"prep_pending"/);
 });
