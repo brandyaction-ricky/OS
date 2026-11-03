@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
-import { checkMyinVoice, confirmMyinClips, createMyinRun, latestMyinRun, myinVoiceCheck, myinVoiceFixSchema, myinVoiceOnRenderPc, requestMyinVoiceFix, myinDownloads, myinRecord, myinSubtitles, myinSubtitleChangeSchema, saveMyinSubtitles, myinOurImageUpload, myinOutputs, myinPhotos, myinPreviewSheets, myinSoundState, myinWordsReport, reopenMyinMaterials, reviewMyinStoryboard, saveMyinOurImage, saveMyinSound, separateMyinPhoto, setMyinDraftPlace, startMyinFinal, startMyinPrep } from "@/lib/server/myin-run";
+import { checkMyinVoice, confirmMyinClips, createMyinRun, latestMyinRun, myinVoiceCheck, myinVoiceFixPlan, myinVoiceFixSchema, myinVoiceOnRenderPc, requestMyinVoiceFix, myinDownloads, myinRecord, myinSubtitles, myinSubtitleChangeSchema, saveMyinSubtitles, myinOurImageUpload, myinOutputs, myinPhotos, myinPreviewSheets, myinSoundState, myinWordsReport, reopenMyinMaterials, reviewMyinStoryboard, saveMyinOurImage, saveMyinSound, separateMyinPhoto, setMyinDraftPlace, startMyinFinal, startMyinPrep } from "@/lib/server/myin-run";
 import { findMyinPhotoCandidates, applyMyinPhotoCandidate } from "@/lib/server/myin-photo-candidates";
 import { readLocalRenderStatus } from "@/lib/server/youtube-render-pc";
 import { checkMyinScreens, myinScreenCheck } from "@/lib/server/myin-screen-check";
@@ -74,6 +74,7 @@ const patchSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("final"), runId: z.string().uuid() }),
   z.object({ action: z.literal("reopen"), runId: z.string().uuid() }),
   z.object({ action: z.literal("voice_fix"), runId: z.string().uuid(), fixes: z.array(myinVoiceFixSchema).min(1).max(20) }),
+  z.object({ action: z.literal("voice_fix_plan"), runId: z.string().uuid(), fixes: z.array(myinVoiceFixSchema).min(1).max(20) }),
   z.object({ action: z.literal("voice_check"), runId: z.string().uuid(), skipped: z.boolean() }),
   z.object({ action: z.literal("subtitles"), runId: z.string().uuid(), changes: z.array(myinSubtitleChangeSchema).min(1).max(600) }),
   z.object({ action: z.literal("sound"), runId: z.string().uuid(), plan: z.object({
@@ -98,6 +99,7 @@ export async function PATCH(request: Request) {
       : input.action === "final" ? { run: await startMyinFinal(actor, input.runId) }
       : input.action === "reopen" ? { run: await reopenMyinMaterials(actor, input.runId) }
       : input.action === "voice_fix" ? { run: await requestMyinVoiceFix(actor, input.runId, input.fixes) }
+      : input.action === "voice_fix_plan" ? await myinVoiceFixPlan(actor, input.runId, input.fixes)
       : input.action === "voice_check" ? { run: await checkMyinVoice(actor, input.runId, input.skipped) }
       : input.action === "subtitles" ? { run: await saveMyinSubtitles(actor, input.runId, input.changes) }
       : input.action === "sound" ? { run: await saveMyinSound(actor, input.runId, input.plan) }
