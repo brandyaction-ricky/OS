@@ -2,7 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { useSession } from "@/components/session-provider";
-import { apiRequest, getDocument, recentRead } from "@/lib/api-client";
+import { apiRequest, getDocument, recentRead, takeEarlyRead } from "@/lib/api-client";
 import { applyKnowledgeCommand, createDemoKnowledge, visibleState } from "@/lib/knowledge/demo";
 import { emptyKnowledgeState, kstDay, type Command, type KnowledgeState, type Meeting, type WorkspaceSnapshot } from "@/lib/knowledge/model";
 import type { KnowledgeActor } from "@/lib/knowledge/access";
@@ -106,7 +106,9 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
             setPartialMeetingId(meetingId);
           } catch { /* The full workspace read below remains the fallback for old or inaccessible meetings. */ }
         }
-        let result = await apiRequest<Synced>(`/api/v1/knowledge/workspace${(base || kept) && syncedAt.current ? `?since=${encodeURIComponent(syncedAt.current)}` : ""}`, { token });
+        const path = `/api/v1/knowledge/workspace${(base || kept) && syncedAt.current ? `?since=${encodeURIComponent(syncedAt.current)}` : ""}`;
+        // On a full page load the session already asked for this beside the profile (firstWorkspaceRead).
+        let result = await (takeEarlyRead<Synced>(path, token) ?? apiRequest<Synced>(path, { token }));
         if (!isCurrent()) return;
         if (result.delta) {
           // Only what changed came back; a visible document the kept list never had means reading everything once.

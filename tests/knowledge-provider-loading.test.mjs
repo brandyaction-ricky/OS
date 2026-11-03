@@ -13,7 +13,7 @@ const turn = () => new Promise(resolve => setTimeout(resolve, 0));
 
 // Controlled hook lifecycle verifies that a persistent Next layout never treats
 // a partial canon response as a complete document/meeting/editor workspace.
-function setup(recent = {}, kept = null) {
+function setup(recent = {}, kept = null, early = {}) {
   const hooks = [], effects = [], requests = [], listeners = new Map(), written = [];
   let cursor = 0, pathname = "/knowledge/canon";
   const profile = { id: actor.ownerId, role: "member", isActive: true };
@@ -29,7 +29,7 @@ function setup(recent = {}, kept = null) {
     react, "react/jsx-runtime": { jsx: (_type, props) => props, jsxs: (_type, props) => props },
     "next/navigation": { usePathname: () => pathname },
     "@/components/session-provider": { useSession: () => ({ profile, accessToken: "synthetic-token", demo: false, loading: false }) },
-    "@/lib/api-client": { apiRequest: (path, options) => new Promise((resolve, reject) => requests.push({ path, options, resolve, reject })), recentRead: path => recent[path] },
+    "@/lib/api-client": { apiRequest: (path, options) => new Promise((resolve, reject) => requests.push({ path, options, resolve, reject })), recentRead: path => recent[path], takeEarlyRead: path => { const read = early[path]; delete early[path]; return read; } },
     "@/lib/knowledge/demo": {}, "@/lib/knowledge/model": model, "./shortcuts": { KnowledgeShortcuts: () => null },
     // No list kept on this PC in these runs (회사 문서 목록 브라우저 저장 is covered in knowledge-browser-cache.test.mjs).
     "@/lib/knowledge/browser-cache": { keptSyncedAt: () => kept?.syncedAt ?? null, readWorkspaceCache: async () => kept ?? undefined, writeWorkspaceCache: async (_owner, value) => { written.push(value); }, mergeWorkspaceDocuments },
@@ -60,6 +60,17 @@ test("first canon visit loads only its summary and full workspace starts on anot
   app.requests[1].resolve(workspace()); await turn();
   value = app.render();
   assert.equal(value.loading, false); assert.equal(value.workspaceReady, true);
+});
+
+test("a full page load takes the read the session started beside the profile instead of asking again", async () => {
+  const early = { "/api/v1/knowledge/workspace": Promise.resolve({ ...workspace(), state: { ...model.emptyKnowledgeState(), documents: [canon.documents[0]] } }) };
+  const app = setup({}, null, early);
+  app.render("/knowledge/docs"); await turn();
+  assert.deepEqual(app.requests, []);
+  const value = app.render();
+  assert.equal(value.workspaceReady, true); assert.equal(value.state.documents.length, 1);
+  void app.render().refresh(); await turn();
+  assert.equal(app.requests[0].path.split("?")[0], "/api/v1/knowledge/workspace", "a later refresh reads again");
 });
 
 test("shortcuts can lazily request their complete documents and meeting choices", async () => {
