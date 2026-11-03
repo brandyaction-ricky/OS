@@ -6,11 +6,12 @@ import { placeFilter } from "@/lib/myin-local";
 import { changedMaterials, type MyinMaterials } from "@/lib/myin-materials";
 import { planVoiceFix } from "@/lib/myin-voice-plan";
 import { applySubtitleEdits, subtitleIssues, subtitleLines, subtitleTextProblem } from "@/lib/myin-subtitles";
-import { applyMyinSoundPlan, MYIN_METAPHOR_TYPES, myinDriftPairs, myinOnlySoundChanged, myinPhotoFetchUrl, myinPhotoFolders, myinPrepPhotos, myinSoundIssues, myinSoundPlan, myinStoryboardSchema, type MyinSoundPlan } from "@/lib/myin-storyboard";
+import { applyMyinSoundPlan, MYIN_METAPHOR_TYPES, myinDriftPairs, myinOnlySoundChanged, myinPhotoFetchUrl, myinPhotoFolders, myinPrepPhotos, myinSceneStarts, myinSoundIssues, myinSoundPlan, myinStoryboardSchema, type MyinSoundPlan } from "@/lib/myin-storyboard";
 import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { RequestActor } from "./auth";
 import { MYIN_VOICE_TUNING, synthesizeFishWav } from "./fish-audio";
+import { readDiagramCatalog } from "./diagram-catalog";
 import { readSoundCatalog } from "./sound-catalog";
 import { readYoutubeAutomationInput } from "./youtube-automation-input";
 import { readChannelStyles } from "./youtube-channel-styles";
@@ -1303,4 +1304,34 @@ export async function myinOutputs(actor: RequestActor, runId: string, at?: strin
     video: await read(ASSET_VIDEO_BUCKET, final?.video), summary: await read(OUTPUT_BUCKET, final?.summary),
     deck: await read(OUTPUT_BUCKET, final?.deck), srt: await read(OUTPUT_BUCKET, final?.srt),
   };
+}
+
+/**
+ * 영상 편집기 읽기 (로건 개발 문서 「OS 영상 편집기」 2026-11-03 §4-2): a video's latest run as the AI that edits it reads it — its
+ * versions, the storyboard scenes with when each starts in the voice, the subtitle lines, and what it may use. Reading changes nothing.
+ * The caller has already been allowed to the video (an AI key only for a video its owner made or is assigned).
+ */
+export async function myinEditorView(actor: RequestActor, sourceId: string, view: "summary" | "scenes" | "subtitles" | "assets") {
+  const { data } = await actor.supabase.from("os_records").select("*").eq("parent_id", sourceId).eq("record_type", "ai_job")
+    .eq("metadata->>kind", MYIN_RUN_KIND).is("archived_at", null).order("created_at", { ascending: false }).limit(1);
+  const record = data?.[0] as OsRecord | undefined;
+  if (!record) throw new ApiError(404, "MYIN_RUN_MISSING", "이 영상은 아직 영상 만들기를 시작하지 않았어요.");
+  const run = parse(record), service = createServiceSupabase();
+  const versions = [...(run.finals ?? []), ...(run.final ? [run.final] : [])].map((final, i) => ({ v: i + 1, at: final.at, durationSeconds: final.durationSeconds, lufs: final.lufs }));
+  if (view === "summary") return { runId: record.id, stage: record.stage, status: record.status, short: run.layout === "short", voiceSeconds: run.words?.durationSeconds ?? null,
+    scenes: run.storyboard?.scenes ?? 0, versions, current: versions.at(-1)?.v ?? null,
+    note: "시각은 음성 기준(초)이에요. 완성 영상의 시각은 제목 · 구독 멘트 · 쇼릴에서 멈춘 만큼 더 늦어요." };
+  if (!run.storyboard || !run.words) throw new ApiError(409, "MYIN_STORYBOARD_MISSING", "기획표가 나온 뒤에 읽을 수 있어요.");
+  if (view === "subtitles") return { runId: record.id, edited: Boolean(run.subtitleEdits), lines: subtitleLines((await subtitleState(service, run)).edited.ass) };
+  const story = await storyboardJson(service, run);
+  if (view === "assets") {
+    const [sounds, diagrams] = await Promise.all([readSoundCatalog().catch(() => null), readDiagramCatalog().catch(() => null)]);
+    return { runId: record.id, photos: photoSources(run, myinPhotoFolders(story), story.scenes), sounds: sounds?.items ?? [],
+      diagrams: (diagrams?.items ?? []).map(({ type, name, when, slots }) => ({ type, name, when, slots })) };
+  }
+  const { data: file } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).download(run.words.path);
+  const words = file ? ((JSON.parse(await file.text()) as { words?: [number, number, string][] }).words ?? []) : [];
+  const starts = myinSceneStarts(story.scenes, words);
+  return { runId: record.id, scenes: story.scenes.map((scene, i) => ({ n: i + 1, voiceStart: starts[i], ...scene })),
+    music_cues: (story as { music_cues?: unknown }).music_cues ?? null, cta: story.cta, end: (story as { end?: unknown }).end ?? null };
 }

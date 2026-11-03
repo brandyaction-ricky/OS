@@ -43,6 +43,12 @@ export const MCP_TOOLS = [
     annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false},
   },
   {
+    name: "get_video_editor",
+    description: "영상 편집기(로건 개발 문서 2026-11-03): 완성본이 나온 유튜브 영상 하나를 고치기 전에 읽습니다. view=summary(버전 · 단계), scenes(기획표 장면과 음성 기준 시작 초), subtitles(자막 줄), assets(쓸 수 있는 사진 · 음악 · 효과음 · 도식), orders(아직 열린 최종 검토 피드백). 읽기만 하고 아무것도 바꾸지 않습니다. 이 키 주인이 만들었거나 맡은 영상만 읽을 수 있습니다. knowledge.read 범위가 필요합니다.",
+    inputSchema: { type: "object", properties: { project_id: { type: "string", format: "uuid" }, view: { type: "string", enum: ["summary", "scenes", "subtitles", "assets", "orders"] } }, required: ["project_id"], additionalProperties: false },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  {
     name: "search_knowledge",
     description: "브랜디 OS 회사 정본과 이 AI 소유자의 초안에서 관련 근거를 검색합니다. 여러 번 찾을 때는 한 번에 하나씩 부르세요(동시에 부르면 실패할 수 있어요).",
     inputSchema: {
@@ -369,6 +375,10 @@ export async function callMcpTool(request: ToolRequest, organizationId: string, 
   if(request.name==="process_youtube_ai_job"){
     const input=z.object({action:z.enum(["claim","complete","fail"]),job_id:documentId,lease:documentId.optional(),model:z.string().trim().min(1).max(100).optional(),result:z.record(z.unknown()).optional(),report:z.record(z.unknown()).optional(),reason:z.string().trim().min(1).max(1000).optional()}).strict().parse(args);
     return fetchApi("/api/v1/content/youtube-automation/ai-jobs/worker",{method:"POST",body:JSON.stringify({action:input.action,jobId:input.job_id,lease:input.lease,model:input.model,result:input.result,report:input.report,reason:input.reason})});
+  }
+  if (request.name === "get_video_editor") {
+    const input = z.object({ project_id: documentId, view: z.enum(["summary", "scenes", "subtitles", "assets", "orders"]).default("summary") }).strict().parse(args);
+    return fetchApi(`/api/v1/content/youtube-automation/editor?${new URLSearchParams({ projectId: input.project_id, view: input.view })}`);
   }
   if (request.name === "list_record_versions") {
     const input = getRecordArgs.parse(args);
