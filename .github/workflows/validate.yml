@@ -48,3 +48,12 @@ jobs:
           NEXT_PUBLIC_DEMO_MODE: "false"
           NEXT_PUBLIC_SUPABASE_URL: "https://reference-ui-test.supabase.co"
           NEXT_PUBLIC_SUPABASE_ANON_KEY: "fixture-public-key"
+      # A flaky end-to-end check is only diagnosable from its trace (playwright keeps traces of failed tests in test-results/).
+      - name: Keep Playwright traces of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore
