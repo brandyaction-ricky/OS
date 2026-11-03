@@ -5,7 +5,7 @@ import Link from "next/link";
 import {listAllRecordsOfType} from "@/lib/api-client";
 import {demoRecord} from "@/lib/demo-record";
 import {NAV_STAGES,findPage} from "@/lib/navigation";
-import {defaultsToAll,workTopicSelection,workTopics,workTopicHref} from "@/lib/content-work-context";
+import {defaultsToAll,readsTopicsOnly,workTopicSelection,workTopics,workTopicHref} from "@/lib/content-work-context";
 import {productionStep,type ProductionStep} from "@/lib/content-production-board";
 import type {OsRecord,RecordType} from "@/lib/record-types";
 import {useSession} from "./session-provider";
@@ -17,7 +17,7 @@ const TYPES:RecordType[]=["content_topic","content_script","content_package","co
 export function ContentWorkProvider({children,youtubeV1=false}:{children:React.ReactNode;youtubeV1?:boolean}) {
   const path=usePathname(), search=useSearchParams(), {accessToken,demo,profile}=useSession();
   // 유튜브 공정 v1 screens read their own project data instead of the legacy topic list.
-  const enabled=path.startsWith("/content/")&&!youtubeV1Screen(path);
+  const enabled=path.startsWith("/content/")&&!youtubeV1Screen(path), topicsOnly=readsTopicsOnly(path,youtubeV1);
   const [records,setRecords]=useState<OsRecord[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState("");
   const [saved,setSaved]=useState(""),[revision,setRevision]=useState(0);
   const storageKey=`brandy-os-work-topic:${profile?.id??"demo"}`;
@@ -28,9 +28,9 @@ export function ContentWorkProvider({children,youtubeV1=false}:{children:React.R
     if(demo){setRecords([demoRecord({id:"demo-final-topic",recordType:"content_topic",title:"예시 · 첫 콘텐츠 제작",status:"planned",metadata:{origin:"own"}},"demo")]);setLoading(false);return;}
     if(!accessToken){setLoading(false);return;}
     setLoading(true);
-    Promise.all(TYPES.map(type=>listAllRecordsOfType(accessToken,type))).then(results=>{if(active)setRecords(results.flat());}).catch(()=>{if(active)setError("작업 영상을 불러오지 못했습니다. 다시 불러와 주세요.");}).finally(()=>{if(active)setLoading(false);});
+    Promise.all((topicsOnly?TYPES.slice(0,1):TYPES).map(type=>listAllRecordsOfType(accessToken,type))).then(results=>{if(active)setRecords(results.flat());}).catch(()=>{if(active)setError("작업 영상을 불러오지 못했습니다. 다시 불러와 주세요.");}).finally(()=>{if(active)setLoading(false);});
     return()=>{active=false;};
-  },[enabled,accessToken,demo,profile?.id,revision]);
+  },[enabled,topicsOnly,accessToken,demo,profile?.id,revision]);
   const requested=search.get("topic")??search.get("sourceId");
   const topicId=workTopicSelection(records,requested,saved,defaultsToAll(path,search.get("tab")),youtubeV1);
   const topics=useMemo(()=>workTopics(records,youtubeV1),[records,youtubeV1]);
