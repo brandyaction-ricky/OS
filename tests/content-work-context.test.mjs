@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {workTopics,workTopicSelection,defaultsToAll,workTopicHref} from '../lib/content-work-context.ts';
+import {workTopics,workTopicSelection,defaultsToAll,workTopicHref,readsTopicsOnly} from '../lib/content-work-context.ts';
 const rows=[{id:'own',record_type:'content_topic',title:'Our video',metadata:{}},{id:'another',record_type:'content_topic',title:'Second',metadata:{}},{id:'market',record_type:'content_topic',title:'Reference',metadata:{studioKind:'outlier'}},{id:'test',record_type:'content_topic',title:'[테스트] Fixture',metadata:{}},{id:'archive',record_type:'content_topic',title:'Old',archived_at:'2026-01-01',metadata:{}}];
 test('shared selection only offers own, active topics',()=>{assert.deepEqual(workTopics(rows).map(r=>r.id),['own','another']);});
 test('URL wins over storage and inaccessible sources never silently select another',()=>{
@@ -15,4 +15,9 @@ test('overview screens start with all videos while explicit selections survive e
   assert.equal(workTopicSelection(rows,null,'own',true),'');
   assert.equal(workTopicSelection(rows,'own','',true),'own');
   assert.equal(workTopicHref('/content/publishing?tab=calendar&sourceId=old','own'),'/content/publishing?tab=calendar&topic=own');
+});
+test('with v1 on, 성과 and 캘린더 read only the video list; the step screens and v1-off keep every record type',()=>{
+  for(const path of ['/content/performance','/content/calendar'])assert.ok(readsTopicsOnly(path,true));
+  for(const path of ['/content/shorts','/content/publishing','/content/youtube'])assert.ok(!readsTopicsOnly(path,true));
+  assert.ok(!readsTopicsOnly('/content/performance',false));
 });
