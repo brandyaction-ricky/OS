@@ -74,8 +74,26 @@ export async function GET(request: Request) {
         if(page.error||!page.data||page.data.length<500) return pages;
       }
     })();
+    // Who may approve, and which person owns each agent key, follow from these reads alone: ask as soon as they arrive.
+    const approversRead = resourcesRead.then(resources=>Promise.all((resources[9].data ?? []).map(async row=>{
+      const result=await db.rpc("os_can_approve",{p_actor:row.id,p_author:null});
+      if(result.error) throw readError(result.error,"approvers");
+      const canApprove=row.member_kind==="staff"&&result.data===true;
+      return {id:row.id,display_name:row.display_name,role:row.role,member_kind:row.member_kind,can_approve:canApprove};
+    })));
+    // Keys are never returned; only their owner identity is needed for the self-approval guard.
+    const agentOwnersRead = proposalsRead.then(async pages=>{
+      const keyIds=[...new Set(pages.flatMap(page=>page.data ?? []).map(p=>p.agent_key_id).filter(Boolean))];
+      if(!keyIds.length) return new Map<string,string|null>();
+      const result=await service.from("os_agent_keys").select("id,owner_user_id").in("id",keyIds);
+      if(result.error) throw readError(result.error,"agent-owners");
+      return new Map((result.data ?? []).map(k=>[k.id as string,k.owner_user_id as string|null]));
+    });
+    // Pages are checked with the document rows below; from here on only the actor is needed, which reads the profile alone
+    // (it used to build the whole access context a second time after that check).
+    const accessRead = knowledgeAccessContext(user,[]);
     // A failed document read must not leave these as unhandled rejections.
-    void resourcesRead.catch(()=>undefined); void proposalsRead.catch(()=>undefined);
+    for(const read of [resourcesRead,proposalsRead,approversRead,agentOwnersRead,accessRead]) void read.catch(()=>undefined);
     // Keyset pagination avoids re-evaluating hierarchical RLS for every skipped row. Ids are random UUIDs, so eight
     // id ranges read side by side cover the same rows in about one round trip instead of one page after another.
     const DOCUMENT_COLUMNS="id,title,folder,parent_document_id,page_order,status,brand,team,tags,source,source_ref,owner_id,steward_id,created_by,current_version,created_at,updated_at,category_id,work_state,due_on,daily_on,review_due_on,archived_at,archived_by,archived_from_status,retention_hold,meeting_record_id,reader_scope";
@@ -112,12 +130,12 @@ export async function GET(request: Request) {
       }
       lap("changed");
     }
-    const access = await knowledgeAccessContext(user,visible);
+    const access = await accessRead;
     const resources = await resourcesRead;
     lap("resources");
     const stages=["categories","templates","inbox","pins","drafts","meetings","attendees","candidates","events","people","decisions"];
     for(const [index,result] of resources.entries()) if(result.error) throw readError(result.error,stages[index]);
-    const [categories,templates,inbox,pins,drafts,meetings,attendees,candidates,events,people,decisions]=resources.map(r=>r.data ?? []);
+    const [categories,templates,inbox,pins,drafts,meetings,attendees,candidates,events,,decisions]=resources.map(r=>r.data ?? []);
     state.categories=categories as KnowledgeState["categories"];
     state.templates=templates as KnowledgeState["templates"];
     state.templates=[...DEFAULT_TEMPLATES.filter(t=>!state.templates.some(row=>row.default_key===t.id)),...state.templates.filter(t=>!t.archived_at)];
@@ -128,12 +146,7 @@ export async function GET(request: Request) {
     state.meetings=projectMeetings(meetings as Parameters<typeof projectMeetings>[0],decisions as Parameters<typeof projectMeetings>[1],attendees as Parameters<typeof projectMeetings>[2],access.actor);
     state.candidates=(candidates as KnowledgeState["candidates"]).filter(c=>ids.has(c.document_id));
     state.events=events as KnowledgeState["events"];
-    state.people=await Promise.all(people.map(async row=>{
-      const result=await db.rpc("os_can_approve",{p_actor:row.id,p_author:null});
-      if(result.error) throw readError(result.error,"approvers");
-      const canApprove=row.member_kind==="staff"&&result.data===true;
-      return {id:row.id,display_name:row.display_name,role:row.role,member_kind:row.member_kind,can_approve:canApprove};
-    }));
+    state.people=await approversRead;
     const me=state.people.find(p=>p.id===user.ownerId);
     access.actor.canApprove=me?.can_approve===true;
     for(const page of await proposalsRead){
@@ -142,12 +155,9 @@ export async function GET(request: Request) {
       // knowledge page load); the review screen reads one body by id when it is opened.
       state.proposals.push(...(page.data ?? []).filter(row=>ids.has(row.document_id)).map(row=>["open","returned"].includes(row.status)?row:{...row,content_md:"",content_omitted:true}));
     }
-    // Keys are never returned; only their owner identity is needed for the self-approval guard.
-    const keyIds=[...new Set(state.proposals.map(p=>p.agent_key_id).filter(Boolean))];
-    if(keyIds.length) {
-      const result=await service.from("os_agent_keys").select("id,owner_user_id").in("id",keyIds);
-      if(result.error) throw readError(result.error,"agent-owners");
-      state.proposals=state.proposals.map(p=>({...p,agent_owner_id:result.data?.find(k=>k.id===p.agent_key_id)?.owner_user_id ?? null}));
+    if(state.proposals.some(p=>p.agent_key_id)){
+      const agentOwners=await agentOwnersRead;
+      state.proposals=state.proposals.map(p=>({...p,agent_owner_id:p.agent_key_id?agentOwners.get(p.agent_key_id) ?? null:null}));
     }
     const visibleTargets=new Set([...ids,...state.categories.map(c=>c.id),...state.templates.map(t=>t.id),...state.meetings.map(m=>m.id),...state.candidates.map(c=>c.id),...state.proposals.map(p=>p.id)]);
     // Keep the audit fact without exposing an inaccessible target ID, title, reason or link.
