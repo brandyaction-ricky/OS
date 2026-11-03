@@ -9,7 +9,7 @@ const base = { voice: "v1", storyboard: "s1", sound: "", subtitles: "", ours: "o
 
 test("the record names the materials that changed since a result was made", () => {
   assert.deepEqual(changedMaterials(base, base), [], "same materials: 지금 재료와 같아요");
-  assert.deepEqual(changedMaterials(base, { ...base, ours: "o2", subtitles: "t1" }), ["자막", "우리 이미지"]);
+  assert.deepEqual(changedMaterials(base, { ...base, ours: "o2", subtitles: "t1" }), ["자막", "사진"]);
   assert.deepEqual(changedMaterials(base, { ...base, sound: "e1" }), [], "a sound edit does not make the sheets or previews stale");
   assert.deepEqual(changedMaterials(base, { ...base, sound: "e1" }, true), ["사운드"], "it does make the full video stale");
   assert.equal(changedMaterials(undefined, base), null, "a result made before materials were kept says nothing");

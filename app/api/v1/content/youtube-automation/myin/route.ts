@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
-import { checkMyinVoice, confirmMyinClips, createMyinRun, latestMyinRun, myinVoiceCheck, myinVoiceFixSchema, myinVoiceOnRenderPc, requestMyinVoiceFix, myinDownloads, myinRecord, myinSubtitles, myinSubtitleChangeSchema, saveMyinSubtitles, myinOurImageUpload, myinOutputs, myinPhotos, myinPreviewSheets, myinSoundState, myinWordsReport, reopenMyinMaterials, reviewMyinStoryboard, saveMyinOurImage, saveMyinSound, setMyinDraftPlace, startMyinFinal, startMyinPrep } from "@/lib/server/myin-run";
+import { checkMyinVoice, confirmMyinClips, createMyinRun, latestMyinRun, myinVoiceCheck, myinVoiceFixSchema, myinVoiceOnRenderPc, requestMyinVoiceFix, myinDownloads, myinRecord, myinSubtitles, myinSubtitleChangeSchema, saveMyinSubtitles, myinOurImageUpload, myinOutputs, myinPhotos, myinPreviewSheets, myinSoundState, myinWordsReport, reopenMyinMaterials, reviewMyinStoryboard, saveMyinOurImage, saveMyinSound, separateMyinPhoto, setMyinDraftPlace, startMyinFinal, startMyinPrep } from "@/lib/server/myin-run";
+import { findMyinPhotoCandidates, applyMyinPhotoCandidate } from "@/lib/server/myin-photo-candidates";
 import { readLocalRenderStatus } from "@/lib/server/youtube-render-pc";
 import { checkMyinScreens, myinScreenCheck } from "@/lib/server/myin-screen-check";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
@@ -36,6 +37,9 @@ export async function GET(request: Request) {
     // 우리 이미지 올리기 (2026-10-28): the storyboard's photo files and where each comes from.
     const photos = query.get("photos");
     if (photos) return NextResponse.json(await myinPhotos(actor, z.string().uuid().parse(photos)), { headers });
+    // 사진 후보 찾기 (2026-11-03): Unsplash · 위키미디어 photos for the words given; looking changes nothing.
+    const candidates = query.get("candidates");
+    if (candidates !== null) return NextResponse.json(await findMyinPhotoCandidates(z.string().max(100).parse(candidates)), { headers });
     // 만든 재료 · 설정 보기 (유쓰 요청 4/8): what the run used and made, and which files are still kept.
     // 자막 한꺼번에 고치기 (유쓰 요청 1/8): stage 1's subtitle lines with the edits, and Logan's 자막 검수 lines.
     const subtitles = query.get("subtitles");
@@ -62,6 +66,8 @@ const patchSchema = z.discriminatedUnion("action", [
   // 우리 이미지 올리기: an upload address for one storyboard photo file, then the upload kept for it.
   z.object({ action: z.literal("our_image_url"), runId: z.string().uuid(), file: z.string().min(1).max(200), type: z.string().max(40) }),
   z.object({ action: z.literal("our_image"), runId: z.string().uuid(), file: z.string().min(1).max(200), path: z.string().min(1).max(400) }),
+  z.object({ action: z.literal("photo_scene"), runId: z.string().uuid(), file: z.string().min(1).max(200), scene: z.number().int().min(1).max(400) }),
+  z.object({ action: z.literal("photo_candidate"), runId: z.string().uuid(), file: z.string().min(1).max(200), provider: z.enum(["unsplash", "wikimedia"]), id: z.string().min(1).max(300) }),
   z.object({ action: z.literal("clips_ok"), runId: z.string().uuid(), note: z.string().max(2000).default(""), place: z.enum(["pc", "local"]).default("pc") }),
   z.object({ action: z.literal("screen_check"), runId: z.string().uuid(), tier: z.enum(["precise", "saving"]).default("precise") }),
   // ④ 자료 준비 (2026-10-27): the full video after the sound check, ⑤ → ④ for another sound pass, and the sound plan itself.
@@ -97,6 +103,8 @@ export async function PATCH(request: Request) {
       : input.action === "sound" ? { run: await saveMyinSound(actor, input.runId, input.plan) }
       : input.action === "our_image_url" ? await myinOurImageUpload(actor, input.runId, input.file, input.type)
       : input.action === "our_image" ? { run: await saveMyinOurImage(actor, input.runId, input.file, input.path) }
+      : input.action === "photo_scene" ? await separateMyinPhoto(actor, input.runId, input.file, input.scene)
+      : input.action === "photo_candidate" ? { run: await applyMyinPhotoCandidate(actor, input.runId, input.file, input.provider, input.id) }
       : { run: await startMyinPrep(actor, input.runId) };
     return NextResponse.json(result, { headers });
   } catch (error) {
