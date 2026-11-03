@@ -3,6 +3,7 @@ import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { myinBreathText, myinCleanScript, myinRunMatchesScript, myinScriptMarkdown } from "@/lib/myin-script";
 import { placeFilter } from "@/lib/myin-local";
+import { changedMaterials, type MyinMaterials } from "@/lib/myin-materials";
 import { applySubtitleEdits, subtitleIssues, subtitleLines, subtitleTextProblem } from "@/lib/myin-subtitles";
 import { applyMyinSoundPlan, MYIN_METAPHOR_TYPES, myinDriftPairs, myinOnlySoundChanged, myinPhotoFetchUrl, myinPhotoFolders, myinPrepPhotos, myinSoundIssues, myinSoundPlan, myinStoryboardSchema, type MyinSoundPlan } from "@/lib/myin-storyboard";
 import type { OsRecord } from "@/lib/record-types";
@@ -46,12 +47,18 @@ type Service = ReturnType<typeof createServiceSupabase>;
 
 const hex = z.string().regex(/^[a-f0-9]{64}$/);
 const versionRef = z.object({ id: z.string().uuid(), version: z.number().int().positive() }).strict();
+// 재료 고정 (유쓰 요청 3/8 보완, 2026-11-03): the versions a result was made from — the voice with its words, the storyboard, ④'s sound
+// edits, the subtitle edits, our images and the channel style. Each result keeps them, so the 제작 기록 can say which results the
+// current materials no longer match; a job's result is taken only if they did not change while it ran.
+const materialsSchema = z.object({ voice: z.string(), storyboard: z.string(), sound: z.string(), subtitles: z.string(), ours: z.string(), style: z.string() }).strict();
 const finalSchema = z.object({ video: z.string(), summary: z.string().optional(), deck: z.string().optional(), srt: z.string(), bytes: z.number().int().positive(),
   durationSeconds: z.number().positive(), lufs: z.number(), peak: z.number(), at: z.string().datetime(),
   /** Which subtitle edits it was made with (자막 한꺼번에 고치기); none = the subtitles as stage 1 made them. */
-  subtitles: hex.optional() }).strict();
-// input: what the job was handed (for the preparation, our images) — a result made from other input is not taken (유쓰 요청 2/8).
-const leaseSchema = z.object({ token: z.string().uuid(), expiresAt: z.string().datetime(), startedAt: z.string().datetime().optional(), input: z.string().regex(/^[a-f0-9]{64}$/).optional() }).strict();
+  subtitles: hex.optional(), used: materialsSchema.optional() }).strict();
+// input: what the job was handed (the materials key; before 2026-11-03 a preparation's our images) — a result made from other input is
+// not taken (유쓰 요청 2/8 · 3/8). stage: the stage it was claimed at; a run that moved on (수정 요청, a new start) takes no late result.
+const leaseSchema = z.object({ token: z.string().uuid(), expiresAt: z.string().datetime(), startedAt: z.string().datetime().optional(), input: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  stage: z.string().max(40).optional() }).strict();
 const runSchema = z.object({
   kind: z.literal(MYIN_RUN_KIND), runKey: hex, sourceId: z.string().uuid(), inputKey: hex, script: versionRef, scriptMarkdownHash: hex,
   // 숏폼 (2026-10-28): drawn 9:16 by the render PC's vertical copy of Logan's engine (MYIN_PKG_SHORT); no handouts, no staff-Mac drafts.
@@ -97,9 +104,9 @@ const runSchema = z.object({
   ours: z.record(z.string(), z.object({ path: z.string(), bytes: z.number().int().positive(), by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict()).optional(),
   // `pc`: a line the render PC made with Logan's stage_cta for a member's own computer (a finished file, used as it is).
   cta: z.array(z.object({ index: z.number().int().min(0), textHash: hex, status: z.enum(["pending", "ready"]), path: z.string().optional(), pc: z.literal(true).optional() }).strict()).optional(),
-  prepared: z.object({ path: z.string(), misses: z.array(z.string()), sheets: z.array(z.string()), credits: z.array(z.string()), at: z.string().datetime() }).strict().optional(),
+  prepared: z.object({ path: z.string(), misses: z.array(z.string()), sheets: z.array(z.string()), credits: z.array(z.string()), at: z.string().datetime(), used: materialsSchema.optional() }).strict().optional(),
   // Stage 4: Logan's 720p clips (opening + reel, each metaphor), his OK, then the full render, mix and handouts.
-  clips: z.object({ items: z.array(z.object({ name: z.string(), label: z.string(), path: z.string() }).strict()), at: z.string().datetime() }).strict().optional(),
+  clips: z.object({ items: z.array(z.object({ name: z.string(), label: z.string(), path: z.string() }).strict()), at: z.string().datetime(), used: materialsSchema.optional() }).strict().optional(),
   clipsReview: z.object({ by: z.string().uuid(), name: z.string(), note: z.string(), at: z.string().datetime() }).strict().optional(),
   // 내 컴퓨터로 시안 (owner decision 2026-10-27): ③'s preparation and clips run on this member's own Mac (same engine as the render
   // PC, checked by fingerprint) instead of the render PC.
@@ -231,7 +238,7 @@ export async function reviewMyinStoryboard(actor: RequestActor, runId: string, d
   if (decision === "confirmed") await assertCurrent(service, run);
   const next: MyinRun = { ...run, review: { decision, by: actor.id, name: actor.name, note: note.trim().slice(0, 2000), at: new Date().toISOString() } };
   if (decision === "confirmed") draftPlace(next, actor, place);
-  if (decision === "revise") { delete next.prepared; delete next.clips; delete next.clipsReview; delete next.sound; return presentMyinRun(await save(service, record, "backlog", "words_ready", next)); }
+  if (decision === "revise") { delete next.prepared; delete next.clips; delete next.clipsReview; delete next.sound; delete next.lease; return presentMyinRun(await save(service, record, "backlog", "words_ready", next)); }
   // 2026-10-27 대표: 시안(도식·글자)을 먼저 본다. 사진 허락과 구독 대사 음성은 시안 확인 뒤 ④ 자료 준비에서(2026-10-19의 「확인 = 사진 허락」을 옮김).
   const saved = await save(service, record, "done", "storyboard_confirmed", next);
   return presentMyinRun(await beginDraft(service, saved, parse(saved)));
@@ -333,7 +340,7 @@ async function claim(service: Service, stage: string, leaseMs: number, accept: (
     if (!accept(run)) continue;
     if (run.lease && Date.parse(run.lease.expiresAt) > Date.now()) continue;
     if (run.attempts >= 3) { await save(service, candidate, "blocked", stage, run).catch(() => null); continue; }
-    const lease = { token: randomUUID(), expiresAt: new Date(Date.now() + leaseMs).toISOString(), startedAt: new Date().toISOString(), ...(input ? { input: input(run) } : {}) };
+    const lease = { token: randomUUID(), expiresAt: new Date(Date.now() + leaseMs).toISOString(), startedAt: new Date().toISOString(), stage, ...(input ? { input: input(run) } : {}) };
     const claimed = await save(service, candidate, "in_progress", stage, { ...run, lease, attempts: run.attempts + 1 }).catch(() => null);
     if (claimed) return { record: claimed, run: parse(claimed), lease };
   }
@@ -455,7 +462,7 @@ export async function claimMyinWords(service: Service = createServiceSupabase(),
 async function leased(service: Service, runId: string, token: string) {
   const { data } = await service.from("os_records").select("*").eq("id", runId).eq("record_type", "ai_job").is("archived_at", null).maybeSingle();
   const run = data ? parse(data as OsRecord) : null;
-  if (!data || !run || run.lease?.token !== token || Date.parse(run.lease.expiresAt) < Date.now())
+  if (!data || !run || run.lease?.token !== token || Date.parse(run.lease.expiresAt) < Date.now() || (run.lease.stage && run.lease.stage !== data.stage))
     throw new ApiError(409, "MYIN_LEASE_LOST", "v13 작업의 처리 권한이 만료됐습니다.");
   return { record: data as OsRecord, run };
 }
@@ -651,7 +658,7 @@ function photosInUse(run: MyinRun, story: Awaited<ReturnType<typeof storyboardJs
 async function beginDraft(service: Service, record: OsRecord, run: MyinRun) {
   photosInUse(run, await storyboardJson(service, run));
   const next: MyinRun = { ...run, attempts: 0 };
-  delete next.prepared; delete next.lastError; delete next.clips; delete next.clipsReview; delete next.sound; retireFinal(next);
+  delete next.prepared; delete next.lastError; delete next.clips; delete next.clipsReview; delete next.sound; delete next.lease; retireFinal(next);
   return save(service, record, "backlog", "prep_pending", next);
 }
 
@@ -668,7 +675,7 @@ async function beginPrep(service: Service, record: OsRecord, run: MyinRun, by: s
     const kept = run.cta?.find((p) => p.index === index && p.textHash === sha(c.line));
     return kept && (kept.path || !run.localFinish) ? kept : { index, textHash: sha(c.line), status: run.voiceOn && !run.localFinish ? "ready" as const : "pending" as const };
   });
-  const next: MyinRun = { ...run, assets, cta, attempts: 0 }; delete next.prepared; delete next.lastError;
+  const next: MyinRun = { ...run, assets, cta, attempts: 0 }; delete next.prepared; delete next.lastError; delete next.lease;
   return save(service, record, "backlog", cta.every((c) => c.status === "ready") ? "prep_pending" : "cta_pending", next);
 }
 
@@ -849,12 +856,19 @@ const assertLocalReady = (run: MyinRun) => {
 
 /** Our images as the preparation was handed them: one put in while it runs makes that preparation's result stale. */
 const oursKey = (run: MyinRun) => sha(JSON.stringify(Object.entries(run.ours ?? {}).map(([file, image]) => [file, image.path]).sort()));
+/** The run's materials now (재료 고정): the storyboard by when the staff AI wrote it (the music match and sound edits keep that), the sound by its last edit. */
+const materials = (run: MyinRun): MyinMaterials => ({ voice: run.words?.path ?? "", storyboard: run.storyboard?.at ?? "", sound: run.sound?.edited?.at ?? "",
+  subtitles: run.subtitleEdits?.at ?? "", ours: oursKey(run).slice(0, 16), style: run.style ? `${run.style.id}@${run.style.version}` : "" });
+const materialsKey = (run: MyinRun) => sha(JSON.stringify(materials(run)));
+/** A job's result is from other materials than the run has now (a lease from before 2026-11-03 compared our images only). */
+const staleResult = (run: MyinRun) => Boolean(run.lease?.input) && run.lease!.input !== (run.lease!.stage ? materialsKey(run) : oursKey(run));
+const changedSince = (used: MyinMaterials | undefined, run: MyinRun, sound = false) => changedMaterials(used, materials(run), sound);
 
 /** Render PC (or, with `owner`, that member's own Mac for a ③ draft): storyboard, approved files, CTA voice and where the sheets and report go. */
 export async function claimMyinPrep(service: Service = createServiceSupabase(), owner?: string, short = false) {
   // A member's computer takes ④ only once every 구독 대사 line is a file it can use (it cannot make one).
   const claimed = await claim(service, "prep_pending", WORDS_LEASE_MS, (run) => placeFilter(owner)(run) && (!owner || Boolean(run.words?.voice)) && fits(short)(run)
-    && (!owner || !run.clipsReview || (run.cta ?? []).every((c) => c.path)), oursKey);
+    && (!owner || !run.clipsReview || (run.cta ?? []).every((c) => c.path)), materialsKey);
   if (!claimed) return { idle: true as const };
   const { record, run, lease } = claimed;
   try {
@@ -893,8 +907,8 @@ export async function claimMyinPrep(service: Service = createServiceSupabase(), 
 /** Render PC: the preview ran. Its "문구 못 찾음" lines decide whether the run may go on to the preview clips. */
 export async function completeMyinPrep(input: { runId: string; lease: string }, service: Service = createServiceSupabase()) {
   const { record, run } = await leased(service, input.runId, input.lease);
-  // An image was put in while this preparation ran: its result is from the old picture, so it prepares again (유쓰 요청 2/8).
-  if (run.lease?.input && run.lease.input !== oursKey(run)) {
+  // An image (or another material) changed while this preparation ran: its result is from the old one, so it prepares again (유쓰 요청 2/8 · 3/8).
+  if (staleResult(run)) {
     const again: MyinRun = { ...run, attempts: 0 }; delete again.lease; delete again.lastError;
     await save(service, record, "backlog", "prep_pending", again);
     return { runId: record.id, stage: "prep_pending", misses: 0, again: true };
@@ -918,6 +932,7 @@ export async function completeMyinPrep(input: { runId: string; lease: string }, 
     ...bundle.musicCredits.slice(0, 30)];
   const next: MyinRun = { ...run, storyboard, sound, attempts: 0, prepared: { path: prepBundlePath(record, run, input.lease), misses: bundle.misses.slice(0, 60),
     sheets: Array.from({ length: bundle.sheets }, (_, i) => sheetPath(record, run, input.lease, i + 1)), credits, at: new Date().toISOString() } };
+  next.prepared!.used = materials(next);
   delete next.lease; delete next.lastError;
   if (draft) { delete next.clips; delete next.clipsReview; retireFinal(next); }
   if (!next.sound) delete next.sound;
@@ -1030,7 +1045,7 @@ const clipItems = (run: MyinRun) => run.layout ? [{ name: "clip_short", label: "
   : [{ name: "clip_opening", label: "오프닝 + 쇼릴", scene: 1 }, ...(run.storyboard?.metaphors ?? []).map((m) => ({ name: `clip_scene_${m.scene}`, label: `${m.scene}번 장면 · ${m.type}`, scene: m.scene }))];
 
 export async function claimMyinClips(service: Service = createServiceSupabase(), owner?: string, short = false) {
-  const claimed = await claim(service, "clips_pending", CLIPS_LEASE_MS, (run) => placeFilter(owner)(run) && (!owner || Boolean(run.words?.voice)) && fits(short)(run));
+  const claimed = await claim(service, "clips_pending", CLIPS_LEASE_MS, (run) => placeFilter(owner)(run) && (!owner || Boolean(run.words?.voice)) && fits(short)(run), materialsKey);
   if (!claimed) return { idle: true as const };
   const { record, run, lease } = claimed;
   try {
@@ -1047,10 +1062,18 @@ const ASSET_VIDEO_BUCKET = "os-youtube-video";
 
 export async function completeMyinClips(input: { runId: string; lease: string; names: string[] }, service: Service = createServiceSupabase()) {
   const { record, run } = await leased(service, input.runId, input.lease);
+  // Materials changed while the clips were cut: not taken. A change the preparation used (our images, the storyboard) prepares again first.
+  if (staleResult(run)) {
+    const again: MyinRun = { ...run, attempts: 0 }; delete again.lease; delete again.lastError;
+    const prepAgain = (changedSince(run.prepared?.used, run) ?? ["알 수 없음"]).length > 0;   // unknown (made before 2026-11-03): prepare again
+    if (prepAgain) { delete again.prepared; delete again.clips; }
+    await save(service, record, "backlog", prepAgain ? "prep_pending" : "clips_pending", again);
+    return { runId: record.id, stage: prepAgain ? "prep_pending" : "clips_pending", again: true };
+  }
   const labels = new Map(clipItems(run).map((item) => [item.name, item.label]));
   const items = input.names.filter((name) => labels.has(name)).map((name) => ({ name, label: labels.get(name)!, path: outPath(record, run, `${name}-${tag(input.lease)}.mp4`) }));
   if (!items.length) throw new ApiError(409, "MYIN_CLIPS_MISSING", "미리보기 영상이 올라오지 않았습니다.");
-  const next: MyinRun = { ...run, attempts: 0, clips: { items, at: new Date().toISOString() } };
+  const next: MyinRun = { ...run, attempts: 0, clips: { items, at: new Date().toISOString(), used: materials(run) } };
   delete next.lease; delete next.lastError; delete next.clipsReview;
   await save(service, record, "done", "clips_review", next);
   return { runId: record.id, stage: "clips_review" };
@@ -1131,7 +1154,7 @@ const finalFiles = (record: OsRecord, run: MyinRun, lease: string) => ({ video: 
 
 /** Render PC: where the finished video, the handouts, the YouTube subtitles and the check report go. */
 export async function claimMyinFinal(service: Service = createServiceSupabase(), short = false, owner?: string) {
-  const claimed = await claim(service, "final_pending", FINAL_LEASE_MS, (run) => placeFilter(owner)(run) && fits(short)(run));
+  const claimed = await claim(service, "final_pending", FINAL_LEASE_MS, (run) => placeFilter(owner)(run) && fits(short)(run), materialsKey);
   if (!claimed) return { idle: true as const };
   const { record, run, lease } = claimed;
   try {
@@ -1149,9 +1172,14 @@ export async function claimMyinFinal(service: Service = createServiceSupabase(),
 
 export async function completeMyinFinal(input: { runId: string; lease: string; bytes: number; durationSeconds: number; lufs: number; peak: number }, service: Service = createServiceSupabase()) {
   const { record, run } = await leased(service, input.runId, input.lease);
+  if (staleResult(run)) {
+    const again: MyinRun = { ...run, attempts: 0 }; delete again.lease; delete again.lastError;
+    await save(service, record, "backlog", "final_pending", again);
+    return { runId: record.id, stage: "final_pending", again: true };
+  }
   const subtitles = run.subtitleEdits ? await subtitleState(service, run).then((state) => state.key, () => undefined) : undefined;
   const next: MyinRun = { ...run, attempts: 0, final: { ...finalFiles(record, run, input.lease), bytes: input.bytes, durationSeconds: input.durationSeconds, lufs: input.lufs, peak: input.peak,
-    at: new Date().toISOString(), ...(subtitles ? { subtitles } : {}) } };
+    at: new Date().toISOString(), ...(subtitles ? { subtitles } : {}), used: materials(run) } };
   delete next.lease; delete next.lastError; delete next.voiceChanged;
   await save(service, record, "done", "final_ready", next);
   return { runId: record.id, stage: "final_ready" };
@@ -1188,10 +1216,10 @@ export async function myinRecord(actor: RequestActor, runId: string) {
     photos: [...approved.map((a) => ({ file: a.file, from: `${a.source} · ${a.license}`, url: a.url, kept: null as boolean | null })),
       ...Object.entries(run.ours ?? {}).map(([file, image]) => ({ file, from: `우리 이미지 · ${image.name}`, url: null, kept: kept(ours, image.path) }))],
     sound: run.sound ? { at: run.sound.at, edited: run.sound.edited ? { name: run.sound.edited.name, at: run.sound.edited.at } : null } : null,
-    prepared: run.prepared ? { at: run.prepared.at, sheets: run.prepared.sheets.length, sheetsKept: run.prepared.sheets.filter((path) => sheets.has(path)).length } : null,
-    clips: run.clips ? { at: run.clips.at, count: run.clips.items.length, kept: run.clips.items.filter((item) => video.has(item.path)).length,
+    prepared: run.prepared ? { at: run.prepared.at, sheets: run.prepared.sheets.length, sheetsKept: run.prepared.sheets.filter((path) => sheets.has(path)).length, changed: changedSince(run.prepared.used, run) } : null,
+    clips: run.clips ? { at: run.clips.at, count: run.clips.items.length, kept: run.clips.items.filter((item) => video.has(item.path)).length, changed: changedSince(run.clips.used, run),
       review: run.clipsReview ? { name: run.clipsReview.name, at: run.clipsReview.at } : null } : null,
-    final: run.final ? { at: run.final.at, durationSeconds: run.final.durationSeconds, bytes: run.final.bytes, lufs: run.final.lufs, peak: run.final.peak,
+    final: run.final ? { at: run.final.at, durationSeconds: run.final.durationSeconds, bytes: run.final.bytes, lufs: run.final.lufs, peak: run.final.peak, changed: changedSince(run.final.used, run, true),
       files: [["영상", kept(video, run.final.video)], ["자막 SRT", kept(media, run.final.srt)], ["한 장 정리", kept(media, run.final.summary)], ["덱 PDF", kept(media, run.final.deck)]]
         .filter(([, value]) => value !== null).map(([name, value]) => ({ name: name as string, kept: value as boolean })) } : null,
   };
