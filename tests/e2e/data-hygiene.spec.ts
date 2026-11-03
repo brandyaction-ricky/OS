@@ -15,8 +15,9 @@ test("key issuance exposes three permission levels and a required expiry", async
   await expect(page.getByLabel("만료일", { exact: true })).toHaveAttribute("required", "");
   await expect(page.getByLabel("만료일", { exact: true })).not.toHaveValue("");
 });
+// An old document address now answers with a 308 to the document's own address (middleware.ts); the heading is kept.
 test("login cannot redirect outside and preserves internal document links", async ({ page }) => {
-  for (const [destination,expected] of [["//outside.invalid", "/home"], ["/knowledge?document=fixture#heading", "/knowledge?document=fixture#heading"]]) {
+  for (const [destination,expected] of [["//outside.invalid", "/home"], ["/knowledge?document=fixture#heading", "/knowledge/doc/fixture#heading"]]) {
     await page.goto(`/login?next=${encodeURIComponent(destination)}`);
     await page.getByLabel("이메일", { exact: true }).fill("fixture@example.test");
     await page.getByLabel("비밀번호", { exact: true }).fill("local-demo-only");
