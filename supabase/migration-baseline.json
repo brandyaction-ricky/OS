@@ -990,6 +990,17 @@
         "production"
       ],
       "notes": "Bucket settings only (no tables, rows or policies). Read-only Production check 2026-10-31: bucket 10 MB with 5 types, 8 files; storage 7.19 GB in all. Manual undo: supabase/rollback/20261031120000_company_files_folders.down.sql. Owner approved Production on 2026-10-31 (\"재무관리 서류함 올리고\"); applied in one transaction with its schema history row and read back (limit 524288000, 17 types incl. application/x-hwp and application/octet-stream, history 1, the 8 stored files untouched). Not applied to DEV."
+    },
+    {
+      "file": "20261103100000_content_metric_snapshot_index.sql",
+      "sha256": "8353ba3064d5ef8b256bb87926220cd257dada54c4c3a54ab92f601352936088",
+      "purpose": "영상 성과: partial index for os_content_metric_window's undated channel-snapshot branch (metadata.channelSnapshotVersion = 1), which read all content_metric history on every call",
+      "requiresApproval": true,
+      "productionApprovedAt": "2026-11-03",
+      "appliedEnvironments": [
+        "production"
+      ],
+      "notes": "Speed request 2026-11-03; owner approved Production in chat (\"응 진행해\"). Additive: one partial index, no function, row or policy change. Manual undo: supabase/rollback/20261103100000_content_metric_snapshot_index.down.sql. The session's auto mode blocks production database access, so the owner ran the prepared script on 2026-11-03: read-only timing under the owner's row policies, then the index and its schema history row in one transaction, read back (index present, 8 kB, history 1). Same 30-day window before/after: 108 rows with the same id md5; os_content_metric_window 423-548 ms -> 377-393 ms; the channel-snapshot branch scanned 46,227 rows (62.9 ms, 14,320 buffers) -> index scan, 0.14 ms, 1 buffer, 0 rows. Not applied to DEV."
     }
   ],
   "legacyMigrations": [
