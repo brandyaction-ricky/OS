@@ -12,3 +12,12 @@ test("the staff AI draws message scenes with lib_ios_chat once the render PC has
   assert.match(rule, /우리 이미지\(ours_…\)나 사진으로 적지 않습니다/);
   assert.match(rule, /bell_notify[\s\S]*pop_soft/, "sounds from the 사운드 창고");
 });
+
+test("카톡 대화 scenes use lib_kakao_chat once the render PC has it; 문자 stays lib_ios_chat", async () => {
+  const job = await readFile(new URL("../lib/server/myin-storyboard-job.ts", import.meta.url), "utf8");
+  assert.match(job, /input\.catalog\?\.items\.some\(\(item\) => item\.type === "lib_kakao_chat"\) \? `/);
+  const rule = job.slice(job.indexOf('item.type === "lib_kakao_chat"'));
+  assert.match(rule, /lib_kakao_chat\(실제 카톡 화면 — 마이인 색으로 바꾸지 않음\)/);
+  assert.match(rule, /문자 메시지라고 말하는 장면만 lib_ios_chat/);
+  assert.match(rule, /who\(보낸 사람 이름\)와 unread\(인원 − 1\)/);
+});
