@@ -13,7 +13,7 @@ const source = await readFile(new URL("../middleware.ts", import.meta.url), "utf
 const mod = { exports: {} };
 runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, { module: mod, exports: mod.exports, require: name => { assert.ok(name in modules, name); return modules[name]; }, URL, encodeURIComponent });
 const { middleware, config } = mod.exports;
-const at = path => middleware(new nextServer.NextRequest(`https://os.example.test${path}`));
+const at = (path, accept = "text/html,application/xhtml+xml,*/*;q=0.8") => middleware(new nextServer.NextRequest(`https://os.example.test${path}`, { headers: { accept } }));
 const moved = path => { const response = at(path), location = response.headers.get("location"); return location ? `${response.status} ${new URL(location).pathname}${new URL(location).search}` : "next"; };
 const withV1 = (value, run) => { const before = process.env.YOUTUBE_V1_ENABLED; process.env.YOUTUBE_V1_ENABLED = value; try { run(); } finally { if (before === undefined) delete process.env.YOUTUBE_V1_ENABLED; else process.env.YOUTUBE_V1_ENABLED = before; } };
 const home = name => `/home?${new URLSearchParams({ moved: name })}`;
@@ -43,4 +43,12 @@ test("every retired address is in the matcher, and the matcher names no ordinary
   for (const path of Object.keys(finalRoutes.RETIRED_ROUTES)) assert.ok(literal.includes(path) || path.startsWith("/performance/"), path);
   assert.ok(config.matcher.includes("/performance/:path*") && config.matcher.includes("/automation/:page/:id"));
   withV1("true", () => { for (const path of literal) assert.notEqual(moved(path), "next", path); });
+});
+
+test("in-app moves (no HTML asked for) are left to the page's own redirect", () => {
+  for (const path of ["/knowledge?tab=canon", "/content/comments", "/settings"]) {
+    const response = at(path, "*/*");
+    assert.equal(response.headers.get("location"), null, path);
+    assert.equal(response.headers.get("x-middleware-next"), "1", path);
+  }
 });

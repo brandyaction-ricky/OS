@@ -41,6 +41,9 @@ export function redirectTarget(path: string, query: URLSearchParams) {
 }
 
 export function middleware(request: NextRequest) {
+  // Only page loads (they ask for HTML). In-app moves stay with the page's own redirect: Next hides their RSC headers from
+  // middleware, and a redirected RSC fetch failed in CI ("Failed to fetch RSC payload … falling back to browser navigation").
+  if (!request.headers.get("accept")?.includes("text/html")) return NextResponse.next();
   const target = redirectTarget(request.nextUrl.pathname, request.nextUrl.searchParams);
   if (!target) return NextResponse.next();
   const url = request.nextUrl.clone(), [pathname, search] = target.split("?");
@@ -50,7 +53,7 @@ export function middleware(request: NextRequest) {
   return NextResponse.redirect(url, request.nextUrl.pathname === "/knowledge" ? 308 : 307);
 }
 
-// Only these exact old addresses run the middleware, so ordinary pages and their in-app reads never pass through it.
+// Only these exact old addresses run the middleware, so ordinary pages never pass through it.
 export const config = {
   matcher: [
     "/knowledge", "/content", "/contents", "/finance", "/settings", "/performance", "/performance/:path*",
