@@ -188,3 +188,22 @@ test("a staff PC installs the render PC's engine bundle only when every part mat
     assert.equal(env.MYIN_LOCAL_KEY, "bos_pat_x");
   } finally { server.close(); delete process.env.MYIN_LOCAL_PYTHON; }
 });
+
+// 2026-11-03 유쓰: on a Mac the 인용문 scene stopped the preview — Logan's engine reads Georgia by its Windows names from WIN_FONT_DIR.
+// The fix rides in the worker, so a staff Mac gets it with the engine bundle (no install step).
+test("a Mac gets Georgia under the names Logan's engine reads", async () => {
+  const worker = await import(`../tools/youtube-media-worker.mjs?georgia=${Math.random()}`);
+  const fonts = mkdtempSync(path.join(os.tmpdir(), "mac-fonts-")), dir = path.join(mkdtempSync(path.join(os.tmpdir(), "myin-home-")), "fonts-win");
+  for (const [file, body] of [["Georgia.ttf", "regular"], ["Georgia Bold.ttf", "bold"], ["Georgia Italic.ttf", "italic"]]) writeFileSync(path.join(fonts, file), body);
+  assert.equal(worker.macGeorgia(dir, fonts), dir);
+  assert.deepEqual(["georgia.ttf", "georgiab.ttf", "georgiai.ttf"].map((name) => readFileSync(path.join(dir, name), "utf8")), ["regular", "bold", "italic"]);
+  assert.equal(worker.macGeorgia(dir, fonts), dir, "a second start keeps the same links");
+  assert.equal(worker.macGeorgia(dir, path.join(fonts, "none")), undefined, "no Georgia: the engine's own default stays");
+  assert.match(readFileSync("tools/youtube-media-worker.mjs", "utf8"), /const georgia = env\.WIN_FONT_DIR \|\| macGeorgia\(\);/, "the render PC's own folder wins");
+});
+
+test("the Mac launcher takes the OS's latest runner each time and keeps the last one offline", async () => {
+  const install = readFileSync("public/myin-local/install.sh", "utf8");
+  assert.match(install, /curl -fsSL "\$OS_URL\/myin-local\/myin-local\.mjs" -o "\\\$HOME\/myin-local\/myin-local\.mjs\.new" && mv /);
+  assert.match(install, /exec node "\\\$HOME\/myin-local\/myin-local\.mjs"\nLAUNCH/);
+});

@@ -231,9 +231,27 @@ const layoutEnv = (env, layout) => layout === "short" ? { ...env, NO_HOLD: "1", 
 if (process.env.MYIN_DIAGRAM_DIR) process.env.PYTHONPATH = [process.env.MYIN_DIAGRAM_DIR, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter);
 // 내 컴퓨터로 시안 runs on staff Macs and on Logan's Windows PC too: Homebrew's folder only on a Mac, and the engine copy is an
 // APFS clone on a Mac (instant, no extra disk) and a plain copy elsewhere.
-const withTools = (env) => process.platform === "darwin" ? { ...env, PATH: `/opt/homebrew/bin${path.delimiter}${env.PATH ?? ""}` } : env;
 const copyEngine = (from, to) => process.platform === "darwin" ? execFileSync("cp", ["-c", "-R", from, to]) : cpSync(from, to, { recursive: true });
 const myinWork = process.env.MYIN_WORK || path.join(os.homedir(), "myin", "work");
+/**
+ * Logan's engine reads Georgia by its Windows names (georgia.ttf · georgiab.ttf · georgiai.ttf) from WIN_FONT_DIR, else C:/Windows/Fonts.
+ * The render PC's env names a folder of links to the Mac's own Georgia; a staff Mac without one gets the same folder next to its work
+ * folder (2026-11-03 유쓰: the 인용문 scene stopped the preview on a Mac). It comes with the engine bundle, so nobody installs anything.
+ */
+export function macGeorgia(dir = path.join(path.dirname(myinWork), "fonts-win"), fonts = "/System/Library/Fonts/Supplemental") {
+  if (!existsSync(path.join(fonts, "Georgia.ttf"))) return undefined;
+  mkdirSync(dir, { recursive: true });
+  for (const [name, file] of [["georgia.ttf", "Georgia.ttf"], ["georgiab.ttf", "Georgia Bold.ttf"], ["georgiai.ttf", "Georgia Italic.ttf"], ["georgiaz.ttf", "Georgia Bold Italic.ttf"]]) {
+    const link = path.join(dir, name);
+    if (!existsSync(link) && existsSync(path.join(fonts, file))) symlinkSync(path.join(fonts, file), link);
+  }
+  return dir;
+}
+const withTools = (env) => {
+  if (process.platform !== "darwin") return env;
+  const georgia = env.WIN_FONT_DIR || macGeorgia();
+  return { ...env, PATH: `/opt/homebrew/bin${path.delimiter}${env.PATH ?? ""}`, ...(georgia ? { WIN_FONT_DIR: georgia } : {}) };
+};
 const myinPython = process.env.MYIN_PYTHON || "python3";
 // 음악 창고 (owner decision 2026-10-19): tracks beyond the package's own assets/bgm live here and are copied into each run.
 const myinLibrary = process.env.MYIN_LIBRARY || path.join(os.homedir(), "myin", "library");
