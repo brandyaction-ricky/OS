@@ -300,7 +300,15 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
   }, []);
 
   useEffect(() => {
-    document.title = `${page.label} | 브랜디 OS`;
+    // Next puts each page's own <title> in, sometimes a moment after this runs (streamed metadata). Setting document.title
+    // while there is none made a second <title> that kept the previous page's name after the next move, so this renames
+    // Next's element once it is there.
+    const title = `${page.label} | 브랜디 OS`;
+    const apply = () => { const element = document.head.querySelector("title"); if (element) element.textContent = title; return Boolean(element); };
+    if (apply()) return;
+    const observer = new MutationObserver(() => { if (apply()) observer.disconnect(); });
+    observer.observe(document.head, { childList: true });
+    return () => observer.disconnect();
   }, [page.label]);
 
   if (loading || (!demo && !profile)) {

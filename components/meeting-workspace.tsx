@@ -882,13 +882,13 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
                 {linkedDocuments.summaryId ? (
                   <>
                     {" · "}
-                    <Link href={`/knowledge?document=${linkedDocuments.summaryId}`}>정리 보기</Link>
+                    <Link href={`/knowledge/doc/${linkedDocuments.summaryId}`}>정리 보기</Link>
                   </>
                 ) : null}
                 {linkedDocuments.rawId ? (
                   <>
                     {" · "}
-                    <Link href={`/knowledge?document=${linkedDocuments.rawId}`}>원문 보기</Link>
+                    <Link href={`/knowledge/doc/${linkedDocuments.rawId}`}>원문 보기</Link>
                   </>
                 ) : null}
               </p>

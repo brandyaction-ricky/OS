@@ -218,7 +218,7 @@ export function ContentScriptsWorkspace({ showPlanningHandoff = false, lockedSou
   };
 
   return <>
-    <header className="page-header"><div className="page-title-group"><PageTitle /><p>영상별 원고를 만들고 모아봅니다. 수정 내역과 공유 상태는 지식 작업공간에서 관리합니다.</p></div><div className="header-actions">{selected ? <a className="secondary-button" href={`/knowledge?document=${encodeURIComponent(selected.id)}`}><FileText size={15} /> 지식에서 편집</a> : null}<button className="primary-button" onClick={openEditor} disabled={demo || !accessToken}><Plus size={16} /> 새 원고 작성</button></div></header>
+    <header className="page-header"><div className="page-title-group"><PageTitle /><p>영상별 원고를 만들고 모아봅니다. 수정 내역과 공유 상태는 지식 작업공간에서 관리합니다.</p></div><div className="header-actions">{selected ? <a className="secondary-button" href={`/knowledge/doc/${encodeURIComponent(selected.id)}`}><FileText size={15} /> 지식에서 편집</a> : null}<button className="primary-button" onClick={openEditor} disabled={demo || !accessToken}><Plus size={16} /> 새 원고 작성</button></div></header>
     {demo ? <div className="inline-alert" role="status">데모에서는 원고를 저장할 수 없습니다. 로그인한 운영 환경에서 작성해 주세요.</div> : null}
     {error ? <div className={`inline-alert ${error === GENERATION_QUEUED_NOTICE ? "success" : "danger"}`} role="alert"><CircleAlert size={16} /> {error}<button className="ghost-button" onClick={() => void load()} disabled={loading}>다시 불러오기</button></div> : null}
     {notice ? <div className="inline-alert" role="status"><Check size={16} /> {notice}</div> : null}

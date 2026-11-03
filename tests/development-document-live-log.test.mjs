@@ -28,7 +28,7 @@ test("project connections accept one canonical development document ID and expos
   assert.match(workspace, /updateRecord/);
   assert.match(workspace, /프로젝트 정본 문서/);
   assert.match(workspace, /프로젝트 정본/);
-  assert.match(workspace, /`\/knowledge\?document=\$\{encodeURIComponent\(id\)\}`/);
+  assert.match(workspace, /`\/knowledge\/doc\/\$\{encodeURIComponent\(id\)\}`/);
   assert.match(workspace, /문서 본문은 자동 수정하지 않습니다/);
 });
 

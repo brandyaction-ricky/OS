@@ -160,7 +160,7 @@ export function CanonGrindScreen({ kind }: { kind: GrindKind }) {
     {error ? <div className="yp-note yp-warn" role="alert"><div>{error}</div></div> : null}
     <section className="yp-card yp-grind-canon"><div className="yp-card-b">
       <b>지금 정본: {spec.canonTitle} {view.canon?.version ?? "없음"}</b>
-      {view.canon && !demo ? <Link className="yp-lnk" href={`/knowledge?document=${view.canon.id}`}>정본 열기 →</Link> : null}
+      {view.canon && !demo ? <Link className="yp-lnk" href={`/knowledge/doc/${view.canon.id}`}>정본 열기 →</Link> : null}
       <span className={graduatedTwice(view.runs, kind) ? "yp-tag yp-ok" : "yp-tag"}>{graduatedTwice(view.runs, kind) ? "졸업 기준 충족 · 다음 정본 승인 요청" : `졸업: 두 번 연속 초안 ${GRADUATION.passRate * 100}% 이상이 모든 기준 ‘중’ 이상 · ‘상’ ${GRADUATION.tops}개 이상 · 자동 검사 지적 0`}</span>
     </div></section>
 
@@ -352,7 +352,7 @@ export function ScriptCanonScreen() {
   return <>
     <section className="yp-card yp-grind-canon"><div className="yp-card-b">
       <b>지금 정본: 원고 공정 정본 {view.canon?.version ?? "없음"}</b>
-      {view.canon && !demo ? <Link className="yp-lnk" href={`/knowledge?document=${view.canon.id}`}>정본 열기 →</Link> : null}
+      {view.canon && !demo ? <Link className="yp-lnk" href={`/knowledge/doc/${view.canon.id}`}>정본 열기 →</Link> : null}
       <span className={graduated ? "yp-tag yp-ok" : "yp-tag"}>{graduated ? "졸업 기준 충족 · 다음 정본 승인 요청" : `졸업: 두 정본 묶음 연속, 원고 ${GRADUATION.passRate * 100}% 이상이 관문 2~6을 모두 통과`}</span>
     </div></section>
 

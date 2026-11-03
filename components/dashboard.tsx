@@ -251,7 +251,7 @@ export function Dashboard({ embedded = false }: { embedded?: boolean }) {
           </div>
           <div className="recent-knowledge">
             {documents.slice(0, 6).map((item) => (
-              <Link href={`/knowledge?document=${item.id}`} key={item.id}>
+              <Link href={`/knowledge/doc/${item.id}`} key={item.id}>
                 <FileText size={15} />
                 <span>
                   <strong>{item.title}</strong>
