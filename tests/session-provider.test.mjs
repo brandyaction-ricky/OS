@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
+import { firstWorkspaceRead } from "../lib/knowledge/browser-cache.ts";
 
 const source = await readFile(new URL("../components/session-provider.tsx", import.meta.url), "utf8");
 const code = ts.transpileModule(source, {
@@ -14,7 +15,7 @@ const session = (id, token = `${id}-token`) => ({ user: { id, email: `${id}@exam
 // Exercise the provider's effect lifecycle with controlled auth/query timing,
 // including navigation without remounting the persistent Next.js layout.
 function setup() {
-  const hooks = [], effects = [], queries = [], redirects = [];
+  const hooks = [], effects = [], queries = [], redirects = [], early = [];
   let cursor = 0, pathname = "/home", callback, subscriptions = 0, unsubscribes = 0, getSessions = 0;
   const router = { replace: (path) => redirects.push(path) };
   const client = {
@@ -68,7 +69,8 @@ function setup() {
     "react/jsx-runtime": { jsx: (_type, props) => props },
     "next/navigation": { useRouter: () => router, usePathname: () => pathname },
     "@/lib/supabase/client": { getBrowserSupabase: () => client },
-    "@/lib/knowledge/browser-cache": { clearWorkspaceCache: async () => {} },
+    "@/lib/knowledge/browser-cache": { clearWorkspaceCache: async () => {}, firstWorkspaceRead },
+    "@/lib/api-client": { startEarlyRead: (path, token) => early.push({ path, token }) },
   };
   const mod = { exports: {} };
   runInNewContext(`(function(require, module, exports) { ${code}\n})`, {
@@ -87,7 +89,7 @@ function setup() {
     return result.value;
   }
   return {
-    render, queries, redirects,
+    render, queries, redirects, early,
     emit: (event, value) => callback(event, value),
     counts: () => ({ subscriptions, unsubscribes, getSessions }),
     unmount: () => hooks.forEach((hook) => hook.cleanup?.()),
@@ -110,6 +112,28 @@ test("initial auth events issue one profile query and navigation keeps one subsc
   assert.equal(app.queries.length, 1);
   app.unmount();
   assert.equal(app.counts().unsubscribes, 1);
+});
+
+test("a knowledge page opened directly asks for its documents beside the profile, once", async () => {
+  const app = setup();
+  app.render("/knowledge/doc/a1");
+  app.emit("INITIAL_SESSION", session("one"));
+  app.emit("SIGNED_IN", session("one"));
+  await turn();
+  assert.deepEqual(app.early, [{ path: "/api/v1/knowledge/workspace", token: "one-token" }]);
+  assert.equal(app.queries.length, 1);
+  app.emit("TOKEN_REFRESHED", session("one", "fresh-token"));
+  await turn();
+  assert.equal(app.early.length, 1);
+  app.unmount();
+  for (const path of ["/home", "/knowledge/vault", "/knowledge/canon", "/knowledge/meetings", "/knowledge/development"]) {
+    const other = setup();
+    other.render(path);
+    other.emit("INITIAL_SESSION", session("one"));
+    await turn();
+    assert.deepEqual(other.early, [], path);
+    other.unmount();
+  }
 });
 
 test("sign-out clears identity immediately and ignores an older profile response", async () => {

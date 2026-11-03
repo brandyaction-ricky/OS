@@ -5,7 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { getBrowserSupabase } from "@/lib/supabase/client";
 import type { SessionProfile } from "@/lib/types";
-import { clearWorkspaceCache } from "@/lib/knowledge/browser-cache";
+import { clearWorkspaceCache, firstWorkspaceRead } from "@/lib/knowledge/browser-cache";
+import { startEarlyRead } from "@/lib/api-client";
 
 interface SessionContextValue {
   loading: boolean;
@@ -87,6 +88,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
     // INITIAL_SESSION already supplies the stored session. A second getSession()
     // causes a duplicate profile read, and re-subscribing on navigation repeats it.
+    let earlyDone = false;
     const { data: listener } = client.auth.onAuthStateChange((_event, nextSession) => {
       if (!active) return;
       const requestGeneration = ++generation;
@@ -105,7 +107,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       request = controller;
       // Keep database work outside the synchronous auth callback/lock. This also
       // coalesces auth events arriving together into one profile request.
-      timer = setTimeout(() => { void hydrate(nextSession, requestGeneration, controller); }, 0);
+      timer = setTimeout(() => {
+        // A knowledge page opened directly asks for its documents now instead of after the profile arrives.
+        const early = earlyDone ? null : firstWorkspaceRead(window.location.pathname, nextSession.user.id);
+        earlyDone = true;
+        if (early) startEarlyRead(early, nextSession.access_token);
+        void hydrate(nextSession, requestGeneration, controller);
+      }, 0);
     });
     return () => {
       active = false;

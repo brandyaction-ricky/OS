@@ -38,6 +38,20 @@ export function rememberRead(path: string, token: string | null, body: unknown) 
   recentReads.set(JSON.stringify([token, path]), { at: Date.now(), body: structuredClone(body) });
 }
 
+// A read started while the session still loads its profile, for the screen that asks for it once it mounts (a full page
+// load). The screen takes it once; one not taken within 10 s is dropped and the screen reads again.
+const earlyReads = new Map<string, { at: number; read: Promise<unknown> }>();
+export function startEarlyRead(path: string, token: string) {
+  const read = apiRequest(path, { token });
+  read.catch(() => undefined);
+  earlyReads.set(JSON.stringify([token, path]), { at: Date.now(), read });
+}
+export function takeEarlyRead<T>(path: string, token: string | null): Promise<T> | undefined {
+  const key = JSON.stringify([token, path]), early = earlyReads.get(key);
+  earlyReads.delete(key);
+  return early && Date.now() - early.at < 10_000 ? early.read as Promise<T> : undefined;
+}
+
 async function sharedRead<T>(path: string, token: string | null): Promise<T> {
   if (typeof window === "undefined" || !token || pendingWrites) return apiRequest<T>(path, { token });
   const key = JSON.stringify([token, path]);
@@ -68,7 +82,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 
   const mutation = !["GET", "HEAD"].includes((options.method ?? "GET").toUpperCase());
   if (mutation && editGuard && !editGuard(path)) throw new ApiRequestError("고치지 않았어요. 담당자에게 메모로 남겨 주세요.", "EDIT_DECLINED", 403);
-  if (mutation) { pendingWrites += 1; writeEpoch += 1; pendingReads.clear(); recentReads.clear(); }
+  if (mutation) { pendingWrites += 1; writeEpoch += 1; pendingReads.clear(); recentReads.clear(); earlyReads.clear(); }
   const startedEpoch = writeEpoch;
   try {
     const response = await fetch(path, { ...options, headers, cache: "no-store" });

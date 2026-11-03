@@ -28,6 +28,13 @@ const syncKey = (ownerId: string) => `brandyos:knowledge-synced:${ownerId}`;
 export function keptSyncedAt(ownerId: string) {
   try { return typeof localStorage === "undefined" ? null : localStorage.getItem(syncKey(ownerId)); } catch { return null; }
 }
+/** The read the knowledge screens make on a full page load (KnowledgeBoundary mounts the provider, workspace scope),
+ *  so the session can start it beside the profile read. Null on other pages. */
+export function firstWorkspaceRead(pathname: string, ownerId: string) {
+  if (!pathname.startsWith("/knowledge/") || pathname.startsWith("/knowledge/development") || ["/knowledge/vault", "/knowledge/canon", "/knowledge/meetings"].includes(pathname)) return null;
+  const at = keptSyncedAt(ownerId);
+  return `/api/v1/knowledge/workspace${at ? `?since=${encodeURIComponent(at)}` : ""}`;
+}
 const forgetSyncTimes = () => {
   try { if (typeof localStorage !== "undefined") for (const key of Object.keys(localStorage)) if (key.startsWith("brandyos:knowledge-synced:")) localStorage.removeItem(key); } catch { /* nothing kept */ }
 };
