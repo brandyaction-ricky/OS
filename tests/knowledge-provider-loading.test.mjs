@@ -167,3 +167,12 @@ test("only the changes are read and merged into this PC's kept list, which is ne
   assert.equal(app.requests.length, 1, "no full read when every visible document was kept");
   assert.equal(app.written.at(-1).syncedAt, "2026-11-02T01:00:00.000Z");
 });
+
+test("a proposal review reads its document and base version side by side and shows loading, not a missing base", async () => {
+  const canon = readFileSync(new URL("../components/knowledge/canon.tsx", import.meta.url), "utf8");
+  const review = canon.slice(canon.indexOf("function ProposalReview"), canon.indexOf("function MergeDialog"));
+  assert.match(review, /versionsRead=[^;]*\/api\/v1\/documents\/\$\{p\.document_id\}\/versions/);
+  assert.match(review, /Promise\.all\(\[docRead,versionsRead\]\)/);
+  assert.ok(review.indexOf("base===undefined?") < review.indexOf("기준 버전을 확인하지 못했습니다"), "still reading is not shown as a missing base");
+  assert.match(review, /const doc=full\?\?state\.documents\.find/);
+});

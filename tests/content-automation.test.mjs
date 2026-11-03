@@ -73,3 +73,12 @@ test("content and automation screens are their own download, not part of the oth
   const generic = await read("app/(os)/[stage]/[page]/page.tsx");
   assert.doesNotMatch(generic, /youtube-process-workspace|content-automation-v07|content-step-workspace|content-production-workspace|knowledge-graph-workspace/);
 });
+
+test("each menu's code is asked for once per deployment while idle, and the shell being hidden does not cancel it", async () => {
+  const shell = await read("components/app-shell.tsx");
+  const warm = shell.slice(shell.indexOf("const warmStages"), shell.indexOf("}, [warmFor, router]);"));
+  assert.match(warm, /router\.prefetch\(href, \{ kind: "full" as PrefetchKind \}\)/);
+  assert.match(warm, /localStorage\.getItem\("brandy-os-warmed"\) === deployment/);
+  assert.match(warm, /if \(!warmFor \|\| warmStarted\) return;/);
+  assert.doesNotMatch(warm, /clearTimeout/, "a cleanup would cancel it when the shell is hidden for a moment");
+});
