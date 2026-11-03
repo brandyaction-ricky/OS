@@ -4,7 +4,7 @@
 //   node myin-local.mjs <키>   first time (the OS 「내 컴퓨터 연결」 command does this), then just: node myin-local.mjs
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -105,26 +105,10 @@ export async function installEngine(info, home) {
 }
 
 /** The worker's settings for an installed engine: only the folders the bundle has, as on the render PC. */
-// Logan's engine reads Georgia by its Windows names (georgia.ttf · georgiab.ttf · georgiai.ttf) from WIN_FONT_DIR, else C:/Windows/Fonts.
-// A Mac has the same fonts under other names, so it gets a folder of links to them, as the render PC has (2026-11-03 유쓰: the 인용문
-// scene stopped the preview on a Mac). Windows keeps the engine's own default.
-const MAC_FONTS = "/System/Library/Fonts/Supplemental";
-export function georgiaDir(home, fonts = MAC_FONTS) {
-  if (process.platform !== "darwin" || !existsSync(path.join(fonts, "Georgia.ttf"))) return undefined;
-  const dir = path.join(home, "fonts-win");
-  mkdirSync(dir, { recursive: true });
-  for (const [name, file] of [["georgia.ttf", "Georgia.ttf"], ["georgiab.ttf", "Georgia Bold.ttf"], ["georgiai.ttf", "Georgia Italic.ttf"], ["georgiaz.ttf", "Georgia Bold Italic.ttf"]]) {
-    const link = path.join(dir, name);
-    if (!existsSync(link) && existsSync(path.join(fonts, file))) symlinkSync(path.join(fonts, file), link);
-  }
-  return dir;
-}
-
 export function workerEnv(engine, home, key) {
   const part = (name) => existsSync(path.join(engine.dir, "engine", name)) ? path.join(engine.dir, "engine", name) : undefined;
   const env = { ...process.env, OS_URL, MYIN_LOCAL_KEY: key, MYIN_PKG: part("pkg"), MYIN_DIAGRAM_DIR: part("diagrams"), MYIN_FONT_DIR: part("fonts"),
-    MYIN_LIBRARY: part("library") ?? path.join(home, "no-library"), MYIN_PYTHON: engine.python, MYIN_WORK: path.join(home, "work"), CHROME_PATH: chrome(),
-    WIN_FONT_DIR: process.env.WIN_FONT_DIR || georgiaDir(home) };
+    MYIN_LIBRARY: part("library") ?? path.join(home, "no-library"), MYIN_PYTHON: engine.python, MYIN_WORK: path.join(home, "work"), CHROME_PATH: chrome() };
   for (const name of Object.keys(env)) if (env[name] === undefined) delete env[name];
   return env;
 }

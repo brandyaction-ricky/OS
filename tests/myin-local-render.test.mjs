@@ -190,15 +190,16 @@ test("a staff PC installs the render PC's engine bundle only when every part mat
 });
 
 // 2026-11-03 유쓰: on a Mac the 인용문 scene stopped the preview — Logan's engine reads Georgia by its Windows names from WIN_FONT_DIR.
-test("a Mac gets Georgia under the names Logan's engine reads", { skip: process.platform !== "darwin" }, async () => {
-  const runner = await import(`../public/myin-local/myin-local.mjs?georgia=${Math.random()}`);
-  const fonts = mkdtempSync(path.join(os.tmpdir(), "mac-fonts-")), home = mkdtempSync(path.join(os.tmpdir(), "myin-home-"));
+// The fix rides in the worker, so a staff Mac gets it with the engine bundle (no install step).
+test("a Mac gets Georgia under the names Logan's engine reads", async () => {
+  const worker = await import(`../tools/youtube-media-worker.mjs?georgia=${Math.random()}`);
+  const fonts = mkdtempSync(path.join(os.tmpdir(), "mac-fonts-")), dir = path.join(mkdtempSync(path.join(os.tmpdir(), "myin-home-")), "fonts-win");
   for (const [file, body] of [["Georgia.ttf", "regular"], ["Georgia Bold.ttf", "bold"], ["Georgia Italic.ttf", "italic"]]) writeFileSync(path.join(fonts, file), body);
-  const dir = runner.georgiaDir(home, fonts);
+  assert.equal(worker.macGeorgia(dir, fonts), dir);
   assert.deepEqual(["georgia.ttf", "georgiab.ttf", "georgiai.ttf"].map((name) => readFileSync(path.join(dir, name), "utf8")), ["regular", "bold", "italic"]);
-  assert.equal(runner.georgiaDir(home, fonts), dir, "a second start keeps the same links");
-  assert.equal(runner.workerEnv({ dir: home, python: "python3" }, home, "bos_pat_x").WIN_FONT_DIR !== undefined, existsSync("/System/Library/Fonts/Supplemental/Georgia.ttf"));
-  assert.equal(runner.georgiaDir(home, path.join(fonts, "none")), undefined, "no Georgia on this Mac: the engine's own default stays");
+  assert.equal(worker.macGeorgia(dir, fonts), dir, "a second start keeps the same links");
+  assert.equal(worker.macGeorgia(dir, path.join(fonts, "none")), undefined, "no Georgia: the engine's own default stays");
+  assert.match(readFileSync("tools/youtube-media-worker.mjs", "utf8"), /const georgia = env\.WIN_FONT_DIR \|\| macGeorgia\(\);/, "the render PC's own folder wins");
 });
 
 test("the Mac launcher takes the OS's latest runner each time and keeps the last one offline", async () => {
