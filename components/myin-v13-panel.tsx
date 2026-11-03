@@ -21,7 +21,7 @@ import { MyinSubtitleEdit } from "./myin-subtitle-edit";
 interface Storyboard { scenes: number; model: string; at: string; metaphors: { scene: number; type: string; at: string }[]; cta: { after: string; line: string }[];
   summary: { title: string; points: string[] } | null; reasons: { metaphors: string; cta: string; summary: string };
   assets: { kind: string; file: string; url: string; source: string; license: string; use: string }[]; fuzzy: string[]; notes: string[] }
-interface MyinRun { id: string; status: string; stage: string; layout?: "short" | null; paragraphs: number; paragraphsReady: number; voiceOnPc?: boolean; lastErrorCode: string | null;
+interface MyinRun { id: string; status: string; stage: string; layout?: "short" | null; paragraphs: number; paragraphsReady: number; voiceOnPc?: boolean; lastErrorCode: string | null; waitingPhotos?: string[];
   words: { words: number; subtitleLines: number; durationSeconds: number } | null; storyboard: Storyboard | null;
   review: { decision: "confirmed" | "revise"; name: string; note: string; at: string } | null;
   assetDecisions: Record<string, { decision: "approved" | "excluded" }>; ctaReady: string | null;
@@ -56,7 +56,9 @@ function StopNote({ run }: { run: MyinRun }) {
   const stop = myinStop(run.lastErrorCode);
   if (run.status !== "blocked") return <small>한 번 멈춰서 영상 만드는 컴퓨터가 다시 하고 있어요 · {stop.why}</small>;
   const scope = myinRetryScope(run);
-  return <small className="yt-stop"><b>멈춘 이유</b> {stop.why}{scope ? <><br /><b>다시 하면</b> {scope}</> : null}<br />{stop.next}</small>;
+  const waiting = run.waitingPhotos ?? [];
+  return <small className="yt-stop"><b>멈춘 이유</b> {stop.why}{waiting.length ? <><br /><b>올릴 사진 {waiting.length}장</b> {waiting.join(" · ")}</> : null}
+    {scope && !waiting.length ? <><br /><b>다시 하면</b> {scope}</> : null}<br />{stop.next}</small>;
 }
 // 2026-10-27 대표: ③ 시안 → ④ 자료 준비(사진 확정 · 구독 대사 · 사운드) → ⑤ 최종 시안. The same stages run twice: before the drafts are
 // confirmed (clipsReview empty) the preparation is the ③ draft one, after it the ④ one.
@@ -291,7 +293,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
           <p className="yt-note">{board.reasons.summary}</p></details></>}
         <details className="yt-details"><summary>사진 후보 {board.assets.filter((a) => a.kind !== "bgm").length}개</summary>
           <ul className="yt-list">{board.assets.filter((a) => a.kind !== "bgm").map((a) => <li key={a.file}>{KIND[a.kind] ?? a.kind} · {a.file} · {a.source} · {a.license} — {a.use} <a href={a.url} target="_blank" rel="noreferrer">출처</a></li>)}</ul></details>
-        <MyinOurImages key={run.id} runId={run.id} token={accessToken} onSaved={() => void load()} onScene={(scene) => void showSheet(Math.ceil(scene / 12))} />
+        <MyinOurImages key={run.id} runId={run.id} token={accessToken} open={Boolean(run.waitingPhotos?.length)} onSaved={() => void load()} onScene={(scene) => void showSheet(Math.ceil(scene / 12))} />
         {board.fuzzy.length ? <details className="yt-details"><summary>받아쓰기와 비슷한 구간으로만 찾은 문구 {board.fuzzy.length}개</summary>
           <ul className="yt-list">{board.fuzzy.map((f) => <li key={f}>{f}</li>)}</ul></details> : null}
         {board.notes.length ? <details className="yt-details"><summary>AI가 남긴 제안 {board.notes.length}개</summary>

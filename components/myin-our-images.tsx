@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiRequest } from "@/lib/api-client";
 
 type Photo = { file: string; from: "ours" | "list" | "none"; by: string | null; scenes?: number[] };
@@ -11,7 +11,8 @@ const API = "/api/v1/content/youtube-automation/myin";
  * storyboard uses, listed by the scenes that show it. Scene lengths and the voice stay; after the finished video the run goes back to ④
  * to prepare with it, and that video stays a version until a new one is made.
  */
-export function MyinOurImages({ runId, token, onSaved, onScene }: { runId: string; token: string | null; onSaved: () => void; onScene?: (scene: number) => void }) {
+export function MyinOurImages({ runId, token, onSaved, onScene, open = false }: { runId: string; token: string | null; onSaved: () => void; onScene?: (scene: number) => void;
+  /** Opened with its list when ④ stopped for an ours_ photo nobody uploaded yet. */ open?: boolean }) {
   const [state, setState] = useState<{ open: boolean; finished?: boolean; photos: Photo[] } | null>(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -40,10 +41,12 @@ export function MyinOurImages({ runId, token, onSaved, onScene }: { runId: strin
     if (state?.finished && !window.confirm("4단계로 돌아가 이 그림으로 자료를 다시 준비해요. 지금 완성본은 예전 버전으로 남고, 새 완성본은 [전체 영상 만들기]로 만들어요. 바꿀까요?")) return;
     target.current = photo.file; picker.current?.click();
   };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- opened once, when the stop names photos to upload
+  useEffect(() => { if (open) void load(); }, [open]);
   const scenes = (photo: Photo) => photo.scenes?.length ? photo.scenes : [0];
   const rows = state ? state.photos.flatMap((photo) => scenes(photo).map((scene) => ({ scene, photo }))).sort((a, b) => a.scene - b.scene) : [];
 
-  return <details className="yt-details" onToggle={(event) => { if ((event.target as HTMLDetailsElement).open && !state) void load(); }}>
+  return <details className="yt-details" open={open || undefined} onToggle={(event) => { if ((event.target as HTMLDetailsElement).open && !state) void load(); }}>
     <summary>장면 그림 바꾸기 (우리 이미지)</summary>
     <p className="yt-note">장면에 들어간 사진을 우리가 가진 이미지(워크북 캡처, 직접 받은 인물 사진 등)로 바꿔 넣어요. 직접 찍었거나 쓸 권리를 받은 이미지만 올려 주세요. 장면 길이와 목소리는 그대로예요. 길이나 말을 바꾸려면 구성안 원고를 고쳐 음성부터 다시 만들어요.</p>
     {state ? <ul className="yt-list">{rows.map(({ scene, photo }) => <li key={`${scene}-${photo.file}`}>

@@ -114,7 +114,7 @@ const runSchema = z.object({
   // again never drops one — each stays a version to compare, and its files stay where the render PC put them.
   finals: z.array(finalSchema).max(8).optional(),
   lease: leaseSchema.optional(), attempts: z.number().int().min(0).max(20),
-  lastError: z.object({ code: z.string(), at: z.string().datetime() }).strict().optional(),
+  lastError: z.object({ code: z.string(), at: z.string().datetime(), files: z.array(z.string().max(200)).max(30).optional() }).strict().optional(),
 }).strict();
 type MyinRun = z.infer<typeof runSchema>;
 
@@ -172,7 +172,7 @@ export function presentMyinRun(record: OsRecord) {
     voiceFixes: (run.voiceFixes ?? []).map(({ memo, say, read, name }) => ({ memo, say: say ?? null, read: read ?? null, name })), voiceCheck: run.voiceCheck ?? null,
     voiceFixable: voiceFixable(record, run), voiceChanged: run.voiceChanged ?? null, subtitleEdits: run.subtitleEdits ? run.subtitleEdits.lines.length : 0,
     style: run.style ? { id: run.style.id, name: run.style.name, version: run.style.version, channel: run.style.channel } : null,
-    lastErrorCode: run.lastError?.code ?? null, createdAt: record.created_at, local: run.local ? { by: run.local.by, name: run.local.name } : null, localReady: Boolean(run.words?.voice) && !run.layout,
+    lastErrorCode: run.lastError?.code ?? null, waitingPhotos: (run.lastError?.files ?? []).filter((file) => !run.ours?.[file]), createdAt: record.created_at, local: run.local ? { by: run.local.by, name: run.local.name } : null, localReady: Boolean(run.words?.voice) && !run.layout,
     // 로건 피드백 10/26-8: when the render PC took this step, so the screen can say how long it has been working.
     workingSince: record.status === "in_progress" ? run.lease?.startedAt ?? null : null };
 }
@@ -329,10 +329,10 @@ async function claim(service: Service, stage: string, leaseMs: number, accept: (
   return null;
 }
 
-async function failed(service: Service, record: OsRecord, run: MyinRun, code: string) {
-  const next: MyinRun = { ...run, lastError: { code: code.replace(/[^A-Z0-9_]/g, "").slice(0, 60) || "MYIN_FAILED", at: new Date().toISOString() } };
+async function failed(service: Service, record: OsRecord, run: MyinRun, code: string, files?: string[]) {
+  const next: MyinRun = { ...run, lastError: { code: code.replace(/[^A-Z0-9_]/g, "").slice(0, 60) || "MYIN_FAILED", at: new Date().toISOString(), ...(files ? { files: files.slice(0, 30) } : {}) } };
   delete next.lease;
-  const final = code === "MYIN_RUN_STALE" || run.attempts >= 3;
+  const final = code === "MYIN_RUN_STALE" || code === "MYIN_OUR_IMAGE_NEEDED" || run.attempts >= 3;
   await save(service, record, final ? "blocked" : "backlog", record.stage ?? "voice_pending", next);
 }
 
@@ -811,6 +811,10 @@ export async function claimMyinPrep(service: Service = createServiceSupabase(), 
     // quality), not yet approved; no CTA voice (paid). A gray 「사진 자리」 stands in only where a photo cannot be fetched.
     const draft = !run.clipsReview;
     const folders = myinPhotoFolders(story);
+    // 우리 이미지 (2026-11-03): an ours_ photo nobody uploaded stopped Logan's engine at ④ with FileNotFoundError. Say which ones instead;
+    // uploading the last of them starts the preparation again (saveMyinOurImage).
+    const waiting = draft ? [] : photoSources(run, folders).filter((photo) => photo.from === "none" && photo.file.startsWith("ours_")).map((photo) => photo.file);
+    if (waiting.length) { await failed(service, record, run, "MYIN_OUR_IMAGE_NEEDED", waiting); return { idle: true as const }; }
     const placeholders = draft ? [...folders].flatMap(([file, kinds]) => kinds.map((kind) => ({ kind, file }))) : [];
     const ours = Object.fromEntries(await Promise.all(Object.entries(run.ours ?? {}).filter(([file]) => folders.has(file))
       .map(async ([file, image]) => [file, await sign(service, OUTPUT_BUCKET, image.path)] as const)));
