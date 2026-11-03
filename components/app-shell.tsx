@@ -23,7 +23,8 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import type { PrefetchKind } from "next/dist/client/components/router-reducer/router-reducer-types";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { findPage, findStage, NAV_STAGES } from "@/lib/navigation";
 import { groupSidebarStages, restoreSidebarGroups, toggleSidebarGroup } from "@/lib/sidebar-navigation";
@@ -56,11 +57,13 @@ function Initials({ name }: { name: string }) {
 }
 
 const PLATFORM_GROUP = { "yt-longform": "longform", "yt-short": "short", "yt-ad": "ad", "yt-card": "card" } as const;
+// Set once per page load by the menu warm-up below.
+let warmStarted = false;
 const SIDEBAR_STAGE_IDS = [YOUTUBE_V1_CEO_STAGE.id, ...NAV_STAGES.map(item => item.id), ...youtubeV1Stages(NAV_STAGES).map(item => item.id)];
 export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, youtubeV1Mode = "off" }: { children: React.ReactNode; hrEnabled?: boolean; teamV1Enabled?: boolean; youtubeV1Mode?: YoutubeV1Mode }) {
   // The server owns the rollout flag; no environment values are read in the browser.
   const youtubeV1Enabled = useYoutubeV1Access(youtubeV1Mode);
-  const pathname = usePathname();
+  const pathname = usePathname(), router = useRouter();
   const params = useSearchParams();
   const navigationPath = `${pathname}?${params.toString()}`;
   const stage = useMemo(() => findStage(navigationPath), [navigationPath]);
@@ -175,6 +178,24 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
       document.head.appendChild(sheet);
     }
   }, []);
+
+  // Right after a deploy each menu's new code comes from a far server the first time it is asked for (a 153 KB file took
+  // 1.6 s on 11-03). Once per deployment, a few seconds after the menu is known, ask for each menu's first page so its
+  // code is in this browser, and on the nearby server for colleagues, before anyone clicks.
+  // The timer is not cleared: the shell may be hidden for a moment while a page loads, and a late prefetch is harmless.
+  const warmStages = useRef(visibleStages);
+  warmStages.current = visibleStages;
+  const warmFor = menuAccess.loading ? null : profile?.id;
+  useEffect(() => {
+    if (!warmFor || warmStarted) return;
+    warmStarted = true;
+    const deployment = /[?&]dpl=([^&]+)/.exec(document.querySelector<HTMLScriptElement>('script[src*="dpl="]')?.src ?? "")?.[1] ?? "local";
+    try { if (localStorage.getItem("brandy-os-warmed") === deployment) return; } catch { return; }
+    window.setTimeout(() => {
+      try { localStorage.setItem("brandy-os-warmed", deployment); } catch { /* the next load tries again */ }
+      for (const stage of warmStages.current) { const href = stage.pages[0]?.href; if (href && href !== window.location.pathname) router.prefetch(href, { kind: "full" as PrefetchKind }); }
+    }, 3000);
+  }, [warmFor, router]);
 
   useEffect(() => {
     const savedTheme = document.documentElement.dataset.theme;
