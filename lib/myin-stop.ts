@@ -1,6 +1,6 @@
 // 멈춘 곳부터 다시 하기 (유쓰 요청 3/8, 2026-11-02): what a v13 run's stop code means in plain words, whether pressing again can help,
 // and what the existing 다시 하기 button redoes and keeps. The run keeps every finished step; a changed 원고 is a new run (MYIN_RUN_STALE).
-type Stop = { why: string; again: boolean };
+type Stop = { why: string; again: boolean; next?: string };
 const NETWORK: Stop = { why: "OS 저장소와 주고받다 잠깐 끊겼어요.", again: true };
 const LOST: Stop = { why: "영상 만드는 컴퓨터가 만든 결과 파일이 OS에 들어오지 않았어요.", again: true };
 export const MYIN_STOPS: Record<string, Stop> = {
@@ -17,6 +17,8 @@ export const MYIN_STOPS: Record<string, Stop> = {
   MYIN_VOICE_MISMATCH: { why: "내 컴퓨터가 받은 음성이 영상 만드는 컴퓨터의 것과 달라요. 영상 만드는 컴퓨터로 보내 주세요.", again: false },
   MYIN_WORK_MISSING: { why: "이 영상을 시작한 작업 폴더가 그 컴퓨터에 없어요.", again: false },
   MYIN_LOUDNESS_UNKNOWN: { why: "완성 영상의 음량 검사가 돌지 않았어요.", again: true },
+  MYIN_OUR_IMAGE_NEEDED: { why: "「우리 이미지」로 올려야 하는 사진이 아직 없어요.", again: false,
+    next: "아래 「장면 그림 바꾸기 (우리 이미지)」에서 「받을 곳 없음」 사진을 올리면 자료 준비가 저절로 다시 시작돼요." },
   MYIN_PREP_ASSETS: { why: "자동으로 받을 수 없는 사진이 있어요. 「우리 이미지」로 올리거나 기획표를 수정 요청해 주세요.", again: false },
   MYIN_STORYBOARD_MISSING: { why: "기획표 파일을 찾지 못했어요. 기획표를 다시 받아 주세요.", again: false },
   MYIN_VOICE_FAILED: { why: "목소리를 만드는 곳(Fish)에서 실패했어요.", again: true },
@@ -29,7 +31,7 @@ export const MYIN_STOPS: Record<string, Stop> = {
 export function myinStop(code: string | null) {
   const stop = code ? MYIN_STOPS[code] : undefined;
   if (!stop) return { why: "멈춘 이유가 분명하지 않아요(확인 필요).", next: "한 번 다시 해 보고, 또 멈추면 OS 담당자에게 알려 주세요." };
-  return { why: stop.why, next: stop.again ? "다시 하면 이어서 해요. 같은 이유로 또 멈추면 OS 담당자에게 알려 주세요." : "다시 하기 전에 OS 담당자에게 알려 주세요." };
+  return { why: stop.why, next: stop.next ?? (stop.again ? "다시 하면 이어서 해요. 같은 이유로 또 멈추면 OS 담당자에게 알려 주세요." : "다시 하기 전에 OS 담당자에게 알려 주세요.") };
 }
 
 /** What 다시 하기 redoes from a stopped stage, and what it keeps. */
