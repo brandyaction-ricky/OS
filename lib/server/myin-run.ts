@@ -4,6 +4,7 @@ import { ApiError } from "@/lib/http";
 import { myinBreathText, myinCleanScript, myinRunMatchesScript, myinScriptMarkdown } from "@/lib/myin-script";
 import { placeFilter } from "@/lib/myin-local";
 import { changedMaterials, type MyinMaterials } from "@/lib/myin-materials";
+import { planVoiceFix } from "@/lib/myin-voice-plan";
 import { applySubtitleEdits, subtitleIssues, subtitleLines, subtitleTextProblem } from "@/lib/myin-subtitles";
 import { applyMyinSoundPlan, MYIN_METAPHOR_TYPES, myinDriftPairs, myinOnlySoundChanged, myinPhotoFetchUrl, myinPhotoFolders, myinPrepPhotos, myinSoundIssues, myinSoundPlan, myinStoryboardSchema, type MyinSoundPlan } from "@/lib/myin-storyboard";
 import type { OsRecord } from "@/lib/record-types";
@@ -803,10 +804,28 @@ export const myinVoiceFixSchema = z.object({ memo: z.string().trim().min(1).max(
 const MYIN_VOICE_FIX_SINCE = "2026-10-30T06:46:00Z";
 const voiceFixable = (record: Pick<OsRecord, "created_at">, run: MyinRun) => Boolean(run.voiceOn) && !run.layout && Date.parse(record.created_at) >= Date.parse(MYIN_VOICE_FIX_SINCE);
 /** Stage 1's memos go to the render PC together: it redoes those sentences only and transcribes again (words_pending → words_ready). */
-export async function requestMyinVoiceFix(actor: RequestActor, runId: string, fixes: z.infer<typeof myinVoiceFixSchema>[]) {
+/** Stage 1's sentences with their voice times, from his voice_audit in the words bundle (none for a voice made before it). */
+async function voiceSentences(service: Service, run: MyinRun) {
+  const { data } = run.words ? await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).download(run.words.path) : { data: null };
+  const rows = z.array(auditRow).safeParse(data ? (JSON.parse(await data.text()) as { audit?: unknown }).audit : undefined);
+  return rows.success ? rows.data.map((row) => ({ at: row.시각, text: row.문장 })) : [];
+}
+
+/** 음성 고치기 범위 (0dfd9a37 보완 ①): what the memos would make again, before anything is sent or paid. Reading it changes nothing. */
+export async function myinVoiceFixPlan(actor: RequestActor, runId: string, fixes: z.infer<typeof myinVoiceFixSchema>[]) {
+  const { run } = await visibleRun(actor, runId);
+  const sentences = await voiceSentences(createServiceSupabase(), run);
+  return { ...planVoiceFix(fixes, sentences), sentences: sentences.length, final: Boolean(run.final) };
+}
+
+export async function requestMyinVoiceFix(actor: RequestActor, runId: string, memos: z.infer<typeof myinVoiceFixSchema>[]) {
   const service = createServiceSupabase();
   const { record, run } = await visibleRun(actor, runId);
   await assertCurrent(service, run);
+  // Memos at the same sentence go as one fix (made and paid once); two different 읽는 글 or 발음 for one sentence are settled first.
+  const plan = planVoiceFix(memos, await voiceSentences(service, run));
+  if (plan.conflicts.length) throw new ApiError(400, "MYIN_VOICE_FIX_CONFLICT", `같은 문장에 읽는 글이나 발음이 둘 이상이에요. 하나만 남겨 주세요: ${plan.conflicts[0].join(" / ").slice(0, 200)}`);
+  const fixes = plan.fixes;
   // Stage 1's memos before the storyboard; 최종 검토's (video: true) once the full video exists, from ④ or after it.
   const video = fixes.some((fix) => fix.video);
   if (video ? !["final_ready", "prep_ready"].includes(record.stage ?? "") || !run.final : record.stage !== "words_ready")

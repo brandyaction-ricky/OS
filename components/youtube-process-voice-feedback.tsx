@@ -5,6 +5,7 @@ import { apiRequest } from "@/lib/api-client";
 import { feedbackClosed, voiceFeedback } from "@/lib/youtube-process/feedback";
 import { stepHref } from "@/lib/youtube-process/project";
 import { useCostConfirm, useCostModels, voiceEstimate } from "./cost-notice";
+import { askVoicePlan, planText } from "./myin-voice-check";
 import type { YpFeedbackView, YpFinalView } from "./youtube-process-data";
 
 interface VoiceRun { id: string; stage: string; voiceFixable?: boolean; voiceFixes?: { memo: string }[]; voiceChanged?: { at: string; count: number } | null; final?: { at: string } | null }
@@ -38,13 +39,17 @@ export function VoiceFeedbackBox({ projectId, final, items, token, onSeek }: {
   const picked = voice.filter(item => !off.has(item.id));
   const at = (item: YpFeedbackView) => item.t ?? item.range?.[0] ?? 0;
   const send = async () => {
-    const ok = await cost.confirm({ model: myinVoice, amount: voiceEstimate("가".repeat(picked.length * 120), myinVoice).krw,
-      detail: `${picked.length}곳 · 문장마다 두 번 만들어 더 나은 것을 골라요`, ok: "확인하고 다시 만들기" });
+    const fixes = picked.map(item => ({ memo: `${fmt(at(item))} ${item.text}`.slice(0, 300), video: true as const }));
+    // 음성 고치기 범위 (0dfd9a37 보완 ①): feedback at the same second is one fix, made and paid once.
+    const plan = await askVoicePlan(token, run.id, fixes).catch(() => null);
+    const text = plan ? planText(plan) : "가".repeat(fixes.length * 120);
+    const ok = await cost.confirm({ model: myinVoice, amount: voiceEstimate(`${text}${text}`, myinVoice).krw,
+      detail: `${plan?.fixes.length ?? fixes.length}곳${plan && plan.fixes.length < fixes.length ? "(같은 곳 피드백은 하나로)" : ""} · 그 문장만 두 번 만들어 더 나은 것을 골라요 · 끝나면 전체 영상을 다시 만들어야 새 음성이 들어가요 · 예상 금액`, ok: "확인하고 다시 만들기" });
     if (!ok) return;
     setBusy(true); setError("");
     try {
       const result = await apiRequest<{ run: VoiceRun }>("/api/v1/content/youtube-automation/myin", { method: "PATCH", token,
-        body: JSON.stringify({ action: "voice_fix", runId: run.id, fixes: picked.map(item => ({ memo: `${fmt(at(item))} ${item.text}`.slice(0, 300), video: true })) }) });
+        body: JSON.stringify({ action: "voice_fix", runId: run.id, fixes }) });
       setRun(result.run);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "보내지 못했어요."); } finally { setBusy(false); }
   };

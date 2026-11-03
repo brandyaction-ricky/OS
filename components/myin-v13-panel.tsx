@@ -283,7 +283,8 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
         {!run.localReady ? <small>이 영상의 음성은 영상 만드는 컴퓨터가 OS에 올린 뒤 받을 수 있어요.</small> : null}
       </div> : null}
       {run?.words && run.voiceOnPc && !short ? <MyinVoiceCheck key={`${run.id}-${run.stage}-${run.voiceCheck?.at ?? ""}`} runId={run.id} stage={run.stage} fixable={Boolean(run.voiceFixable)} pending={run.voiceFixes ?? []} check={run.voiceCheck ?? null} token={accessToken} onChanged={load}
-        askCost={(sentences) => cost.confirm({ model: myinVoice, amount: voiceEstimate("가".repeat(sentences * 120), myinVoice).krw, detail: `문장 ${sentences}개 · 문장마다 두 번 만들어 더 나은 것을 골라요`, ok: "확인하고 다시 만들기" })} /> : null}
+        askCost={(text, sentences) => cost.confirm({ model: myinVoice, amount: voiceEstimate(`${text}${text}`, myinVoice).krw,
+          detail: `문장 ${sentences}개 · ${voiceEstimate(text, myinVoice).chars.toLocaleString("ko-KR")}자를 두 번 만들어 더 나은 것을 골라요 · 예상 금액(실제는 Fish 사용량)`, ok: "확인하고 다시 만들기" })} /> : null}
       {run?.words ? <details className="yt-details" onToggle={(event) => { if ((event.target as HTMLDetailsElement).open && !qc) void showQc(); }}>
         <summary>자막 검사표 보기</summary>
         <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, maxHeight: 360, overflow: "auto", margin: 0 }}>{qc || "불러오는 중…"}</pre>
