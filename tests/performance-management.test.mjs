@@ -66,7 +66,7 @@ test("performance QA polish covers empty states, units, terminology and bad rout
     read("components/performance-workspaces.tsx"),
     read("components/ad-performance-workspace.tsx"),
     read("components/growth-dashboard.tsx"),
-    read("app/(os)/[stage]/[page]/page.tsx"),
+    Promise.all(["app/(os)/[stage]/[page]/page.tsx","app/(os)/content/[page]/page.tsx","app/(os)/automation/[page]/page.tsx"].map(file=>read(file))).then(parts=>parts.join("\n")),
   ]);
   assert.match(revenue, /아직 입력된 KPI가 없습니다/);
   assert.match(revenue, /아직 연결된 관리자 링크가 없습니다/);

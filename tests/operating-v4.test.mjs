@@ -7,7 +7,7 @@ const read = (file) => readFile(new URL(`../${file}`, import.meta.url), "utf8");
 test("retired advertising UI retains its workspace and read-only integration", async () => {
   const [navigation, router, workspace] = await Promise.all([
     read("lib/navigation.ts"),
-    Promise.all([read("app/(os)/[stage]/[page]/page.tsx"),read("components/workspace-tab-hub.tsx"),read("lib/workspace-tabs.ts")]).then(parts=>parts.join("\n")),
+    Promise.all([Promise.all(["app/(os)/[stage]/[page]/page.tsx","app/(os)/content/[page]/page.tsx","app/(os)/automation/[page]/page.tsx"].map(file=>read(file))).then(parts=>parts.join("\n")),read("components/workspace-tab-hub.tsx"),read("lib/workspace-tabs.ts")]).then(parts=>parts.join("\n")),
     read("components/ad-performance-workspace.tsx"),
   ]);
   assert.doesNotMatch(navigation, /href: "\/performance\/ads"/);

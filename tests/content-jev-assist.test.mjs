@@ -71,7 +71,7 @@ test("provider adapter returns scores as advisory only and never includes the se
 
 test("route is opt-in, authenticated, RLS scoped and has no write or broad DEV gate", async () => {
   const route = await readFile(new URL("../app/api/v1/content/jev-assist/route.ts", import.meta.url), "utf8");
-  const page = await readFile(new URL("../app/(os)/[stage]/[page]/page.tsx", import.meta.url), "utf8");
+  const page = await Promise.all(["app/(os)/[stage]/[page]/page.tsx","app/(os)/content/[page]/page.tsx","app/(os)/automation/[page]/page.tsx"].map(file=>readFile(new URL(`../${file}`, import.meta.url), "utf8"))).then(parts=>parts.join("\n"));
   const ui = await readFile(new URL("../components/content-jev-assist.tsx", import.meta.url), "utf8");
   assert.match(route, /if \(!canUseContentJevAssist\(process\.env\)\)/);
   assert.match(route, /allowAgent: false/);

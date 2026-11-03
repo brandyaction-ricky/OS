@@ -7,7 +7,7 @@ const read = (file) => readFile(new URL(`../${file}`, import.meta.url), "utf8");
 test("organization enters through meetings and keeps the legacy redirect", async () => {
   const [navigation, route] = await Promise.all([
     read("lib/navigation.ts"),
-    read("app/(os)/[stage]/[page]/page.tsx"),
+    Promise.all(["app/(os)/[stage]/[page]/page.tsx","app/(os)/content/[page]/page.tsx","app/(os)/automation/[page]/page.tsx"].map(file=>read(file))).then(parts=>parts.join("\n")),
   ]);
   assert.match(
     navigation,

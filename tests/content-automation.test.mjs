@@ -19,7 +19,7 @@ test("internal automation screens do not depend on an external contents-auto URL
   const [shell, navigation, page] = await Promise.all([
     read("components/app-shell.tsx"),
     read("lib/navigation.ts"),
-    read("app/(os)/[stage]/[page]/page.tsx"),
+    Promise.all(["app/(os)/[stage]/[page]/page.tsx","app/(os)/content/[page]/page.tsx","app/(os)/automation/[page]/page.tsx"].map(file=>read(file))).then(parts=>parts.join("\n")),
   ]);
   assert.doesNotMatch(shell, /NEXT_PUBLIC_CONTENTS_AUTO_LINKS|external-app-link/);
   for (const route of ["dashboard", "topics", "cardnews", "shorts", "threads", "review", "calendar", "performance", "requests", "settings"]) {
@@ -67,4 +67,9 @@ test("saved automation settings drive generation records, reminder lead time, co
   assert.match(sync, /publishLeadMinutes/);
   assert.match(cron, /settings\.publishLeadMinutes/);
   assert.match(cron, /settings\.enabledChannels/);
+});
+
+test("content and automation screens are their own download, not part of the other menus' page", async () => {
+  const generic = await read("app/(os)/[stage]/[page]/page.tsx");
+  assert.doesNotMatch(generic, /youtube-process-workspace|content-automation-v07|content-step-workspace|content-production-workspace|knowledge-graph-workspace/);
 });

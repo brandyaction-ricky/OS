@@ -1,10 +1,6 @@
 import {WorkspaceTabHub} from "@/components/workspace-tab-hub";
 import {AccountWorkspace} from "@/components/account-workspace";
-import {ContentProductionWorkspace} from "@/components/content-production-workspace";
 import {retiredRoute} from "@/lib/final-routes";
-import {ContentStepWorkspace} from "@/components/content-step-workspace";
-import { ContentVideoWorkspace } from "@/components/content-video-workspace";
-import {KnowledgeTabs} from "@/components/knowledge-tabs";
 import {AiOperationsWorkspace} from "@/components/organization-v3-workspaces";
 import { OperationsWorkspace } from "@/components/operations-workspace";
 import type { Metadata } from "next";
@@ -13,27 +9,15 @@ import { MembersWorkspace } from "@/components/members-workspace";
 import { AuditWorkspace } from "@/components/audit-workspace";
 import { redirect } from "next/navigation";
 import { MeetingWorkspace } from "@/components/meeting-workspace";
-import { PublishingCalendarWorkspace } from "@/components/publishing-calendar-workspace";
 import { SystemStatusWorkspace } from "@/components/system-status-workspace";
 import { TasksWorkspace } from "@/components/tasks-workspace";
-import { ContentRadarWorkspace as ContentTopicsWorkspace } from "@/components/content-radar-workspace";
-import { ContentPerformanceDashboard as ContentPerformanceWorkspace } from "@/components/content-performance-dashboard";
 import { SettingsWorkspace } from "@/components/settings-workspaces";
-import { KnowledgeGraphWorkspace } from "@/components/knowledge-graph-workspace";
 import { ProjectHubWorkspace } from "@/components/project-hub-workspace";
 import { findPage, NAV_STAGES } from "@/lib/navigation";
 import { WORKSPACE_CONFIGS } from "@/lib/workspace-config";
-import { canUseContentPlanningHandoff } from "@/lib/content-planning-handoff-gate";
-import { canUseContentJevAssist } from "@/lib/content-jev-assist-gate";
-import { canUseContentTopicJevAssist } from "@/lib/content-topic-jev-assist-gate";
-import { ContentAutomationV07 } from "@/components/content-automation-v07";
 import { legacyTeamMenusHidden } from "@/lib/server/hr-legacy-menus";
 import { teamV1Enabled } from "@/lib/team/gate";
 import { TeamWorkspaceV1 } from "@/components/team/team-workspace-v1";
-import { YoutubeProcessWorkspace } from "@/components/youtube-process-workspace";
-import { youtubeV1Enabled, youtubeV1Mode } from "@/lib/youtube-process/gate";
-import { YoutubeV1Switch } from "@/components/use-youtube-confirm";
-import { youtubeV1Screen } from "@/lib/youtube-process/navigation";
 
 type GenericPageProps = { params: Promise<{ stage: string; page: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> };
 
@@ -53,9 +37,6 @@ export default async function GenericPage({ params, searchParams }: GenericPageP
   }
   const legacy = retiredRoute(href);
   if(legacy)redirect(legacy);
-  const contentPlanningHandoffEnabled = canUseContentPlanningHandoff(process.env);
-  const contentJevAssistEnabled = canUseContentJevAssist(process.env);
-  const contentTopicJevAssistEnabled = canUseContentTopicJevAssist(process.env);
   const stage = NAV_STAGES.find((item) => item.pages.some((page) => page.href === href));
   const page = stage?.pages.find((item) => item.href === href);
   if (href === "/organization/people") {
@@ -63,13 +44,6 @@ export default async function GenericPage({ params, searchParams }: GenericPageP
     return <TeamWorkspaceV1 section="people" />;
   }
   if (teamEnabled && href === "/organization/meetings") return <TeamWorkspaceV1 section="meetings" />;
-  const youtubeScreen = youtubeV1Screen(href);
-  if (youtubeScreen) {
-    if (!youtubeV1Enabled()) redirect("/content/topics");
-    return <YoutubeProcessWorkspace screen={youtubeScreen} />;
-  }
-  // With v1 on, 쇼츠 is a step of the project (the earlier 숏폼 편집 stays at this address when it is off).
-  if (href === "/content/shorts" && youtubeV1Enabled()) return <YoutubeV1Switch mode={youtubeV1Mode()} v1={<YoutubeProcessWorkspace screen="shorts" />} old={<ContentStepWorkspace step="shorts" />} />;
   if (teamEnabled && href === "/organization/tasks") return <TeamWorkspaceV1 section="tasks" />;
   if (teamEnabled && href === "/organization/schedule") return <TeamWorkspaceV1 section="schedule" />;
   if (teamEnabled && href === "/home/decisions") {
@@ -85,40 +59,9 @@ export default async function GenericPage({ params, searchParams }: GenericPageP
   if (href === "/organization/meetings") return <MeetingWorkspace />;
   if (href === "/organization/tasks") return <TasksWorkspace />;
   if (href === "/organization/agents") return <AiOperationsWorkspace />;
-  if(href==="/content/production") return <ContentProductionWorkspace showPlanningHandoff={contentPlanningHandoffEnabled} showJevAssist={contentJevAssistEnabled} showTopicJevAssist={contentTopicJevAssistEnabled}/>;
   if(href==="/organization/schedule")return <WorkspaceTabHub hub="schedule"/>;
   if(href==="/organization/leave")return <WorkspaceTabHub hub="schedule" initialTab="leave"/>;
-  // Owner decision 2026-10-31 (스타일 점검 E5): with v1 on for everyone, the old step screens that v1 fully replaced open the v1 screen
-  // that does the same job. 발행·업로드 and 유튜브 관리 stay: the home cells still use their 게시 확인 · 댓글.
-  const replaced: Record<string, string> = { "/content/topics": "/content/projects?view=discover", "/content/scripts": "/content/projects", "/content/video": "/content/projects", "/content/packages": "/content/projects" };
-  if (replaced[href] && youtubeV1Mode() === "all") redirect(replaced[href]);
-  if (href === "/content/topics") return <ContentTopicsWorkspace showPlanningHandoff={contentPlanningHandoffEnabled} showTopicJevAssist={contentTopicJevAssistEnabled} />;
-  if (href === "/content/scripts") return <ContentStepWorkspace step="scripts" showPlanningHandoff={contentPlanningHandoffEnabled} />;
-  if (href === "/content/video") return <ContentVideoWorkspace />;
-  if (href === "/content/packages") return <ContentStepWorkspace step="packages" showJevAssist={contentJevAssistEnabled} />;
-  if (href === "/content/shorts") return <ContentStepWorkspace step="shorts" />;
-  if (href === "/content/youtube") return <ContentStepWorkspace step="youtube" />;
-  if (href === "/content/publishing") return <ContentStepWorkspace step="youtube" youtubeView="publish" />;
-  if (href === "/content/automation") redirect("/automation/topics");
-  if (href === "/content/review") redirect("/automation/review");
-  if (href === "/content/calendar") return <PublishingCalendarWorkspace />;
-  if (href === "/content/performance") return youtubeV1Enabled() ? <YoutubeV1Switch mode={youtubeV1Mode()} v1={<YoutubeProcessWorkspace screen="performance" />} old={<ContentPerformanceWorkspace youtubeOnly />} /> : <ContentPerformanceWorkspace youtubeOnly />;
-  if (href === "/content/comments") redirect("/automation/performance?tab=comments");
-  if (href === "/automation/topics") return <ContentAutomationV07 page="topics" />;
-  if (href === "/automation/references") return <ContentAutomationV07 page="references" />;
-  if (href === "/automation/cardnews") return <ContentAutomationV07 page="cardnews" />;
-  if (href === "/automation/shorts") return <ContentAutomationV07 page="shorts" />;
-  if (href === "/automation/threads") return <ContentAutomationV07 page="threads" />;
-  if (href === "/automation/dashboard") return <ContentAutomationV07 page="dashboard" />;
-  if (href === "/automation/review") return <ContentAutomationV07 page="review" />;
-  if (href === "/automation/requests") return <ContentAutomationV07 page="requests" />;
-  if (href === "/automation/library") redirect("/automation/dashboard?moved=library");
-  if (href === "/automation/calendar") return <ContentAutomationV07 page="calendar" />;
-  if (href === "/automation/performance") return <ContentAutomationV07 page="performance" />;
-  if (href === "/automation/templates") redirect("/automation/settings?tab=templates");
-  if (href === "/automation/settings") return <ContentAutomationV07 page="settings" />;
   if (href === "/knowledge/development") return <ProjectHubWorkspace />;
-  if (href === "/knowledge/graph") return <><KnowledgeTabs connections /><KnowledgeGraphWorkspace /></>;
   if (href === "/performance/connections") redirect("/settings/connections");
   if (href === "/settings/monitoring") return <SystemStatusWorkspace tab="monitoring" />;
   if (href === "/settings/connections") return <SystemStatusWorkspace />;
