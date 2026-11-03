@@ -29,6 +29,7 @@ interface MyinRun { id: string; status: string; stage: string; layout?: "short" 
   clips: { name: string; label: string }[] | null; clipsReview: { name: string; note: string; at: string } | null;
   final: { bytes: number; durationSeconds: number; lufs: number; peak: number; at: string } | null; scriptChanged?: boolean; workingSince?: string | null;
   sound: { report: string; at: string; edited?: { name: string; at: string } } | null; local: { by: string; name: string } | null; localFinish?: { by: string; name: string } | null; localReady: boolean;
+  clipsStale?: string[] | null; photoCredits?: Record<string, { source: string; license: string; url: string | null }>;
   voiceFixes?: MyinVoiceFixView[]; voiceCheck?: MyinVoiceCheckView | null; voiceFixable?: boolean; voiceChanged?: { at: string; count: number } | null;
   style?: { id: string; name: string; version: number; channel: string } | null }
 interface Outputs { clips: { label: string; url: string | null }[]; video: string | null; summary: string | null; deck: string | null; srt: string | null }
@@ -356,9 +357,11 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       {run?.stage === "clips_review" && !materials ? <div className="yt-note">
         <strong>로건, 유쓰 확인</strong>
         <label>메모 (수정 요청할 때는 필수)<textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="예) 오프닝 좋음 · 7번 빙산 장면 글자가 넘쳐요" /></label>
+        {run.clipsStale?.length ? <div className="yt-actions"><p className="yt-note yt-warn">미리보기를 만든 뒤 {run.clipsStale.join(" · ")}이(가) 바뀌었어요. 지금 미리보기는 옛 재료라서 확인할 수 없어요.</p>
+          <button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => void act("prep", () => post("/myin", "PATCH", { action: "prepare", runId: run.id }))}>{busy === "prep" ? "시작하는 중…" : "미리보기 다시 만들기"}</button></div> : null}
         {short ? null : <DraftPlacePicker label="자료 준비 · 전체 영상을 만들 곳" value={place} onChange={setPlace} status={localPc} ready={run.localReady} token={accessToken} onConnected={() => void reloadLocal()} />}
         {/* 시안 확인 = 사진 허락: the photos and the 구독 대사 voice (paid) start at once, so ask once and offer 수정 요청 beside it. */}
-        <div className="yt-actions"><button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void (async () => {
+        <div className="yt-actions"><button type="button" className="primary-button" disabled={Boolean(busy) || Boolean(run.clipsStale?.length)} onClick={() => void (async () => {
           if (!window.confirm(short ? "이 미리보기로 확정하고 숏폼 전체 영상을 만들어요. 시작할까요?" : "이 미리보기로 확정하고 4단계 자료 준비를 시작해요. 미리보기의 사진을 확정하고 구독 대사 음성을 만들어요. 시작할까요?")) return;
           if (board && !await askVoice(board.cta.map((c) => c.line).join("\n"), "이미 만든 문장은 다시 들지 않아요", Boolean(run.voiceOnPc))) return;
           await act("clips", () => post("/myin", "PATCH", { action: "clips_ok", runId: run.id, note, place: short ? "pc" : place }));
@@ -375,8 +378,8 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
     <Step index={3} state={step4} title={short ? "사진 확정" : "자료 준비 (사진 · 구독 대사 · 사운드)"} idBase="myin-step">
       <p>{short ? "미리보기를 확인하면 사진을 확정하고 바로 전체 영상을 만들어요. 숏폼은 음악 없이 목소리만 들어가요." : "미리보기 확인을 누르면 자동으로 시작합니다. 미리보기의 사진을 확정하고 구독 대사 음성을 만든 뒤 고른 곳(영상 만드는 컴퓨터 또는 내 컴퓨터)이 다시 점검합니다. 끝나면 아래에서 음악 · 앰비언스 · 효과음을 확인하고 고친 뒤 [전체 영상 만들기]를 누릅니다. 전체 영상도 같은 곳에서 만들어요."}</p>
       {run && finishWaiting && run.stage !== "final_pending" ? placeButtons(run) : null}
-      {materials && assetsUsed.length ? <ul className="yt-list">{assetsUsed.map((a) =>
-        <li key={a.file}>{KIND[a.kind] ?? a.kind} · {a.file} · {a.source} <a href={a.url} target="_blank" rel="noreferrer">출처</a></li>)}</ul> : null}
+      {materials && assetsUsed.length ? <ul className="yt-list">{assetsUsed.map((a) => { const swap = run?.photoCredits?.[a.file], url = swap ? swap.url : a.url;
+        return <li key={a.file}>{KIND[a.kind] ?? a.kind} · {a.file} · {swap ? `${swap.source}${swap.license ? ` · ${swap.license}` : ""} (바꾼 사진)` : a.source}{url ? <> <a href={url} target="_blank" rel="noreferrer">출처</a></> : null}</li>; })}</ul> : null}
       {run && materials && ["cta_pending", "prep_pending"].includes(run.stage) ? <div className="yt-run"><div className="yt-run-head">
         <RunState run={run} />
         {run.ctaReady ? <small>구독 대사 {run.ctaReady}</small> : null}</div></div> : null}

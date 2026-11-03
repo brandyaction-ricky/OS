@@ -101,7 +101,9 @@ const runSchema = z.object({
     path: z.string().optional(), bytes: z.number().int().positive().optional() }).strict()).optional(),
   // 우리 이미지 (2026-10-28 대표 · 로건): a photo file the storyboard names, uploaded by staff (a workbook capture, a portrait the person
   // gave us). It goes to the PC that prepares in place of a listed photo of that name; uploading it is the approval.
-  ours: z.record(z.string(), z.object({ path: z.string(), bytes: z.number().int().positive(), by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict()).optional(),
+  // credit (사진 후보, 2026-11-03): a candidate photo kept as ours, with the Unsplash · 위키미디어 credit it needs in the description.
+  ours: z.record(z.string(), z.object({ path: z.string(), bytes: z.number().int().positive(), by: z.string().uuid(), name: z.string(), at: z.string().datetime(),
+    credit: z.object({ source: z.string().max(300), license: z.string().max(120), url: z.string().url().max(600) }).strict().optional() }).strict()).optional(),
   // `pc`: a line the render PC made with Logan's stage_cta for a member's own computer (a finished file, used as it is).
   cta: z.array(z.object({ index: z.number().int().min(0), textHash: hex, status: z.enum(["pending", "ready"]), path: z.string().optional(), pc: z.literal(true).optional() }).strict()).optional(),
   prepared: z.object({ path: z.string(), misses: z.array(z.string()), sheets: z.array(z.string()), credits: z.array(z.string()), at: z.string().datetime(), used: materialsSchema.optional() }).strict().optional(),
@@ -184,7 +186,9 @@ export function presentMyinRun(record: OsRecord) {
     voiceFixable: voiceFixable(record, run), voiceChanged: run.voiceChanged ?? null, subtitleEdits: run.subtitleEdits ? run.subtitleEdits.lines.length : 0,
     style: run.style ? { id: run.style.id, name: run.style.name, version: run.style.version, channel: run.style.channel } : null,
     lastErrorCode: run.lastError?.code ?? null, waitingPhotos: (run.lastError?.files ?? []).filter((file) => !run.ours?.[file]), createdAt: record.created_at, local: run.local ? { by: run.local.by, name: run.local.name } : null,
-    localFinish: run.localFinish ? { by: run.localFinish.by, name: run.localFinish.name } : null, localReady: Boolean(run.words?.voice) && !run.layout,
+    localFinish: run.localFinish ? { by: run.localFinish.by, name: run.localFinish.name } : null, clipsStale: previewStale(run),
+    photoCredits: Object.fromEntries(Object.entries(run.ours ?? {}).map(([file, image]) => [file, image.credit ? { source: image.credit.source, license: image.credit.license, url: image.credit.url }
+      : { source: `우리 이미지 · ${image.name}`, license: "", url: null }])), localReady: Boolean(run.words?.voice) && !run.layout,
     // 로건 피드백 10/26-8: when the render PC took this step, so the screen can say how long it has been working.
     workingSince: record.status === "in_progress" ? run.lease?.startedAt ?? null : null };
 }
@@ -683,7 +687,9 @@ async function beginPrep(service: Service, record: OsRecord, run: MyinRun, by: s
 export async function startMyinPrep(actor: RequestActor, runId: string) {
   const { record, run } = await visibleRun(actor, runId);
   const restart = record.status === "blocked" && ["cta_pending", "prep_pending", "clips_pending"].includes(record.stage ?? "");
-  if ((record.stage !== "prep_ready" && !restart) || !run.storyboard || run.review?.decision !== "confirmed")
+  // A preview in review made from materials that changed since (사진 교체) is made again.
+  const stalePreview = record.stage === "clips_review" && !run.clipsReview && Boolean(previewStale(run)?.length);
+  if ((record.stage !== "prep_ready" && !restart && !stalePreview) || !run.storyboard || run.review?.decision !== "confirmed")
     throw new ApiError(409, "MYIN_PREP_NOT_OPEN", "기획표 확인이 끝난 뒤에 다시 할 수 있습니다.");
   await assertCurrent(createServiceSupabase(), run);
   // 멈춘 곳부터 (유쓰 요청 3/8): a stop while cutting the preview clips keeps the finished preparation and cuts the clips again.
@@ -863,6 +869,8 @@ const materialsKey = (run: MyinRun) => sha(JSON.stringify(materials(run)));
 /** A job's result is from other materials than the run has now (a lease from before 2026-11-03 compared our images only). */
 const staleResult = (run: MyinRun) => Boolean(run.lease?.input) && run.lease!.input !== (run.lease!.stage ? materialsKey(run) : oursKey(run));
 const changedSince = (used: MyinMaterials | undefined, run: MyinRun, sound = false) => changedMaterials(used, materials(run), sound);
+/** What makes the ③ preview in review not the one to confirm: a changed photo, storyboard, voice or style (subtitle text is checked at 최종 검토). */
+const previewStale = (run: MyinRun) => run.clips ? changedSince(run.clips.used, run)?.filter((name) => name !== "자막") ?? null : null;
 
 /** Render PC (or, with `owner`, that member's own Mac for a ③ draft): storyboard, approved files, CTA voice and where the sheets and report go. */
 export async function claimMyinPrep(service: Service = createServiceSupabase(), owner?: string, short = false) {
@@ -928,7 +936,9 @@ export async function completeMyinPrep(input: { runId: string; lease: string }, 
       sound = { report: (bundle.soundReport ?? "").slice(0, 20_000), at };
     } else sound = { report: "자동 선곡을 쓰지 않았어요. 선곡 결과에서 음악 말고 다른 칸도 바뀌어 있었어요. 음악은 기획표에 적힌 대로 깔립니다.", at };
   }
-  const credits = [...(run.storyboard?.assets ?? []).filter((a) => run.assets?.[a.file]?.decision === "approved").map((a) => `${a.file} — ${a.source} · ${a.license} · ${a.url}`),
+  // A listed photo replaced by ours is not used, so not credited; a candidate photo kept as ours brings its own credit.
+  const credits = [...(run.storyboard?.assets ?? []).filter((a) => run.assets?.[a.file]?.decision === "approved" && !run.ours?.[a.file]).map((a) => `${a.file} — ${a.source} · ${a.license} · ${a.url}`),
+    ...Object.entries(run.ours ?? {}).flatMap(([file, image]) => image.credit ? [`${file} — ${image.credit.source} · ${image.credit.license} · ${image.credit.url}`] : []),
     ...bundle.musicCredits.slice(0, 30)];
   const next: MyinRun = { ...run, storyboard, sound, attempts: 0, prepared: { path: prepBundlePath(record, run, input.lease), misses: bundle.misses.slice(0, 60),
     sheets: Array.from({ length: bundle.sheets }, (_, i) => sheetPath(record, run, input.lease, i + 1)), credits, at: new Date().toISOString() } };
@@ -990,7 +1000,7 @@ function photoSources(run: MyinRun, folders: Map<string, unknown>, scenes: Recor
   // The scene numbers (1-based, as the 점검 시트 and 장면 미리보기 name them) that show each file.
   const usedIn = (file: string) => scenes.flatMap((scene, i) => myinPhotoFolders(scene).has(file) ? [i + 1] : []);
   return [...folders.keys()].map((file) => ({ file, from: run.ours?.[file] ? "ours" as const : listed.has(file) ? "list" as const : "none" as const,
-    by: run.ours?.[file]?.name ?? null, scenes: usedIn(file) }));
+    by: run.ours?.[file]?.name ?? null, credit: run.ours?.[file]?.credit?.source ?? null, scenes: usedIn(file) }));
 }
 
 export async function myinPhotos(actor: RequestActor, runId: string) {
@@ -1009,7 +1019,7 @@ export async function myinOurImageUpload(actor: RequestActor, runId: string, fil
 
 /** The upload landed: keep it for that file. At ④ after the preparation (or a stop) it prepares again, as 「자료 준비 다시 하기」 would,
  * once no photo is left without a source, so the first of several uploads does not start one that stops at the next missing photo. */
-export async function saveMyinOurImage(actor: RequestActor, runId: string, file: string, path: string) {
+export async function saveMyinOurImage(actor: RequestActor, runId: string, file: string, path: string, credit?: NonNullable<MyinRun["ours"]>[string]["credit"]) {
   const { service, record, run, folders, open } = await ourImageRun(actor, runId, file);
   const folder = ourImageFolder(record, run), name = path.slice(folder.length + 1);
   if (!open || !path.startsWith(`${folder}/`) || name.includes("/")) throw new ApiError(400, "MYIN_OUR_IMAGE_PATH", "이미지를 다시 올려 주세요.");
@@ -1020,13 +1030,47 @@ export async function saveMyinOurImage(actor: RequestActor, runId: string, file:
     await service.storage.from(OUTPUT_BUCKET).remove([path]);
     throw new ApiError(400, "MYIN_OUR_IMAGE_SIZE", "20MB 이하 이미지만 올릴 수 있어요.");
   }
-  const next: MyinRun = { ...run, ours: { ...run.ours, [file]: { path, bytes, by: actor.id, name: actor.name, at: new Date().toISOString() } } };
+  const next: MyinRun = { ...run, ours: { ...run.ours, [file]: { path, bytes, by: actor.id, name: actor.name, at: new Date().toISOString(), ...(credit ? { credit } : {}) } } };
   // After the finished video the run goes back to ④ (as 「4단계로 돌아가기」); that video stays a version and the new one is made from here.
   const back = record.stage === "final_ready" && Boolean(run.clipsReview && run.prepared);
   const saved = await save(service, record, back ? "done" : record.status, back ? "prep_ready" : record.stage ?? "", next);
   const again = run.clipsReview && photoSources(next, folders).every((photo) => photo.from !== "none")
     && (back || record.stage === "prep_ready" || (record.status === "blocked" && ["cta_pending", "prep_pending"].includes(record.stage ?? "")));
   return again ? startMyinPrep(actor, runId) : presentMyinRun(saved);
+}
+
+/**
+ * 이 장면만 바꾸기 (유쓰 요청 2/8 보완, 2026-11-03): a photo file several scenes share gets a name of its own in one scene, which keeps
+ * showing the same picture until it is replaced; the other scenes keep the file. A shared file is never replaced for all of them silently.
+ */
+export async function separateMyinPhoto(actor: RequestActor, runId: string, file: string, scene: number) {
+  const { service, record, run, folders, scenes, open } = await ourImageRun(actor, runId, file);
+  if (!open) throw new ApiError(409, "MYIN_OUR_IMAGE_CLOSED", "전체 영상을 만드는 중이에요. 끝난 뒤에 바꿔 주세요.");
+  // A preparation at work would put back the storyboard it was handed (the ③ music match), losing the new name.
+  if (run.lease && Date.parse(run.lease.expiresAt) > Date.now()) throw new ApiError(409, "MYIN_PLACE_BUSY", "지금 만드는 중이에요. 끝난 뒤에 바꿔 주세요.");
+  const target = scenes[scene - 1];
+  if (!target || !myinPhotoFolders(target).has(file)) throw new ApiError(400, "MYIN_PHOTO_SCENE", `${scene}번 장면에는 이 사진이 없어요.`);
+  if (scenes.filter((sc) => myinPhotoFolders(sc).has(file)).length < 2) return { file, run: presentMyinRun(record) };
+  const dot = file.lastIndexOf("."), stem = dot > 0 ? file.slice(0, dot) : file, ext = dot > 0 ? file.slice(dot) : "";
+  let name = `${stem}_s${scene}${ext}`;
+  for (let n = 2; folders.has(name); n++) name = `${stem}_s${scene}_${n}${ext}`;
+  const story = await storyboardJson(service, run);
+  // The same keys myinPhotoFolders reads: a scene's photo.file, an opening act's image, a 숏폼 broll cut's file.
+  const rename = (o: unknown): void => {
+    if (Array.isArray(o)) o.forEach(rename);
+    else if (o && typeof o === "object") for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
+      if (k === "image" && v === file) (o as Record<string, unknown>)[k] = name;
+      else if ((k === "photo" || k === "broll") && v) for (const item of Array.isArray(v) ? v : [v]) if ((item as { file?: unknown })?.file === file) (item as { file: string }).file = name;
+      rename(v);
+    }
+  };
+  rename(story.scenes[scene - 1]);
+  const copyOf = <T extends { file: string }>(list: T[]) => list.flatMap((item) => item.file === file ? [item, { ...item, file: name }] : [item]);
+  if (Array.isArray(story.assets)) story.assets = copyOf(story.assets as { file: string }[]);
+  const storyboard = await putStoryboard(service, record, run, story);
+  const next: MyinRun = { ...run, storyboard: { ...storyboard, assets: copyOf(storyboard.assets) },
+    ...(run.ours?.[file] ? { ours: { ...run.ours, [name]: run.ours[file] } } : {}), ...(run.assets?.[file] ? { assets: { ...run.assets, [name]: run.assets[file] } } : {}) };
+  return { file: name, run: presentMyinRun(await save(service, record, record.status, record.stage ?? "", next)) };
 }
 
 // ── Stage 4: clips for Logan, then the full render, mix and handouts ──
@@ -1085,6 +1129,9 @@ export async function confirmMyinClips(actor: RequestActor, runId: string, note:
   const { record, run } = await visibleRun(actor, runId);
   await assertCurrent(service, run);
   if (record.stage !== "clips_review" || !run.clips) throw new ApiError(409, "MYIN_CLIPS_NOT_IN_REVIEW", "확인을 기다리는 미리보기가 없습니다.");
+  // 사진 교체 (2/8 보완): a preview made before a photo (or other material) changed is not the one to confirm.
+  const stale = previewStale(run);
+  if (stale?.length) throw new ApiError(409, "MYIN_CLIPS_STALE", `미리보기를 만든 뒤 ${stale.join(" · ")}이(가) 바뀌었어요. [미리보기 다시 만들기]로 새로 만든 뒤 확인해 주세요.`);
   const next: MyinRun = { ...run, attempts: 0, clipsReview: { by: actor.id, name: actor.name, note: note.trim().slice(0, 2000), at: new Date().toISOString() } };
   draftPlace(next, actor, place);
   retireFinal(next);

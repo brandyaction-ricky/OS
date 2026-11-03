@@ -32,6 +32,14 @@
 .linear-shell .ui-v2 .yt-step-body { display: grid; gap: 10px; }
 .linear-shell .ui-v2 .yt-clips { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-top: 8px; }
 .linear-shell .ui-v2 .yt-clips small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 사진 후보 찾기 (2026-11-03): a search line and the candidates, each with its author, source and license under it. */
+.linear-shell .ui-v2 .yt-find { display: grid; gap: 8px; margin-top: 6px; }
+.linear-shell .ui-v2 .yt-find form { display: flex; flex-wrap: wrap; gap: 6px; }
+.linear-shell .ui-v2 .yt-find input { flex: 1; min-width: 160px; }
+.linear-shell .ui-v2 .yt-candidates { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+.linear-shell .ui-v2 .yt-candidates figure { display: grid; gap: 4px; margin: 0; min-width: 0; }
+.linear-shell .ui-v2 .yt-candidates img { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; border-radius: 8px; background: var(--panel-2); }
+.linear-shell .ui-v2 .yt-candidates figcaption { display: grid; gap: 4px; justify-items: start; overflow-wrap: anywhere; }
 .linear-shell .ui-v2 .yt-step-fold > summary { cursor: pointer; color: var(--text-2); font-size: 13px; }
 .linear-shell .ui-v2 .yt-step-fold[open] > summary { margin-bottom: 10px; }
 .linear-shell .ui-v2 .yt-steps p { max-width: 760px; margin: 0; color: var(--text-2); word-break: keep-all; overflow-wrap: anywhere; }
