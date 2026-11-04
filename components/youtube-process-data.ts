@@ -131,7 +131,7 @@ export interface YpClient {
   cardSources(): Promise<CardSourceChoice[]>;
   cardCovers(ids: string[]): Promise<Record<string, CardDraft>>;
   /** The cards drawn as images now: one PNG, or every card and the caption as a ZIP. */
-  cardsFile(id: string, query: { draft?: string; slide?: number; zip?: boolean }): Promise<Blob>;
+  cardsFile(id: string, query: { draft?: string; slide?: number; zip?: boolean; upload?: number }): Promise<Blob>;
   /** 카드 그림: GPT draws one picture into the project's files; the PD puts it on a card as a photo. */
   cardDraw(id: string, input: CardDrawInput): Promise<CardPhoto>;
   /** 캐릭터 창고: the pictures 카드 그림 keeps the characters' faces from. */
@@ -240,7 +240,7 @@ function apiClient(token: string): YpClient {
     cardSources: async () => (await apiRequest<{ sources: CardSourceChoice[] }>("/api/v1/content/youtube/cards", { token })).sources,
     cardCovers: async ids => ids.length ? (await apiRequest<{ covers: Record<string, CardDraft> }>(`/api/v1/content/youtube/cards?covers=${ids.map(encodeURIComponent).join(",")}`, { token })).covers : {},
     cardsFile: async (id, query) => {
-      const params = new URLSearchParams({ ...(query.draft ? { draft: query.draft } : {}), ...(query.zip ? { zip: "1" } : { slide: String(query.slide ?? 0) }) });
+      const params = new URLSearchParams({ ...(query.draft ? { draft: query.draft } : {}), ...(query.zip ? { zip: "1", ...(query.upload ? { upload: String(query.upload) } : {}) } : { slide: String(query.slide ?? 0) }) });
       const response = await fetch(`${base}/${id}/cards?${params}`, { headers: { authorization: `Bearer ${token}` }, cache: "no-store" });
       if (!response.ok) { const body = await response.json().catch(() => null); throw new ApiRequestError(body?.error?.message ?? `이미지를 만들지 못했어요. (${response.status})`, body?.error?.code ?? "REQUEST_FAILED", response.status); }
       return response.blob();

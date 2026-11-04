@@ -101,6 +101,20 @@ test("a 웹툰 화 starts by hand and each 칸 brings its 장면 to the drawing 
   await expect(panel.getByLabel("장면 설명")).toHaveValue("밤 11시 사무실, 서윤이 모니터 앞에서 웃는다");
   await expect(panel.getByLabel("그림체")).toHaveValue("webtoon");
   await expect(page.locator(".yp-card-checks")).toContainText("1장 그림이 아직 없어요");
+  // 말풍선 꼬리 맞추기 (1화 시안): once the 칸 has its picture, a tap on the preview says where the speaker is.
+  await expect(page.getByRole("button", { name: "말풍선 꼬리 맞추기" })).toHaveCount(0);
+  await panel.getByRole("button", { name: "그리기", exact: true }).click();
+  await page.locator("dialog.cost-dlg").getByRole("button", { name: "그리기", exact: true }).click();
+  await expect(page.locator(".yp-card-big img")).toBeVisible();
+  await page.getByRole("button", { name: "말풍선 꼬리 맞추기" }).click();
+  await page.locator(".yp-card-big").click({ position: { x: 60, y: 90 } });
+  await expect(page.getByRole("button", { name: "꼬리 처음대로" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "말풍선 꼬리 맞추기" })).toHaveAttribute("aria-pressed", "false");
+  // 연재 (대표 2026-11-04): the story is not held to 10 cards and 「다음 화 나누기」 starts 2화 after the last 칸.
+  await page.getByRole("button", { name: "다음 화 나누기" }).click();
+  await expect(page.locator(".yp-card-tools b")).toHaveText("카드 9 / 100장 · 2화");
+  await expect(page.getByRole("button", { name: "7장 보기", exact: true })).toContainText("2화 표지");
+  await expect(page.locator(".yp-card-checks")).toContainText("2화에 칸이 없어요");
 });
 
 test("the three diagram formats can be started by hand", async ({ page }) => {
