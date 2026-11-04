@@ -449,7 +449,7 @@ async function voiceFiles(service: Service, run: MyinRun) {
   // The voice his stage_voice asks Fish for: the patched one makes every sentence itself, also for an older run that brings files.
   return { scriptMarkdown: input.markdown, paragraphs, fishVoice: fishVoice() };
 }
-const fishVoice = () => ({ referenceId: process.env.FISH_VOICE_REFERENCE_ID?.trim() ?? "", model: MYIN_VOICE_MODEL });
+export const fishVoice = () => ({ referenceId: process.env.FISH_VOICE_REFERENCE_ID?.trim() ?? "", model: MYIN_VOICE_MODEL });
 
 /** A 숏폼 run goes only to a render PC whose worker has the vertical engine (it says `short`); an older worker keeps taking longforms. */
 const fits = (short: boolean) => (run: MyinRun) => short || !run.layout;
@@ -1429,6 +1429,14 @@ export async function myinFinalVersions(service: Service, sourceId: string) {
   const all = latest ? [...(latest.run.finals ?? []), ...(latest.run.final ? [latest.run.final] : [])] : [];
   return all.map((final, i) => ({ v: i + 1, at: final.at, durationSeconds: final.durationSeconds,
     edit: final.edit ? { name: final.edit.name, pc: final.edit.pc, fromVersion: final.edit.fromVersion, note: final.edit.note, orders: final.edit.orders.length } : null }));
+}
+
+/** 문장 테이크: the video whose voice a sentence take must match — its latest run, voiced on the render PC, a longform. */
+export async function myinSayTarget(service: Service, sourceId: string) {
+  const latest = await latestRun(service, sourceId);
+  if (!latest) throw new ApiError(404, "MYIN_RUN_MISSING", "이 영상은 아직 영상 만들기를 시작하지 않았어요.");
+  if (!voiceFixable(latest.record, latest.run)) throw new ApiError(409, "MYIN_SAY_UNAVAILABLE", "이 영상은 문장만 새로 읽을 수 없어요(10/30 16시 전에 시작한 영상 · 숏폼).");
+  return { runId: latest.record.id, ownerId: latest.record.owner_id ?? "" };
 }
 
 /** 다른 컴퓨터에서 이어받기: a final's files (the newest, or the one made at `at`) for 30 minutes, with what its edit left. */

@@ -10,6 +10,7 @@ import { engineReadySchema, engineUploadSchema, engineUploadUrls, saveEngineMani
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
 import { claimShortformRender,shortformVoice,completeShortformRender,failShortformRender } from "@/lib/server/shortform-render";
 import { claimShortRefs, completeShortRefs, failShortRefs, shortRefsCompleteSchema, shortRefsFailSchema } from "@/lib/server/youtube-process-short-refs";
+import { claimSay, completeSay, failSay, sayWorkerSchemas } from "@/lib/server/myin-say";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -58,6 +59,8 @@ const inputSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("myin_stage_fail"), runId: z.string().uuid(), lease: z.string().uuid(), code: z.string().max(80) }).strict(),
   // 숏폼 레퍼런스 받기 (2026-10-28): thumbnails, the first three seconds and the words of the 대본 step's references.
   z.object({ action: z.literal("short_refs_claim") }).strict(), shortRefsCompleteSchema, shortRefsFailSchema,
+  // 문장 테이크 (영상 편집기, 로건 개발 문서 v3 7.2-1): sentences read again in a video's own voice for the editor.
+  ...sayWorkerSchemas,
   renderPcSignalSchema,
 ]);
 
@@ -100,6 +103,9 @@ export async function POST(request: Request) {
       : input.action === "short_refs_claim" ? await claimShortRefs()
       : input.action === "short_refs_complete" ? await completeShortRefs(input)
       : input.action === "short_refs_fail" ? await failShortRefs(input)
+      : input.action === "myin_say_claim" ? await claimSay()
+      : input.action === "myin_say_complete" ? await completeSay(input)
+      : input.action === "myin_say_fail" ? await failSay(input)
       : await failYoutubeRender(input);
     return NextResponse.json(result, { headers: { "cache-control": "no-store" } });
   } catch (error) {

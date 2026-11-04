@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
+import { requestSay, sayRequestSchema, sayStatus } from "@/lib/server/myin-say";
 import { confirmFinish, confirmStart, confirmStartSchema, declineEdit, editHandoff, editLock, editNews, editOrderResult, editOrderSchema, editorProject, editStatus, nextEditOrders, submitEditOrder } from "@/lib/server/myin-edit";
 import { myinEditorView } from "@/lib/server/myin-run";
 import { listFeedback } from "@/lib/server/youtube-process-feedback";
@@ -39,7 +40,7 @@ export async function GET(request: Request) {
 }
 
 const pc = z.string().trim().min(1).max(80);
-const postSchema = z.object({ action: z.enum(["lock", "heartbeat", "unlock", "order", "next", "result", "decline", "confirm_start", "confirm_finish", "handoff"]), projectId: z.string().uuid() }).passthrough();
+const postSchema = z.object({ action: z.enum(["lock", "heartbeat", "unlock", "order", "next", "result", "decline", "confirm_start", "confirm_finish", "handoff", "say", "say_status"]), projectId: z.string().uuid() }).passthrough();
 const resultSchema = z.object({ pc, orderId: z.string().uuid(), status: z.enum(["done", "failed", "queued"]), version: z.string().trim().max(80).optional(), note: z.string().trim().max(2000).optional() }).strict();
 const finishSchema = z.object({ pc, confirmId: z.string().uuid(), parts: z.array(z.object({ bytes: z.number().int().positive(), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict()).min(1).max(24) }).strict();
 const declineSchema = z.object({ orderId: z.string().uuid().optional(), feedbackId: z.string().uuid().optional(), reason: z.string().trim().min(1).max(1000) }).strict()
@@ -48,7 +49,8 @@ const declineSchema = z.object({ orderId: z.string().uuid().optional(), feedback
 /**
  * 영상 편집기 ②-2 (로건 개발 문서 v2): lock · heartbeat · unlock and next · result come from the editor on a member's computer
  * (`pc` names it), and so do confirm_start · confirm_finish (a confirmed final with its material bundle) and handoff (to go on
- * editing on another computer); order and decline come from that member's AI chat (MCP submit_video_edit · decline_video_order).
+ * editing on another computer); order and decline come from that member's AI chat (MCP submit_video_edit · decline_video_order); say ·
+ * say_status ask the render PC for sentences read again in the video's own voice (doc v3 7.2-1).
  */
 export async function POST(request: Request) {
   try {
@@ -61,6 +63,8 @@ export async function POST(request: Request) {
     if (action === "result") { const input = resultSchema.parse(rest); return NextResponse.json(await editOrderResult(actor, projectId, input.pc, input), { headers }); }
     if (action === "confirm_start") return NextResponse.json(await confirmStart(actor, projectId, confirmStartSchema.parse(rest)), { headers });
     if (action === "confirm_finish") return NextResponse.json(await confirmFinish(actor, projectId, finishSchema.parse(rest)), { headers });
+    if (action === "say") return NextResponse.json(await requestSay(actor, projectId, sayRequestSchema.parse(rest)), { headers });
+    if (action === "say_status") return NextResponse.json(await sayStatus(actor, projectId, z.object({ sayId: z.string().uuid() }).strict().parse(rest).sayId), { headers });
     if (action === "handoff") return NextResponse.json(await editHandoff(actor, projectId, z.object({ at: z.string().datetime().optional() }).strict().parse(rest).at), { headers });
     return NextResponse.json(await declineEdit(actor, projectId, declineSchema.parse(rest)), { headers });
   } catch (error) {

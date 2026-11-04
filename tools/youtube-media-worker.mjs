@@ -1020,6 +1020,44 @@ async function runLocal() {
   } while (true);
 }
 
+/**
+ * 문장 테이크 (영상 편집기 · 로건 개발 문서 v3 7.2-1): sentences an editor asked to have read again in the video's voice. His voice
+ * tools and the Fish key are only here; myin_say.py makes k takes per sentence like the narration and measures each ending.
+ */
+export async function processMyinSay() {
+  if (!myinPkg || local) return false;
+  const job = await call({ action: "myin_say_claim" });
+  if (job.idle) return false;
+  current = { step: "voice" };
+  const lease = { sayId: job.sayId, lease: job.lease };
+  const dir = mkdtempSync(path.join(os.tmpdir(), "myin-say-"));
+  try {
+    const speaker = myinVoiceEnv({ paragraphs: [], fishVoice: job.fishVoice }, myinEnv());
+    const script = path.join(path.dirname(fileURLToPath(import.meta.url)), "myin_say.py");
+    const takes = [];
+    for (const [i, sentence] of job.sentences.entries()) {
+      const out = path.join(dir, `s${i}`);
+      const result = await runOut(speaker.python, [script, path.join(myinPkg, "tools"), out, String(job.takes), sentence], { cwd: path.join(myinPkg, "tools", "mindmap_pipeline"), env: speaker.env });
+      const line = result.out.trim().split("\n").reverse().find((row) => row.startsWith("{\"takes\""));
+      if (!result.ok || !line) throw Object.assign(new Error(`sentence ${i} was not made`), { code: "MYIN_SAY_VOICE_FAILED" });
+      current.step = "upload";
+      for (const take of JSON.parse(line).takes) {
+        await upload(job.uploads[i][take.k], path.join(out, `t${take.k}.wav`), "audio/wav");
+        takes.push({ i, ...take });
+      }
+    }
+    await call({ action: "myin_say_complete", ...lease, takes });
+    console.log(`myin say ready: ${job.sayId} (${takes.length} takes)`);
+  } catch (error) {
+    console.error(`myin say failed: ${job.sayId}: ${error.message}`);
+    await call({ action: "myin_say_fail", ...lease, code: String(error.code ?? "WORKER_MYIN_FAILED") }).catch(() => {});
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    current = null;
+  }
+  return true;
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href && local) await runLocal();
 else if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   if (!osUrl.startsWith("https://") || secret.length < 32) throw new Error("OS_URL (https) and YOUTUBE_MEDIA_WORKER_SECRET are required");
@@ -1033,7 +1071,7 @@ else if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).h
   setInterval(() => void reportSoundCatalog(), 60 * 60_000).unref();
   do {
     // No render ready? Advance the voice queue one step (review or one paragraph) so no separate scheduler is needed.
-    const worked = await (shortsOnly?processShortform():processOne().then((rendered) => rendered || processMyinBreath()).then((rendered) => rendered || processShortRefs()).then((rendered) => rendered || processMyinWords()).then((rendered) => rendered || processMyinCta()).then((rendered) => rendered || processMyinPrep())
+    const worked = await (shortsOnly?processShortform():processOne().then((rendered) => rendered || processMyinBreath()).then((rendered) => rendered || processShortRefs()).then((rendered) => rendered || processMyinWords()).then((rendered) => rendered || processMyinSay()).then((rendered) => rendered || processMyinCta()).then((rendered) => rendered || processMyinPrep())
       .then((rendered) => rendered || processMyinClips()).then((rendered) => rendered || processMyinFinal()).then((rendered) => rendered || (current = { step: "voice" }, call(runId ? { runId } : {}, "worker")).then((step) => {
       if (step.processed) console.log(`voice step: ${JSON.stringify(step).slice(0, 300)}`);
       return step.processed;

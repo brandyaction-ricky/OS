@@ -8,6 +8,7 @@ ws/voice/os_voice, versions/, voicever/, jobs/, orders.json).
   L.lock(project) · L.unlock(project) · L.keep_alive(project)     one video, one editor (renewed every 2 minutes, freed after 10 silent)
   L.pull_orders(project, editor) · L.report(project, order, ...)  orders from members' AI chats into orders.json, and what each became
   L.confirm(project, editor, version, engine)                     check · bundle · upload; the edit becomes the OS's newest final
+  L.say(project, editor, order, text)                             a sentence read again in the video's voice on the render PC (k takes)
   L.restore(project, editor)                                      another computer goes on from an OS final (its materials and pieces)
   L.cleanup(project, editor)                                      two weeks after YouTube, clear this computer's edit files
 
@@ -108,6 +109,26 @@ def report(project, order, status, version=None, note=""):
     """done (a candidate version on this computer) · failed (why) · queued (give it back)."""
     os_id = order.get("os_id") if isinstance(order, dict) else order
     return api("result", project, pc=pc(), orderId=os_id, status=status, version=version, note=note or None)
+
+
+# ── 문장 테이크: 렌더 PC가 이 영상 목소리로 다시 읽기 (이 컴퓨터엔 목소리 키가 없음) ──
+def say(project, editor, order, text, takes=3, wait=600, every=10):
+    """Asks the render PC to read `text` again `takes` times and saves the takes as Logan's say.py did: newlines/<order>_<k>.wav and
+    newlines/<order>.json {text, takes: [{file, rise}], best} (best = the calmest ending). A few won of Fish per take."""
+    sid = api("say", project, sentences=[text], takes=takes)["sayId"]
+    end = time.time() + wait
+    while True:
+        s = api("say_status", project, sayId=sid)
+        if s["status"] == "done": break
+        if s["status"] == "failed": raise EditorError("EDIT_SAY_FAILED", f"렌더 PC가 문장을 만들지 못했어요({s.get('error')}).")
+        if time.time() > end: raise EditorError("EDIT_SAY_TIMEOUT", "렌더 PC가 아직 문장을 만들지 않았어요. 잠시 뒤 다시 해 주세요.")
+        time.sleep(every)
+    out = os.path.join(editor, "newlines"); os.makedirs(out, exist_ok=True); rows = []
+    for t in sorted(s["takes"], key=lambda t: t["k"]):
+        f = os.path.join(out, f"{order}_{t['k']}.wav"); _get(t["url"], f); rows.append({"file": f, "rise": t["rise"]})
+    best = next((r for t, r in zip(sorted(s["takes"], key=lambda t: t["k"]), rows) if s["best"] and t["k"] == s["best"][0]), rows[0])
+    js(os.path.join(out, f"{order}.json"), {"text": text, "takes": rows, "best": best["file"]})
+    return {"takes": rows, "best": best["file"]}
 
 
 # ── 확정 전 자동 검사 (OS가 같은 기준으로 다시 봄) ──
@@ -262,6 +283,10 @@ def _self_test():
                 return self._send({"confirmId": "55555555-5555-4555-8555-555555555555", "videoUploadUrl": base + "/up/video", "srtUploadUrl": base + "/up/srt",
                                    "bundleUploadUrls": [f"{base}/up/part{n}" for n in range(body["bundleParts"])]})
             if body["action"] == "confirm_finish": return self._send({"ok": True, "final": "2026-11-04T10:00:00.000Z", "v": 2})
+            if body["action"] == "say": return self._send({"sayId": "66666666-6666-4666-8666-666666666666", "status": "queued"})
+            if body["action"] == "say_status":
+                store["/up/take0"] = b"RIFF0"; store["/up/take1"] = b"RIFF1"
+                return self._send({"status": "done", "takes": [{"i": 0, "k": 1, "rise": 0.4, "url": base + "/files/take1"}, {"i": 0, "k": 0, "rise": 1.8, "url": base + "/files/take0"}], "best": [1]})
             if body["action"] == "handoff":
                 parts = [{"bytes": len(store[f"/up/part{n}"]), "sha256": hashlib.sha256(store[f"/up/part{n}"]).hexdigest(), "url": f"{base}/files/part{n}"} for n in range(len([k for k in store if k.startswith("/up/part")]))]
                 return self._send({"at": "2026-11-04T10:00:00.000Z", "v": 2, "videoUrl": base + "/files/video", "srtUrl": base + "/files/srt", "bundle": parts,
@@ -304,6 +329,9 @@ def _self_test():
         other = os.path.join(ed, "other"); r = restore(project, other)
         assert r["chunks"] == 2 and os.path.exists(os.path.join(other, "ws", "voice", "os_myin", "myin_storyboard.json"))
         assert check_issues({"decodeErrors": 0, "frames": 597, "end": 10, "videoSeconds": 10, "audioSeconds": 10}) == ["프레임 수 597 / 예상 600"]
+        took = say(project, ed, "o002", "이 문장을 다시 읽어 줘", takes=2, every=0)
+        assert took["best"].endswith("o002_1.wav") and open(os.path.join(ed, "newlines", "o002_0.wav"), "rb").read() == b"RIFF0"
+        assert jl(os.path.join(ed, "newlines", "o002.json"))["takes"][1]["rise"] == 0.4
         assert cleanup(project, ed)["deleted"] is False
         assert calendar.timegm(time.strptime("2026-11-04T00:00:00", "%Y-%m-%dT%H:%M:%S")) == 1793750400
     srv.shutdown(); print("myin_editor_os self-test ok")
