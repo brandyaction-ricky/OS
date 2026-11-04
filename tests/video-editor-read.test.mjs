@@ -17,7 +17,7 @@ const project = "33333333-3333-4333-8333-333333333333";
 test("get_video_editor is read only and asks the editor route for one view", async () => {
   const tool = MCP_TOOLS.find((item) => item.name === "get_video_editor");
   assert.equal(tool.annotations.readOnlyHint, true);
-  assert.deepEqual([...tool.inputSchema.properties.view.enum], ["summary", "scenes", "subtitles", "assets", "orders", "edits"]);
+  assert.deepEqual([...tool.inputSchema.properties.view.enum], ["summary", "scenes", "subtitles", "assets", "orders", "edits", "feed"]);
   const calls = [];
   await callMcpTool({ name: "get_video_editor", arguments: { project_id: project, view: "orders" } }, "org", async (path, init) => { calls.push([path, init?.method ?? "GET"]); return {}; });
   await callMcpTool({ name: "get_video_editor", arguments: { project_id: project } }, "org", async (path) => { calls.push([path, "GET"]); return {}; });
