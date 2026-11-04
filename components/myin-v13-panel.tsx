@@ -15,7 +15,7 @@ import { MyinVoiceCheck, type MyinVoiceCheckView, type MyinVoiceFixView } from "
 import { DraftPlacePicker, localBlocker, useLocalRender, type DraftPlace } from "./myin-local-render";
 import { assToSrt } from "@/lib/subtitle-files";
 import { myinRetryScope, myinStop } from "@/lib/myin-stop";
-import { MyinRunRecord } from "./myin-run-record";
+import { EarlierStylePick, MyinRunRecord } from "./myin-run-record";
 import { MyinSubtitleEdit } from "./myin-subtitle-edit";
 
 interface Storyboard { scenes: number; model: string; at: string; metaphors: { scene: number; type: string; at: string }[]; cta: { after: string; line: string }[];
@@ -271,6 +271,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       {!run || (run.status === "blocked" && !run.words) || run.scriptChanged ? <div className="yt-actions">
         {styles.length && (!run || run.scriptChanged) ? <label className="yt-style-pick">채널 모양<select value={styleId ?? run?.style?.id ?? styles[0].id} onChange={(event) => setStyleId(event.target.value)}>
           <option value="">기본 (고르지 않음)</option>{styles.map((style) => <option key={style.id} value={style.id}>{style.name} · v{style.version}</option>)}</select></label> : null}
+        {styles.length && (!run || run.scriptChanged) ? <EarlierStylePick sourceId={sourceId} token={accessToken} styles={styles} onPick={setStyleId} /> : null}
         <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void (async () => {
           const pick = styleId ?? run?.style?.id ?? styles[0]?.id ?? "";
           if (run && !run.scriptChanged || await askVoice(voiceText ?? "", "같은 원고로 다시 누르면 들지 않아요", voiceOnPc)) await act("start", () => post("/myin", "POST", { sourceId, ...(pick ? { styleId: pick } : {}) })); })()}>{busy === "start" ? "시작하는 중…" : run?.scriptChanged ? short ? "바뀐 대본으로 음성 다시 만들기" : "바뀐 원고로 v13 음성 다시 만들기" : run ? short ? "음성 다시 시작" : "v13 음성 다시 시작" : short ? "음성 만들기" : "v13 음성 만들기"}</button>

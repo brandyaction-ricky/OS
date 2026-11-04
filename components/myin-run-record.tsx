@@ -1,10 +1,11 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api-client";
 import { personName } from "@/lib/youtube-process/project";
 
 interface RunRecord {
   startedAt: string; short: boolean; script: { version: number; paragraphs: number }; style?: { name: string; version: number } | null; earlierFinals?: number;
+  engine: { now: string | null; prepared: string | null; clips: string | null; final: string | null };
   voice: { model: string; reference: string; onPc: boolean; changed: { at: string; count: number } | null; check: { skipped: boolean; name: string; at: string } | null };
   words: { at: string; durationSeconds: number; words: number; lines: number; kept: boolean | null; voiceKept: boolean | null } | null;
   storyboard: { at: string; model: string; scenes: number; kept: boolean | null; review: { decision: string; name: string; at: string } | null } | null;
@@ -21,6 +22,20 @@ const Kept = ({ value }: { value: boolean | null }) => value === null ? null : <
 /** 재료 고정 (유쓰 요청 3/8 보완): whether a result was made from the materials the video has now; nothing for one made before they were kept. */
 const Changed = ({ value }: { value?: string[] | null }) => !value ? null : <span className="status-pill" data-status={value.length ? "review" : "approved"}
   title={value.length ? "다시 만들어야 지금 재료가 들어가요" : undefined}>{value.length ? `바뀐 재료: ${value.join(" · ")}` : "지금 재료와 같아요"}</span>;
+
+/** 엔진 버전: which engine drew 점검 시트 · 미리보기 · 완성, and whether the render PC still has it. */
+function engineLine(record: RunRecord) {
+  const made = ([["점검 시트", record.prepared, record.engine.prepared], ["미리보기", record.clips, record.engine.clips], ["완성", record.final, record.engine.final]] as const)
+    .filter(([, step]) => step);
+  if (!made.length) return "아직 그린 결과가 없어요.";
+  if (record.short) return "숏폼은 아직 기록하지 않아요.";
+  const groups = new Map<string | null, string[]>();
+  for (const [label, , fp] of made) groups.set(fp, [...(groups.get(fp) ?? []), label]);
+  const prints = [...groups.keys()].filter((fp): fp is string => Boolean(fp));
+  const now = !prints.length || !record.engine.now ? "" : prints.every((fp) => fp === record.engine.now) ? " — 지금 영상 만드는 컴퓨터와 같은 엔진이에요."
+    : " — 그 뒤 영상 만드는 컴퓨터의 엔진이 바뀌었어요. 다시 만들면 조금 달라질 수 있어요.";
+  return [...groups].map(([fp, labels]) => `${fp ?? "기록 전에 만듦"} (${labels.join(" · ")})`).join(", ") + now;
+}
 
 /**
  * 만든 재료 · 설정 보기 (유쓰 요청 4/8, 2026-11-02): this video's own production record in one place — the 원고 version, voice, storyboard,
@@ -54,8 +69,29 @@ export function MyinRunRecord({ runId, token }: { runId: string; token: string |
       {record.final ? <><dt>완성</dt><dd>{when(record.final.at)} · {length(record.final.durationSeconds)} · {(record.final.bytes / 1e6).toFixed(1)}MB · 음량 {record.final.lufs} LUFS · 최대 {record.final.peak} dB <Changed value={record.final.changed} />
         <ul className="yt-list">{record.final.files.map((file) => <li key={file.name}>{file.name} <Kept value={file.kept} /></li>)}</ul>
         {record.earlierFinals ? <small>예전 완성본 {record.earlierFinals}개도 최종 검토의 버전으로 남아 있어요.</small> : null}</dd></> : null}
-      <dt>엔진 버전</dt><dd>아직 기록하지 않아요. 영상 만드는 컴퓨터가 버전을 알려 주게 되면 여기에 남아요.</dd>
+      <dt>엔진 버전</dt><dd>{engineLine(record)}</dd>
     </dl>}
     <p className="yt-note">이 영상에 실제로 쓴 것만 보여 줘요. 「기록만」은 파일이 지워져 다시 받을 수 없다는 뜻이에요. 「바뀐 재료」는 그 결과를 만든 뒤 바뀐 재료예요 — 다시 만들어야 들어가요. 열어 보기만 해서는 아무것도 바뀌거나 비용이 들지 않아요.</p>
   </details>;
+}
+
+type Earlier = { title: string; at: string; style: { id: string; name: string; version: number } };
+/**
+ * 예전 설정 가져오기 (보완 요청 4/8): fills a new video's 채널 모양 with the one an earlier video was made with. It only fills the choice:
+ * nothing is made, charged or changed until 음성 만들기 is pressed, and the earlier video stays as it is.
+ */
+export function EarlierStylePick({ sourceId, token, styles, onPick }: { sourceId: string; token: string | null; styles: { id: string; version: number }[]; onPick: (id: string) => void }) {
+  const [videos, setVideos] = useState<Earlier[]>([]);
+  const [picked, setPicked] = useState<Earlier | null>(null);
+  useEffect(() => {
+    apiRequest<{ videos: Earlier[] }>(`/api/v1/content/youtube-automation/myin?earlierStyles=${sourceId}`, { token }).then((result) => setVideos(result.videos), () => setVideos([]));
+  }, [sourceId, token]);
+  if (!videos.length) return null;
+  const now = picked ? styles.find((style) => style.id === picked.style.id) : undefined;
+  return <label className="yt-style-pick">예전 영상 설정 가져오기<select value={picked ? String(videos.indexOf(picked)) : ""} onChange={(event) => {
+    const video = videos[Number(event.target.value)] ?? null;
+    setPicked(video);
+    if (video && styles.some((style) => style.id === video.style.id)) onPick(video.style.id);
+  }}><option value="">고르지 않음</option>{videos.map((video, index) => <option key={index} value={index}>{video.title} · {video.style.name} v{video.style.version}</option>)}</select>
+    {picked ? <small>{!now ? "그 채널 모양은 지금 목록에 없어요." : now.version === picked.style.version ? "같은 채널 모양으로 채웠어요." : `그 영상은 v${picked.style.version}로 만들었고, 새 영상은 지금 판 v${now.version}로 만들어요.`}</small> : null}</label>;
 }
