@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { agentReadableStatuses, canReadKnowledgeDocument, canAgentEditDraft } from "../lib/server/document-access.ts";
+import { agentReadableStatuses, canReadKnowledgeDocument, canAgentEditDraft, isAgentOwnSharedDocument } from "../lib/server/document-access.ts";
 
 const actor = (overrides = {}) => ({
   type: "agent",
@@ -14,6 +14,15 @@ const document = (status, owner_id = "owner-b") => ({ status, owner_id });
 test("AI keys can only edit their own generated draft, never human notes or team bodies",()=>{
   assert.equal(canAgentEditDraft(actor(),{...document("draft","owner-a"),source:"mcp"}),true);
   for(const doc of [{...document("draft","owner-a"),source:"manual"},{...document("team","owner-a"),source:"mcp"},{...document("draft"),source:"mcp"},{...document("canonical","owner-a"),source:"mcp"}])assert.equal(canAgentEditDraft(actor(),doc),false);
+});
+
+// 대표 2026-11-04: the designated approver's AI key edits the approver's own shared document without moving it back to 내 노트.
+test("only the approver's AI key edits its owner's shared documents directly; notes, others' and 정본 stay closed", async () => {
+  for (const status of ["team", "review", "reviewed"]) assert.equal(isAgentOwnSharedDocument(actor(), document(status, "owner-a")), true, status);
+  for (const doc of [document("team"), document("draft", "owner-a"), document("canonical", "owner-a"), document("archived", "owner-a")]) assert.equal(isAgentOwnSharedDocument(actor(), doc), false);
+  assert.equal(isAgentOwnSharedDocument(actor({ type: "user" }), document("team", "owner-a")), false, "people keep their own rules");
+  const route = await readFile("app/api/v1/knowledge-documents/route.ts", "utf8");
+  assert.match(route, /!canAgentEditDraft\(actor,current\) && !\(isAgentOwnSharedDocument\(actor,current\) && await isDesignatedApprover\(actor\.ownerId\)\)/);
 });
 
 test("read-only AI keys include team documents and own AI drafts without granting writes", () => {

@@ -16,6 +16,11 @@ export function canAgentWriteDocument(actor: Pick<RequestActor, "type" | "allowe
 export function canAgentEditDraft(actor: Pick<RequestActor,"type"|"ownerId">, doc:Pick<KnowledgeDocument,"source"|"status"|"owner_id">) {
   return actor.type!=="agent" || (["mcp","obsidian_vault"].includes(doc.source)&&doc.status==="draft"&&doc.owner_id===actor.ownerId);
 }
+/** A shared (팀 · 검토) document of the key's own owner. The designated approver's AI key edits these directly, a version kept, so a
+ * shared document no longer has to go back to 내 노트 first (대표 2026-11-04); the route checks the approver. Notes and 정본 stay as they were. */
+export function isAgentOwnSharedDocument(actor: Pick<RequestActor,"type"|"ownerId">, doc:Pick<KnowledgeDocument,"status"|"owner_id">) {
+  return actor.type==="agent" && doc.owner_id===actor.ownerId && ["team","review","reviewed"].includes(doc.status);
+}
 
 export function canReadKnowledgeDocument(actor: DocumentActor, document: ReadableDocument) {
   // Coarse status gate; hydrated category/meeting/ancestor and restricted-canon
