@@ -32,6 +32,7 @@ test("the OS hands takes only to the render PC, for a longform voiced there, and
   assert.match(say, /await myinSayTarget\(service, project\.id\)/);
   assert.match(say, /sentences: z\.array\(z\.string\(\)\.trim\(\)\.min\(1\)\.max\(300\)\)\.min\(1\)\.max\(5\), takes: z\.number\(\)\.int\(\)\.min\(1\)\.max\(3\)/, "at most 5 sentences × 3 takes");
   assert.doesNotMatch(say, /myin_v13|retireFinal|\.from\("os_records"\)\.update\(\{ metadata: run/, "the video's own run is never written");
+  assert.doesNotMatch(say, /best|sort\(\(a, b\) => \(a\.rise/, "no take is ranked by its end height (대표 2026-11-04: a person listens and picks)");
   const run = readFileSync(new URL("../lib/server/myin-run.ts", import.meta.url), "utf8");
   assert.match(run, /if \(!voiceFixable\(latest\.record, latest\.run\)\) throw new ApiError\(409, "MYIN_SAY_UNAVAILABLE"/);
   const media = readFileSync(new URL("../app/api/v1/content/youtube-automation/media/route.ts", import.meta.url), "utf8");

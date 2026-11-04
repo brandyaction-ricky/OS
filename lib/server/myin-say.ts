@@ -11,6 +11,8 @@ import { YOUTUBE_VOICE_BUCKET } from "./youtube-voice-run";
 // 문장 테이크 (로건 개발 문서 v3 7.2-1, his first ask): a few sentences read again in a video's own voice — the render PC's Fish key,
 // the narration's generation, tone EQ and reading dictionary — k takes each with how far its end rises, so the editor on a member's
 // computer can put a new line in or fix one's intonation. Nothing in the OS video changes; the takes are the editor's to use.
+// The end height is information only: a person listens and picks (대표 2026-11-04 — in the first test the ear chose the take with the
+// highest end, the one a "calmest ending" rule ranked last).
 
 type Service = ReturnType<typeof createServiceSupabase>;
 const SAY = "youtube_myin_say";
@@ -46,7 +48,7 @@ export async function requestSay(actor: RequestActor, projectId: string, input: 
   return { sayId: id, status: "queued" as const };
 }
 
-/** Where the request is; once done, each take with a 30-minute address (the one with the lowest end rise is `best`). */
+/** Where the request is; once done, each take in the order it was made, with a 30-minute address and its end height. */
 export async function sayStatus(actor: RequestActor, projectId: string, sayId: string) {
   const project = await editorProject(actor, projectId);
   const service = createServiceSupabase();
@@ -57,8 +59,7 @@ export async function sayStatus(actor: RequestActor, projectId: string, sayId: s
     const { data: signed } = await service.storage.from(YOUTUBE_VOICE_BUCKET).createSignedUrl(take.path, 1_800);
     return { i: take.i, k: take.k, seconds: take.seconds, rise: take.rise, url: signed?.signedUrl ?? null };
   })) : [];
-  const best = meta.sentences.map((_, i) => takes.filter((t) => t.i === i).sort((a, b) => (a.rise ?? 99) - (b.rise ?? 99))[0]?.k ?? null);
-  return { sayId, status: meta.status, sentences: meta.sentences, takes, best, error: meta.error ?? null };
+  return { sayId, status: meta.status, sentences: meta.sentences, takes: takes.sort((a, b) => a.i - b.i || a.k - b.k), error: meta.error ?? null };
 }
 
 // ── render PC ──
