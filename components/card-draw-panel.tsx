@@ -4,14 +4,14 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Sparkles, X } from "lucide-react";
 import { imageEstimate } from "@/lib/cost";
-import { CARD_DRAW_QUALITY, CARD_DRAW_REFS_MAX, CARD_DRAW_SCENE_MAX, CARD_DRAW_STYLES, type CardCharacterView, type CardDrawQuality, type CardDrawStyle } from "@/lib/cardnews/draw";
+import { asideDrawInstruction, CARD_DRAW_QUALITY, CARD_DRAW_REFS_MAX, CARD_DRAW_SCENE_MAX, CARD_DRAW_STYLES, type CardCharacterView, type CardDrawQuality, type CardDrawStyle } from "@/lib/cardnews/draw";
 import type { CardPhoto } from "@/lib/cardnews/formats";
 import { CostTag, useCostConfirm, useCostModels } from "./cost-notice";
 import type { YpPage } from "./youtube-process-frame";
 
-/** `children`: the photo buttons the 「AI로 그리기」 button sits beside. `brief`: a 웹툰 card's own 장면 and 나오는 사람. */
-export function CardDrawPanel({ page, projectId, photo, onPhoto, brief, defaultStyle = "simple", children }: { page: YpPage; projectId: string; photo?: CardPhoto;
-  onPhoto: (photo: CardPhoto) => void; brief?: { scene: string; cast: string }; defaultStyle?: CardDrawStyle; children: ReactNode }) {
+/** `children`: the photo buttons the 「AI로 그리기」 button sits beside. `brief`: a 웹툰 card's own 장면 and 나오는 사람. `where`: the card, named for Aside. */
+export function CardDrawPanel({ page, projectId, photo, onPhoto, brief, where, defaultStyle = "simple", children }: { page: YpPage; projectId: string; photo?: CardPhoto;
+  onPhoto: (photo: CardPhoto) => void; brief?: { scene: string; cast: string }; where: string; defaultStyle?: CardDrawStyle; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [scene, setScene] = useState("");
   const [style, setStyle] = useState<CardDrawStyle>(defaultStyle);
@@ -20,6 +20,7 @@ export function CardDrawPanel({ page, projectId, photo, onPhoto, brief, defaultS
   const [characters, setCharacters] = useState<CardCharacterView[] | null>(null);
   const [busy, setBusy] = useState("");
   const [name, setName] = useState("");
+  const [copied, setCopied] = useState(false);
   const cost = useCostConfirm();
   const model = useCostModels().image;
   const amount = imageEstimate(model, quality, refs.length);
@@ -41,6 +42,11 @@ export function CardDrawPanel({ page, projectId, photo, onPhoto, brief, defaultS
   const draw = () => run("draw", async () => {
     if (!await cost.confirm({ model, amount, detail: `그림 1장${refs.length ? ` · 캐릭터 그림 ${refs.length}장 참고` : ""}`, note: "GPT 크레딧(매달 500달러)에서 나가요. 그림은 설명용이에요 — 실제 기록처럼 쓰지 않아요.", ok: "그리기" })) return;
     onPhoto(await client.cardDraw(projectId, { scene: scene.trim(), style, quality, refs }));
+  });
+  const aside = () => run("aside", async () => {
+    const picked = refs.map(id => characters?.find(row => row.id === id)).filter((row): row is CardCharacterView => Boolean(row));
+    await navigator.clipboard.writeText(asideDrawInstruction({ scene: scene.trim(), style, refs: picked.map(row => ({ name: row.name, url: row.url })), where }));
+    setCopied(true);
   });
   const keep = () => run("keep", async () => {
     if (!photo) return;
@@ -76,6 +82,8 @@ export function CardDrawPanel({ page, projectId, photo, onPhoto, brief, defaultS
     <div className="yp-row-btns">
       <button type="button" className="yp-btn yp-pri" disabled={[...scene.trim()].length < 2 || Boolean(busy)} onClick={() => void draw()}>{busy === "draw" ? "그리는 중 · 1~2분" : photo ? "다시 그리기" : "그리기"}</button>
       <CostTag kind="paid" amount={amount} />
+      <button type="button" className="yp-btn yp-sm" disabled={[...scene.trim()].length < 2 || characters === null || Boolean(busy)} onClick={() => void aside()}>{copied ? "복사했어요 · Aside에 붙여 넣어요" : "Aside에 맡기기 (지침 복사)"}</button>
+      <CostTag kind="ai" />
       <button type="button" className="yp-btn yp-sm" disabled={busy === "draw"} onClick={() => setOpen(false)}>닫기</button></div>
     {cost.element}
   </div></>;

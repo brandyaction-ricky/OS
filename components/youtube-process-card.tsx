@@ -371,6 +371,7 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
           {spec?.photo && editable ? <div className="yp-field"><span className="yp-fld-h"><b>사진</b><span className="yp-opt">선택</span></span>
             <p className="yp-hint">실제 사진 · 자료를 넣거나 AI로 그려요. AI 그림은 설명용이라 실제 기록처럼 쓰지 않아요 (디자인 정본 §8).</p>
             <CardDrawPanel key={draft.id} page={page} projectId={project.id} photo={draft.slides[current].photo} onPhoto={photo => placePhoto(photo, current)}
+              where={`카드뉴스 「${projectName(project)}」 › 카드 만들기 › ${current + 1}장`}
               defaultStyle={draft.format === "webtoon" ? "webtoon" : "simple"}
               brief={draft.format === "webtoon" ? { scene: draft.slides[current].fields.scene ?? "", cast: draft.slides[current].fields.cast ?? "" } : undefined}>
               <label className="yp-btn yp-sm"><ImagePlus size={13} aria-hidden="true" />{photoBusy ? "올리는 중…" : draft.slides[current].photo ? "사진 바꾸기" : "사진 넣기"}
