@@ -59,4 +59,5 @@ test("the 내 GPT prompt names the side-by-side references in order and keeps th
   const panel = readFileSync("components/card-draw-panel.tsx", "utf8");
   for (const label of ["내 GPT로 그리기", "참고 그림 복사", "그림 설명 복사", "그린 그림 붙여 넣기"]) assert.ok(panel.includes(label), label);
   assert.match(panel, /<CostTag kind="ai" \/>/, "the 내 GPT button says it spends the PD's own AI, not the company credit");
+  assert.match(panel, /copiedFor !== label && !window\.confirm\(`\$\{copiedFor\} 그림 설명으로 그린 그림 같아요\. \$\{label\}에 넣을까요\?`\)/, "a picture drawn from another card's words is asked about");
 });
