@@ -804,8 +804,9 @@ export async function processMyinPrep() {
     }
     if (job.siteCapture) await runAsync(myinPython, ["capture_site.py"], { cwd: myinDir, env });
     current.step = "drawing";
-    const log = await runCapture(myinPython, ["render_myin.py", "os_myin", "preview"], { cwd: myinDir, env: { ...env, STORY: styleStoryboard(videoDir, myinDir, job.style) } });
-    const misses = [...missingMusic, ...log.split("\n").filter((line) => line.includes("못 찾음"))];
+    const previewEnv = { ...env, STORY: styleStoryboard(videoDir, myinDir, job.style) };
+    const log = await runCapture(myinPython, ["render_myin.py", "os_myin", "preview"], { cwd: myinDir, env: previewEnv });
+    const misses = [...missingMusic, ...log.split("\n").filter((line) => line.includes("못 찾음")), ...await blankScenes(myinDir, videoDir, previewEnv)];
     const sheets = readdirSync(videoDir).filter((name) => /^preview_\d+\.png$/.test(name)).sort().slice(0, job.sheetUploadUrls.length);
     current.step = "upload";
     for (const [i, name] of sheets.entries()) await upload(job.sheetUploadUrls[i], path.join(videoDir, name), "image/png");
@@ -826,6 +827,20 @@ export async function processMyinPrep() {
     current = null;
   }
   return true;
+}
+
+/**
+ * 렌더 전 관문 · 빈 화면 (로건 개발 문서 v3 7.2-3): every scene drawn at five moments by his engine; a scene that is one flat colour
+ * above the subtitles at most of them is listed like a 「문구 못 찾음」 (so the run stops before any video is drawn). The check never
+ * stops a run by failing itself.
+ */
+async function blankScenes(myinDir, videoDir, env) {
+  const script = path.join(path.dirname(fileURLToPath(import.meta.url)), "myin_frame_check.py");
+  if (!existsSync(script)) return [];
+  const out = path.join(videoDir, "frame-check.json");
+  const result = await runOut(myinPython, [script, "os_myin", out, "5"], { cwd: myinDir, env });
+  try { return result.ok ? JSON.parse(readFileSync(out, "utf8")).lines ?? [] : []; }
+  catch { return []; }
 }
 
 /**

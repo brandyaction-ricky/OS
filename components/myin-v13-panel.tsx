@@ -304,7 +304,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
     <Step index={1} state={step2} title="장면 기획표 (내 AI → 로건, 유쓰 확인)" idBase="myin-step">
       {!run?.words ? <p>받아쓰기·자막이 끝나면 내 AI에 보낼 수 있습니다.</p> : null}
       {run?.stage === "words_ready" ? <>
-        {run.review?.decision === "revise" ? <div className="yt-note yt-warn"><strong>로건, 유쓰 수정 요청 · {when(run.review.at)}</strong><p>{run.review.note}</p></div> : null}
+        {run.review?.decision === "revise" ? <div className="yt-note yt-warn"><strong>{run.review.name === "렌더 전 관문" ? "렌더 전 관문 · 자동 수정 요청" : "로건, 유쓰 수정 요청"} · {when(run.review.at)}</strong><p>{run.review.note}</p></div> : null}
         <p>{short ? "내 AI가 세로 화면 규칙과 세로 도식 목록으로 숏폼 기획표를 써요. 첫 화면에는 확정한 헤드 카피가 떠요." : "내 AI가 영상 제작 매뉴얼·기획표 문서와 음악 창고 목록을 읽고, 위 받아쓰기의 철자 그대로 장면 기획표와 사진 후보를 만듭니다. OS가 문구 위치와 형식을 검사합니다."}</p>
         <StaffDesign status={job} busy={busy === "send"} onSend={() => void act("send", () => post("/ai-jobs", "POST", { task: "storyboard", sourceId }))} />
       </> : null}

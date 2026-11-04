@@ -953,6 +953,9 @@ export async function claimMyinPrep(service: Service = createServiceSupabase(), 
 
 const drewWith = (run: MyinRun) => run.lease?.engine ? { engine: run.lease.engine } : {};
 
+/** Who sends a storyboard back by itself (the panel names it instead of the people who review). */
+export const MYIN_GATE_NAME = "렌더 전 관문";
+
 /** Render PC: the preview ran. Its "문구 못 찾음" lines decide whether the run may go on to the preview clips. */
 export async function completeMyinPrep(input: { runId: string; lease: string }, service: Service = createServiceSupabase()) {
   const { record, run } = await leased(service, input.runId, input.lease);
@@ -987,6 +990,16 @@ export async function completeMyinPrep(input: { runId: string; lease: string }, 
   delete next.lease; delete next.lastError;
   if (draft) { delete next.clips; delete next.clipsReview; retireFinal(next); }
   if (!next.sound) delete next.sound;
+  // 렌더 전 관문 (로건 개발 문서 v3 7.2-3): at ③ a phrase the engine cannot place or a blank scene goes straight back to the storyboard
+  // as its 수정 요청 (the next staff-AI pass gets the list); ④ still stops for a person, who sees the same list.
+  const gate = draft ? bundle.misses.filter((line) => line.includes("못 찾음") || line.includes("빈 화면")) : [];
+  if (gate.length) {
+    const back: MyinRun = { ...next, review: { decision: "revise", by: record.owner_id ?? run.review?.by ?? record.created_by ?? "", name: MYIN_GATE_NAME,
+      note: `렌더 전 관문에서 걸린 곳 ${gate.length}개를 고쳐 주세요: ${gate.slice(0, 12).join(" / ")}`.slice(0, 2000), at: new Date().toISOString() } };
+    delete back.prepared; delete back.clips; delete back.clipsReview; delete back.sound;
+    await save(service, record, "backlog", "words_ready", back);
+    return { runId: record.id, stage: "words_ready", misses: bundle.misses.length, returned: true };
+  }
   // ③ with nothing missing: the drafts are next, without anyone pressing a button. ④ stops here for the sound and photos check;
   // a 숏폼 has no sound to check (voice only), so its full video starts.
   const stage = bundle.misses.length ? "prep_ready" : draft ? "clips_pending" : run.layout ? "final_pending" : "prep_ready";
