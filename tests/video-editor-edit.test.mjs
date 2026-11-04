@@ -47,7 +47,8 @@ test("writes need records.write, an order passes the storyboard check, and only 
   assert.match(route.slice(route.indexOf("export async function POST")), /requiredAgentScope: "records\.write"/);
   const edit = await readFile(new URL("../lib/server/myin-edit.ts", import.meta.url), "utf8");
   const submit = edit.slice(edit.indexOf("export async function submitEditOrder"), edit.indexOf("async function lockHolder"));
-  assert.match(submit, /checkMyinStoryboard\(input\.storyboard, myin\.words, diagramCatalogTypes\(await readDiagramCatalog\(\)\), myin\.speech\)/);
+  assert.match(submit, /anchorMyinCues\(storyboard, myin\.words, myin\.speech\)/);
+  assert.match(submit, /checkMyinStoryboard\(storyboard, myin\.words, diagramCatalogTypes\(await readDiagramCatalog\(\)\), myin\.speech\)/);
   assert.match(submit, /ApiError\(422, "EDIT_STORYBOARD_ISSUES"/);
   for (const fn of ["nextEditOrders", "editOrderResult"]) assert.match(edit.slice(edit.indexOf(`export async function ${fn}`)).split("\nexport ")[0], /await lockHolder\(service, actor, project\.id, pc\)/, fn);
   assert.match(edit, /\.eq\("id", record\.id\)\.eq\("version", record\.version\)/, "the lock is taken with the record version");

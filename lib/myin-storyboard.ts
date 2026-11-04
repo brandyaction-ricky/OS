@@ -26,9 +26,8 @@ export type MyinStoryboard = z.infer<typeof myinStoryboardSchema>;
 /** Logan's _norm(): only digits, Latin letters and Hangul count. */
 export const myinNorm = (value: string) => value.replace(/[^0-9A-Za-z가-힣]/g, "");
 
-/** Python difflib.SequenceMatcher(None, a, b).ratio() (no junk: Logan's segments are shorter than autojunk's 200). */
-export function seqRatio(a: string, b: string) {
-  if (!a.length && !b.length) return 1;
+/** Python difflib.SequenceMatcher(None, a, b).get_matching_blocks() without the final sentinel, in order: [i in a, j in b, size]. */
+export function matchingBlocks(a: string, b: string) {
   const longest = (alo: number, ahi: number, blo: number, bhi: number) => {
     // find_longest_match: longest block, earliest in a, then earliest in b.
     let bi = alo, bj = blo, size = 0;
@@ -45,17 +44,23 @@ export function seqRatio(a: string, b: string) {
     }
     return [bi, bj, size] as const;
   };
-  let matches = 0;
+  const blocks: [number, number, number][] = [];
   const queue: [number, number, number, number][] = [[0, a.length, 0, b.length]];
   while (queue.length) {
     const [alo, ahi, blo, bhi] = queue.pop()!;
     const [i, j, k] = longest(alo, ahi, blo, bhi);
     if (!k) continue;
-    matches += k;
+    blocks.push([i, j, k]);
     if (alo < i && blo < j) queue.push([alo, i, blo, j]);
     if (i + k < ahi && j + k < bhi) queue.push([i + k, ahi, j + k, bhi]);
   }
-  return (2 * matches) / (a.length + b.length);
+  return blocks.sort((x, y) => x[0] - y[0]);
+}
+
+/** Python difflib.SequenceMatcher(None, a, b).ratio() (no junk: Logan's segments are shorter than autojunk's 200). */
+export function seqRatio(a: string, b: string) {
+  if (!a.length && !b.length) return 1;
+  return (2 * matchingBlocks(a, b).reduce((sum, [, , k]) => sum + k, 0)) / (a.length + b.length);
 }
 
 /** Logan's Cues.find: an exact hit starting within `limit` characters after `pos`, else the best window with ratio ≥ 0.62. */
@@ -117,6 +122,68 @@ export function myinCueMisses(story: MyinStoryboard, words: [number, number, str
   });
   story.cta.forEach((cta, k) => { scene = 0; if (find(cta.after, 0, 400_000) === null) misses.push(`[구독 ${k + 1}] after 문구 못 찾음: ${cta.after}`); });
   return { misses, fuzzy };
+}
+
+/**
+ * 원고 ↔ 받아쓰기 정렬표 (로건 개발 문서 v3 7.2-4): the AI writes cues as the script spells them, the engine finds them in the
+ * transcript, which hears some words otherwise (굼떠요 → 군떠요, 지안 씨 → 지한 씨, 세 가지 → 3가지). A cue the transcript does not hold
+ * exactly is found in the script, carried over the alignment to the words it was read as, and written as those — only when the engine
+ * will then find exactly that place. Scene starts, cue / cue_* keys, [text, cue] pieces and CTA anchors; shown text is never touched.
+ */
+export function anchorMyinCues(raw: unknown, words: [number, number, string][], speech: string) {
+  const changed: string[] = [];
+  const S = myinNorm(speech.split("\n").filter((line) => !line.startsWith("#SECTION")).join(""));
+  const T = words.map(([, , word]) => myinNorm(word)).join("");
+  if (!S || !T || !raw || typeof raw !== "object" || !Array.isArray((raw as { scenes?: unknown }).scenes)) return { storyboard: raw, changed };
+  const story = structuredClone(raw) as { scenes: Record<string, unknown>[]; cta?: { after?: unknown }[] };
+  const blocks = matchingBlocks(S, T);
+  const toT = (si: number) => {
+    let pe = 0, te = 0;
+    for (const [i, j, k] of blocks) {
+      if (si < i) return te + Math.round((si - pe) * (j - te) / Math.max(1, i - pe));
+      if (si < i + k) return j + si - i;
+      pe = i + k; te = j + k;
+    }
+    return Math.min(T.length, te + si - pe);
+  };
+  const fix = (phrase: string, tpos: number, spos: number, limit: number, label: string) => {
+    const p = myinNorm(phrase);
+    const exact = p ? T.indexOf(p, tpos) : -1;
+    if (!p || (exact >= 0 && exact <= tpos + limit)) return phrase;
+    const s0 = S.indexOf(p, spos);
+    if (s0 < 0) return phrase;
+    const t0 = toT(s0), cand = T.slice(t0, toT(s0 + p.length));
+    if (!cand || cand.length * 2 < p.length || cand.length > p.length * 2 || T.indexOf(cand, tpos) !== t0 || t0 > tpos + limit) return phrase;
+    changed.push(`${label} 「${phrase}」 → 받아쓰기 「${cand}」`);
+    return cand;
+  };
+  let pos = 0, spos = 0;
+  story.scenes.forEach((sc, n) => {
+    if (sc.at_time !== undefined || typeof sc.at !== "string") return;
+    const at = sc.at;
+    sc.at = fix(at, pos, spos, 2500, `[장면 ${n + 1}] 시작 문구`);
+    const scp = T.indexOf(myinNorm(String(sc.at)), pos);
+    const sp = S.indexOf(myinNorm(at), spos);
+    const tStart = scp >= 0 && scp <= pos + 2500 ? scp : pos, sStart = sp >= 0 ? sp : spos;
+    const walk = (o: unknown): void => {
+      if (Array.isArray(o)) {
+        for (const v of o) {
+          if (Array.isArray(v) && v.length >= 2 && typeof v[0] === "string" && typeof v[1] === "string") v[1] = fix(v[1], tStart, sStart, 1400, `[장면 ${n + 1}] 문구`);
+          else walk(v);
+        }
+      } else if (o && typeof o === "object") {
+        const obj = o as Record<string, unknown>;
+        for (const [k, v] of Object.entries(obj)) {
+          if ((k === "cue" || k.startsWith("cue_")) && typeof v === "string") obj[k] = fix(v, tStart, sStart, 1400, `[장면 ${n + 1}] 문구`);
+          else if (k !== "at") walk(v);
+        }
+      }
+    };
+    walk(sc);
+    pos = tStart + 1; spos = sStart + 1;
+  });
+  (story.cta ?? []).forEach((cta, k) => { if (typeof cta.after === "string") cta.after = fix(cta.after, 0, 0, 400_000, `[구독 ${k + 1}] after 문구`); });
+  return { storyboard: story as unknown, changed };
 }
 
 /** When each scene starts (seconds), found the way resolve() finds its at; at_time scenes keep theirs, an unfound one is null. */
