@@ -17,7 +17,7 @@ const project = "33333333-3333-4333-8333-333333333333";
 test("get_video_editor is read only and asks the editor route for one view", async () => {
   const tool = MCP_TOOLS.find((item) => item.name === "get_video_editor");
   assert.equal(tool.annotations.readOnlyHint, true);
-  assert.deepEqual([...tool.inputSchema.properties.view.enum], ["summary", "scenes", "subtitles", "assets", "orders"]);
+  assert.deepEqual([...tool.inputSchema.properties.view.enum], ["summary", "scenes", "subtitles", "assets", "orders", "edits"]);
   const calls = [];
   await callMcpTool({ name: "get_video_editor", arguments: { project_id: project, view: "orders" } }, "org", async (path, init) => { calls.push([path, init?.method ?? "GET"]); return {}; });
   await callMcpTool({ name: "get_video_editor", arguments: { project_id: project } }, "org", async (path) => { calls.push([path, "GET"]); return {}; });
@@ -27,9 +27,12 @@ test("get_video_editor is read only and asks the editor route for one view", asy
 
 test("an AI key reads only a video its owner made or is assigned, and nothing is written", async () => {
   const route = await readFile(new URL("../app/api/v1/content/youtube-automation/editor/route.ts", import.meta.url), "utf8");
-  assert.match(route, /authenticateRequest\(request, \{ allowAgent: true, requiredAgentScope: "knowledge\.read" \}\)/);
-  assert.match(route, /actor\.type === "agent" && project\.ownerId !== actor\.ownerId && project\.assigneeId !== actor\.ownerId/, "an AI key's database client is not scoped");
-  assert.doesNotMatch(route, /export async function (POST|PATCH|PUT|DELETE)/);
+  const get = route.slice(route.indexOf("export async function GET"), route.indexOf("export async function POST"));
+  assert.match(get, /authenticateRequest\(request, \{ allowAgent: true, requiredAgentScope: "knowledge\.read" \}\)/);
+  assert.match(get, /await editorProject\(actor, input\.projectId\)/);
+  const edit = await readFile(new URL("../lib/server/myin-edit.ts", import.meta.url), "utf8");
+  assert.match(edit, /actor\.type === "agent" && project\.ownerId !== actor\.ownerId && project\.assigneeId !== actor\.ownerId/, "an AI key's database client is not scoped");
+  assert.doesNotMatch(route, /export async function (PATCH|PUT|DELETE)/);
   assert.match(route, /item\.target === "video" && item\.status === "open" && !item\.deleted/, "orders = open 최종 검토 feedback on the video");
   const run = await readFile(new URL("../lib/server/myin-run.ts", import.meta.url), "utf8");
   const view = run.slice(run.indexOf("export async function myinEditorView"));

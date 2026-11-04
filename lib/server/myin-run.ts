@@ -1335,3 +1335,11 @@ export async function myinEditorView(actor: RequestActor, sourceId: string, view
   return { runId: record.id, scenes: story.scenes.map((scene, i) => ({ n: i + 1, voiceStart: starts[i], ...scene })),
     music_cues: (story as { music_cues?: unknown }).music_cues ?? null, cta: story.cta, end: (story as { end?: unknown }).end ?? null };
 }
+
+/** 영상 편집기: when the OS final an edit starts from (the one 최종 검토 shows) was made, or null before the first. */
+export async function myinFinalAt(service: Service, sourceId: string) {
+  const { data } = await service.from("os_records").select("*").eq("parent_id", sourceId).eq("record_type", "ai_job")
+    .eq("metadata->>kind", MYIN_RUN_KIND).is("archived_at", null).order("created_at", { ascending: false }).limit(1);
+  const record = data?.[0] as OsRecord | undefined;
+  return record ? parse(record).final?.at ?? null : null;
+}
