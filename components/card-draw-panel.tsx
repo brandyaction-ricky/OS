@@ -38,12 +38,15 @@ export function CardDrawPanel({ page, projectId, photo, onPhoto, onFile, label, 
   const [done, setDone] = useState<string[]>([]);
   const [hint, setHint] = useState("");
   const [promptText, setPromptText] = useState("");
+  // The card whose words were copied last: a picture coming back while another card is open is asked about first (11-04: a 1장 picture landed on 22장).
+  const [copiedFor, setCopiedFor] = useState("");
   // The picture coming back from ChatGPT: where it is (올리는 중 · 넣었어요 with a thumbnail · 못 넣었어요), and a file being dragged over the page.
   const [placed, setPlaced] = useState<{ state: "busy" | "done" | "fail"; preview?: string } | null>(null);
   const [dragging, setDragging] = useState(false);
   const dragTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const putRef = useRef<(file: File) => Promise<void>>(async () => {});
   putRef.current = async (file: File) => {
+    if (copiedFor && copiedFor !== label && !window.confirm(`${copiedFor} 그림 설명으로 그린 그림 같아요. ${label}에 넣을까요?`)) return;
     setPlaced({ state: "busy" });
     const preview = URL.createObjectURL(file);
     if (await onFile(file)) { setPlaced({ state: "done", preview }); setHint(""); setDone(current => current.includes("paste") ? current : [...current, "paste"]); }
@@ -115,7 +118,7 @@ export function CardDrawPanel({ page, projectId, photo, onPhoto, onFile, label, 
   const copyPrompt = () => run("prompt", async () => {
     const text = myGptDrawPrompt(scene, style, picked.map(row => row.name));
     try { await navigator.clipboard.writeText(text); setPromptText(""); } catch { setPromptText(text); }
-    step("prompt");
+    setCopiedFor(label); step("prompt");
   });
   const pasteBack = () => run("paste", async () => {
     try {
@@ -166,7 +169,7 @@ export function CardDrawPanel({ page, projectId, photo, onPhoto, onFile, label, 
       <button type="button" className="yp-btn yp-sm" aria-expanded={mine} disabled={[...scene.trim()].length < 2 || characters === null} onClick={() => setMine(!mine)}>내 GPT로 그리기</button>
       <CostTag kind="ai" />
       <button type="button" className="yp-btn yp-sm" disabled={busy === "draw"} onClick={() => setOpen(false)}>닫기</button></div>
-    {dragging ? <div className="yp-card-drop" aria-hidden="true">여기에 놓으면 {label}에 들어가요</div> : null}
+    {dragging ? <div className="yp-card-drop" aria-hidden="true"><span>여기에 놓으면 {label}에 들어가요</span></div> : null}
     {mine ? <ol className="yp-card-mygpt" aria-label="내 GPT로 그리기">
       <li className={done.includes("sheet") ? "yp-on" : ""}><b>1</b><button type="button" className="yp-btn yp-sm" disabled={!picked.length || Boolean(busy)} onClick={() => void copySheet()}>{busy === "sheet" ? "만드는 중…" : "참고 그림 복사"}</button>
         <span className="yp-hint">{picked.length ? <><a href="https://chatgpt.com/" target="_blank" rel="noreferrer">ChatGPT</a> 새 대화창에 붙여 넣어요 (⌘V)</> : "고른 캐릭터 그림이 없어요 — 2번부터 해요"}</span></li>
