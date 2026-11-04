@@ -64,6 +64,12 @@ export const canReopen = (project: Pick<YpProject, "yp">, gate: YpGate) => {
   const info = project.yp.gates[gate];
   return info.state === "ok" && Boolean(info.self) && project.yp.stage === nextStage(gate, project.yp);
 };
+/** Why a confirmed step cannot be reopened by the PD now, or "" (로건 수정 요청 11-02: say why instead of showing nothing). */
+export const reopenWhy = (project: Pick<YpProject, "yp">, gate: YpGate) => {
+  const info = project.yp.gates[gate];
+  if (info.state !== "ok" || canReopen(project, gate)) return "";
+  return info.self ? "다음 단계를 지나서 직접 다시 열 수 없어요. 대표에게 되돌리기를 부탁해요." : "대표가 컨펌한 단계예요. 고치려면 대표에게 되돌리기를 부탁해요.";
+};
 /** True when the PD changed the content after the last decision (an unchanged re-request needs a reason, S11-5). */
 export const editedSinceDecision = (project: Pick<YpProject, "yp">, gate: YpGate) => {
   const decided = project.yp.gates[gate].decidedAt;

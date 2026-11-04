@@ -14,7 +14,7 @@ import { YoutubeFlow, type YpAction } from "./youtube-process-flow";
 import { AskApprover, askedName, CancelAsk, GateNotes, ReopenButton, StepFooter, useLeaveGuard } from "./youtube-process-frame";
 import { ConfirmActions } from "./youtube-process-confirm";
 import { useYoutubeCanConfirm } from "./use-youtube-confirm";
-import { canReopen, editedSinceDecision, GATE_FIELDS, gateName } from "@/lib/youtube-process/confirm";
+import { canReopen, editedSinceDecision, GATE_FIELDS, gateName, reopenWhy } from "@/lib/youtube-process/confirm";
 import { YoutubeDraftScreen } from "./youtube-process-draft";
 import { YoutubeOutlineScreen } from "./youtube-process-outline";
 import { ShortTopicResearch } from "./youtube-process-short-script";
@@ -70,6 +70,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
   // 로건 피드백 10/26-1: a failed save left the old 「저장됨」 stamp, so it read as saved.
   const [unsaved, setUnsaved] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [thinWarned, setThinWarned] = useState(false);
   const [error, setError] = useState("");
   const [conflict, setConflict] = useState(false);
   const [created, setCreated] = useState<YpProject[]>([]);
@@ -207,11 +208,16 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
   const lines = topicLines(form.title);
   const short = form.kind === "short";
   const confirmLabel = gateName("topic", form.kind);
+  // A longform may go on without 4 참고 영상 (and so 5 공식), but the PD hears it once first (로건 수정 요청 eaf19dee).
+  const thin = !short && !form.refs.length;
+  const thinAsked = thin && thinWarned;
   const topicReason = topicMissing(form.title, { type: form.kind, target: form.target }) || (!short ? "" : !research.refs ? "참고 영상을 찾아 주세요" : !research.formula ? "공식을 고르고 주제를 정해 주세요" : "");
   const action: YpAction = view !== current && current < YP_FLOW.length
     ? { kind: "link", label: `이어서 하기 · ${stepName(current, shell.yp.topic.type)}`, href: stepHref(current, shell.id) }
-    : { kind: "button", label: `${confirmLabel}하고 다음으로${lines.length > 1 ? ` (${lines.length}개)` : ""}`, busy, onClick: () => void gate("confirm"), reason: topicReason,
-      extra: client && topicGate.state !== "wait" ? <AskApprover client={client} members={members} disabled={busy || Boolean(topicReason)} onSend={to => void gate("request", undefined, to)} /> : null };
+    : { kind: "button", label: thinAsked ? "비워 두고 컨펌하기" : `${confirmLabel}하고 다음으로${lines.length > 1 ? ` (${lines.length}개)` : ""}`, busy, reason: topicReason,
+      onClick: () => { if (thin && !thinAsked) setThinWarned(true); else void gate("confirm"); },
+      extra: <>{thinAsked ? <span className="yp-warn-t" role="alert">참고 영상·공식이 비어 있어요. 그래도 컨펌하려면 한 번 더 눌러요.</span> : null}
+        {client && topicGate.state !== "wait" ? <AskApprover client={client} members={members} disabled={busy || Boolean(topicReason)} onSend={to => void gate("request", undefined, to)} /> : null}</> };
   const others = projects.filter(row => row.id !== shell.id);
   // 로건 QA 10/30: a longform's list held 숏폼 and 복사본 — only the same kind of video, without copies, newest first.
   const family = (kind: YpKind | null | undefined) => kind === "short" || kind === "card" ? kind : "long";
@@ -243,7 +249,8 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
         {topicGate.state === "changes" ? <div className="yp-note yp-warn" role="status"><div><b>대표 수정 요청</b> · {md(topicGate.decidedAt)} — “{topicGate.memo}”<br />{topicGate.fields?.length ? `특히 볼 칸: ${topicGate.fields.map(field => GATE_FIELDS.topic[field] ?? field).join(", ")} · ` : ""}모든 칸을 고칠 수 있어요</div></div> : null}
         {topicGate.state === "hold" ? <div className="yp-note yp-warn" role="status"><div><b>대표 보류</b> · {md(topicGate.decidedAt)} — 사유: {topicGate.reason}. 손본 뒤 컨펌할 수 있어요.</div></div> : null}
         {project && client && canReopen(project, "topic") ? <div className="yp-note yp-ok" role="status"><div><b>{confirmLabel} OK · PD 컨펌</b> <ReopenButton project={project} gate="topic" client={client}
-          onDone={next => { setProject(next); setForm(formOf(next)); }} onError={reason => isConflict(reason) ? setConflict(true) : setError(errorMessage(reason))} /></div></div> : null}
+          onDone={next => { setProject(next); setForm(formOf(next)); }} onError={reason => isConflict(reason) ? setConflict(true) : setError(errorMessage(reason))} /></div></div>
+          : project && reopenWhy(project, "topic") ? <p className="yp-hint">{reopenWhy(project, "topic")}</p> : null}
         {project ? <GateNotes project={project} gate="topic" /> : null}
         {replyOpen ? <form className="yp-card yp-confirm-form" onSubmit={event => { event.preventDefault(); if (replyText.trim()) void gate("request", replyText.trim()); }}>
           <label>고친 칸 없이 다시 요청하는 이유 (대표에게 보여요)<input className="yp-in" id="yp-topic-reply" maxLength={200} value={replyText} onChange={event => setReplyText(event.target.value)} /></label>
@@ -293,7 +300,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
                 <button type="button" className="yp-ib" aria-label="아래로" disabled={index === form.refs.length - 1} onClick={() => { const refs = [...form.refs]; [refs[index + 1], refs[index]] = [refs[index], refs[index + 1]]; editAndSave({ refs }); }}><ArrowDown size={14} /></button>
                 <button type="button" className="yp-ib" aria-label="빼기" onClick={() => editAndSave({ refs: form.refs.filter((_, at) => at !== index) })}><X size={14} /></button>
               </> : null}
-            </li>)}</ul> : !editable ? <span className="yp-hint">없음</span> : null}
+            </li>)}</ul> : !editable ? <span className="yp-hint">없음{project && canReopen(project, "topic") ? " · 위 [다시 열기]를 누르면 넣을 수 있어요" : ""}</span> : null}
             {open("refs") ? <form className="yp-savebar" onSubmit={async event => {
               event.preventDefault();
               const ref = parseYoutubeRef(refUrl);

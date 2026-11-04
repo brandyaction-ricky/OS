@@ -2,6 +2,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { Search, Sparkles } from "lucide-react";
 import { apiRequest } from "@/lib/api-client";
+import { canReopen } from "@/lib/youtube-process/confirm";
 import { BREAKOUT, compactCount, isBreakout, ratioLabel, type DiscoverVideo } from "@/lib/youtube-process/discover";
 import { projectName, topicEditable, topicKeywords, type YpProject, type YpRef } from "@/lib/youtube-process/project";
 import type { YpShortTopicPick, YpTopicFormula } from "@/lib/youtube-process/stages";
@@ -69,6 +70,7 @@ export function TopicFormulas({ project, onPick }: { project: YpProject; onPick:
         : canPick && !research ? <div className="yp-ways" style={{ marginBottom: 0 }}>
           <button type="button" className="yp-way yp-rec" disabled={!ready} onClick={() => setSend(true)}><b><Sparkles size={14} aria-hidden="true" /> 내 AI에게 맡기기 <CostTag kind="ai" /></b>
             <span>{ready ? "참고 영상과 시장 영상에서 제목 공식을 뽑고, 그 공식으로 주제 후보 3개를 내 줘요" : "먼저 1에 초안 주제를 쓰거나 4에 참고 영상을 넣어요"}</span></button></div> : null}
+      {!canPick && !research ? <span className="yp-hint">아직 뽑지 않았어요{canReopen(project, "topic") ? " · 위 [다시 열기]를 누르면 뽑을 수 있어요" : ""}</span> : null}
       {research ? <ul className="yp-hist">{research.topics.map(topic => {
         const formula = research.formulas.find(item => item.formula === topic.formula);
         return <li key={topic.title} style={{ alignItems: "center", flexWrap: "wrap", gap: 10 }}>
