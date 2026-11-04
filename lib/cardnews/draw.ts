@@ -32,23 +32,15 @@ export function cardDrawPrompt(scene: string, style: CardDrawStyle, refNames: st
 }
 
 /**
- * 「Aside에 맡기기」 (대표 2026-11-04): the same picture drawn on the PD's own GPT through Aside instead of the company API. The PD pastes
- * this into Aside; it draws with the same words the OS would send, and the PD puts the picture on the card with 「사진 넣기」.
+ * 「내 GPT로 그리기」 (대표 2026-11-04): the same picture drawn in the PD's own ChatGPT instead of the company API. The picked 창고
+ * pictures go in as one image, side by side in the order they were picked, so the scene's 「참고 그림 1 · 2」 still point at them.
  */
-export function asideDrawInstruction(input: { scene: string; style: CardDrawStyle; refs: { name: string; url: string }[]; where: string }) {
+export function myGptDrawPrompt(scene: string, style: CardDrawStyle, refNames: string[]) {
   const { width, height } = CARD_DRAW_SIZE;
   return [
-    "[카드 그림 그리기 → 브랜디 OS 카드에 넣기]",
-    "0. 그림은 내 GPT로 그립니다(GPT 이미지 모델). 로그인은 담당자가 직접 합니다. 비밀번호는 묻거나 입력하지 마세요.",
-    input.refs.length ? `1. 같은 얼굴로 그리도록 참고 그림 ${input.refs.length}장을 내려받습니다(주소는 1시간 동안 열려요).\n${input.refs.map((ref, index) => `   ${index + 1}) ${ref.name}: ${ref.url}`).join("\n")}` : "1. 참고 그림은 없습니다.",
-    `2. GPT에 ${input.refs.length ? "참고 그림을 위 순서대로 붙이고 " : ""}아래 글을 그대로 넣어 세로 4:5(${width} × ${height}) 그림 한 장을 그립니다.`,
-    "---",
-    cardDrawPrompt(input.scene, input.style, input.refs.map(ref => ref.name)),
-    "---",
-    "3. 그림에 글자 · 말풍선 · 로고가 들어갔거나, 같은 사람이 두 번 그려졌거나, 말하지 않은 캐릭터가 끼어들었으면 같은 글로 다시 그립니다.",
-    "4. 마음에 드는 그림을 PNG로 내려받습니다.",
-    `5. 브랜디 OS › ${input.where}에서 「사진 넣기」로 그 그림을 올립니다.`,
-    "6. 올린 카드를 담당자에게 보여 줍니다.",
-  ].join("\n");
+    CARD_DRAW_STYLES[style].prompt,
+    refNames.length ? `The attached image shows these characters side by side, left to right: ${refNames.map((name, index) => `${index + 1}) ${name}`).join(", ")}. Draw them exactly as they look there (face, hair, body shape, outfit, line style).` : "",
+    `Scene: ${scene.trim()}`,
+    `Draw one portrait 4:5 picture (${width} × ${height}) for an Instagram card. Draw no letters, words, numbers, speech bubbles, captions, logos or watermarks: the text is added later.`,
+  ].filter(Boolean).join("\n");
 }
-

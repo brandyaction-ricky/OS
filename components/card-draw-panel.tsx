@@ -1,17 +1,29 @@
 "use client";
 // 카드 만들기 › 사진 › AI로 그리기 (대표 2026-11-02): the PD writes the scene, picks 캐릭터 창고 pictures to keep the faces, and GPT draws
 // one picture for the card. A picture already on the card can be kept in the 창고 under a name (캐릭터로 저장).
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type DragEvent, type ReactNode } from "react";
 import { Sparkles, X } from "lucide-react";
 import { imageEstimate } from "@/lib/cost";
-import { asideDrawInstruction, CARD_DRAW_QUALITY, CARD_DRAW_REFS_MAX, CARD_DRAW_SCENE_MAX, CARD_DRAW_STYLES, type CardCharacterView, type CardDrawQuality, type CardDrawStyle } from "@/lib/cardnews/draw";
+import { CARD_DRAW_QUALITY, CARD_DRAW_REFS_MAX, CARD_DRAW_SCENE_MAX, CARD_DRAW_STYLES, myGptDrawPrompt, type CardCharacterView, type CardDrawQuality, type CardDrawStyle } from "@/lib/cardnews/draw";
 import type { CardPhoto } from "@/lib/cardnews/formats";
 import { CostTag, useCostConfirm, useCostModels } from "./cost-notice";
 import type { YpPage } from "./youtube-process-frame";
 
-/** `children`: the photo buttons the 「AI로 그리기」 button sits beside. `brief`: a 웹툰 card's own 장면 and 나오는 사람. `where`: the card, named for Aside. */
-export function CardDrawPanel({ page, projectId, photo, onPhoto, brief, where, defaultStyle = "simple", children }: { page: YpPage; projectId: string; photo?: CardPhoto;
-  onPhoto: (photo: CardPhoto) => void; brief?: { scene: string; cast: string }; where: string; defaultStyle?: CardDrawStyle; children: ReactNode }) {
+/** The picked 창고 pictures side by side in one PNG, the order they were picked: 「내 GPT로 그리기」 pastes it into ChatGPT. */
+async function referenceSheet(urls: string[]) {
+  const pictures = await Promise.all(urls.map(async url => createImageBitmap(await (await fetch(url)).blob())));
+  const height = 768, gap = 24, widths = pictures.map(picture => Math.round(picture.width * height / picture.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = widths.reduce((sum, width) => sum + width, 0) + gap * (pictures.length - 1); canvas.height = height;
+  const context = canvas.getContext("2d")!;
+  context.fillStyle = "#fff"; context.fillRect(0, 0, canvas.width, height);
+  pictures.reduce((x, picture, index) => { context.drawImage(picture, x, 0, widths[index], height); picture.close(); return x + widths[index] + gap; }, 0);
+  return new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("참고 그림을 만들지 못했어요.")), "image/png"));
+}
+
+/** `children`: the photo buttons the 「AI로 그리기」 button sits beside. `brief`: a 웹툰 card's own 장면 and 나오는 사람. `onFile`: a picture the PD pastes or drops in. */
+export function CardDrawPanel({ page, projectId, photo, onPhoto, onFile, brief, defaultStyle = "simple", children }: { page: YpPage; projectId: string; photo?: CardPhoto;
+  onPhoto: (photo: CardPhoto) => void; onFile: (file: File) => void; brief?: { scene: string; cast: string }; defaultStyle?: CardDrawStyle; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [scene, setScene] = useState("");
   const [style, setStyle] = useState<CardDrawStyle>(defaultStyle);
@@ -20,8 +32,11 @@ export function CardDrawPanel({ page, projectId, photo, onPhoto, brief, where, d
   const [characters, setCharacters] = useState<CardCharacterView[] | null>(null);
   const [busy, setBusy] = useState("");
   const [name, setName] = useState("");
-  const [copied, setCopied] = useState(false);
-  const [asideText, setAsideText] = useState("");
+  // 「내 GPT로 그리기」: three steps in the PD's own ChatGPT (copy the reference picture, copy the words, paste the picture back).
+  const [mine, setMine] = useState(false);
+  const [done, setDone] = useState<string[]>([]);
+  const [hint, setHint] = useState("");
+  const [promptText, setPromptText] = useState("");
   const cost = useCostConfirm();
   const model = useCostModels().image;
   const amount = imageEstimate(model, quality, refs.length);
@@ -38,18 +53,56 @@ export function CardDrawPanel({ page, projectId, photo, onPhoto, brief, where, d
     const names = briefCast.split(/[\s,·]+/).filter(Boolean);
     setRefs(characters.filter(row => names.some(name => row.name.includes(name))).slice(0, CARD_DRAW_REFS_MAX).map(row => row.id));
   }, [characters, briefCast]);
+  // While 「내 GPT로 그리기」 is open, ⌘V anywhere (a text box gets only text) puts the copied picture on the card.
+  useEffect(() => {
+    if (!mine) return;
+    const paste = (event: ClipboardEvent) => {
+      const file = [...(event.clipboardData?.files ?? [])].find(row => row.type.startsWith("image/"));
+      if (!file) return;
+      event.preventDefault(); onFile(file);
+      setDone(current => current.includes("paste") ? current : [...current, "paste"]);
+    };
+    window.addEventListener("paste", paste);
+    return () => window.removeEventListener("paste", paste);
+  }, [mine, onFile]);
   if (!client) return <div className="yp-row-btns">{children}</div>;
   const run = async (what: string, work: () => Promise<void>) => { setBusy(what); try { await work(); } catch (reason) { page.fail(reason); } finally { setBusy(""); } };
   const draw = () => run("draw", async () => {
     if (!await cost.confirm({ model, amount, detail: `그림 1장${refs.length ? ` · 캐릭터 그림 ${refs.length}장 참고` : ""}`, note: "GPT 크레딧(매달 500달러)에서 나가요. 그림은 설명용이에요 — 실제 기록처럼 쓰지 않아요.", ok: "그리기" })) return;
     onPhoto(await client.cardDraw(projectId, { scene: scene.trim(), style, quality, refs }));
   });
-  const aside = () => run("aside", async () => {
-    const picked = refs.map(id => characters?.find(row => row.id === id)).filter((row): row is CardCharacterView => Boolean(row));
-    const text = asideDrawInstruction({ scene: scene.trim(), style, refs: picked.map(row => ({ name: row.name, url: row.url })), where });
-    // Some browsers keep the clipboard closed (the app's own browser pane): the brief is shown to copy by hand instead of an error.
-    try { await navigator.clipboard.writeText(text); setCopied(true); setAsideText(""); } catch { setAsideText(text); }
+  const picked = refs.map(id => characters?.find(row => row.id === id)).filter((row): row is CardCharacterView => Boolean(row));
+  const step = (key: string) => setDone(current => current.includes(key) ? current : [...current, key]);
+  // Some browsers keep the clipboard closed (the app's own browser pane): the sheet is saved as a file and the words shown to copy by hand.
+  const copySheet = () => run("sheet", async () => {
+    const blob = await referenceSheet(picked.map(row => row.url));
+    try { await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]); setHint(""); }
+    catch {
+      const link = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: "참고그림.png" });
+      link.click(); URL.revokeObjectURL(link.href);
+      setHint("이 브라우저는 그림 복사를 막아서 「참고그림.png」로 내려받았어요. ChatGPT 대화창에 끌어다 놓아요.");
+    }
+    step("sheet");
   });
+  const copyPrompt = () => run("prompt", async () => {
+    const text = myGptDrawPrompt(scene, style, picked.map(row => row.name));
+    try { await navigator.clipboard.writeText(text); setPromptText(""); } catch { setPromptText(text); }
+    step("prompt");
+  });
+  const pasteBack = () => run("paste", async () => {
+    try {
+      for (const item of await navigator.clipboard.read()) {
+        const type = item.types.find(kind => kind.startsWith("image/"));
+        if (type) { onFile(new File([await item.getType(type)], "my-gpt.png", { type })); step("paste"); setHint(""); return; }
+      }
+      setHint("복사된 그림이 없어요. ChatGPT 그림에서 「이미지 복사」를 먼저 눌러요.");
+    } catch { setHint("이 브라우저는 붙여 넣기 버튼을 막아요. ⌘V(윈도우는 Ctrl+V)를 눌러 붙여 넣거나 그림 파일을 여기에 끌어다 놓아요."); }
+  });
+  const dropped = (event: DragEvent) => {
+    const file = [...event.dataTransfer.files].find(row => row.type.startsWith("image/"));
+    if (!file) return;
+    event.preventDefault(); onFile(file); step("paste");
+  };
   const keep = () => run("keep", async () => {
     if (!photo) return;
     setCharacters(await client.addCardCharacter({ projectId, path: photo.path, name: name.trim() }));
@@ -84,12 +137,21 @@ export function CardDrawPanel({ page, projectId, photo, onPhoto, brief, where, d
     <div className="yp-row-btns">
       <button type="button" className="yp-btn yp-pri" disabled={[...scene.trim()].length < 2 || Boolean(busy)} onClick={() => void draw()}>{busy === "draw" ? "그리는 중 · 1~2분" : photo ? "다시 그리기" : "그리기"}</button>
       <CostTag kind="paid" amount={amount} />
-      <button type="button" className="yp-btn yp-sm" disabled={[...scene.trim()].length < 2 || characters === null || Boolean(busy)} onClick={() => void aside()}>{copied ? "복사했어요 · Aside에 붙여 넣어요" : "Aside에 맡기기 (지침 복사)"}</button>
+      <button type="button" className="yp-btn yp-sm" aria-expanded={mine} disabled={[...scene.trim()].length < 2 || characters === null} onClick={() => setMine(!mine)}>내 GPT로 그리기</button>
       <CostTag kind="ai" />
       <button type="button" className="yp-btn yp-sm" disabled={busy === "draw"} onClick={() => setOpen(false)}>닫기</button></div>
-    {asideText ? <label className="yp-field"><span className="yp-fld-h"><b>Aside 지침</b></span>
-      <span className="yp-hint">이 브라우저는 자동 복사를 막아요. 아래 글을 누르면 전부 선택돼요. 복사해서 Aside에 붙여 넣어요.</span>
-      <textarea className="yp-in" rows={6} readOnly value={asideText} aria-label="Aside 지침" onFocus={event => event.currentTarget.select()} /></label> : null}
+    {mine ? <ol className="yp-card-mygpt" aria-label="내 GPT로 그리기" onDragOver={event => event.preventDefault()} onDrop={dropped}>
+      <li className={done.includes("sheet") ? "yp-on" : ""}><b>1</b><button type="button" className="yp-btn yp-sm" disabled={!picked.length || Boolean(busy)} onClick={() => void copySheet()}>{busy === "sheet" ? "만드는 중…" : "참고 그림 복사"}</button>
+        <span className="yp-hint">{picked.length ? <><a href="https://chatgpt.com/" target="_blank" rel="noreferrer">ChatGPT</a> 새 대화창에 붙여 넣어요 (⌘V)</> : "고른 캐릭터 그림이 없어요 — 2번부터 해요"}</span></li>
+      <li className={done.includes("prompt") ? "yp-on" : ""}><b>2</b><button type="button" className="yp-btn yp-sm" disabled={Boolean(busy)} onClick={() => void copyPrompt()}>그림 설명 복사</button>
+        <span className="yp-hint">이어서 붙여 넣고 보내요. 다 그려질 때까지 1~2분 기다려요</span></li>
+      <li className={done.includes("paste") ? "yp-on" : ""}><b>3</b><button type="button" className="yp-btn yp-sm" disabled={Boolean(busy)} onClick={() => void pasteBack()}>그린 그림 붙여 넣기</button>
+        <span className="yp-hint">ChatGPT 그림에서 「이미지 복사」를 누르고 여기를 눌러요. 그림 파일을 이 칸에 끌어다 놓아도 돼요</span></li>
+      {hint ? <li className="yp-card-mygpt-note" role="status">{hint}</li> : null}
+    </ol> : null}
+    {promptText ? <label className="yp-field"><span className="yp-fld-h"><b>그림 설명</b></span>
+      <span className="yp-hint">이 브라우저는 자동 복사를 막아요. 아래 글을 누르면 전부 선택돼요. 복사해서 ChatGPT에 붙여 넣어요.</span>
+      <textarea className="yp-in" rows={6} readOnly value={promptText} aria-label="그림 설명" onFocus={event => event.currentTarget.select()} /></label> : null}
     {cost.element}
   </div></>;
 }
