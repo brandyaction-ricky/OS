@@ -288,14 +288,16 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
   const addBlank = async () => { for (const format of chosen) if (!(await save({ add: format }))) return; };
   // A photo (or a drawn picture) lands on the card that was open when it was picked, on the draft as it is by then.
   const placePhoto = (photo: CardPhoto, at: number) => { const latest = draftRef.current; if (latest) edit({ ...latest, slides: latest.slides.map((row, index) => index === at ? { ...row, photo } : row) }); };
+  /** True once the picture is on the card (「내 GPT로 그리기」 says so). */
   const putPhoto = async (file: File | undefined, at: number) => {
-    if (!file || !draft || !page.client) return;
+    if (!file || !draft || !page.client) return false;
     setPhotoBusy(true);
     try {
       const shrunk = await shrinkPhoto(file);
       const asset = await page.client.uploadAsset(project.id, "card", shrunk.file);
       placePhoto({ path: asset.path, w: shrunk.w, h: shrunk.h }, at);
-    } catch (reason) { page.fail(reason); } finally { setPhotoBusy(false); }
+      return true;
+    } catch (reason) { page.fail(reason); return false; } finally { setPhotoBusy(false); }
   };
   const dropPhoto = (at: number) => { if (draft) edit({ ...draft, slides: draft.slides.map((row, index) => index === at ? { type: row.type, fields: row.fields } : row) }); };
 
@@ -371,7 +373,7 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
           {spec?.photo && editable ? <div className="yp-field"><span className="yp-fld-h"><b>사진</b><span className="yp-opt">선택</span></span>
             <p className="yp-hint">실제 사진 · 자료를 넣거나 AI로 그려요. AI 그림은 설명용이라 실제 기록처럼 쓰지 않아요 (디자인 정본 §8).</p>
             <CardDrawPanel key={draft.id} page={page} projectId={project.id} photo={draft.slides[current].photo} onPhoto={photo => placePhoto(photo, current)}
-              onFile={file => void putPhoto(file, current)}
+              onFile={file => putPhoto(file, current)} label={`${current + 1}장`}
               defaultStyle={draft.format === "webtoon" ? "webtoon" : "simple"}
               brief={draft.format === "webtoon" ? { scene: draft.slides[current].fields.scene ?? "", cast: draft.slides[current].fields.cast ?? "" } : undefined}>
               <label className="yp-btn yp-sm"><ImagePlus size={13} aria-hidden="true" />{photoBusy ? "올리는 중…" : draft.slides[current].photo ? "사진 바꾸기" : "사진 넣기"}
