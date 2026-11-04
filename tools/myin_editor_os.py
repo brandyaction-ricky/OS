@@ -114,7 +114,8 @@ def report(project, order, status, version=None, note=""):
 # ── 문장 테이크: 렌더 PC가 이 영상 목소리로 다시 읽기 (이 컴퓨터엔 목소리 키가 없음) ──
 def say(project, editor, order, text, takes=3, wait=600, every=10):
     """Asks the render PC to read `text` again `takes` times and saves the takes as Logan's say.py did: newlines/<order>_<k>.wav and
-    newlines/<order>.json {text, takes: [{file, rise}], best} (best = the calmest ending). A few won of Fish per take."""
+    newlines/<order>.json {text, takes: [{file, rise}], best}. A person listens and picks; `best` is only the first take until they do
+    (대표 2026-11-04: the ear chose the take with the highest end, so no take is ranked by its end height). A few won of Fish per take."""
     sid = api("say", project, sentences=[text], takes=takes)["sayId"]
     end = time.time() + wait
     while True:
@@ -126,9 +127,8 @@ def say(project, editor, order, text, takes=3, wait=600, every=10):
     out = os.path.join(editor, "newlines"); os.makedirs(out, exist_ok=True); rows = []
     for t in sorted(s["takes"], key=lambda t: t["k"]):
         f = os.path.join(out, f"{order}_{t['k']}.wav"); _get(t["url"], f); rows.append({"file": f, "rise": t["rise"]})
-    best = next((r for t, r in zip(sorted(s["takes"], key=lambda t: t["k"]), rows) if s["best"] and t["k"] == s["best"][0]), rows[0])
-    js(os.path.join(out, f"{order}.json"), {"text": text, "takes": rows, "best": best["file"]})
-    return {"takes": rows, "best": best["file"]}
+    js(os.path.join(out, f"{order}.json"), {"text": text, "takes": rows, "best": rows[0]["file"]})
+    return {"takes": rows, "best": rows[0]["file"]}
 
 
 # ── 확정 전 자동 검사 (OS가 같은 기준으로 다시 봄) ──
@@ -286,7 +286,7 @@ def _self_test():
             if body["action"] == "say": return self._send({"sayId": "66666666-6666-4666-8666-666666666666", "status": "queued"})
             if body["action"] == "say_status":
                 store["/up/take0"] = b"RIFF0"; store["/up/take1"] = b"RIFF1"
-                return self._send({"status": "done", "takes": [{"i": 0, "k": 1, "rise": 0.4, "url": base + "/files/take1"}, {"i": 0, "k": 0, "rise": 1.8, "url": base + "/files/take0"}], "best": [1]})
+                return self._send({"status": "done", "takes": [{"i": 0, "k": 1, "rise": 0.4, "url": base + "/files/take1"}, {"i": 0, "k": 0, "rise": 1.8, "url": base + "/files/take0"}]})
             if body["action"] == "handoff":
                 parts = [{"bytes": len(store[f"/up/part{n}"]), "sha256": hashlib.sha256(store[f"/up/part{n}"]).hexdigest(), "url": f"{base}/files/part{n}"} for n in range(len([k for k in store if k.startswith("/up/part")]))]
                 return self._send({"at": "2026-11-04T10:00:00.000Z", "v": 2, "videoUrl": base + "/files/video", "srtUrl": base + "/files/srt", "bundle": parts,
@@ -330,7 +330,8 @@ def _self_test():
         assert r["chunks"] == 2 and os.path.exists(os.path.join(other, "ws", "voice", "os_myin", "myin_storyboard.json"))
         assert check_issues({"decodeErrors": 0, "frames": 597, "end": 10, "videoSeconds": 10, "audioSeconds": 10}) == ["프레임 수 597 / 예상 600"]
         took = say(project, ed, "o002", "이 문장을 다시 읽어 줘", takes=2, every=0)
-        assert took["best"].endswith("o002_1.wav") and open(os.path.join(ed, "newlines", "o002_0.wav"), "rb").read() == b"RIFF0"
+        assert took["best"].endswith("o002_0.wav"), "no take is ranked: the first one until a person picks"
+        assert open(os.path.join(ed, "newlines", "o002_0.wav"), "rb").read() == b"RIFF0"
         assert jl(os.path.join(ed, "newlines", "o002.json"))["takes"][1]["rise"] == 0.4
         assert cleanup(project, ed)["deleted"] is False
         assert calendar.timegm(time.strptime("2026-11-04T00:00:00", "%Y-%m-%dT%H:%M:%S")) == 1793750400
