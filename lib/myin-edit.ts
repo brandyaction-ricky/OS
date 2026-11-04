@@ -3,8 +3,17 @@
 
 export interface EditLock { by: string; name: string; pc: string; since: string; seenAt: string; basedOn: string | null }
 
-/** A lock its computer stopped renewing (closed, crashed) frees the video after this long. */
-export const EDIT_LOCK_STALE_MS = 10 * 60_000;
+/** A lock its computer stopped renewing (closed, crashed) frees the video after this long (로건 개발 문서 v3 7.1: a 30-minute lease). */
+export const EDIT_LOCK_STALE_MS = 30 * 60_000;
+
+/** 인계 기록 (v3 7.1 · 7.2-8): who took, handed over, finished or (an admin) forced open a video's edit lock — the last 30. */
+export interface LockEvent { kind: "lock" | "handover" | "unlock" | "force"; name: string; pc: string; at: string; from?: { name: string; pc: string }; reason?: string }
+export const withLockEvent = (history: LockEvent[] | undefined, event: LockEvent) => [...(history ?? []), event].slice(-30);
+
+/** 음량 검사 (v3 7.2-6): an edited final is held to the 완성 line — −14 LUFS ±1 and a peak at −1 dB or lower. Empty = fine. */
+export function editLoudnessIssue(lufs: number, peak: number) {
+  return Math.abs(lufs + 14) > 1 || peak > -1 ? `음량 ${lufs} LUFS(−15~−13이어야 해요) · 최대 ${peak} dB(−1 이하여야 해요)` : "";
+}
 
 /** take: free or stale · renew: mine on this computer · held: someone else (or my other computer) is editing. */
 export function lockDecision(current: EditLock | null | undefined, who: { by: string; pc: string }, now: number) {
@@ -41,9 +50,15 @@ export interface FeedVersion { at: string; edit: { name: string; pc: string; ord
  * 편집 소식 (로건 개발 문서 v3 6-5 · P5): what happened to a video's edit since `since`, oldest first, as lines the member's AI chat says
  * to them — the editor screen itself shows none of it (P10: no version numbers or order lists on the screen).
  */
-export function editFeed(state: { lock: { name: string; pc: string; since: string } | null; orders: FeedOrder[]; versions: FeedVersion[]; uploadedAt: string | null }, since: string | null) {
+export function editFeed(state: { lock: { name: string; pc: string; since: string } | null; orders: FeedOrder[]; versions: FeedVersion[]; uploadedAt: string | null; history?: LockEvent[] }, since: string | null) {
   const out: { at: string; kind: string; text: string }[] = [];
-  if (state.lock) out.push({ at: state.lock.since, kind: "editing", text: `${state.lock.name}님이 ${state.lock.pc}에서 편집을 시작했어요.` });
+  // The lock's own record when there is one; a session from before it was kept says only who edits now.
+  if (state.history?.length) for (const e of state.history) out.push({ at: e.at, kind: e.kind === "lock" ? "editing" : e.kind, text:
+    e.kind === "lock" ? `${e.name}님이 ${e.pc}에서 편집을 시작했어요.`
+      : e.kind === "handover" ? `${e.name}님이 ${e.pc}에서 이어서 편집해요(${e.from?.name}님 잠금이 30분 동안 신호가 없었어요).`
+      : e.kind === "unlock" ? `${e.name}님이 ${e.pc}에서 편집을 마쳤어요.`
+      : `관리자 ${e.name}님이 ${e.from?.name}님(${e.from?.pc})의 편집 잠금을 풀었어요${e.reason ? `: ${e.reason}` : "."}` });
+  else if (state.lock) out.push({ at: state.lock.since, kind: "editing", text: `${state.lock.name}님이 ${state.lock.pc}에서 편집을 시작했어요.` });
   for (const o of state.orders) {
     out.push({ at: o.at, kind: "order", text: `${o.name}님 ${o.from === "feedback" ? "최종 검토 피드백이" : "주문이"} 들어왔어요: “${o.text}”` });
     if (o.status === "working") out.push({ at: o.updatedAt, kind: "working", text: `“${o.text}” 고치는 중이에요.` });

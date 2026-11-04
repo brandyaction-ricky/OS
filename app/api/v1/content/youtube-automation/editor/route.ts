@@ -3,7 +3,7 @@ import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
 import { requestSay, sayRequestSchema, sayStatus } from "@/lib/server/myin-say";
-import { confirmFinish, confirmStart, confirmStartSchema, declineEdit, editHandoff, editLock, editNews, editOrderResult, editOrderSchema, editorProject, editStatus, nextEditOrders, submitEditOrder } from "@/lib/server/myin-edit";
+import { confirmFinish, confirmStart, confirmStartSchema, declineEdit, editHandoff, editLock, editNews, forceUnlock, editOrderResult, editOrderSchema, editorProject, editStatus, nextEditOrders, submitEditOrder } from "@/lib/server/myin-edit";
 import { myinEditorView } from "@/lib/server/myin-run";
 import { listFeedback } from "@/lib/server/youtube-process-feedback";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
@@ -40,7 +40,7 @@ export async function GET(request: Request) {
 }
 
 const pc = z.string().trim().min(1).max(80);
-const postSchema = z.object({ action: z.enum(["lock", "heartbeat", "unlock", "order", "next", "result", "decline", "confirm_start", "confirm_finish", "handoff", "say", "say_status"]), projectId: z.string().uuid() }).passthrough();
+const postSchema = z.object({ action: z.enum(["lock", "heartbeat", "unlock", "order", "next", "result", "decline", "confirm_start", "confirm_finish", "handoff", "say", "say_status", "force_unlock"]), projectId: z.string().uuid() }).passthrough();
 const resultSchema = z.object({ pc, orderId: z.string().uuid(), status: z.enum(["done", "failed", "queued"]), version: z.string().trim().max(80).optional(), note: z.string().trim().max(2000).optional() }).strict();
 const finishSchema = z.object({ pc, confirmId: z.string().uuid(), parts: z.array(z.object({ bytes: z.number().int().positive(), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict()).min(1).max(24) }).strict();
 const declineSchema = z.object({ orderId: z.string().uuid().optional(), feedbackId: z.string().uuid().optional(), reason: z.string().trim().min(1).max(1000) }).strict()
@@ -63,6 +63,7 @@ export async function POST(request: Request) {
     if (action === "result") { const input = resultSchema.parse(rest); return NextResponse.json(await editOrderResult(actor, projectId, input.pc, input), { headers }); }
     if (action === "confirm_start") return NextResponse.json(await confirmStart(actor, projectId, confirmStartSchema.parse(rest)), { headers });
     if (action === "confirm_finish") return NextResponse.json(await confirmFinish(actor, projectId, finishSchema.parse(rest)), { headers });
+    if (action === "force_unlock") return NextResponse.json(await forceUnlock(actor, projectId, z.object({ reason: z.string().trim().min(1).max(300) }).strict().parse(rest).reason), { headers });
     if (action === "say") return NextResponse.json(await requestSay(actor, projectId, sayRequestSchema.parse(rest)), { headers });
     if (action === "say_status") return NextResponse.json(await sayStatus(actor, projectId, z.object({ sayId: z.string().uuid() }).strict().parse(rest).sayId), { headers });
     if (action === "handoff") return NextResponse.json(await editHandoff(actor, projectId, z.object({ at: z.string().datetime().optional() }).strict().parse(rest).at), { headers });

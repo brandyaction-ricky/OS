@@ -192,6 +192,10 @@ def confirm(project, editor, version, engine, note=""):
     bad = check_issues(check)
     if bad: raise EditorError("EDIT_CHECK_FAILED", "확정 전 자동 검사에 걸렸어요: " + " · ".join(bad))
     if lufs is None or peak is None: raise EditorError("EDIT_LOUDNESS_UNKNOWN", "소리 크기를 재지 못했어요.")
+    if abs(lufs + 14) > 1 or peak > -1: raise EditorError("EDIT_LOUDNESS", f"소리 크기 검사에 걸렸어요: 음량 {lufs} LUFS(−15~−13) · 최대 {peak} dB(−1 이하)")
+    hd = os.path.join(editor, "versions", f"{version}_handouts")   # his apply.py remakes them per version
+    handouts = [os.path.join(hd, "한장정리.png"), os.path.join(hd, "덱_전체.pdf")]
+    has_handouts = all(os.path.exists(p) for p in handouts)
     srt = next((p for p in [os.path.join(editor, "versions", f"{version}.srt"), os.path.join(editor, "ws", "voice", "os_myin", "subs_youtube.srt")] if os.path.exists(p)), None)
     if not srt: raise EditorError("EDIT_NO_SRT", "유튜브 자막(subs_youtube.srt)이 없어요.")
     segs = v.get("segs") or []
@@ -199,9 +203,11 @@ def confirm(project, editor, version, engine, note=""):
     with tempfile.TemporaryDirectory(prefix="myin-confirm-") as tmp:
         parts = _bundle(editor, v, version, tmp)
         start = api("confirm_start", project, pc=pc(), fromVersion=version, note=(note or v.get("note") or "")[:500], engine=engine, bytes=os.path.getsize(v["video"]),
-                    lufs=lufs, peak=peak, bounds=[s[1] for s in segs][1:], check=check, orders=orders, bundleParts=len(parts))
+                    lufs=lufs, peak=peak, bounds=[s[1] for s in segs][1:], check=check, orders=orders, bundleParts=len(parts), handouts=has_handouts)
         _put(start["videoUploadUrl"], v["video"], "video/mp4")
         _put(start["srtUploadUrl"], srt, "application/x-subrip")
+        if has_handouts:
+            _put(start["summaryUploadUrl"], handouts[0], "image/png"); _put(start["deckUploadUrl"], handouts[1], "application/pdf")
         for url, part in zip(start["bundleUploadUrls"], parts): _put(url, part["path"], "application/octet-stream")
         done = api("confirm_finish", project, pc=pc(), confirmId=start["confirmId"], parts=[{"bytes": p["bytes"], "sha256": p["sha256"]} for p in parts])
     marker = jl(os.path.join(editor, "pc.json"), {}); marker.update({"final": done["final"], "confirmed_at": time.time()}); js(os.path.join(editor, "pc.json"), marker)
@@ -281,7 +287,8 @@ def _self_test():
                 return self._send({"orders": [{"id": order, "text": "3번 장면 사진 바꿔줘", "videoAt": "1:23", "meaning": "사진 교체", "feedbackIds": [], "storyboardUrl": base + "/files/story", "subtitles": []}]})
             if body["action"] == "confirm_start":
                 return self._send({"confirmId": "55555555-5555-4555-8555-555555555555", "videoUploadUrl": base + "/up/video", "srtUploadUrl": base + "/up/srt",
-                                   "bundleUploadUrls": [f"{base}/up/part{n}" for n in range(body["bundleParts"])]})
+                                   "bundleUploadUrls": [f"{base}/up/part{n}" for n in range(body["bundleParts"])],
+                                   **({"summaryUploadUrl": base + "/up/summary", "deckUploadUrl": base + "/up/deck"} if body.get("handouts") else {})})
             if body["action"] == "confirm_finish": return self._send({"ok": True, "final": "2026-11-04T10:00:00.000Z", "v": 2})
             if body["action"] == "say": return self._send({"sayId": "66666666-6666-4666-8666-666666666666", "status": "queued"})
             if body["action"] == "say_status":
@@ -313,12 +320,14 @@ def _self_test():
         assert pull_orders(project, ed) == [], "an order taken before is not added twice"
         video = os.path.join(ed, "versions", "v2.mp4"); open(video, "wb").write(b"video-bytes")
         open(os.path.join(ed, "versions", "v2.srt"), "w").write("1\n")
+        os.makedirs(os.path.join(ed, "versions", "v2_handouts")); open(os.path.join(ed, "versions", "v2_handouts", "한장정리.png"), "wb").write(b"png"); open(os.path.join(ed, "versions", "v2_handouts", "덱_전체.pdf"), "wb").write(b"pdf")
         js(os.path.join(ed, "versions", "v2.json"), {"name": "v2", "video": video, "story": "story_v2.json", "end": 10, "segs": [[None, 0, 300], [None, 300, 600]], "order": ["o001"], "voice": "v1", "note": "사진 교체"})
         report(project, got[0], "done", "v2", "사진 바꿈"); assert calls[-1][2] == {"action": "result", "projectId": project, "pc": "test-mac", "orderId": order, "status": "done", "version": "v2", "note": "사진 바꿈"}
         done = confirm(project, ed, "v2", "a" * 32)
         start = next(c[2] for c in calls if c[1] == "confirm_start")
         assert start["bounds"] == [300] and start["orders"] == [order] and start["check"]["frames"] == 600 and start["lufs"] == -14.1 and start["bundleParts"] == 1
         assert ("PUT", "/up/video", "video/mp4") in calls and ("PUT", "/up/part0", "application/octet-stream") in calls
+        assert start["handouts"] is True and ("PUT", "/up/summary", "image/png") in calls and ("PUT", "/up/deck", "application/pdf") in calls
         finish = next(c[2] for c in calls if c[1] == "confirm_finish")
         assert finish["parts"][0]["sha256"] == hashlib.sha256(store["/up/part0"]).hexdigest() and done["v"] == 2
         with tarfile.open(fileobj=__import__("io").BytesIO(store["/up/part0"])) as t:
