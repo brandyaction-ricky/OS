@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { diagramCatalogTypes } from "@/lib/diagram-catalog";
-import { editCheckIssues, editFeed, editLoudnessIssue, lockDecision, orderMove, withLockEvent, type EditLock, type EditOrderStatus, type LockEvent } from "@/lib/myin-edit";
+import { editCheckIssues, editFeed, editLoudnessIssue, feedbackEditStates, lockDecision, orderMove, withLockEvent, type EditLock, type EditOrderStatus, type LockEvent } from "@/lib/myin-edit";
 import { checkMyinStoryboard } from "@/lib/myin-storyboard";
 import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
@@ -77,7 +77,10 @@ export async function editStatus(actor: RequestActor, projectId: string) {
     .eq("metadata->>kind", ORDER).is("archived_at", null).order("created_at", { ascending: false }).limit(50);
   const orders = (data ?? []).map((row) => ({ id: row.id, version: row.version, at: row.created_at, updatedAt: row.updated_at, ...presentOrder(orderSchema.parse(row.metadata)) }));
   const meta = record ? sessionSchema.parse(record.metadata) : null;
-  return { projectId: project.id, lock: live, base: await myinFinalAt(service, project.id), uploadedAt: await uploadedAt(actor, project), versions: await myinFinalVersions(service, project.id),
+  const ordered = new Set(orders.flatMap((o) => o.feedbackIds));
+  const waitingFeedback = (await listFeedback(actor, project.id)).filter((f) => f.target === "video" && f.status === "open" && !f.deleted && !f.reaction && !ordered.has(f.id))
+    .map((f) => ({ id: f.id, at: f.at, text: f.text, who: f.who }));
+  return { projectId: project.id, lock: live, waitingFeedback, base: await myinFinalAt(service, project.id), uploadedAt: await uploadedAt(actor, project), versions: await myinFinalVersions(service, project.id),
     confirming: live && meta?.confirming ? { at: meta.confirming.at, fromVersion: meta.confirming.fromVersion } : null, history: meta?.history ?? [], orders };
 }
 const presentOrder = (o: Order) => ({ text: o.text, videoAt: o.at, from: o.from, feedbackIds: o.feedbackIds, name: o.name, meaning: o.meaning,
@@ -268,6 +271,15 @@ export async function confirmFinish(actor: RequestActor, projectId: string, inpu
     throw new ApiError(409, "EDIT_UPLOAD_MISSING", "재료 묶음이 다 올라가지 않았어요. 다시 확정해 주세요.");
   const final = await myinAddEditFinal(service, project.id, { basedOn: c.basedOn, bytes: c.bytes, lufs: c.lufs, peak: c.peak, handouts: c.handouts,
     edit: { id: c.id, by: lock.by, name: lock.name, pc: lock.pc, fromVersion: c.fromVersion, note: c.note, engine: c.engine, bounds: c.bounds, parts: input.parts, orders: c.orders, check: c.check } });
+  // v2 ④ · v3 6-6: the 최종 검토 feedback the confirmed orders answered is 반영됨 in the new version (its writer is told, as for a PD's ✓).
+  let resolved = 0;
+  if (c.orders.length) {
+    const { data: rows } = await service.from("os_records").select("metadata").in("id", c.orders).eq("parent_id", project.id).eq("metadata->>kind", ORDER);
+    const answered = new Set((rows ?? []).flatMap((row) => orderSchema.parse(row.metadata).feedbackIds));
+    for (const item of answered.size ? await listFeedback(actor, project.id) : [])
+      if (answered.has(item.id) && item.status === "open" && !item.deleted)
+        resolved += await actOnFeedback(actor, project.id, { itemId: item.id, expectedVersion: item.version, action: "resolve", text: "" }).then(() => 1, () => 0);
+  }
   // The new final is this editor's base from now on (re-read: a heartbeat may have renewed the lock meanwhile).
   for (let attempt = 0; attempt < 3; attempt++) {
     const now = await heldSession(service, actor, project.id, input.pc).catch(() => null);
@@ -276,7 +288,7 @@ export async function confirmFinish(actor: RequestActor, projectId: string, inpu
     delete next.confirming;
     if (await saveSession(service, now.record, next, who(actor)).then(() => true, () => false)) break;
   }
-  return { ok: true, final: final.at, v: final.v };
+  return { ok: true, final: final.at, v: final.v, resolved };
 }
 
 /**
@@ -320,4 +332,18 @@ export async function forceUnlock(actor: RequestActor, projectId: string, reason
   delete (next as { lock?: unknown }).lock; delete next.confirming;
   await saveSession(service, record, next, actor.ownerId);
   return { ok: true, released: from };
+}
+
+/** 최종 검토 screen: where each open video feedback item is in the editor (none while nobody edits and no order answers it). */
+export async function feedbackEdits(actor: RequestActor, projectId: string, items: { id: string; status: string; target: string; deleted: boolean }[]) {
+  if (!items.some((item) => item.target === "video" && item.status === "open")) return {};
+  // Polled with the feedback list every 30 s: only the lock and the orders, nothing else of the edit.
+  const project = await editorProject(actor, projectId);
+  const service = createServiceSupabase();
+  const record = await sessionRecord(service, project.id);
+  const lock = record ? sessionSchema.parse(record.metadata).lock : undefined;
+  const { data } = await service.from("os_records").select("metadata").eq("parent_id", project.id).eq("record_type", "ai_job").eq("metadata->>kind", ORDER)
+    .is("archived_at", null).order("created_at", { ascending: false }).limit(50);
+  const orders = (data ?? []).map((row) => orderSchema.parse(row.metadata)).map((o) => ({ feedbackIds: o.feedbackIds, status: o.status, result: o.result ?? null }));
+  return feedbackEditStates(items, orders, Boolean(lock && lockDecision(lock, { by: "", pc: "" }, Date.now()).kind === "held"));
 }
