@@ -1001,6 +1001,15 @@
         "production"
       ],
       "notes": "Speed request 2026-11-03; owner approved Production in chat (\"응 진행해\"). Additive: one partial index, no function, row or policy change. Manual undo: supabase/rollback/20261103100000_content_metric_snapshot_index.down.sql. The session's auto mode blocks production database access, so the owner ran the prepared script on 2026-11-03: read-only timing under the owner's row policies, then the index and its schema history row in one transaction, read back (index present, 8 kB, history 1). Same 30-day window before/after: 108 rows with the same id md5; os_content_metric_window 423-548 ms -> 377-393 ms; the channel-snapshot branch scanned 46,227 rows (62.9 ms, 14,320 buffers) -> index scan, 0.14 ms, 1 buffer, 0 rows. Not applied to DEV."
+    },
+    {
+      "file": "20261104120000_approver_agent_shared_document_edit.sql",
+      "sha256": "5525b18878981406d716b07646c98cf0e4aa910e4506aac0091594fceaed268c",
+      "purpose": "AI 문서 수정 (대표 2026-11-04): the designated approver's AI key edits the approver's own team / review documents in place instead of moving them back to 내 노트",
+      "requiresApproval": true,
+      "productionApprovedAt": "2026-11-04",
+      "appliedEnvironments": ["production"],
+      "notes": "Replaces os_agent_update_document (sets os.agent_shared_edit_ok only for the approver's key on the owner's own team/review/reviewed document) and os_workspace_guard_document (lets that one update through while the status stays). No table, row or policy change; other keys, other people's documents, notes, 정본 and status changes keep their rules. Manual undo: supabase/rollback/20261104120000_approver_agent_shared_document_edit.down.sql. Owner approved Production in chat on 2026-11-04 (\"SQL 화면 내가 조작하지 않고 할 수 있게 진행해줘\"). Read-only check first: both production function bodies matched the repository originals (md5 6c84fd2b…, 910582e8…) and the guard trigger was present. The session filled the SQL Editor; auto mode blocked its Run, so the owner pressed Run once: both functions and the schema history row in one transaction, read back (bodies md5 7101bf47…, 91ec998a… = this file; history 1). End to end: the owner's AI key edited the team document 웹툰형 캐릭터 설정 in place (status team, v4 → v5). Not applied to DEV."
     }
   ],
   "legacyMigrations": [
