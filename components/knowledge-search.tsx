@@ -149,7 +149,7 @@ function SearchContent() {
               const first = items[0];
               return (
                 <article className="search-result-card" key={first.documentId}>
-                  <header><span className={`document-symbol status-${first.status}`}><BookOpen size={16} /></span><div><Link href={`/knowledge?document=${first.documentId}`}>{first.title}</Link><small>{first.folder || "분류 없음"} · {first.brand || "전체 브랜드"}</small></div><span className={`status-pill status-${first.status}`}>{statusLabel(first.status)}</span><strong>{Math.round(Math.max(...items.map((item) => item.score)) * 100)}%</strong></header>
+                  <header><span className={`document-symbol status-${first.status}`}><BookOpen size={16} /></span><div><Link href={`/knowledge/doc/${first.documentId}`}>{first.title}</Link><small>{first.folder || "분류 없음"} · {first.brand || "전체 브랜드"}</small></div><span className={`status-pill status-${first.status}`}>{statusLabel(first.status)}</span><strong>{Math.round(Math.max(...items.map((item) => item.score)) * 100)}%</strong></header>
                   <div className="result-passages">
                     {items.slice(0, 3).map((item, index) => (
                       <div key={`${item.chunkId}-${index}`}>
@@ -159,7 +159,7 @@ function SearchContent() {
                       </div>
                     ))}
                   </div>
-                  <footer><Link href={`/knowledge?document=${first.documentId}`}>원문 열기 <ChevronRight size={13} /></Link></footer>
+                  <footer><Link href={`/knowledge/doc/${first.documentId}`}>원문 열기 <ChevronRight size={13} /></Link></footer>
                 </article>
               );
             })}

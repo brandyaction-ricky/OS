@@ -82,3 +82,10 @@ test("each menu's code is asked for once per deployment while idle, and the shel
   assert.match(warm, /if \(!warmFor \|\| warmStarted\) return;/);
   assert.doesNotMatch(warm, /clearTimeout/, "a cleanup would cancel it when the shell is hidden for a moment");
 });
+
+test("the shell renames Next's page title instead of making a second one, and in-app document links use the document's own address", async () => {
+  const shell = await read("components/app-shell.tsx");
+  assert.doesNotMatch(shell, /document\.title\s*=/, "setting document.title before Next's <title> arrives leaves a stale second one");
+  assert.match(shell, /document\.head\.querySelector\("title"\)/);
+  for (const file of ["components/personal-work-home.tsx", "components/meeting-workspace.tsx", "components/knowledge-search.tsx", "components/canon-grind.tsx"]) assert.doesNotMatch(await read(file), /\/knowledge\?document=/, file);
+});

@@ -42,7 +42,7 @@ function developmentDocumentId(value: string) {
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(trimmed)) return trimmed;
   try { return new URL(trimmed, "https://brandyaction-os.vercel.app").searchParams.get("document") || ""; } catch { return ""; }
 }
-function developmentDocumentUrl(id: string) { return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id) ? `/knowledge?document=${encodeURIComponent(id)}` : ""; }
+function developmentDocumentUrl(id: string) { return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id) ? `/knowledge/doc/${encodeURIComponent(id)}` : ""; }
 function SafeLink({ url, children }: { url: string | null | undefined; children: React.ReactNode }) { const href = safeWebUrl(url); return href ? <a href={href} target="_blank" rel="noreferrer">{children}<ArrowUpRight size={13} /></a> : null; }
 async function requestApi<T>(token: string | null, query = "", body?: Record<string, unknown>, method = "GET"): Promise<T> {
   const response = await fetch(`/api/v1/development-requests${query ? `?${query}` : ""}`, { method, cache: "no-store", headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });

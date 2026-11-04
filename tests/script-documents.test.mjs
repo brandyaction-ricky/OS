@@ -142,7 +142,7 @@ test("an empty script library can create its first draft and select the saved do
   assert.equal(app.createCalls.length, 1);
   assert.equal(app.listCalls.length, 1, "a saved draft should not depend on a second list request");
   assert.equal(app.readCalls.at(-1), "new");
-  assert.ok(view.some((item) => item.type === "a" && item.props.href === "/knowledge?document=new"));
+  assert.ok(view.some((item) => item.type === "a" && item.props.href === "/knowledge/doc/new"));
   assert.equal(view.some((item) => item.type === "form" && item.props.role === "dialog"), false);
   app.unmount();
 });
