@@ -19,3 +19,18 @@ export function orderMove(from: EditOrderStatus, to: EditOrderStatus) {
   const next: Record<EditOrderStatus, EditOrderStatus[]> = { queued: ["working", "declined"], working: ["done", "failed", "declined", "queued"], failed: ["queued", "declined"], done: [], declined: [] };
   return next[from].includes(to);
 }
+
+/** The editor's frame rate (Logan's engine renders 60 fps). */
+export const EDIT_FPS = 60;
+export interface EditCheck { decodeErrors: number; frames: number; end: number; videoSeconds: number; audioSeconds: number }
+/**
+ * 확정 전 자동 검사 (로건 시험장 final_check): the computer measures its final with ffmpeg; the OS holds the line. No decode errors,
+ * frames = length × 60 (±1), sound and picture the same length (under 1.5 frames + 30 ms). Empty = it may be confirmed.
+ */
+export function editCheckIssues(c: EditCheck) {
+  const want = Math.round(c.end * EDIT_FPS), out: string[] = [];
+  if (c.decodeErrors) out.push(`디코드 오류 ${c.decodeErrors}건`);
+  if (Math.abs(c.frames - want) > 1) out.push(`프레임 수 ${c.frames} / 예상 ${want}`);
+  if (Math.abs(c.videoSeconds - c.audioSeconds) >= 1.5 / EDIT_FPS + 0.03) out.push(`소리·화면 길이(화면 ${c.videoSeconds.toFixed(3)}초 · 소리 ${c.audioSeconds.toFixed(3)}초)`);
+  return out;
+}

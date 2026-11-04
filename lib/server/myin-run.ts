@@ -56,10 +56,17 @@ const versionRef = z.object({ id: z.string().uuid(), version: z.number().int().p
 // edits, the subtitle edits, our images and the channel style. Each result keeps them, so the 제작 기록 can say which results the
 // current materials no longer match; a job's result is taken only if they did not change while it ran.
 const materialsSchema = z.object({ voice: z.string(), storyboard: z.string(), sound: z.string(), subtitles: z.string(), ours: z.string(), style: z.string() }).strict();
+// 영상 편집기 확정 (로건 개발 문서 v2): a final confirmed from a member's editor — who, on which computer, from which of its versions, the
+// engine it was drawn with, where its 5-second pieces start (frames, to split it again on another computer), the material bundle's
+// parts and the orders it answers. Its materials live in that bundle, not in this run.
+export const editFinalSchema = z.object({ id: z.string().uuid(), by: z.string().uuid(), name: z.string(), pc: z.string(), fromVersion: z.string(), note: z.string(),
+  engine: z.string().regex(/^[a-f0-9]{32}$/), bounds: z.array(z.number().int().positive()).max(2000),
+  parts: z.array(z.object({ bytes: z.number().int().positive(), sha256: hex }).strict()).min(1).max(24), orders: z.array(z.string().uuid()).max(200),
+  check: z.object({ decodeErrors: z.number().int().min(0), frames: z.number().int().positive(), end: z.number().positive(), videoSeconds: z.number().positive(), audioSeconds: z.number().positive() }).strict() }).strict();
 const finalSchema = z.object({ video: z.string(), summary: z.string().optional(), deck: z.string().optional(), srt: z.string(), bytes: z.number().int().positive(),
   durationSeconds: z.number().positive(), lufs: z.number(), peak: z.number(), at: z.string().datetime(),
   /** Which subtitle edits it was made with (자막 한꺼번에 고치기); none = the subtitles as stage 1 made them. */
-  subtitles: hex.optional(), used: materialsSchema.optional(), engine: engineFp.optional() }).strict();
+  subtitles: hex.optional(), used: materialsSchema.optional(), engine: engineFp.optional(), edit: editFinalSchema.optional() }).strict();
 // input: what the job was handed (the materials key; before 2026-11-03 a preparation's our images) — a result made from other input is
 // not taken (유쓰 요청 2/8 · 3/8). stage: the stage it was claimed at; a run that moved on (수정 요청, a new start) takes no late result.
 const leaseSchema = z.object({ token: z.string().uuid(), expiresAt: z.string().datetime(), startedAt: z.string().datetime().optional(), input: z.string().regex(/^[a-f0-9]{64}$/).optional(),
@@ -1369,10 +1376,59 @@ export async function myinEditorView(actor: RequestActor, sourceId: string, view
     music_cues: (story as { music_cues?: unknown }).music_cues ?? null, cta: story.cta, end: (story as { end?: unknown }).end ?? null };
 }
 
-/** 영상 편집기: when the OS final an edit starts from (the one 최종 검토 shows) was made, or null before the first. */
-export async function myinFinalAt(service: Service, sourceId: string) {
+async function latestRun(service: Service, sourceId: string) {
   const { data } = await service.from("os_records").select("*").eq("parent_id", sourceId).eq("record_type", "ai_job")
     .eq("metadata->>kind", MYIN_RUN_KIND).is("archived_at", null).order("created_at", { ascending: false }).limit(1);
   const record = data?.[0] as OsRecord | undefined;
-  return record ? parse(record).final?.at ?? null : null;
+  return record ? { record, run: parse(record) } : null;
+}
+/** 영상 편집기: when the OS final an edit starts from (the one 최종 검토 shows) was made, or null before the first. */
+export async function myinFinalAt(service: Service, sourceId: string) {
+  return (await latestRun(service, sourceId))?.run.final?.at ?? null;
+}
+
+const editFiles = (record: OsRecord, run: MyinRun, id: string) => ({ video: outPath(record, run, `final_edit-${tag(id)}.mp4`), srt: outPath(record, run, `subs_youtube-edit-${tag(id)}.srt`) });
+/** 영상 편집기 확정: where the edited final and its YouTube subtitles go, beside the run's own finals. */
+export async function myinEditUploads(service: Service, sourceId: string, confirmId: string) {
+  const latest = await latestRun(service, sourceId);
+  if (!latest?.run.final) throw new ApiError(409, "EDIT_NO_FINAL", "OS에 완성본이 나온 뒤에 확정할 수 있어요.");
+  const files = editFiles(latest.record, latest.run, confirmId);
+  return { videoUploadUrl: await uploadUrl(service, ASSET_VIDEO_BUCKET, files.video), srtUploadUrl: await uploadUrl(service, OUTPUT_BUCKET, files.srt) };
+}
+
+/**
+ * 영상 편집기 확정: the uploaded edit becomes the run's newest final (the one before it stays a version), only while the final it was
+ * edited from is still the newest and the OS is not making the video again — two confirms cannot both land (the save checks the version).
+ * The handouts (한 장 정리 · 덱) stay the ones the OS made.
+ */
+export async function myinAddEditFinal(service: Service, sourceId: string, input: { basedOn: string; bytes: number; lufs: number; peak: number; edit: z.infer<typeof editFinalSchema> }) {
+  const latest = await latestRun(service, sourceId);
+  if (!latest?.run.final) throw new ApiError(409, "EDIT_NO_FINAL", "OS에 완성본이 나온 뒤에 확정할 수 있어요.");
+  const { record, run } = latest;
+  if (run.final?.at !== input.basedOn) throw new ApiError(409, "EDIT_BASE_MOVED", "다른 곳에서 먼저 새 완성본이 나왔어요. 그 완성본에서 다시 고쳐 주세요(내 버전은 내 컴퓨터에 그대로 있어요).");
+  if (record.stage !== "final_ready") throw new ApiError(409, "EDIT_RUN_BUSY", "OS에서 이 영상을 다시 만드는 중이에요. 끝난 뒤 그 완성본에서 다시 고쳐 주세요.");
+  const files = editFiles(record, run, input.edit.id);
+  const size = async (bucket: string, path: string) => {
+    const slash = path.lastIndexOf("/");
+    const { data } = await service.storage.from(bucket).list(path.slice(0, slash), { search: path.slice(slash + 1), limit: 5 });
+    return (data ?? []).find((o) => o.name === path.slice(slash + 1))?.metadata?.size as number | undefined;
+  };
+  if (await size(ASSET_VIDEO_BUCKET, files.video) !== input.bytes) throw new ApiError(409, "EDIT_UPLOAD_MISSING", "확정본 영상이 다 올라가지 않았어요. 다시 확정해 주세요.");
+  if (!await size(OUTPUT_BUCKET, files.srt)) throw new ApiError(409, "EDIT_UPLOAD_MISSING", "확정본 자막이 다 올라가지 않았어요. 다시 확정해 주세요.");
+  const next: MyinRun = { ...run };
+  const handouts = { ...(run.final.summary ? { summary: run.final.summary } : {}), ...(run.final.deck ? { deck: run.final.deck } : {}) };
+  retireFinal(next);
+  next.final = { ...files, ...handouts, bytes: input.bytes, durationSeconds: input.edit.check.end, lufs: input.lufs, peak: input.peak, at: new Date().toISOString(), engine: input.edit.engine, edit: input.edit };
+  await save(service, record, record.status, record.stage ?? "final_ready", next);
+  return { at: next.final.at, v: (next.finals?.length ?? 0) + 1 };
+}
+
+/** 다른 컴퓨터에서 이어받기: a final's files (the newest, or the one made at `at`) for 30 minutes, with what its edit left. */
+export async function myinFinalForHandoff(service: Service, sourceId: string, at?: string) {
+  const latest = await latestRun(service, sourceId);
+  const all = latest ? [...(latest.run.finals ?? []), ...(latest.run.final ? [latest.run.final] : [])] : [];
+  const final = at ? all.find((item) => item.at === at) : latest?.run.final;
+  if (!final) throw new ApiError(404, "EDIT_FINAL_NOT_FOUND", "그 완성본을 찾지 못했어요.");
+  return { at: final.at, v: all.indexOf(final) + 1, durationSeconds: final.durationSeconds, edit: final.edit ?? null,
+    videoUrl: await sign(service, ASSET_VIDEO_BUCKET, final.video), srtUrl: await sign(service, OUTPUT_BUCKET, final.srt) };
 }

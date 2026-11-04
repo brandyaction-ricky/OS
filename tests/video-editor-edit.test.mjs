@@ -6,7 +6,7 @@ import vm from "node:vm";
 import ts from "typescript";
 import { z } from "zod";
 import * as kosis from "../lib/kosis.ts";
-import { EDIT_LOCK_STALE_MS, lockDecision, orderMove } from "../lib/myin-edit.ts";
+import { EDIT_LOCK_STALE_MS, editCheckIssues, lockDecision, orderMove } from "../lib/myin-edit.ts";
 
 // 로건 개발 문서 v2 「OS 영상 편집기」 (2026-11-04) ②-2: one editor per video (the lock), orders from members' AI chats wait for it.
 const compiled = { exports: {} };
@@ -52,4 +52,39 @@ test("writes need records.write, an order passes the storyboard check, and only 
   for (const fn of ["nextEditOrders", "editOrderResult"]) assert.match(edit.slice(edit.indexOf(`export async function ${fn}`)).split("\nexport ")[0], /await lockHolder\(service, actor, project\.id, pc\)/, fn);
   assert.match(edit, /\.eq\("id", record\.id\)\.eq\("version", record\.version\)/, "the lock is taken with the record version");
   assert.match(edit.slice(edit.indexOf("export async function declineEdit")), /action: "decline", text: input\.reason/, "a declined feedback keeps the reason");
+});
+
+test("확정 전 자동 검사: no decode errors, frames = length × 60 (±1), sound and picture the same length", () => {
+  const ok = { decodeErrors: 0, frames: 36_000, end: 600, videoSeconds: 600, audioSeconds: 600.02 };
+  assert.deepEqual(editCheckIssues(ok), []);
+  assert.deepEqual(editCheckIssues({ ...ok, frames: 36_001 }), [], "one frame off is fine");
+  assert.match(editCheckIssues({ ...ok, frames: 35_998 })[0], /프레임 수 35998 \/ 예상 36000/);
+  assert.match(editCheckIssues({ ...ok, decodeErrors: 2 })[0], /디코드 오류 2건/);
+  assert.match(editCheckIssues({ ...ok, audioSeconds: 600.06 })[0], /소리·화면 길이/);
+});
+
+test("a confirm lands only from the newest final, after the check, with the engine kept and every file up", async () => {
+  const edit = await readFile(new URL("../lib/server/myin-edit.ts", import.meta.url), "utf8");
+  const start = edit.slice(edit.indexOf("export async function confirmStart"), edit.indexOf("export async function confirmFinish"));
+  assert.match(start, /await heldSession\(service, actor, project\.id, input\.pc\)/, "only the editor holding the lock");
+  assert.match(start, /lock\.basedOn !== base\) throw new ApiError\(409, "EDIT_BASE_MOVED"/, "someone else confirmed first");
+  assert.match(start, /editCheckIssues\(input\.check\)/);
+  assert.match(start, /await engineBundleSaved\(input\.engine\)/, "the engine another computer installs to go on");
+  const finish = edit.slice(edit.indexOf("export async function confirmFinish"), edit.indexOf("export async function editHandoff"));
+  assert.match(finish, /sizes\.get\(.*\) !== part\.bytes/, "every bundle part is up at its size");
+  assert.match(finish, /basedOn: final\.at/, "the editor goes on from its own confirm");
+  const run = await readFile(new URL("../lib/server/myin-run.ts", import.meta.url), "utf8");
+  const add = run.slice(run.indexOf("export async function myinAddEditFinal"), run.indexOf("export async function myinFinalForHandoff"));
+  assert.match(add, /run\.final\?\.at !== input\.basedOn/, "checked again at the moment it lands");
+  assert.match(add, /record\.stage !== "final_ready"/, "not while the OS makes the video again");
+  assert.match(add, /!== input\.bytes\) throw/, "the uploaded video is the one measured");
+  assert.match(add, /retireFinal\(next\)/, "the final before it stays a version");
+  assert.match(run, /\.eq\("id", record\.id\)\.eq\("version", record\.version\)/, "two confirms cannot both land");
+  const engine = await readFile(new URL("../lib/server/render-engine.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(engine, /\.remove\(/, "no engine bundle is ever deleted");
+});
+
+test("confirm and handoff go through the editor route", async () => {
+  const route = await readFile(new URL("../app/api/v1/content/youtube-automation/editor/route.ts", import.meta.url), "utf8");
+  for (const action of ["confirm_start", "confirm_finish", "handoff"]) assert.match(route, new RegExp(`action === "${action}"`));
 });
