@@ -63,7 +63,7 @@ test("a picture is drawn with AI after the cost ask and kept as a character", as
   await page.getByRole("button", { name: "AI로 그리기", exact: true }).click();
   const panel = page.getByRole("group", { name: "AI로 그리기" });
   await expect(panel.getByText(/아직 없어요/)).toBeVisible();
-  await expect(panel.locator(".cost-tag")).toContainText("원");
+  await expect(panel.locator(".cost-tag-paid")).toContainText("원");
   await panel.getByLabel("장면 설명").fill("밤 11시 사무실, 한결이 모니터 앞에서 웃어요");
   await panel.getByRole("button", { name: "그리기", exact: true }).click();
   const ask = page.locator("dialog.cost-dlg");
@@ -100,6 +100,7 @@ test("a 웹툰 화 starts by hand and each 칸 brings its 장면 to the drawing 
   const panel = page.getByRole("group", { name: "AI로 그리기" });
   await expect(panel.getByLabel("장면 설명")).toHaveValue("밤 11시 사무실, 서윤이 모니터 앞에서 웃는다");
   await expect(panel.getByLabel("그림체")).toHaveValue("webtoon");
+  await expect(panel.getByRole("button", { name: "Aside에 맡기기 (지침 복사)" })).toBeEnabled();
   await expect(page.locator(".yp-card-checks")).toContainText("1장 그림이 아직 없어요");
   // 말풍선 꼬리 맞추기 (1화 시안): once the 칸 has its picture, a tap on the preview says where the speaker is.
   await expect(page.getByRole("button", { name: "말풍선 꼬리 맞추기" })).toHaveCount(0);
