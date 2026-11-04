@@ -128,6 +128,21 @@ test("a 웹툰 화 starts by hand and each 칸 brings its 장면 to the drawing 
     window.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data }));
   });
   await expect(page.locator(".yp-card-big img")).not.toHaveAttribute("src", before ?? "");
+  await expect(page.getByRole("status").filter({ hasText: "✓ 2장에 넣었어요" })).toBeVisible();
+  // A file dragged over the page lights it up with where it will land, and dropping it anywhere puts it on the card.
+  const second = await page.locator(".yp-card-big img").getAttribute("src");
+  const drag = async (type: string) => page.evaluate(async kind => {
+    const canvas = Object.assign(document.createElement("canvas"), { width: 40, height: 50 });
+    canvas.getContext("2d")!.fillRect(0, 0, 20, 50);
+    const blob = await new Promise<Blob>(resolve => canvas.toBlob(b => resolve(b!), "image/png"));
+    const data = new DataTransfer(); data.items.add(new File([blob], "gpt.png", { type: "image/png" }));
+    document.body.dispatchEvent(new DragEvent(kind, { dataTransfer: data, bubbles: true, cancelable: true }));
+  }, type);
+  await drag("dragover");
+  await expect(page.locator(".yp-card-drop")).toHaveText("여기에 놓으면 2장에 들어가요");
+  await drag("drop");
+  await expect(page.locator(".yp-card-drop")).toHaveCount(0);
+  await expect(page.locator(".yp-card-big img")).not.toHaveAttribute("src", second ?? "");
   // 연재 (대표 2026-11-04): the story is not held to 10 cards and 「다음 화 나누기」 starts 2화 after the last 칸.
   await page.getByRole("button", { name: "다음 화 나누기" }).click();
   await expect(page.locator(".yp-card-tools b")).toHaveText("카드 9 / 100장 · 2화");

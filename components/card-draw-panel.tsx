@@ -1,7 +1,7 @@
 "use client";
 // 카드 만들기 › 사진 › AI로 그리기 (대표 2026-11-02): the PD writes the scene, picks 캐릭터 창고 pictures to keep the faces, and GPT draws
 // one picture for the card. A picture already on the card can be kept in the 창고 under a name (캐릭터로 저장).
-import { useEffect, useState, type DragEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Sparkles, X } from "lucide-react";
 import { imageEstimate } from "@/lib/cost";
 import { CARD_DRAW_QUALITY, CARD_DRAW_REFS_MAX, CARD_DRAW_SCENE_MAX, CARD_DRAW_STYLES, myGptDrawPrompt, type CardCharacterView, type CardDrawQuality, type CardDrawStyle } from "@/lib/cardnews/draw";
@@ -21,9 +21,10 @@ async function referenceSheet(urls: string[]) {
   return new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("참고 그림을 만들지 못했어요.")), "image/png"));
 }
 
-/** `children`: the photo buttons the 「AI로 그리기」 button sits beside. `brief`: a 웹툰 card's own 장면 and 나오는 사람. `onFile`: a picture the PD pastes or drops in. */
-export function CardDrawPanel({ page, projectId, photo, onPhoto, onFile, brief, defaultStyle = "simple", children }: { page: YpPage; projectId: string; photo?: CardPhoto;
-  onPhoto: (photo: CardPhoto) => void; onFile: (file: File) => void; brief?: { scene: string; cast: string }; defaultStyle?: CardDrawStyle; children: ReactNode }) {
+/** `children`: the photo buttons the 「AI로 그리기」 button sits beside. `brief`: a 웹툰 card's own 장면 and 나오는 사람. `onFile`: puts a pasted or
+ * dropped picture on the card (true once it is there). `label`: the card, as 「22장」. */
+export function CardDrawPanel({ page, projectId, photo, onPhoto, onFile, label, brief, defaultStyle = "simple", children }: { page: YpPage; projectId: string; photo?: CardPhoto;
+  onPhoto: (photo: CardPhoto) => void; onFile: (file: File) => Promise<boolean>; label: string; brief?: { scene: string; cast: string }; defaultStyle?: CardDrawStyle; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [scene, setScene] = useState("");
   const [style, setStyle] = useState<CardDrawStyle>(defaultStyle);
@@ -37,6 +38,17 @@ export function CardDrawPanel({ page, projectId, photo, onPhoto, onFile, brief, 
   const [done, setDone] = useState<string[]>([]);
   const [hint, setHint] = useState("");
   const [promptText, setPromptText] = useState("");
+  // The picture coming back from ChatGPT: where it is (올리는 중 · 넣었어요 with a thumbnail · 못 넣었어요), and a file being dragged over the page.
+  const [placed, setPlaced] = useState<{ state: "busy" | "done" | "fail"; preview?: string } | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const dragTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const putRef = useRef<(file: File) => Promise<void>>(async () => {});
+  putRef.current = async (file: File) => {
+    setPlaced({ state: "busy" });
+    const preview = URL.createObjectURL(file);
+    if (await onFile(file)) { setPlaced({ state: "done", preview }); setHint(""); setDone(current => current.includes("paste") ? current : [...current, "paste"]); }
+    else { URL.revokeObjectURL(preview); setPlaced({ state: "fail" }); }
+  };
   const cost = useCostConfirm();
   const model = useCostModels().image;
   const amount = imageEstimate(model, quality, refs.length);
@@ -53,18 +65,34 @@ export function CardDrawPanel({ page, projectId, photo, onPhoto, onFile, brief, 
     const names = briefCast.split(/[\s,·]+/).filter(Boolean);
     setRefs(characters.filter(row => names.some(name => row.name.includes(name))).slice(0, CARD_DRAW_REFS_MAX).map(row => row.id));
   }, [characters, briefCast]);
-  // While 「내 GPT로 그리기」 is open, ⌘V anywhere (a text box gets only text) puts the copied picture on the card.
+  // While 「내 GPT로 그리기」 is open, ⌘V anywhere (a text box gets only text) or a picture dropped anywhere on the page goes on the card;
+  // a dragged file lights the whole page so it is clear where it lands. Reordering cards (their own drag type) is left alone.
   useEffect(() => {
     if (!mine) return;
-    const paste = (event: ClipboardEvent) => {
-      const file = [...(event.clipboardData?.files ?? [])].find(row => row.type.startsWith("image/"));
-      if (!file) return;
-      event.preventDefault(); onFile(file);
-      setDone(current => current.includes("paste") ? current : [...current, "paste"]);
+    const image = (files?: FileList | null) => [...(files ?? [])].find(row => row.type.startsWith("image/"));
+    const outside = (event: DragEvent) => !event.dataTransfer || event.dataTransfer.types.includes("application/x-card-slide")
+      || !["Files", "text/uri-list"].some(type => event.dataTransfer!.types.includes(type));
+    const paste = (event: ClipboardEvent) => { const file = image(event.clipboardData?.files); if (file) { event.preventDefault(); void putRef.current(file); } };
+    const over = (event: DragEvent) => {
+      if (outside(event)) return;
+      event.preventDefault(); setDragging(true);
+      if (dragTimer.current) clearTimeout(dragTimer.current);
+      dragTimer.current = setTimeout(() => setDragging(false), 200);
     };
-    window.addEventListener("paste", paste);
-    return () => window.removeEventListener("paste", paste);
-  }, [mine, onFile]);
+    const drop = async (event: DragEvent) => {
+      if (outside(event)) return;
+      event.preventDefault(); setDragging(false);
+      const file = image(event.dataTransfer?.files);
+      if (file) { void putRef.current(file); return; }
+      // A picture dragged straight from a web page arrives as its address; it can be read only when that site allows it.
+      const address = event.dataTransfer?.getData("text/uri-list").split("\n").find(line => /^https?:/.test(line.trim()));
+      const blob = address ? await fetch(address.trim()).then(response => response.ok ? response.blob() : null, () => null) : null;
+      if (blob?.type.startsWith("image/")) void putRef.current(new File([blob], "my-gpt.png", { type: blob.type }));
+      else setHint("이 그림은 바로 끌어올 수 없어요. ChatGPT에서 그림을 내려받아 그 파일을 끌어다 놓거나, 「이미지 복사」 후 ⌘V를 눌러요.");
+    };
+    window.addEventListener("paste", paste); window.addEventListener("dragover", over); window.addEventListener("drop", drop);
+    return () => { window.removeEventListener("paste", paste); window.removeEventListener("dragover", over); window.removeEventListener("drop", drop); };
+  }, [mine]);
   if (!client) return <div className="yp-row-btns">{children}</div>;
   const run = async (what: string, work: () => Promise<void>) => { setBusy(what); try { await work(); } catch (reason) { page.fail(reason); } finally { setBusy(""); } };
   const draw = () => run("draw", async () => {
@@ -93,16 +121,11 @@ export function CardDrawPanel({ page, projectId, photo, onPhoto, onFile, brief, 
     try {
       for (const item of await navigator.clipboard.read()) {
         const type = item.types.find(kind => kind.startsWith("image/"));
-        if (type) { onFile(new File([await item.getType(type)], "my-gpt.png", { type })); step("paste"); setHint(""); return; }
+        if (type) { await putRef.current(new File([await item.getType(type)], "my-gpt.png", { type })); return; }
       }
       setHint("복사된 그림이 없어요. ChatGPT 그림에서 「이미지 복사」를 먼저 눌러요.");
     } catch { setHint("이 브라우저는 붙여 넣기 버튼을 막아요. ⌘V(윈도우는 Ctrl+V)를 눌러 붙여 넣거나 그림 파일을 여기에 끌어다 놓아요."); }
   });
-  const dropped = (event: DragEvent) => {
-    const file = [...event.dataTransfer.files].find(row => row.type.startsWith("image/"));
-    if (!file) return;
-    event.preventDefault(); onFile(file); step("paste");
-  };
   const keep = () => run("keep", async () => {
     if (!photo) return;
     setCharacters(await client.addCardCharacter({ projectId, path: photo.path, name: name.trim() }));
@@ -143,13 +166,17 @@ export function CardDrawPanel({ page, projectId, photo, onPhoto, onFile, brief, 
       <button type="button" className="yp-btn yp-sm" aria-expanded={mine} disabled={[...scene.trim()].length < 2 || characters === null} onClick={() => setMine(!mine)}>내 GPT로 그리기</button>
       <CostTag kind="ai" />
       <button type="button" className="yp-btn yp-sm" disabled={busy === "draw"} onClick={() => setOpen(false)}>닫기</button></div>
-    {mine ? <ol className="yp-card-mygpt" aria-label="내 GPT로 그리기" onDragOver={event => event.preventDefault()} onDrop={dropped}>
+    {dragging ? <div className="yp-card-drop" aria-hidden="true">여기에 놓으면 {label}에 들어가요</div> : null}
+    {mine ? <ol className="yp-card-mygpt" aria-label="내 GPT로 그리기">
       <li className={done.includes("sheet") ? "yp-on" : ""}><b>1</b><button type="button" className="yp-btn yp-sm" disabled={!picked.length || Boolean(busy)} onClick={() => void copySheet()}>{busy === "sheet" ? "만드는 중…" : "참고 그림 복사"}</button>
         <span className="yp-hint">{picked.length ? <><a href="https://chatgpt.com/" target="_blank" rel="noreferrer">ChatGPT</a> 새 대화창에 붙여 넣어요 (⌘V)</> : "고른 캐릭터 그림이 없어요 — 2번부터 해요"}</span></li>
       <li className={done.includes("prompt") ? "yp-on" : ""}><b>2</b><button type="button" className="yp-btn yp-sm" disabled={Boolean(busy)} onClick={() => void copyPrompt()}>그림 설명 복사</button>
         <span className="yp-hint">이어서 붙여 넣고 보내요. 다 그려질 때까지 1~2분 기다려요</span></li>
       <li className={done.includes("paste") ? "yp-on" : ""}><b>3</b><button type="button" className="yp-btn yp-sm" disabled={Boolean(busy)} onClick={() => void pasteBack()}>그린 그림 붙여 넣기</button>
-        <span className="yp-hint">ChatGPT 그림에서 「이미지 복사」를 누르고 여기를 눌러요. 그림 파일을 이 칸에 끌어다 놓아도 돼요</span></li>
+        <span className="yp-hint">ChatGPT 그림에서 「이미지 복사」를 누르고 여기를 눌러요. 그림 파일을 화면 아무 곳에 끌어다 놓아도 돼요</span></li>
+      {placed ? <li className="yp-card-mygpt-placed" role="status">{placed.state === "busy" ? "올리는 중…" : placed.state === "fail" ? "넣지 못했어요. 다시 해 주세요."
+        // eslint-disable-next-line @next/next/no-img-element -- the picture just put on the card, from the PD's own computer
+        : <><img src={placed.preview} alt="" />✓ {label}에 넣었어요 · 위 미리보기에서 확인해요</>}</li> : null}
       {hint ? <li className="yp-card-mygpt-note" role="status">{hint}</li> : null}
     </ol> : null}
     {promptText ? <label className="yp-field"><span className="yp-fld-h"><b>그림 설명</b></span>
