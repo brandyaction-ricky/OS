@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { diagramCatalogCardSection, type DiagramCatalog } from "@/lib/diagram-catalog";
-import { checkMyinStoryboard, MYIN_SCENE_TYPES, myinPhotoFetchUrl, myinPhotoFolders } from "@/lib/myin-storyboard";
+import { anchorMyinCues, checkMyinStoryboard, MYIN_SCENE_TYPES, myinPhotoFetchUrl, myinPhotoFolders } from "@/lib/myin-storyboard";
 import { checkShortStoryboard, SHORT_DIAGRAM_SHARE, SHORT_LINE_MAX_PX, SHORT_PERSONA, shortDiagramList, type ShortDiagram } from "@/lib/myin-short-storyboard";
 
 // 마이인 v13 stage 2: the storyboard as a staff-AI job (method B). The card points at Logan's manual and spec documents in the
@@ -96,9 +96,12 @@ result = ${MYIN_STORYBOARD_RESULT_SHAPE}
 export function checkMyinStoryboardResult(value: unknown, words: [number, number, string][], catalogTypes: readonly string[] = [], speech = "") {
   const parsed = resultSchema.safeParse(value);
   if (!parsed.success) throw new ApiError(422, "MYIN_STORYBOARD_INVALID", `제출 형식을 확인해 주세요: ${parsed.error.issues.slice(0, 8).map((issue) => `${issue.path.join(".")} ${issue.message}`).join(" / ")}`);
-  const checked = checkMyinStoryboard(parsed.data.storyboard, words, catalogTypes, speech);
+  // v3 7.2-4: cues the transcript hears otherwise are first written as it heard them (원고 ↔ 받아쓰기 정렬표).
+  const anchored = anchorMyinCues(parsed.data.storyboard, words, speech);
+  const checked = checkMyinStoryboard(anchored.storyboard, words, catalogTypes, speech);
   if (checked.issues.length || !checked.story) throw new ApiError(422, "MYIN_STORYBOARD_ISSUES", `기획표 검사에서 걸린 곳 ${checked.issues.length}개: ${checked.issues.join(" / ")}`);
-  return { ...parsed.data, fuzzy: checked.fuzzy, notes: [...checked.notes, ...(parsed.data.suggestions ?? []).map((s) => `제안: ${s}`)] };
+  return { ...parsed.data, storyboard: anchored.storyboard as Record<string, unknown>, fuzzy: checked.fuzzy,
+    notes: [...checked.notes, ...(anchored.changed.length ? [`받아쓰기에 맞춘 문구 ${anchored.changed.length}개: ${anchored.changed.slice(0, 8).join(" · ")}`] : []), ...(parsed.data.suggestions ?? []).map((s) => `제안: ${s}`)] };
 }
 
 // ── 숏폼 (2026-10-28): the vertical storyboard, drawn by the render PC's 9:16 copy of Logan's engine. The rules are on the card: GPT's

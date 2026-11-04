@@ -3,7 +3,7 @@ import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { diagramCatalogTypes } from "@/lib/diagram-catalog";
 import { editCheckIssues, editFeed, editLoudnessIssue, feedbackEditStates, lockDecision, orderMove, withLockEvent, type EditLock, type EditOrderStatus, type LockEvent } from "@/lib/myin-edit";
-import { checkMyinStoryboard } from "@/lib/myin-storyboard";
+import { anchorMyinCues, checkMyinStoryboard } from "@/lib/myin-storyboard";
 import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { RequestActor } from "./auth";
@@ -132,15 +132,18 @@ export async function submitEditOrder(actor: RequestActor, projectId: string, in
   const service = createServiceSupabase();
   const myin = await myinRunWithWords(service, project.id);
   let notes: string[] = [];
-  if (input.storyboard) {
-    const checked = checkMyinStoryboard(input.storyboard, myin.words, diagramCatalogTypes(await readDiagramCatalog()), myin.speech);
+  let storyboard = input.storyboard;
+  if (storyboard) {
+    const anchored = anchorMyinCues(storyboard, myin.words, myin.speech);   // v3 7.2-4: as the transcript heard them
+    storyboard = anchored.storyboard as Record<string, unknown>;
+    const checked = checkMyinStoryboard(storyboard, myin.words, diagramCatalogTypes(await readDiagramCatalog()), myin.speech);
     if (checked.issues.length || !checked.story) throw new ApiError(422, "EDIT_STORYBOARD_ISSUES", `기획표 검사에서 걸린 곳 ${checked.issues.length}개: ${checked.issues.join(" / ")}`);
-    notes = checked.notes;
+    notes = [...checked.notes, ...(anchored.changed.length ? [`받아쓰기에 맞춘 문구 ${anchored.changed.length}개`] : [])];
   }
   const id = randomUUID();
-  const path = input.storyboard ? `${myin.record.owner_id}/${project.id}/edits/${id}-storyboard.json` : null;
+  const path = storyboard ? `${myin.record.owner_id}/${project.id}/edits/${id}-storyboard.json` : null;
   if (path) {
-    const { error } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).upload(path, Buffer.from(JSON.stringify(input.storyboard)), { contentType: "application/json", upsert: false });
+    const { error } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).upload(path, Buffer.from(JSON.stringify(storyboard)), { contentType: "application/json", upsert: false });
     if (error) throw new ApiError(502, "EDIT_STORYBOARD_SAVE_FAILED", "고친 기획표를 저장하지 못했어요.");
   }
   const order: Order = { kind: ORDER, projectId: project.id, runId: myin.record.id, text: input.text, at: input.at ?? null, from: input.feedbackIds.length ? "feedback" : "chat",

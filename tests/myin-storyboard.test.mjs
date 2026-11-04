@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyMyinSoundPlan, checkMyinStoryboard, myinCreditsBlock, myinDriftPairs, myinOnlySoundChanged, myinPhotoFetchUrl, myinPhotoFolders, myinPrepPhotos, myinSoundIssues, myinSoundPlan, myinVisualShare, seqRatio } from "../lib/myin-storyboard.ts";
+import { anchorMyinCues, applyMyinSoundPlan, checkMyinStoryboard, matchingBlocks, myinCueMisses, myinCreditsBlock, myinDriftPairs, myinOnlySoundChanged, myinPhotoFetchUrl, myinPhotoFolders, myinPrepPhotos, myinSoundIssues, myinSoundPlan, myinVisualShare, seqRatio } from "../lib/myin-storyboard.ts";
 
 // The OS check must say what Logan's resolve() says: exact phrase within its window, else a window with difflib ratio ≥ 0.62.
 test("seqRatio equals Python difflib.SequenceMatcher.ratio()", () => {
@@ -192,4 +192,33 @@ test("myinPrepPhotos sends our uploaded image instead of a listed photo of the s
     { kind: "people", file: "brickman.jpg", url: "https://signed/brickman" }]);
   // ④: only approved listed photos; ours go regardless.
   assert.deepEqual(myinPrepPhotos(folders, listed, (file) => file === "page.jpg", ours), [{ kind: "people", file: "brickman.jpg", url: "https://signed/brickman" }]);
+});
+
+// 로건 개발 문서 v3 7.2-4: cues written as the script spells them are written as the transcript heard them (원고 ↔ 받아쓰기 정렬표).
+test("a cue the transcript hears otherwise is anchored to the words it was read as; shown text and exact cues stay", () => {
+  const speech = "#SECTION 1\n지안 씨는 좀 굼떠요. 세 가지가 있어요.\n그래서 면담을 했어요.";
+  const heard = "지한 씨는 좀 군떠요 3가지가 있어요 그래서 논담을 했어요".split(" ");
+  const words = heard.map((w, i) => [i, i + 0.9, w]);
+  const story = { scenes: [
+    { type: "opening", at: "지안 씨는", lines: [[{ text: "지안 씨는", cue: "지안 씨는" }]] },
+    { type: "statement", at: "세 가지가", title: [["세 가지", "세 가지가"]], cue_b: "있어요" },
+    { type: "statement", at: "그래서 면담을" } ], cta: [{ after: "면담을 했어요", line: "구독" }] };
+  const before = myinCueMisses(story, words);
+  const { storyboard, changed } = anchorMyinCues(story, words, speech);
+  assert.equal(storyboard.scenes[0].at, "지한씨는");
+  assert.equal(storyboard.scenes[0].lines[0][0].text, "지안 씨는", "shown text never changes");
+  assert.equal(storyboard.scenes[0].lines[0][0].cue, "지한씨는");
+  assert.equal(storyboard.scenes[1].title[0][0], "세 가지");
+  assert.equal(storyboard.scenes[1].cue_b, "있어요", "a cue the transcript holds exactly stays as written");
+  assert.equal(storyboard.cta[0].after, "논담을했어요");
+  assert.ok(changed.length >= 4 && changed.every((line) => line.includes("받아쓰기")), changed.join(" / "));
+  const after = myinCueMisses(storyboard, words);
+  assert.ok(before.misses.length + before.fuzzy.length > after.misses.length + after.fuzzy.length, JSON.stringify({ before, after }));
+  assert.equal(story.scenes[0].at, "지안 씨는", "the storyboard handed in is not changed in place");
+  assert.deepEqual(anchorMyinCues(story, words, "").changed, [], "no script, nothing to anchor");
+});
+
+test("matchingBlocks equals difflib's matching blocks, so seqRatio stays the same", () => {
+  assert.deepEqual(matchingBlocks("abxcd", "abcd"), [[0, 0, 2], [3, 2, 2]]);
+  assert.equal(seqRatio("abxcd", "abcd").toFixed(6), (8 / 9).toFixed(6));
 });
