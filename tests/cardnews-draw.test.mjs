@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { CARD_DRAW_SIZE, cardDrawPrompt, myGptDrawPrompt } from "../lib/cardnews/draw.ts";
+import { CARD_DRAW_SIZE, cardDrawPrompt, castCharacters, myGptBatchPrompt, myGptDrawPrompt } from "../lib/cardnews/draw.ts";
 
 // 카드 그림 (대표 2026-11-02): the picture is 4:5 like the card, carries no letters (the card writes them in Pretendard), and names the
 // 캐릭터 창고 pictures in the order they are sent so GPT keeps those faces.
@@ -61,3 +61,19 @@ test("the 내 GPT prompt names the side-by-side references in order and keeps th
   assert.match(panel, /<CostTag kind="ai" \/>/, "the 내 GPT button says it spends the PD's own AI, not the company credit");
   assert.match(panel, /copiedFor !== label && !window\.confirm\(`\$\{copiedFor\} 그림 설명으로 그린 그림 같아요\. \$\{label\}에 넣을까요\?`\)/, "a picture drawn from another card's words is asked about");
 });
+
+// 그림 한꺼번에 (대표 2026-11-04): each card's 나오는 사람 picks its 창고 pictures; one ChatGPT brief carries every card, each with its own 참고 그림 numbers.
+test("several cards go to ChatGPT in one brief, each naming its own references", () => {
+  const rows = [{ name: "서윤 · 주인공 A" }, { name: "도현 · 주인공 B" }, { name: "강점 낙서 6묶음" }];
+  assert.deepEqual(castCharacters(rows, "도현 · 낙서").map(row => row.name), ["도현 · 주인공 B", "강점 낙서 6묶음"]);
+  assert.deepEqual(castCharacters(rows, ""), []);
+  const text = myGptBatchPrompt("webtoon", ["서윤 · 주인공 A", "도현 · 주인공 B", "강점 낙서 6묶음"], [
+    { card: "22장", scene: "낙서가 철퍼덕", refNames: ["서윤 · 주인공 A", "강점 낙서 6묶음"] },
+    { card: "30장", scene: "엘리베이터의 도현", refNames: ["도현 · 주인공 B", "강점 낙서 6묶음"] }]);
+  assert.match(text, /left to right: 1\) 서윤 · 주인공 A, 2\) 도현 · 주인공 B, 3\) 강점 낙서 6묶음/);
+  assert.match(text, /Draw the 2 pictures below in this order, one picture per reply/);
+  assert.match(text, /Picture 1 — 「22장」 \(in this scene 참고 그림 1 = 서윤 · 주인공 A, 참고 그림 2 = 강점 낙서 6묶음\): 낙서가 철퍼덕/);
+  assert.match(text, /Picture 2 — 「30장」 \(in this scene 참고 그림 1 = 도현 · 주인공 B/);
+  assert.match(text, /wait until I write 다음/);
+});
+

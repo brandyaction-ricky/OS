@@ -4,13 +4,13 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Sparkles, X } from "lucide-react";
 import { imageEstimate } from "@/lib/cost";
-import { CARD_DRAW_QUALITY, CARD_DRAW_REFS_MAX, CARD_DRAW_SCENE_MAX, CARD_DRAW_STYLES, myGptDrawPrompt, type CardCharacterView, type CardDrawQuality, type CardDrawStyle } from "@/lib/cardnews/draw";
+import { CARD_DRAW_QUALITY, CARD_DRAW_REFS_MAX, CARD_DRAW_SCENE_MAX, CARD_DRAW_STYLES, castCharacters, myGptDrawPrompt, type CardCharacterView, type CardDrawQuality, type CardDrawStyle } from "@/lib/cardnews/draw";
 import type { CardPhoto } from "@/lib/cardnews/formats";
 import { CostTag, useCostConfirm, useCostModels } from "./cost-notice";
 import type { YpPage } from "./youtube-process-frame";
 
 /** The picked 창고 pictures side by side in one PNG, the order they were picked: 「내 GPT로 그리기」 pastes it into ChatGPT. */
-async function referenceSheet(urls: string[]) {
+export async function referenceSheet(urls: string[]) {
   const pictures = await Promise.all(urls.map(async url => createImageBitmap(await (await fetch(url)).blob())));
   const height = 768, gap = 24, widths = pictures.map(picture => Math.round(picture.width * height / picture.height));
   const canvas = document.createElement("canvas");
@@ -65,8 +65,7 @@ export function CardDrawPanel({ page, projectId, photo, onPhoto, onFile, label, 
   useEffect(() => { if (briefScene) setScene(briefScene); }, [briefScene]);
   useEffect(() => {
     if (!characters || !briefCast) return;
-    const names = briefCast.split(/[\s,·]+/).filter(Boolean);
-    setRefs(characters.filter(row => names.some(name => row.name.includes(name))).slice(0, CARD_DRAW_REFS_MAX).map(row => row.id));
+    setRefs(castCharacters(characters, briefCast).map(row => row.id));
   }, [characters, briefCast]);
   // While 「내 GPT로 그리기」 is open, ⌘V anywhere (a text box gets only text) or a picture dropped anywhere on the page goes on the card;
   // a dragged file lights the whole page so it is clear where it lands. Reordering cards (their own drag type) is left alone.

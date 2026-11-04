@@ -150,6 +150,42 @@ test("a 웹툰 화 starts by hand and each 칸 brings its 장면 to the drawing 
   await expect(page.locator(".yp-card-checks")).toContainText("2화에 칸이 없어요");
 });
 
+// 그림 한꺼번에 (대표 2026-11-04): the 웹툰 cards still to draw are ticked; 내 GPT pastes fill them in order, the company API draws the ticked ones.
+test("웹툰 pictures are drawn together: pasted back in order, or drawn on the API in one go", async ({ page }) => {
+  await editor(page);
+  await page.getByRole("checkbox", { name: "웹툰형", exact: true }).check();
+  await page.getByRole("button", { name: "직접 쓰기", exact: true }).click();
+  const row = page.locator(".yp-card-row", { has: page.locator(".yp-card-row-h b", { hasText: "웹툰형" }) });
+  await row.getByRole("button", { name: "이걸로 하기", exact: true }).click();
+  for (const [n, scene] of [[2, "밤 사무실, 서윤이 웃는다"], [3, "아침 사무실, 서윤이 놀란다"]] as const) {
+    await page.getByRole("button", { name: `${n}장 보기`, exact: true }).click();
+    await page.getByLabel("장면 (그릴 것)", { exact: true }).fill(scene);
+  }
+  await page.getByRole("button", { name: "그림 한꺼번에" }).click();
+  const batch = page.getByRole("group", { name: "그림 한꺼번에" });
+  await expect(batch.getByRole("checkbox", { name: "2장 고르기" })).toBeChecked();
+  await expect(batch.getByRole("button", { name: "회사 API로 2장 그리기" })).toBeEnabled();
+  await page.context().clearPermissions();
+  await batch.getByRole("button", { name: "내 GPT로 한꺼번에" }).click();
+  await batch.getByRole("button", { name: "그림 설명 복사 (2장)" }).click();
+  await expect(batch.getByLabel("한꺼번에 그림 설명")).toHaveValue(/Picture 1 — 「2장」[\s\S]*Picture 2 — 「3장」/);
+  await page.evaluate(async () => {
+    const data = new DataTransfer();
+    for (const name of ["gpt-1.png", "gpt-2.png"]) {
+      const canvas = Object.assign(document.createElement("canvas"), { width: 40, height: 50 });
+      canvas.getContext("2d")!.fillRect(0, 0, name.length, 50);
+      data.items.add(new File([await new Promise<Blob>(resolve => canvas.toBlob(b => resolve(b!), "image/png"))], name, { type: "image/png" }));
+    }
+    window.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data }));
+  });
+  await expect(batch.getByText("✓ 넣었어요")).toHaveCount(2);
+  const before = await page.getByRole("button", { name: "2장 보기", exact: true }).locator("img").getAttribute("src");
+  await batch.getByRole("checkbox", { name: "2장 고르기" }).check();
+  await batch.getByRole("button", { name: "회사 API로 1장 그리기" }).click();
+  await page.locator("dialog.cost-dlg").getByRole("button", { name: "1장 그리기", exact: true }).click();
+  await expect(page.getByRole("button", { name: "2장 보기", exact: true }).locator("img")).not.toHaveAttribute("src", before ?? "");
+});
+
 test("the three diagram formats can be started by hand", async ({ page }) => {
   await editor(page);
   for (const name of ["비교형", "단계형", "구조형"]) await page.getByRole("checkbox", { name, exact: true }).check();
