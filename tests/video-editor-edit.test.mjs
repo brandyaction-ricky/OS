@@ -6,7 +6,7 @@ import vm from "node:vm";
 import ts from "typescript";
 import { z } from "zod";
 import * as kosis from "../lib/kosis.ts";
-import { EDIT_LOCK_STALE_MS, editCheckIssues, lockDecision, orderMove } from "../lib/myin-edit.ts";
+import { EDIT_LOCK_STALE_MS, editCheckIssues, editFeed, lockDecision, orderMove } from "../lib/myin-edit.ts";
 
 // 로건 개발 문서 v2 「OS 영상 편집기」 (2026-11-04) ②-2: one editor per video (the lock), orders from members' AI chats wait for it.
 const compiled = { exports: {} };
@@ -87,4 +87,23 @@ test("a confirm lands only from the newest final, after the check, with the engi
 test("confirm and handoff go through the editor route", async () => {
   const route = await readFile(new URL("../app/api/v1/content/youtube-automation/editor/route.ts", import.meta.url), "utf8");
   for (const action of ["confirm_start", "confirm_finish", "handoff"]) assert.match(route, new RegExp(`action === "${action}"`));
+});
+
+test("편집 소식: what happened since a time, oldest first, in words the AI chat passes on", async () => {
+  const state = { lock: { name: "로건", pc: "로건 PC", since: "2026-11-04T05:00:00.000Z" }, uploadedAt: null,
+    versions: [{ at: "2026-11-03T10:00:00.000Z", edit: null }, { at: "2026-11-04T06:00:00.000Z", edit: { name: "로건", pc: "로건 PC", orders: 2 } }],
+    orders: [{ at: "2026-11-04T05:10:00.000Z", updatedAt: "2026-11-04T05:30:00.000Z", text: "사진 바꿔줘", name: "유쓰", from: "chat", status: "done", result: { version: "v4", note: "", at: "2026-11-04T05:30:00.000Z" } },
+      { at: "2026-11-04T05:20:00.000Z", updatedAt: "2026-11-04T05:21:00.000Z", text: "음악 밝게", name: "대표", from: "feedback", status: "declined", result: { note: "엔진에 없는 연출이에요", at: "2026-11-04T05:21:00.000Z" } },
+      { at: "2026-11-04T05:40:00.000Z", updatedAt: "2026-11-04T05:41:00.000Z", text: "자막 오타", name: "로건", from: "chat", status: "working", result: null }] };
+  const all = editFeed(state, null);
+  assert.deepEqual(all.map((e) => e.kind), ["editing", "order", "order", "declined", "done", "order", "working", "confirmed"]);
+  assert.match(all.find((e) => e.kind === "declined").text, /“음악 밝게”은 할 수 없어요: 엔진에 없는 연출이에요/);
+  assert.match(all.at(-1).text, /로건님이 로건 PC에서 완성해 새 완성본이 올라왔어요\(주문 2건\)/);
+  assert.ok(all.every((e) => !/v\d/.test(e.text)), "no version numbers in what people hear (doc v3 P10)");
+  assert.deepEqual(editFeed(state, "2026-11-04T05:35:00.000Z").map((e) => e.kind), ["order", "working", "confirmed"]);
+  const route = await readFile(new URL("../app/api/v1/content/youtube-automation/editor/route.ts", import.meta.url), "utf8");
+  assert.match(route, /input\.view === "feed"\) return NextResponse\.json\(\{ title: project\.title, \.\.\.await editNews\(actor, project\.id, input\.since \?\? null\)/);
+  const calls = [];
+  await callMcpTool({ name: "get_video_editor", arguments: { project_id: project, view: "feed", since: "2026-11-04T05:35:00.000Z" } }, "org", async (path) => { calls.push(path); return {}; });
+  assert.equal(calls[0], `/api/v1/content/youtube-automation/editor?projectId=${project}&view=feed&since=2026-11-04T05%3A35%3A00.000Z`);
 });

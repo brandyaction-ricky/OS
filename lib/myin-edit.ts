@@ -34,3 +34,24 @@ export function editCheckIssues(c: EditCheck) {
   if (Math.abs(c.videoSeconds - c.audioSeconds) >= 1.5 / EDIT_FPS + 0.03) out.push(`소리·화면 길이(화면 ${c.videoSeconds.toFixed(3)}초 · 소리 ${c.audioSeconds.toFixed(3)}초)`);
   return out;
 }
+
+export interface FeedOrder { at: string; updatedAt: string; text: string; name: string; from: "chat" | "feedback"; status: EditOrderStatus; result: { version?: string; note: string; at: string } | null }
+export interface FeedVersion { at: string; edit: { name: string; pc: string; orders: number } | null }
+/**
+ * 편집 소식 (로건 개발 문서 v3 6-5 · P5): what happened to a video's edit since `since`, oldest first, as lines the member's AI chat says
+ * to them — the editor screen itself shows none of it (P10: no version numbers or order lists on the screen).
+ */
+export function editFeed(state: { lock: { name: string; pc: string; since: string } | null; orders: FeedOrder[]; versions: FeedVersion[]; uploadedAt: string | null }, since: string | null) {
+  const out: { at: string; kind: string; text: string }[] = [];
+  if (state.lock) out.push({ at: state.lock.since, kind: "editing", text: `${state.lock.name}님이 ${state.lock.pc}에서 편집을 시작했어요.` });
+  for (const o of state.orders) {
+    out.push({ at: o.at, kind: "order", text: `${o.name}님 ${o.from === "feedback" ? "최종 검토 피드백이" : "주문이"} 들어왔어요: “${o.text}”` });
+    if (o.status === "working") out.push({ at: o.updatedAt, kind: "working", text: `“${o.text}” 고치는 중이에요.` });
+    if (o.result && o.status === "done") out.push({ at: o.result.at, kind: "done", text: `“${o.text}” 고친 영상이 나왔어요. 편집기에서 보고 완성하면 OS 완성본이 돼요.` });
+    if (o.result && o.status === "failed") out.push({ at: o.result.at, kind: "failed", text: `“${o.text}”을 만들지 못했어요${o.result.note ? `: ${o.result.note}` : "."} 이전 영상은 그대로예요.` });
+    if (o.result && o.status === "declined") out.push({ at: o.result.at, kind: "declined", text: `“${o.text}”은 할 수 없어요${o.result.note ? `: ${o.result.note}` : "."}` });
+  }
+  for (const v of state.versions) if (v.edit) out.push({ at: v.at, kind: "confirmed", text: `${v.edit.name}님이 ${v.edit.pc}에서 완성해 새 완성본이 올라왔어요${v.edit.orders ? `(주문 ${v.edit.orders}건)` : ""}.` });
+  if (state.uploadedAt) out.push({ at: state.uploadedAt, kind: "uploaded", text: "유튜브에 올렸어요. 2주 뒤 각 컴퓨터의 편집 파일을 정리해요." });
+  return out.filter((e) => !since || e.at > since).sort((a, b) => a.at.localeCompare(b.at));
+}

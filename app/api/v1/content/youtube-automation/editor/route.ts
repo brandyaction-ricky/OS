@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
-import { confirmFinish, confirmStart, confirmStartSchema, declineEdit, editHandoff, editLock, editOrderResult, editOrderSchema, editorProject, editStatus, nextEditOrders, submitEditOrder } from "@/lib/server/myin-edit";
+import { confirmFinish, confirmStart, confirmStartSchema, declineEdit, editHandoff, editLock, editNews, editOrderResult, editOrderSchema, editorProject, editStatus, nextEditOrders, submitEditOrder } from "@/lib/server/myin-edit";
 import { myinEditorView } from "@/lib/server/myin-run";
 import { listFeedback } from "@/lib/server/youtube-process-feedback";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
@@ -10,13 +10,14 @@ import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const headers = { "cache-control": "private, no-store" };
-const querySchema = z.object({ projectId: z.string().uuid(), view: z.enum(["summary", "scenes", "subtitles", "assets", "orders", "edits"]).default("summary") });
+const querySchema = z.object({ projectId: z.string().uuid(), view: z.enum(["summary", "scenes", "subtitles", "assets", "orders", "edits", "feed"]).default("summary"), since: z.string().datetime().optional() });
 
 /**
  * 영상 편집기 읽기 (로건 개발 문서 2026-11-03 §4-2, MCP get_video_editor): what an AI needs to edit a finished video, read only.
  * A person reads what the database lets them; an AI key only a video its owner made or is assigned (its database client is not
  * scoped, so the project is checked here). orders = the 최종 검토 feedback on the video still open; edits = who holds the edit lock
- * and the orders sent from members' AI chats, with what each became.
+ * and the orders sent from members' AI chats, with what each became; feed = the same as news lines since `since` (doc v3 6-5: progress
+ * reaches people through their AI chat, not the editor screen).
  */
 export async function GET(request: Request) {
   try {
@@ -25,6 +26,7 @@ export async function GET(request: Request) {
     const input = querySchema.parse(Object.fromEntries(new URL(request.url).searchParams));
     const project = await editorProject(actor, input.projectId);
     if (input.view === "edits") return NextResponse.json({ title: project.title, ...await editStatus(actor, project.id) }, { headers });
+    if (input.view === "feed") return NextResponse.json({ title: project.title, ...await editNews(actor, project.id, input.since ?? null) }, { headers });
     if (input.view === "orders") {
       const items = (await listFeedback(actor, project.id)).filter((item) => item.target === "video" && item.status === "open" && !item.deleted);
       return NextResponse.json({ projectId: project.id, title: project.title, orders: items.map(({ id, version, ver, t, range, text, kind, marks, who }) => ({ id, version, ver, t, range, text, kind, marks: marks ?? [], who })) }, { headers });

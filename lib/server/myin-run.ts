@@ -1423,6 +1423,14 @@ export async function myinAddEditFinal(service: Service, sourceId: string, input
   return { at: next.final.at, v: (next.finals?.length ?? 0) + 1 };
 }
 
+/** 영상 편집기: every finished version, oldest first, and for one confirmed from an editor who, where and from which of its versions. */
+export async function myinFinalVersions(service: Service, sourceId: string) {
+  const latest = await latestRun(service, sourceId);
+  const all = latest ? [...(latest.run.finals ?? []), ...(latest.run.final ? [latest.run.final] : [])] : [];
+  return all.map((final, i) => ({ v: i + 1, at: final.at, durationSeconds: final.durationSeconds,
+    edit: final.edit ? { name: final.edit.name, pc: final.edit.pc, fromVersion: final.edit.fromVersion, note: final.edit.note, orders: final.edit.orders.length } : null }));
+}
+
 /** 다른 컴퓨터에서 이어받기: a final's files (the newest, or the one made at `at`) for 30 minutes, with what its edit left. */
 export async function myinFinalForHandoff(service: Service, sourceId: string, at?: string) {
   const latest = await latestRun(service, sourceId);

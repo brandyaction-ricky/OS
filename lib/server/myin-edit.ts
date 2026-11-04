@@ -2,13 +2,13 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { diagramCatalogTypes } from "@/lib/diagram-catalog";
-import { editCheckIssues, lockDecision, orderMove, type EditLock, type EditOrderStatus } from "@/lib/myin-edit";
+import { editCheckIssues, editFeed, lockDecision, orderMove, type EditLock, type EditOrderStatus } from "@/lib/myin-edit";
 import { checkMyinStoryboard } from "@/lib/myin-storyboard";
 import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { RequestActor } from "./auth";
 import { readDiagramCatalog } from "./diagram-catalog";
-import { editFinalSchema, myinAddEditFinal, myinEditUploads, myinFinalAt, myinFinalForHandoff, myinRunWithWords } from "./myin-run";
+import { editFinalSchema, myinAddEditFinal, myinEditUploads, myinFinalAt, myinFinalForHandoff, myinFinalVersions, myinRunWithWords } from "./myin-run";
 import { currentEngineDownload, ENGINE_BUCKET, ENGINE_PART_BYTES, engineBundleSaved } from "./render-engine";
 import { getYoutubeProject } from "./youtube-process";
 import { actOnFeedback, listFeedback } from "./youtube-process-feedback";
@@ -70,11 +70,11 @@ export async function editStatus(actor: RequestActor, projectId: string) {
   const record = await sessionRecord(service, project.id);
   const lock = record ? sessionSchema.parse(record.metadata).lock ?? null : null;
   const live = lock && lockDecision(lock, { by: "", pc: "" }, Date.now()).kind === "held" ? lock : null;
-  const { data } = await service.from("os_records").select("id,version,metadata,created_at").eq("parent_id", project.id).eq("record_type", "ai_job")
+  const { data } = await service.from("os_records").select("id,version,metadata,created_at,updated_at").eq("parent_id", project.id).eq("record_type", "ai_job")
     .eq("metadata->>kind", ORDER).is("archived_at", null).order("created_at", { ascending: false }).limit(50);
-  const orders = (data ?? []).map((row) => ({ id: row.id, version: row.version, at: row.created_at, ...presentOrder(orderSchema.parse(row.metadata)) }));
+  const orders = (data ?? []).map((row) => ({ id: row.id, version: row.version, at: row.created_at, updatedAt: row.updated_at, ...presentOrder(orderSchema.parse(row.metadata)) }));
   const meta = record ? sessionSchema.parse(record.metadata) : null;
-  return { projectId: project.id, lock: live, base: await myinFinalAt(service, project.id), uploadedAt: await uploadedAt(actor, project),
+  return { projectId: project.id, lock: live, base: await myinFinalAt(service, project.id), uploadedAt: await uploadedAt(actor, project), versions: await myinFinalVersions(service, project.id),
     confirming: live && meta?.confirming ? { at: meta.confirming.at, fromVersion: meta.confirming.fromVersion } : null, orders };
 }
 const presentOrder = (o: Order) => ({ text: o.text, videoAt: o.at, from: o.from, feedbackIds: o.feedbackIds, name: o.name, meaning: o.meaning,
@@ -287,4 +287,11 @@ export async function editHandoff(actor: RequestActor, projectId: string, at?: s
   })) : null;
   return { projectId: project.id, uploadedAt: await uploadedAt(actor, project), ...final, bundle,
     engine: final.edit ? await currentEngineDownload(final.edit.engine) : null };
+}
+
+/** 편집 소식 for the member's AI chat: what happened since `since` (an ISO time; none = everything), and the time to ask from next. */
+export async function editNews(actor: RequestActor, projectId: string, since: string | null) {
+  const now = new Date().toISOString();
+  const state = await editStatus(actor, projectId);
+  return { projectId: state.projectId, now, events: editFeed(state, since) };
 }
