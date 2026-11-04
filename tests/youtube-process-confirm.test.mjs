@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { newProjectMeta } from "../lib/youtube-process/project.ts";
-import { applyGateAction, canReopen, confirmTab, dueReminders, editableFields, firstRemindAt, nextRemindAt, quietHours } from "../lib/youtube-process/confirm.ts";
+import { applyGateAction, canReopen, confirmTab, reopenWhy, dueReminders, editableFields, firstRemindAt, nextRemindAt, quietHours } from "../lib/youtube-process/confirm.ts";
 
 const kst = (date, time) => new Date(`${date}T${time}:00+09:00`).toISOString();
 const project = (id = "p1") => ({ id, yp: newProjectMeta({ type: "live", target: "타겟", note: "", refs: [] }, kst("2026-10-17", "09:00")).yp });
@@ -130,4 +130,18 @@ test("다시 열기: the PD reopens their own 컨펌 from the next step only, an
   assert.throws(() => act(later, "reopen"), /다시 열 수 있어요/);
   assert.throws(() => act(act(act(project(), "request"), "ok", { actor: "ceo" }), "reopen"), /다시 열 수 있어요/);
   assert.throws(() => act(project(), "reopen"), /다시 열 수 있어요/);
+});
+
+// 로건 수정 요청 11-02 (e1afec79 · eaf19dee): the browser dialog never showed (nothing reopened), and a step that cannot reopen said nothing.
+test("다시 열기 asks on the page, and a step that cannot reopen says why", async () => {
+  const ok = act(project(), "confirm");
+  assert.equal(reopenWhy(ok, "topic"), "");
+  assert.match(reopenWhy({ ...ok, yp: { ...ok.yp, stage: "outline" } }, "topic"), /대표에게 되돌리기/);
+  assert.match(reopenWhy(act(act(project(), "request"), "ok", { actor: "ceo" }), "topic"), /대표가 컨펌한 단계/);
+  assert.equal(reopenWhy(project(), "topic"), "");
+  const { readFile } = await import("node:fs/promises");
+  const frame = await readFile(new URL("../components/youtube-process-frame.tsx", import.meta.url), "utf8");
+  const button = frame.slice(frame.indexOf("export function ReopenButton"), frame.indexOf("export function GateNotes"));
+  assert.doesNotMatch(button, /window\.confirm/);
+  assert.match(button, /setAsking\(true\)/);
 });

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, Check, ChevronDown, ChevronUp, Clock, Info, PauseCircle } from "lucide-react";
-import { canReopen, editedSinceDecision, GATE_FIELDS, gateName } from "@/lib/youtube-process/confirm";
+import { canReopen, editedSinceDecision, GATE_FIELDS, gateName, reopenWhy } from "@/lib/youtube-process/confirm";
 import { mayTrash, projectHref, projectName, stepHref, stepName, YP_FLOW, YP_KIND_LABEL, YP_STAGE_INDEX, type YpGate, type YpProject } from "@/lib/youtube-process/project";
 import { setEditGuard } from "@/lib/api-client";
 import { useSession } from "./session-provider";
@@ -203,21 +203,27 @@ export function GateBanner({ page, gate, okExtra }: { page: YpPage; gate: YpGate
   if (info.state === "changes") return <div className="yp-note yp-warn" role="status"><AlertTriangle size={16} className="yp-i" aria-hidden="true" /><div><b>대표 수정 요청 · {md(info.decidedAt)}</b><br />메모: “{info.memo}”<br />{info.fields?.length ? `특히 볼 칸: ${info.fields.map(field => GATE_FIELDS[gate][field] ?? field).join(", ")} · ` : ""}모든 칸을 고칠 수 있어요</div></div>;
   if (info.state === "hold") return <div className="yp-note yp-bad" role="status"><PauseCircle size={16} className="yp-i" aria-hidden="true" /><div><b>보류됨 · {md(info.decidedAt)} · 대표</b><br />사유: “{info.reason}”<br />손본 뒤 컨펌할 수 있어요.</div></div>;
   if (info.state === "ok") return <div className="yp-note yp-ok" role="status"><Check size={16} className="yp-i" aria-hidden="true" /><div><b>{name} OK{info.decidedAt ? ` · ${md(info.decidedAt)}` : ""} · {info.self ? "PD 컨펌" : "대표"}</b>
-    {canReopen(project, gate) && page.client ? <> <ReopenButton project={project} gate={gate} client={page.client} onDone={next => page.setBundle(current => current ? { ...current, project: next } : current)} onError={page.fail} /></> : null}
+    {canReopen(project, gate) && page.client ? <> <ReopenButton project={project} gate={gate} client={page.client} onDone={next => page.setBundle(current => current ? { ...current, project: next } : current)} onError={page.fail} /></>
+      : reopenWhy(project, gate) ? <><br /><span className="yp-hint">{reopenWhy(project, gate)}</span></> : null}
     {okExtra}<GateNotes project={project} gate={gate} /></div></div>;
   return <GateNotes project={project} gate={gate} />;
 }
 
-/** 다시 열기 (로건 QA 10/30): the PD's own 컨펌 reopened from the very next step; confirming again comes back to where the video was. */
+/**
+ * 다시 열기 (로건 QA 10/30): the PD's own 컨펌 reopened from the very next step; confirming again comes back to where the video was.
+ * Asked on the page, not in a browser dialog (로건 수정 요청 11-02: the dialog never showed and nothing happened).
+ */
 export function ReopenButton({ project, gate, client, onDone, onError }: { project: YpProject; gate: YpGate; client: NonNullable<YpPage["client"]>; onDone: (next: YpProject) => void; onError: (reason: unknown) => void }) {
+  const [asking, setAsking] = useState(false);
   const [busy, setBusy] = useState(false);
-  const name = gateName(gate, project.yp.topic.type);
   const reopen = async () => {
-    if (!window.confirm(`${name}을 다시 열까요? 고친 뒤 다시 컨펌하면 지금 단계로 돌아와요.`)) return;
     setBusy(true);
-    try { onDone((await client.gate(project.id, gate, "reopen", project.version)).project); } catch (reason) { onError(reason); } finally { setBusy(false); }
+    try { onDone((await client.gate(project.id, gate, "reopen", project.version)).project); } catch (reason) { onError(reason); } finally { setBusy(false); setAsking(false); }
   };
-  return <button type="button" className="yp-btn yp-sm" disabled={busy} onClick={() => void reopen()}>다시 열기</button>;
+  if (!asking) return <button type="button" className="yp-btn yp-sm" onClick={() => setAsking(true)}>다시 열기</button>;
+  return <span className="yp-ask"><span>{gateName(gate, project.yp.topic.type)}을 다시 열까요? 고친 뒤 다시 컨펌하면 지금 단계로 돌아와요.</span>
+    <button type="button" className="yp-btn yp-sm" disabled={busy} onClick={() => setAsking(false)}>취소</button>
+    <button type="button" className="yp-btn yp-sm yp-pri" disabled={busy} onClick={() => void reopen()}>{busy ? "여는 중…" : "다시 열기"}</button></span>;
 }
 
 /** 대표 노트 on a step (owner decision 2026-10-26): the 대표 reads PD-confirmed steps and leaves notes instead of confirming. */
