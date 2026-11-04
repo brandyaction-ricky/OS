@@ -113,7 +113,10 @@ export function CardDrawPanel({ page, projectId, photo, onPhoto, onFile, brief, 
     setCharacters(await client.removeCardCharacter(row.id));
     setRefs(current => current.filter(id => id !== row.id));
   });
-  const row = <div className="yp-row-btns">{children}{open ? null : <button type="button" className="yp-btn yp-sm" onClick={() => setOpen(true)}><Sparkles size={13} aria-hidden="true" />AI로 그리기</button>}</div>;
+  // 「내 GPT로 그리기」 sits beside 「AI로 그리기」 from the start (대표 2026-11-04: inside the panel nobody found it) and opens its steps.
+  const row = <div className="yp-row-btns">{children}{open ? null : <>
+    <button type="button" className="yp-btn yp-sm" onClick={() => setOpen(true)}><Sparkles size={13} aria-hidden="true" />AI로 그리기</button>
+    <button type="button" className="yp-btn yp-sm" onClick={() => { setOpen(true); setMine(true); }}>내 GPT로 그리기</button><CostTag kind="ai" /></>}</div>;
   if (!open) return <>{row}{cost.element}</>;
   return <>{row}<div className="yp-card-draw" role="group" aria-label="AI로 그리기">
     <label className="yp-field"><span className="yp-fld-h"><b>어떤 장면인가요?</b><span className="yp-card-n">{[...scene].length}/{CARD_DRAW_SCENE_MAX}</span></span>
