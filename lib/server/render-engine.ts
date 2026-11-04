@@ -6,6 +6,8 @@ import { YOUTUBE_VOICE_TIMING_BUCKET } from "./youtube-voice-run";
 // 내 컴퓨터로 시안 (owner decisions 2026-10-27: Logan's engine may go on staff PCs; keep the bundle in the OS). The render PC packs
 // its current v13 engine once per fingerprint and uploads it in parts; a staff PC downloads the render PC's current one, checks every
 // part's hash, and installs it. Private bucket, signed URLs only; the manifest is a small JSON beside the render PC's status file.
+// 영상 편집기 (2026-11-04): an edited final names the engine it was drawn with, and its material bundle lies here under edits/ — never
+// delete an engine an edited final names, or that final can no longer be edited on another computer.
 export const ENGINE_BUCKET = "os-render-engine";
 export const ENGINE_PART_BYTES = 45_000_000; // under the project's 50 MB upload limit
 const MAX_PARTS = 24; // about 1 GB

@@ -2,25 +2,34 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { diagramCatalogTypes } from "@/lib/diagram-catalog";
-import { lockDecision, orderMove, type EditLock, type EditOrderStatus } from "@/lib/myin-edit";
+import { editCheckIssues, lockDecision, orderMove, type EditLock, type EditOrderStatus } from "@/lib/myin-edit";
 import { checkMyinStoryboard } from "@/lib/myin-storyboard";
 import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { RequestActor } from "./auth";
 import { readDiagramCatalog } from "./diagram-catalog";
-import { myinFinalAt, myinRunWithWords } from "./myin-run";
+import { editFinalSchema, myinAddEditFinal, myinEditUploads, myinFinalAt, myinFinalForHandoff, myinRunWithWords } from "./myin-run";
+import { currentEngineDownload, ENGINE_BUCKET, ENGINE_PART_BYTES, engineBundleSaved } from "./render-engine";
 import { getYoutubeProject } from "./youtube-process";
 import { actOnFeedback, listFeedback } from "./youtube-process-feedback";
+import { readStages } from "./youtube-process-stages";
 import { YOUTUBE_VOICE_TIMING_BUCKET } from "./youtube-voice-run";
 
 // 영상 편집기 ②-2 (로건 개발 문서 v2, 2026-11-04): the OS side of editing a finished video on each member's own computer. One video,
 // one editor (the lock); orders from each member's AI chat wait here, checked like a storyboard, until that editor takes them; the
-// editor says what each became. Candidate versions stay on the computer; only a confirmed final comes to the OS (next step).
+// editor says what each became. Candidate versions stay on the computer; only a confirmed final comes to the OS, with the material
+// bundle another computer needs to go on editing it.
 
 type Service = ReturnType<typeof createServiceSupabase>;
 const SESSION = "youtube_myin_edit", ORDER = "youtube_myin_edit_order";
+const checkSchema = editFinalSchema.shape.check;
+export const confirmStartSchema = z.object({ pc: z.string().trim().min(1).max(80), fromVersion: z.string().trim().min(1).max(40), note: z.string().trim().max(500).default(""),
+  engine: z.string().regex(/^[a-f0-9]{32}$/), bytes: z.number().int().positive().max(2_147_483_648), lufs: z.number().min(-70).max(0), peak: z.number().min(-70).max(3),
+  bounds: z.array(z.number().int().positive()).max(2000), check: checkSchema, orders: z.array(z.string().uuid()).max(200).default([]), bundleParts: z.number().int().min(1).max(24) }).strict();
+const confirmingSchema = confirmStartSchema.omit({ pc: true }).extend({ id: z.string().uuid(), at: z.string(), basedOn: z.string() });
 const sessionSchema = z.object({ kind: z.literal(SESSION), projectId: z.string().uuid(),
-  lock: z.object({ by: z.string().uuid(), name: z.string(), pc: z.string(), since: z.string(), seenAt: z.string(), basedOn: z.string().nullable() }).strict().optional() }).passthrough();
+  lock: z.object({ by: z.string().uuid(), name: z.string(), pc: z.string(), since: z.string(), seenAt: z.string(), basedOn: z.string().nullable() }).strict().optional(),
+  confirming: confirmingSchema.optional() }).passthrough();
 const orderSchema = z.object({ kind: z.literal(ORDER), projectId: z.string().uuid(), runId: z.string().uuid(), text: z.string(), at: z.string().nullable(),
   from: z.enum(["chat", "feedback"]), feedbackIds: z.array(z.string().uuid()), by: z.string().uuid(), name: z.string(), meaning: z.string(),
   storyboard: z.string().nullable(), subtitles: z.array(z.object({ i: z.number().int().min(0), text: z.string() }).strict()),
@@ -64,7 +73,9 @@ export async function editStatus(actor: RequestActor, projectId: string) {
   const { data } = await service.from("os_records").select("id,version,metadata,created_at").eq("parent_id", project.id).eq("record_type", "ai_job")
     .eq("metadata->>kind", ORDER).is("archived_at", null).order("created_at", { ascending: false }).limit(50);
   const orders = (data ?? []).map((row) => ({ id: row.id, version: row.version, at: row.created_at, ...presentOrder(orderSchema.parse(row.metadata)) }));
-  return { projectId: project.id, lock: live, base: await myinFinalAt(service, project.id), orders };
+  const meta = record ? sessionSchema.parse(record.metadata) : null;
+  return { projectId: project.id, lock: live, base: await myinFinalAt(service, project.id), uploadedAt: await uploadedAt(actor, project),
+    confirming: live && meta?.confirming ? { at: meta.confirming.at, fromVersion: meta.confirming.fromVersion } : null, orders };
 }
 const presentOrder = (o: Order) => ({ text: o.text, videoAt: o.at, from: o.from, feedbackIds: o.feedbackIds, name: o.name, meaning: o.meaning,
   changes: [...(o.storyboard ? ["기획표"] : []), ...(o.subtitles.length ? [`자막 ${o.subtitles.length}줄`] : [])], status: o.status, result: o.result ?? null });
@@ -131,10 +142,23 @@ export async function submitEditOrder(actor: RequestActor, projectId: string, in
   return { orderId: id, status: "queued" as const, notes };
 }
 
-async function lockHolder(service: Service, actor: RequestActor, projectId: string, pc: string) {
+/** The session while this person edits on this computer (their lock), or 409. */
+async function heldSession(service: Service, actor: RequestActor, projectId: string, pc: string) {
   const record = await sessionRecord(service, projectId);
-  const lock = record ? sessionSchema.parse(record.metadata).lock : undefined;
-  if (lockDecision(lock, { by: who(actor), pc }, Date.now()).kind !== "renew") throw new ApiError(409, "EDIT_LOCK_REQUIRED", "이 컴퓨터에서 편집기를 연 사람만 주문을 처리할 수 있어요.");
+  const meta = record ? sessionSchema.parse(record.metadata) : null;
+  if (!record || !meta?.lock || lockDecision(meta.lock, { by: who(actor), pc }, Date.now()).kind !== "renew")
+    throw new ApiError(409, "EDIT_LOCK_REQUIRED", "이 컴퓨터에서 편집기를 연 사람만 할 수 있어요.");
+  return { record, meta, lock: meta.lock };
+}
+const lockHolder = (service: Service, actor: RequestActor, projectId: string, pc: string) => heldSession(service, actor, projectId, pc).then(() => undefined);
+async function saveSession(service: Service, record: OsRecord, meta: z.infer<typeof sessionSchema>, by: string) {
+  const { data } = await service.from("os_records").update({ metadata: meta, updated_by: by }).eq("id", record.id).eq("version", record.version).select("id").maybeSingle();
+  if (!data) throw new ApiError(409, "RECORD_VERSION_CONFLICT", "다른 곳에서 먼저 바꿨어요. 다시 해 주세요.");
+}
+/** When the video went up to YouTube (a computer clears its edit files two weeks after), or null. */
+async function uploadedAt(actor: RequestActor, project: Awaited<ReturnType<typeof editorProject>>) {
+  const run = (await readStages(actor.supabase, project)).upload.data.run;
+  return run?.status === "done" ? run.at : null;
 }
 async function moveOrder(service: Service, row: { id: string; version: number; metadata: unknown }, to: EditOrderStatus, by: string, extra: Partial<Order> = {}) {
   const order = orderSchema.parse(row.metadata);
@@ -188,4 +212,79 @@ export async function declineEdit(actor: RequestActor, projectId: string, input:
     await actOnFeedback(actor, project.id, { itemId: item.id, expectedVersion: item.version, action: "decline", text: input.reason });
   }
   return { ok: true };
+}
+
+const bundlePart = (projectId: string, confirmId: string, n: number) => `edits/${projectId}/${confirmId}/part${String(n).padStart(2, "0")}.bin`;
+
+/**
+ * 확정 1/2: the editor holding the lock asks to confirm one of its versions. It must be edited from the OS final that is newest now,
+ * pass the 확정 전 자동 검사, and name an engine whose bundle the OS keeps (another computer installs that engine to go on). Returns
+ * where the final, its subtitles and the material bundle's parts (≤45 MB each) go.
+ */
+export async function confirmStart(actor: RequestActor, projectId: string, input: z.infer<typeof confirmStartSchema>) {
+  const project = await editorProject(actor, projectId);
+  const service = createServiceSupabase();
+  const { record, meta, lock } = await heldSession(service, actor, project.id, input.pc);
+  const base = await myinFinalAt(service, project.id);
+  if (!base) throw new ApiError(409, "EDIT_NO_FINAL", "OS에 완성본이 나온 뒤에 확정할 수 있어요.");
+  if (lock.basedOn !== base) throw new ApiError(409, "EDIT_BASE_MOVED", "다른 곳에서 먼저 새 완성본이 나왔어요. 그 완성본에서 다시 고쳐 주세요(내 버전은 내 컴퓨터에 그대로 있어요).");
+  const issues = editCheckIssues(input.check);
+  if (issues.length) throw new ApiError(422, "EDIT_CHECK_FAILED", `확정 전 자동 검사에 걸렸어요: ${issues.join(" · ")}`);
+  if (!await engineBundleSaved(input.engine)) throw new ApiError(409, "EDIT_ENGINE_MISSING", "이 편집에 쓴 엔진 묶음이 OS에 없어요. 엔진을 다시 받은 뒤 고쳐 주세요.");
+  const id = randomUUID();
+  const uploads = await myinEditUploads(service, project.id, id);
+  const storage = service.storage.from(ENGINE_BUCKET);
+  const bundleUploadUrls = await Promise.all(Array.from({ length: input.bundleParts }, async (_, n) => {
+    const { data, error } = await storage.createSignedUploadUrl(bundlePart(project.id, id, n), { upsert: true });
+    if (error || !data) throw new ApiError(503, "EDIT_SIGN_FAILED", "재료 묶음 업로드 주소를 만들지 못했어요.");
+    return data.signedUrl;
+  }));
+  await saveSession(service, record, { ...meta, confirming: confirmingSchema.strip().parse({ ...input, id, at: new Date().toISOString(), basedOn: base }) }, who(actor));
+  return { confirmId: id, ...uploads, bundleUploadUrls, partBytes: ENGINE_PART_BYTES };
+}
+
+/**
+ * 확정 2/2: everything is up. The bundle parts must be there at the sizes the computer measured; then the edit becomes the newest
+ * final (myinAddEditFinal checks again that nothing landed first) and this editor goes on from it.
+ */
+export async function confirmFinish(actor: RequestActor, projectId: string, input: { pc: string; confirmId: string; parts: { bytes: number; sha256: string }[] }) {
+  const project = await editorProject(actor, projectId);
+  const service = createServiceSupabase();
+  const { meta, lock } = await heldSession(service, actor, project.id, input.pc);
+  const c = meta.confirming;
+  if (!c || c.id !== input.confirmId) throw new ApiError(409, "EDIT_CONFIRM_MISSING", "확정을 처음부터 다시 해 주세요.");
+  if (input.parts.length !== c.bundleParts) throw new ApiError(422, "EDIT_BUNDLE_PARTS", `재료 묶음 조각이 ${c.bundleParts}개여야 해요.`);
+  const { data: listed } = await service.storage.from(ENGINE_BUCKET).list(`edits/${project.id}/${c.id}`, { limit: 100 });
+  const sizes = new Map((listed ?? []).map((o) => [o.name, o.metadata?.size as number | undefined]));
+  if (input.parts.some((part, n) => sizes.get(bundlePart(project.id, c.id, n).split("/").pop()!) !== part.bytes))
+    throw new ApiError(409, "EDIT_UPLOAD_MISSING", "재료 묶음이 다 올라가지 않았어요. 다시 확정해 주세요.");
+  const final = await myinAddEditFinal(service, project.id, { basedOn: c.basedOn, bytes: c.bytes, lufs: c.lufs, peak: c.peak,
+    edit: { id: c.id, by: lock.by, name: lock.name, pc: lock.pc, fromVersion: c.fromVersion, note: c.note, engine: c.engine, bounds: c.bounds, parts: input.parts, orders: c.orders, check: c.check } });
+  // The new final is this editor's base from now on (re-read: a heartbeat may have renewed the lock meanwhile).
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const now = await heldSession(service, actor, project.id, input.pc).catch(() => null);
+    if (!now) break;
+    const next = { ...now.meta, lock: { ...now.lock, basedOn: final.at } };
+    delete next.confirming;
+    if (await saveSession(service, now.record, next, who(actor)).then(() => true, () => false)) break;
+  }
+  return { ok: true, final: final.at, v: final.v };
+}
+
+/**
+ * 다른 컴퓨터에서 이어받기: a confirmed final (the newest, or the one made at `at`) with its material bundle and the engine it was drawn
+ * with, all for 10–30 minutes. A final the OS made itself has no bundle: editing starts from the run's own work folder.
+ */
+export async function editHandoff(actor: RequestActor, projectId: string, at?: string) {
+  const project = await editorProject(actor, projectId);
+  const service = createServiceSupabase();
+  const final = await myinFinalForHandoff(service, project.id, at);
+  const storage = service.storage.from(ENGINE_BUCKET);
+  const bundle = final.edit ? await Promise.all(final.edit.parts.map(async (part, n) => {
+    const { data, error } = await storage.createSignedUrl(bundlePart(project.id, final.edit!.id, n), 1_800);
+    if (error || !data) throw new ApiError(503, "EDIT_SIGN_FAILED", "재료 묶음 주소를 만들지 못했어요.");
+    return { ...part, url: data.signedUrl };
+  })) : null;
+  return { projectId: project.id, uploadedAt: await uploadedAt(actor, project), ...final, bundle,
+    engine: final.edit ? await currentEngineDownload(final.edit.engine) : null };
 }

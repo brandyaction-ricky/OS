@@ -35,7 +35,7 @@ test("an AI key reads only a video its owner made or is assigned, and nothing is
   assert.doesNotMatch(route, /export async function (PATCH|PUT|DELETE)/);
   assert.match(route, /item\.target === "video" && item\.status === "open" && !item\.deleted/, "orders = open 최종 검토 feedback on the video");
   const run = await readFile(new URL("../lib/server/myin-run.ts", import.meta.url), "utf8");
-  const view = run.slice(run.indexOf("export async function myinEditorView"));
+  const view = run.slice(run.indexOf("export async function myinEditorView"), run.indexOf("async function latestRun"));
   assert.doesNotMatch(view, /save\(|\.upload\(|\.remove\(|createSigned/, "reading changes nothing");
   assert.match(view, /myinSceneStarts\(story\.scenes, words\)/, "each scene says when it starts in the voice");
 });
