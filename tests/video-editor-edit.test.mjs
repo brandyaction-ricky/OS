@@ -6,7 +6,7 @@ import vm from "node:vm";
 import ts from "typescript";
 import { z } from "zod";
 import * as kosis from "../lib/kosis.ts";
-import { EDIT_LOCK_STALE_MS, editCheckIssues, editFeed, lockDecision, orderMove } from "../lib/myin-edit.ts";
+import { EDIT_LOCK_STALE_MS, editCheckIssues, editFeed, editLoudnessIssue, lockDecision, orderMove, withLockEvent } from "../lib/myin-edit.ts";
 
 // 로건 개발 문서 v2 「OS 영상 편집기」 (2026-11-04) ②-2: one editor per video (the lock), orders from members' AI chats wait for it.
 const compiled = { exports: {} };
@@ -106,4 +106,29 @@ test("편집 소식: what happened since a time, oldest first, in words the AI c
   const calls = [];
   await callMcpTool({ name: "get_video_editor", arguments: { project_id: project, view: "feed", since: "2026-11-04T05:35:00.000Z" } }, "org", async (path) => { calls.push(path); return {}; });
   assert.equal(calls[0], `/api/v1/content/youtube-automation/editor?projectId=${project}&view=feed&since=2026-11-04T05%3A35%3A00.000Z`);
+});
+
+test("확정 보강 (v3 7.1 · 7.2-6 · 7.2-8): a 30-minute lease, the lock's record, the 완성 loudness line, the edit's own handouts", async () => {
+  assert.equal(EDIT_LOCK_STALE_MS, 30 * 60_000);
+  assert.equal(editLoudnessIssue(-14.1, -1.6), "");
+  assert.match(editLoudnessIssue(-16.2, -1.6), /음량 -16\.2 LUFS/);
+  assert.match(editLoudnessIssue(-14, -0.5), /최대 -0\.5 dB/);
+  const history = withLockEvent(Array.from({ length: 30 }, (_, n) => ({ kind: "lock", name: "a", pc: "p", at: `2026-11-04T00:${String(n).padStart(2, "0")}:00.000Z` })),
+    { kind: "force", name: "대표", pc: "OS", at: "2026-11-04T06:00:00.000Z", from: { name: "로건", pc: "로건 PC" }, reason: "PC가 꺼져 있어요" });
+  assert.equal(history.length, 30, "only the last 30 are kept");
+  const feed = editFeed({ lock: { name: "유쓰", pc: "유쓰 Mac", since: "2026-11-04T07:00:00.000Z" }, orders: [], versions: [], uploadedAt: null,
+    history: [{ kind: "lock", name: "로건", pc: "로건 PC", at: "2026-11-04T05:00:00.000Z" },
+      { kind: "force", name: "대표", pc: "OS", at: "2026-11-04T06:00:00.000Z", from: { name: "로건", pc: "로건 PC" }, reason: "PC가 꺼져 있어요" },
+      { kind: "handover", name: "유쓰", pc: "유쓰 Mac", at: "2026-11-04T07:00:00.000Z", from: { name: "로건", pc: "로건 PC" } }] }, null);
+  assert.deepEqual(feed.map((e) => e.kind), ["editing", "force", "handover"], "the record, not a second line for the lock now");
+  assert.match(feed[1].text, /관리자 대표님이 로건님\(로건 PC\)의 편집 잠금을 풀었어요: PC가 꺼져 있어요/);
+  assert.match(feed[2].text, /유쓰님이 유쓰 Mac에서 이어서 편집해요/);
+  const edit = await readFile(new URL("../lib/server/myin-edit.ts", import.meta.url), "utf8");
+  const force = edit.slice(edit.indexOf("export async function forceUnlock"));
+  assert.match(force, /actor\.type !== "user" \|\| actor\.role !== "admin"\) throw new ApiError\(403, "EDIT_ADMIN_ONLY"/, "a person who is an admin, never an AI key");
+  assert.match(edit.slice(edit.indexOf("export async function confirmStart")), /editLoudnessIssue\(input\.lufs, input\.peak\)/);
+  const run = await readFile(new URL("../lib/server/myin-run.ts", import.meta.url), "utf8");
+  assert.match(run, /input\.handouts \? \{ summary: files\.summary, deck: files\.deck \}/);
+  const route = await readFile(new URL("../app/api/v1/content/youtube-automation/editor/route.ts", import.meta.url), "utf8");
+  assert.match(route, /action === "force_unlock"\) return NextResponse\.json\(await forceUnlock/);
 });

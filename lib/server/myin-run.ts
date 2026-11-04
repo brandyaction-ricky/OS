@@ -1387,21 +1387,23 @@ export async function myinFinalAt(service: Service, sourceId: string) {
   return (await latestRun(service, sourceId))?.run.final?.at ?? null;
 }
 
-const editFiles = (record: OsRecord, run: MyinRun, id: string) => ({ video: outPath(record, run, `final_edit-${tag(id)}.mp4`), srt: outPath(record, run, `subs_youtube-edit-${tag(id)}.srt`) });
+const editFiles = (record: OsRecord, run: MyinRun, id: string) => ({ video: outPath(record, run, `final_edit-${tag(id)}.mp4`), srt: outPath(record, run, `subs_youtube-edit-${tag(id)}.srt`),
+  summary: outPath(record, run, `summary-edit-${tag(id)}.png`), deck: outPath(record, run, `deck-edit-${tag(id)}.pdf`) });
 /** 영상 편집기 확정: where the edited final and its YouTube subtitles go, beside the run's own finals. */
-export async function myinEditUploads(service: Service, sourceId: string, confirmId: string) {
+export async function myinEditUploads(service: Service, sourceId: string, confirmId: string, handouts = false) {
   const latest = await latestRun(service, sourceId);
   if (!latest?.run.final) throw new ApiError(409, "EDIT_NO_FINAL", "OS에 완성본이 나온 뒤에 확정할 수 있어요.");
   const files = editFiles(latest.record, latest.run, confirmId);
-  return { videoUploadUrl: await uploadUrl(service, ASSET_VIDEO_BUCKET, files.video), srtUploadUrl: await uploadUrl(service, OUTPUT_BUCKET, files.srt) };
+  return { videoUploadUrl: await uploadUrl(service, ASSET_VIDEO_BUCKET, files.video), srtUploadUrl: await uploadUrl(service, OUTPUT_BUCKET, files.srt),
+    ...(handouts ? { summaryUploadUrl: await uploadUrl(service, OUTPUT_BUCKET, files.summary), deckUploadUrl: await uploadUrl(service, OUTPUT_BUCKET, files.deck) } : {}) };
 }
 
 /**
  * 영상 편집기 확정: the uploaded edit becomes the run's newest final (the one before it stays a version), only while the final it was
  * edited from is still the newest and the OS is not making the video again — two confirms cannot both land (the save checks the version).
- * The handouts (한 장 정리 · 덱) stay the ones the OS made.
+ * The handouts (한 장 정리 · 덱) are the edit's own when it brought them (v3 7.2-6), else the ones the OS made stay.
  */
-export async function myinAddEditFinal(service: Service, sourceId: string, input: { basedOn: string; bytes: number; lufs: number; peak: number; edit: z.infer<typeof editFinalSchema> }) {
+export async function myinAddEditFinal(service: Service, sourceId: string, input: { basedOn: string; bytes: number; lufs: number; peak: number; handouts?: boolean; edit: z.infer<typeof editFinalSchema> }) {
   const latest = await latestRun(service, sourceId);
   if (!latest?.run.final) throw new ApiError(409, "EDIT_NO_FINAL", "OS에 완성본이 나온 뒤에 확정할 수 있어요.");
   const { record, run } = latest;
@@ -1415,10 +1417,12 @@ export async function myinAddEditFinal(service: Service, sourceId: string, input
   };
   if (await size(ASSET_VIDEO_BUCKET, files.video) !== input.bytes) throw new ApiError(409, "EDIT_UPLOAD_MISSING", "확정본 영상이 다 올라가지 않았어요. 다시 확정해 주세요.");
   if (!await size(OUTPUT_BUCKET, files.srt)) throw new ApiError(409, "EDIT_UPLOAD_MISSING", "확정본 자막이 다 올라가지 않았어요. 다시 확정해 주세요.");
+  if (input.handouts && (!await size(OUTPUT_BUCKET, files.summary) || !await size(OUTPUT_BUCKET, files.deck))) throw new ApiError(409, "EDIT_UPLOAD_MISSING", "확정본 한 장 정리·덱이 다 올라가지 않았어요. 다시 확정해 주세요.");
   const next: MyinRun = { ...run };
-  const handouts = { ...(run.final.summary ? { summary: run.final.summary } : {}), ...(run.final.deck ? { deck: run.final.deck } : {}) };
+  const handouts = input.handouts ? { summary: files.summary, deck: files.deck }
+    : { ...(run.final.summary ? { summary: run.final.summary } : {}), ...(run.final.deck ? { deck: run.final.deck } : {}) };
   retireFinal(next);
-  next.final = { ...files, ...handouts, bytes: input.bytes, durationSeconds: input.edit.check.end, lufs: input.lufs, peak: input.peak, at: new Date().toISOString(), engine: input.edit.engine, edit: input.edit };
+  next.final = { video: files.video, srt: files.srt, ...handouts, bytes: input.bytes, durationSeconds: input.edit.check.end, lufs: input.lufs, peak: input.peak, at: new Date().toISOString(), engine: input.edit.engine, edit: input.edit };
   await save(service, record, record.status, record.stage ?? "final_ready", next);
   return { at: next.final.at, v: (next.finals?.length ?? 0) + 1 };
 }

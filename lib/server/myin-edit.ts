@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { diagramCatalogTypes } from "@/lib/diagram-catalog";
-import { editCheckIssues, editFeed, lockDecision, orderMove, type EditLock, type EditOrderStatus } from "@/lib/myin-edit";
+import { editCheckIssues, editFeed, editLoudnessIssue, lockDecision, orderMove, withLockEvent, type EditLock, type EditOrderStatus, type LockEvent } from "@/lib/myin-edit";
 import { checkMyinStoryboard } from "@/lib/myin-storyboard";
 import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
@@ -25,11 +25,14 @@ const SESSION = "youtube_myin_edit", ORDER = "youtube_myin_edit_order";
 const checkSchema = editFinalSchema.shape.check;
 export const confirmStartSchema = z.object({ pc: z.string().trim().min(1).max(80), fromVersion: z.string().trim().min(1).max(40), note: z.string().trim().max(500).default(""),
   engine: z.string().regex(/^[a-f0-9]{32}$/), bytes: z.number().int().positive().max(2_147_483_648), lufs: z.number().min(-70).max(0), peak: z.number().min(-70).max(3),
-  bounds: z.array(z.number().int().positive()).max(2000), check: checkSchema, orders: z.array(z.string().uuid()).max(200).default([]), bundleParts: z.number().int().min(1).max(24) }).strict();
+  bounds: z.array(z.number().int().positive()).max(2000), check: checkSchema, orders: z.array(z.string().uuid()).max(200).default([]), bundleParts: z.number().int().min(1).max(24),
+  /** v3 7.2-6: the edit's own 한 장 정리 · 덱 come with it (else the OS's stay). */ handouts: z.boolean().default(false) }).strict();
 const confirmingSchema = confirmStartSchema.omit({ pc: true }).extend({ id: z.string().uuid(), at: z.string(), basedOn: z.string() });
 const sessionSchema = z.object({ kind: z.literal(SESSION), projectId: z.string().uuid(),
   lock: z.object({ by: z.string().uuid(), name: z.string(), pc: z.string(), since: z.string(), seenAt: z.string(), basedOn: z.string().nullable() }).strict().optional(),
-  confirming: confirmingSchema.optional() }).passthrough();
+  confirming: confirmingSchema.optional(),
+  history: z.array(z.object({ kind: z.enum(["lock", "handover", "unlock", "force"]), name: z.string(), pc: z.string(), at: z.string(),
+    from: z.object({ name: z.string(), pc: z.string() }).strict().optional(), reason: z.string().optional() }).strict()).optional() }).passthrough();
 const orderSchema = z.object({ kind: z.literal(ORDER), projectId: z.string().uuid(), runId: z.string().uuid(), text: z.string(), at: z.string().nullable(),
   from: z.enum(["chat", "feedback"]), feedbackIds: z.array(z.string().uuid()), by: z.string().uuid(), name: z.string(), meaning: z.string(),
   storyboard: z.string().nullable(), subtitles: z.array(z.object({ i: z.number().int().min(0), text: z.string() }).strict()),
@@ -75,7 +78,7 @@ export async function editStatus(actor: RequestActor, projectId: string) {
   const orders = (data ?? []).map((row) => ({ id: row.id, version: row.version, at: row.created_at, updatedAt: row.updated_at, ...presentOrder(orderSchema.parse(row.metadata)) }));
   const meta = record ? sessionSchema.parse(record.metadata) : null;
   return { projectId: project.id, lock: live, base: await myinFinalAt(service, project.id), uploadedAt: await uploadedAt(actor, project), versions: await myinFinalVersions(service, project.id),
-    confirming: live && meta?.confirming ? { at: meta.confirming.at, fromVersion: meta.confirming.fromVersion } : null, orders };
+    confirming: live && meta?.confirming ? { at: meta.confirming.at, fromVersion: meta.confirming.fromVersion } : null, history: meta?.history ?? [], orders };
 }
 const presentOrder = (o: Order) => ({ text: o.text, videoAt: o.at, from: o.from, feedbackIds: o.feedbackIds, name: o.name, meaning: o.meaning,
   changes: [...(o.storyboard ? ["기획표"] : []), ...(o.subtitles.length ? [`자막 ${o.subtitles.length}줄`] : [])], status: o.status, result: o.result ?? null });
@@ -103,7 +106,10 @@ export async function editLock(actor: RequestActor, projectId: string, pc: strin
     const lock: EditLock | undefined = action === "unlock" ? undefined
       : decision.kind === "renew" && meta.lock ? { ...meta.lock, seenAt: at }
       : { by: who(actor), name: await nameOf(service, who(actor)), pc, since: at, seenAt: at, basedOn: await myinFinalAt(service, project.id) };
-    const next = { ...meta, ...(lock ? { lock } : {}) };
+    // 인계 기록: a new lock (taken over from a silent one names it), and the editor's own unlock; renewals are not kept.
+    const event: LockEvent | null = action === "unlock" ? (decision.kind === "renew" && meta.lock ? { kind: "unlock", name: meta.lock.name, pc: meta.lock.pc, at } : null)
+      : decision.kind === "take" && lock ? { kind: meta.lock ? "handover" : "lock", name: lock.name, pc, at, ...(meta.lock ? { from: { name: meta.lock.name, pc: meta.lock.pc } } : {}) } : null;
+    const next = { ...meta, ...(lock ? { lock } : {}), ...(event ? { history: withLockEvent(meta.history, event) } : {}) };
     if (!lock) delete (next as { lock?: unknown }).lock;
     const { data } = await service.from("os_records").update({ metadata: next, updated_by: who(actor) }).eq("id", record.id).eq("version", record.version).select("id").maybeSingle();
     if (data) return { ok: true, lock: lock ?? null };
@@ -230,9 +236,11 @@ export async function confirmStart(actor: RequestActor, projectId: string, input
   if (lock.basedOn !== base) throw new ApiError(409, "EDIT_BASE_MOVED", "다른 곳에서 먼저 새 완성본이 나왔어요. 그 완성본에서 다시 고쳐 주세요(내 버전은 내 컴퓨터에 그대로 있어요).");
   const issues = editCheckIssues(input.check);
   if (issues.length) throw new ApiError(422, "EDIT_CHECK_FAILED", `확정 전 자동 검사에 걸렸어요: ${issues.join(" · ")}`);
+  const loud = editLoudnessIssue(input.lufs, input.peak);
+  if (loud) throw new ApiError(422, "EDIT_LOUDNESS", `소리 크기 검사에 걸렸어요: ${loud}`);
   if (!await engineBundleSaved(input.engine)) throw new ApiError(409, "EDIT_ENGINE_MISSING", "이 편집에 쓴 엔진 묶음이 OS에 없어요. 엔진을 다시 받은 뒤 고쳐 주세요.");
   const id = randomUUID();
-  const uploads = await myinEditUploads(service, project.id, id);
+  const uploads = await myinEditUploads(service, project.id, id, input.handouts);
   const storage = service.storage.from(ENGINE_BUCKET);
   const bundleUploadUrls = await Promise.all(Array.from({ length: input.bundleParts }, async (_, n) => {
     const { data, error } = await storage.createSignedUploadUrl(bundlePart(project.id, id, n), { upsert: true });
@@ -258,7 +266,7 @@ export async function confirmFinish(actor: RequestActor, projectId: string, inpu
   const sizes = new Map((listed ?? []).map((o) => [o.name, o.metadata?.size as number | undefined]));
   if (input.parts.some((part, n) => sizes.get(bundlePart(project.id, c.id, n).split("/").pop()!) !== part.bytes))
     throw new ApiError(409, "EDIT_UPLOAD_MISSING", "재료 묶음이 다 올라가지 않았어요. 다시 확정해 주세요.");
-  const final = await myinAddEditFinal(service, project.id, { basedOn: c.basedOn, bytes: c.bytes, lufs: c.lufs, peak: c.peak,
+  const final = await myinAddEditFinal(service, project.id, { basedOn: c.basedOn, bytes: c.bytes, lufs: c.lufs, peak: c.peak, handouts: c.handouts,
     edit: { id: c.id, by: lock.by, name: lock.name, pc: lock.pc, fromVersion: c.fromVersion, note: c.note, engine: c.engine, bounds: c.bounds, parts: input.parts, orders: c.orders, check: c.check } });
   // The new final is this editor's base from now on (re-read: a heartbeat may have renewed the lock meanwhile).
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -294,4 +302,22 @@ export async function editNews(actor: RequestActor, projectId: string, since: st
   const now = new Date().toISOString();
   const state = await editStatus(actor, projectId);
   return { projectId: state.projectId, now, events: editFeed(state, since) };
+}
+
+/**
+ * 관리자 강제 해제 (v3 7.2-8): an admin (a person, never an AI key) frees a video whose editor is stuck, with a reason kept in the
+ * lock's record and told in the AI chat news. Whatever that computer had not confirmed stays on it.
+ */
+export async function forceUnlock(actor: RequestActor, projectId: string, reason: string) {
+  if (actor.type !== "user" || actor.role !== "admin") throw new ApiError(403, "EDIT_ADMIN_ONLY", "편집 잠금은 관리자만 강제로 풀 수 있어요.");
+  const project = await editorProject(actor, projectId);
+  const service = createServiceSupabase();
+  const record = await sessionRecord(service, project.id);
+  const meta = record ? sessionSchema.parse(record.metadata) : null;
+  if (!record || !meta?.lock) return { ok: true, released: null };
+  const at = new Date().toISOString(), from = { name: meta.lock.name, pc: meta.lock.pc };
+  const next = { ...meta, history: withLockEvent(meta.history, { kind: "force", name: await nameOf(service, actor.ownerId), pc: "OS", at, from, reason }) };
+  delete (next as { lock?: unknown }).lock; delete next.confirming;
+  await saveSession(service, record, next, actor.ownerId);
+  return { ok: true, released: from };
 }
