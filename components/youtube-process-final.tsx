@@ -15,6 +15,9 @@ import { YtCard, YtLookPicker } from "./youtube-process-media";
 import { VoiceFeedbackBox } from "./youtube-process-voice-feedback";
 import { FeedbackTodo } from "./youtube-process-feedback-todo";
 import { ReviewersBar } from "./youtube-process-reviewers";
+
+/** 영상 편집기 (v2 ④ · v3 6-6): where a 최종 검토 video comment is on the way to a fixed video. */
+const EDIT_STATE = { reading: "AI가 읽는 중", fixing: "고치는 중", made: "고친 영상 나옴 · 완성 기다림", failed: "못 만들었어요", cannot: "못 함" } as const;
 import { alignVersions, mapTime, srtCues, type Anchor, type VersionChange } from "@/lib/youtube-process/compare";
 
 const fmt = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
@@ -354,6 +357,7 @@ function FeedbackItem({ item, open, latest, onOpen, onSeek, onAct, onOpenFile }:
     <div className="yp-f1">{item.reaction ? <span className="yp-tag">👍</span> : <input type="checkbox" checked={item.status === "done"} disabled={item.status === "declined" || item.deleted} title="반영" aria-label="반영" onChange={event => void run(event.target.checked ? "resolve" : "reopen")} />}
       <button type="button" className="yp-lnk yp-tlink" onClick={onSeek}>{label(item)}</button><span className={`yp-tx${item.deleted ? " yp-muted" : ""}`} onClick={onOpen}>{item.deleted ? "삭제된 댓글입니다" : item.text || (item.reaction ? "좋아요" : "")}</span><span className="yp-who">{personName(item.who)}</span>
       {item.status === "declined" ? <span className="yp-tag">반영 안 함</span> : item.status === "done" ? <span className={`yp-tag${item.confirmedBy ? " yp-ok" : ""}`}>{item.confirmedBy ? "확인 완료" : "반영됨"}</span> : item.target === "video" && item.ver < latest && !done ? <span className="yp-tag yp-warn">v{item.ver}에서</span> : null}
+      {item.edit ? <span className={`yp-tag${item.edit.state === "failed" || item.edit.state === "cannot" ? " yp-warn" : ""}`} title={item.edit.note}>{EDIT_STATE[item.edit.state]}{item.edit.note ? ` · ${item.edit.note}` : ""}</span> : null}
       {item.replies.length ? <span className="yp-muted" style={{ fontSize: 12 }}>답글 {item.replies.filter(row => !row.deleted).length}</span> : null}
       {item.marks?.length ? <span className="yp-muted" style={{ fontSize: 12 }} title="펼치고 시간을 누르면 화면에 보여요">표시 {item.marks.length}</span> : null}
       {item.files?.length ? <span className="yp-muted" style={{ fontSize: 12 }}><Paperclip size={11} aria-hidden="true" /> {item.files.length}</span> : null}

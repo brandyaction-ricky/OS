@@ -44,7 +44,7 @@ export const MCP_TOOLS = [
   },
   {
     name: "get_video_editor",
-    description: "영상 편집기(로건 개발 문서 2026-11-03): 완성본이 나온 유튜브 영상 하나를 고치기 전에 읽습니다. view=summary(버전 · 단계), scenes(기획표 장면과 음성 기준 시작 초), subtitles(자막 줄), assets(쓸 수 있는 사진 · 음악 · 효과음 · 도식), orders(아직 열린 최종 검토 피드백), edits(지금 편집 중인 사람과 보낸 편집 주문이 어떻게 됐는지), feed(편집 소식: since 뒤로 주문 들어옴·고치는 중·고친 영상 나옴·못 함·완성본 올라옴을 사람에게 그대로 전할 문장으로. 응답의 now를 다음 since로 써요). 진행 상황은 편집 화면이 아니라 이 채팅으로 알려 줘요. 읽기만 하고 아무것도 바꾸지 않습니다. 이 키 주인이 만들었거나 맡은 영상만 읽을 수 있습니다. knowledge.read 범위가 필요합니다.",
+    description: "영상 편집기(로건 개발 문서 2026-11-03): 완성본이 나온 유튜브 영상 하나를 고치기 전에 읽습니다. view=summary(버전 · 단계), scenes(기획표 장면과 음성 기준 시작 초), subtitles(자막 줄), assets(쓸 수 있는 사진 · 음악 · 효과음 · 도식), orders(아직 열린 최종 검토 피드백), edits(지금 편집 중인 사람과 보낸 편집 주문이 어떻게 됐는지), feed(편집 소식: since 뒤로 주문 들어옴·고치는 중·고친 영상 나옴·못 함·완성본 올라옴을 사람에게 그대로 전할 문장으로. 응답의 now를 다음 since로 써요. 「아직 편집 주문이 안 됐어요」인 최종 검토 피드백은 orders로 읽어 submit_video_edit(feedback_ids)로 주문하거나 decline_video_order(feedback_id)로 못 하는 이유를 남겨요). 진행 상황은 편집 화면이 아니라 이 채팅으로 알려 줘요. 읽기만 하고 아무것도 바꾸지 않습니다. 이 키 주인이 만들었거나 맡은 영상만 읽을 수 있습니다. knowledge.read 범위가 필요합니다.",
     inputSchema: { type: "object", properties: { project_id: { type: "string", format: "uuid" }, view: { type: "string", enum: ["summary", "scenes", "subtitles", "assets", "orders", "edits", "feed"] }, since: { type: "string", format: "date-time" } }, required: ["project_id"], additionalProperties: false },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },

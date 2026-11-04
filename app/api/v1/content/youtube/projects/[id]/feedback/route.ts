@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { youtubeActor } from "@/lib/server/youtube-process";
+import { feedbackEdits } from "@/lib/server/myin-edit";
 import { actOnFeedback, createFeedback, feedbackActionSchema, feedbackCreateSchema, feedbackFileSchema, feedbackFileUrl, listFeedback, signFeedbackFile } from "@/lib/server/youtube-process-feedback";
 
 export const runtime = "nodejs";
@@ -15,7 +16,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const actor = await youtubeActor(request);
     const file = new URL(request.url).searchParams.get("file");
     if (file) return NextResponse.json({ url: await feedbackFileUrl(actor, projectId.parse((await params).id), file) }, { headers });
-    return NextResponse.json({ items: await listFeedback(actor, projectId.parse((await params).id)) }, { headers });
+    const id = projectId.parse((await params).id), items = await listFeedback(actor, id);
+    // 영상 편집기 (v2 ④ · v3 6-6): each open video item says where it is in the editor; a video nobody edits reads as before.
+    const edits = await feedbackEdits(actor, id, items).catch(() => ({} as Awaited<ReturnType<typeof feedbackEdits>>));
+    return NextResponse.json({ items: items.map((item) => ({ ...item, edit: edits[item.id] ?? null })) }, { headers });
   } catch (error) { return invalid(error); }
 }
 

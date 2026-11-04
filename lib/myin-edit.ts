@@ -50,8 +50,11 @@ export interface FeedVersion { at: string; edit: { name: string; pc: string; ord
  * 편집 소식 (로건 개발 문서 v3 6-5 · P5): what happened to a video's edit since `since`, oldest first, as lines the member's AI chat says
  * to them — the editor screen itself shows none of it (P10: no version numbers or order lists on the screen).
  */
-export function editFeed(state: { lock: { name: string; pc: string; since: string } | null; orders: FeedOrder[]; versions: FeedVersion[]; uploadedAt: string | null; history?: LockEvent[] }, since: string | null) {
+export function editFeed(state: { lock: { name: string; pc: string; since: string } | null; orders: FeedOrder[]; versions: FeedVersion[]; uploadedAt: string | null; history?: LockEvent[];
+  waitingFeedback?: { at: string; text: string; who: string }[] }, since: string | null) {
   const out: { at: string; kind: string; text: string }[] = [];
+  // v3 6-6: 최종 검토 feedback no order answers yet — the member's AI reads it and orders it (or says it cannot be done).
+  for (const f of state.waitingFeedback ?? []) out.push({ at: f.at, kind: "feedback", text: `${f.who}님 최종 검토 피드백이 들어왔어요: “${f.text}” 아직 편집 주문이 안 됐어요.` });
   // The lock's own record when there is one; a session from before it was kept says only who edits now.
   if (state.history?.length) for (const e of state.history) out.push({ at: e.at, kind: e.kind === "lock" ? "editing" : e.kind, text:
     e.kind === "lock" ? `${e.name}님이 ${e.pc}에서 편집을 시작했어요.`
@@ -69,4 +72,20 @@ export function editFeed(state: { lock: { name: string; pc: string; since: strin
   for (const v of state.versions) if (v.edit) out.push({ at: v.at, kind: "confirmed", text: `${v.edit.name}님이 ${v.edit.pc}에서 완성해 새 완성본이 올라왔어요${v.edit.orders ? `(주문 ${v.edit.orders}건)` : ""}.` });
   if (state.uploadedAt) out.push({ at: state.uploadedAt, kind: "uploaded", text: "유튜브에 올렸어요. 2주 뒤 각 컴퓨터의 편집 파일을 정리해요." });
   return out.filter((e) => !since || e.at > since).sort((a, b) => a.at.localeCompare(b.at));
+}
+
+/** Where a 최종 검토 video feedback item is in the editor (v2 ④ · v3 6-6); done and declined items keep their own 반영됨 vN · 반영 안 함. */
+export type FeedbackEditState = { state: "reading" | "fixing" | "made" | "failed" | "cannot"; note?: string };
+export function feedbackEditStates(items: { id: string; status: string; target: string; deleted: boolean }[],
+  orders: { feedbackIds: string[]; status: EditOrderStatus; result: { note: string } | null }[], editing: boolean) {
+  const out: Record<string, FeedbackEditState> = {};
+  for (const item of items) {
+    if (item.target !== "video" || item.status !== "open" || item.deleted) continue;
+    const order = orders.find((o) => o.feedbackIds.includes(item.id)); // newest first
+    const note = order?.result?.note || undefined;
+    if (!order) { if (editing) out[item.id] = { state: "reading" }; continue; }
+    out[item.id] = order.status === "queued" || order.status === "working" ? { state: "fixing" } : order.status === "done" ? { state: "made" }
+      : { state: order.status === "failed" ? "failed" : "cannot", ...(note ? { note } : {}) };
+  }
+  return out;
 }

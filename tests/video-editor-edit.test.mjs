@@ -6,7 +6,7 @@ import vm from "node:vm";
 import ts from "typescript";
 import { z } from "zod";
 import * as kosis from "../lib/kosis.ts";
-import { EDIT_LOCK_STALE_MS, editCheckIssues, editFeed, editLoudnessIssue, lockDecision, orderMove, withLockEvent } from "../lib/myin-edit.ts";
+import { EDIT_LOCK_STALE_MS, editCheckIssues, editFeed, editLoudnessIssue, feedbackEditStates, lockDecision, orderMove, withLockEvent } from "../lib/myin-edit.ts";
 
 // 로건 개발 문서 v2 「OS 영상 편집기」 (2026-11-04) ②-2: one editor per video (the lock), orders from members' AI chats wait for it.
 const compiled = { exports: {} };
@@ -131,4 +131,24 @@ test("확정 보강 (v3 7.1 · 7.2-6 · 7.2-8): a 30-minute lease, the lock's re
   assert.match(run, /input\.handouts \? \{ summary: files\.summary, deck: files\.deck \}/);
   const route = await readFile(new URL("../app/api/v1/content/youtube-automation/editor/route.ts", import.meta.url), "utf8");
   assert.match(route, /action === "force_unlock"\) return NextResponse\.json\(await forceUnlock/);
+});
+
+test("최종 검토 피드백 → 편집 (v2 ④ · v3 6-6): each open video comment says where it is, a confirm marks what it answered 반영됨", async () => {
+  const item = (id, extra = {}) => ({ id, status: "open", target: "video", deleted: false, ...extra });
+  const items = [item("a"), item("b"), item("c"), item("d"), item("e"), item("f", { status: "done" }), item("g", { target: "A" }), item("h")];
+  const orders = [{ feedbackIds: ["b"], status: "working", result: null }, { feedbackIds: ["c"], status: "done", result: { note: "" } },
+    { feedbackIds: ["d"], status: "failed", result: { note: "디스크 부족" } }, { feedbackIds: ["e"], status: "declined", result: { note: "엔진에 없는 연출" } }, { feedbackIds: ["h"], status: "queued", result: null }];
+  assert.deepEqual(feedbackEditStates(items, orders, true), { a: { state: "reading" }, b: { state: "fixing" }, c: { state: "made" },
+    d: { state: "failed", note: "디스크 부족" }, e: { state: "cannot", note: "엔진에 없는 연출" }, h: { state: "fixing" } });
+  assert.equal(feedbackEditStates(items, orders, false).a, undefined, "nobody edits: an unordered comment reads as before");
+  const feed = editFeed({ lock: null, orders: [], versions: [], uploadedAt: null, waitingFeedback: [{ at: "2026-11-04T05:00:00.000Z", text: "3:20 사진 어두워요", who: "대표" }] }, null);
+  assert.match(feed[0].text, /대표님 최종 검토 피드백이 들어왔어요: “3:20 사진 어두워요” 아직 편집 주문이 안 됐어요/);
+  const edit = await readFile(new URL("../lib/server/myin-edit.ts", import.meta.url), "utf8");
+  const finish = edit.slice(edit.indexOf("export async function confirmFinish"), edit.indexOf("export async function editHandoff"));
+  assert.match(finish, /actOnFeedback\(actor, project\.id, \{ itemId: item\.id, expectedVersion: item\.version, action: "resolve", text: "" \}\)/);
+  assert.ok(finish.indexOf("myinAddEditFinal") < finish.indexOf("actOnFeedback"), "marked after the new final is in, so 반영됨 names its version");
+  const poll = edit.slice(edit.indexOf("export async function feedbackEdits"));
+  assert.doesNotMatch(poll, /editStatus\(|readStages|myinFinal/, "the 30-second feedback poll reads only the lock and the orders");
+  const route = await readFile(new URL("../app/api/v1/content/youtube/projects/[id]/feedback/route.ts", import.meta.url), "utf8");
+  assert.match(route, /items\.map\(\(item\) => \(\{ \.\.\.item, edit: edits\[item\.id\] \?\? null \}\)\)/);
 });
