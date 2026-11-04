@@ -8,7 +8,7 @@ import { createContext, Fragment, useCallback, useContext, useEffect, useLayoutE
 import { ArrowDown, ArrowRight, ArrowUp, Copy, Download, GalleryHorizontal, ImagePlus, Plus, Trash2 } from "lucide-react";
 import { CardSlideView } from "@/lib/cardnews/card-slide";
 import { cardsMissing } from "@/lib/cardnews/cards";
-import { addCardSlide, CARD_FORMAT_IDS, CARD_FORMATS, CARD_MAX_SLIDES, CARD_SIZE, cardLetters, cardProblems, moveCardSlide, parseCardHashtags, removeCardSlide, slideSpec, TOON_AIM, type CardDraft, type CardFormatId, type CardPhoto } from "@/lib/cardnews/formats";
+import { addCardSlide, CARD_FORMAT_IDS, CARD_FORMATS, CARD_SIZE, cardLetters, cardMaxSlides, cardProblems, moveCardSlide, parseCardHashtags, removeCardSlide, slideSpec, TOON_AIM, toonUploads, type CardDraft, type CardFormatId, type CardPhoto } from "@/lib/cardnews/formats";
 import type { CardSourceChoice } from "@/lib/cardnews/sources";
 import { apiRequest } from "@/lib/api-client";
 import { modelName } from "@/lib/cost";
@@ -334,8 +334,8 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
 
     {draft ? <YpSection n={editable ? 3 : 2} title={editable ? "고른 초안 다듬기" : "확정한 카드"} gq={`${CARD_FORMATS[draft.format].name} · ${draft.slides.length}장`}>
       <div className="yp-card-tools" aria-label="카드 장 관리">
-        <b>카드 {draft.slides.length} / {CARD_MAX_SLIDES}장</b>
-        {editable && CARD_FORMATS[draft.format].slides.filter(item => item.max > item.min).map(item => <button key={item.type} type="button" className="yp-btn yp-sm" disabled={addCardSlide(draft, item.type) === draft} onClick={() => structure(addCardSlide(draft, item.type), current)}><Plus size={13} />{item.label} 카드 추가</button>)}
+        <b>카드 {draft.slides.length} / {cardMaxSlides(draft.format)}장{toonUploads(draft).length > 1 ? ` · ${toonUploads(draft).length}화` : ""}</b>
+        {editable && CARD_FORMATS[draft.format].slides.filter(item => item.max > item.min).map(item => <button key={item.type} type="button" className="yp-btn yp-sm" disabled={addCardSlide(draft, item.type) === draft} onClick={() => structure(addCardSlide(draft, item.type), current)}><Plus size={13} />{item.type === "toon" ? "다음 화 나누기" : `${item.label} 카드 추가`}</button>)}
         {editable && <button type="button" className="yp-btn yp-sm" disabled={!undo} onClick={() => { if (undo) { edit(undo); setOver({}); setSlide(Math.min(current, undo.slides.length - 1)); setUndo(null); } }}>장 편집 되돌리기</button>}
         <span role="status" className="yp-hint">{busy ? "저장 중…" : dirty ? "변경 내용 저장 대기" : "저장됨"}</span>
       </div>
@@ -345,7 +345,7 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
           onDragOver={event => { if (editable && event.dataTransfer.types.includes("application/x-card-slide")) event.preventDefault(); }}
           onDrop={event => { if (!editable) return; event.preventDefault(); try { const from = JSON.parse(event.dataTransfer.getData("application/x-card-slide")); if (from.id === draft.id) { const next = moveCardSlide(draft, from.index, index); structure(next, next === draft ? current : index); } } catch { /* External or malformed drops do not change the draft. */ } }}>
           <button type="button" className={index === current ? "yp-on" : ""} onClick={() => setSlide(index)} aria-label={`${index + 1}장 보기`} aria-pressed={index === current}>
-            <CardPreview draft={draft} index={index} width={84} onOver={onOver} /><span>{index + 1} · {slideSpec(draft.format, row.type)?.label}{over[index]?.length ? " · 넘침" : ""}</span></button>
+            <CardPreview draft={draft} index={index} width={84} onOver={onOver} /><span>{index + 1} · {row.type === "toon" && row.fields.episode?.trim() ? `${row.fields.episode.trim()} 표지` : slideSpec(draft.format, row.type)?.label}{over[index]?.length ? " · 넘침" : ""}</span></button>
           {editable && <div className="yp-card-item-actions">
             <button type="button" aria-label={`${index + 1}장 위로`} title="위로 이동" disabled={moveCardSlide(draft, index, index - 1) === draft} onClick={() => structure(moveCardSlide(draft, index, index - 1), index - 1)}><ArrowUp size={13} /></button>
             <button type="button" aria-label={`${index + 1}장 아래로`} title="아래로 이동" disabled={moveCardSlide(draft, index, index + 1) === draft} onClick={() => structure(moveCardSlide(draft, index, index + 1), index + 1)}><ArrowDown size={13} /></button>
@@ -521,15 +521,19 @@ export function CardExportScreen({ page, header }: { page: YpPage; header: React
   const action = stepAction(page, 5, project.yp.stage === "done" ? { kind: "status", status: "끝난 카드뉴스예요" }
     : { kind: "button", label: "다 올렸으면 끝내기", reason: "", busy: busy === "finish", onClick: () => void finish() });
   return <YpFrame page={page} view={5} action={action} header={header} title="내보내기" sub="이미지를 내려받아 인스타그램에 올리고, 올린 주소를 남긴 뒤 끝내요."
-    todo={project.yp.stage === "upload" ? [{ label: "이미지 내려받기", done: Boolean(cards.data.exported) || busy === "zip" }, { label: "올린 주소", done: Boolean(cards.data.exported) }] : undefined}>
+    todo={project.yp.stage === "upload" ? [{ label: "이미지 내려받기", done: Boolean(cards.data.exported) || busy.startsWith("zip") }, { label: "올린 주소", done: Boolean(cards.data.exported) }] : undefined}>
     {!["upload", "done"].includes(project.yp.stage) ? <LockedStep page={page} name="내보내기" /> : <>
       <GateBanner page={page} gate="review" />
       <Subject page={page} />
       <YpSection n={1} title="이미지 · 캡션" gq={draft ? `${draft.slides.length}장 · 1080 × 1350` : ""}>
         {draft ? <CardPhotos.Provider value={photos}><div className="yp-card-strip">{draft.slides.map((_, index) => <CardPreview key={index} draft={draft} index={index} width={120} />)}</div></CardPhotos.Provider> : null}
         <div className="yp-row-btns" style={{ marginTop: 10 }}>
-          <button type="button" className="yp-btn yp-pri" disabled={!draft || Boolean(busy)} onClick={() => void run("zip", async () => saveBlob(await page.client!.cardsFile(project.id, { zip: true }), `카드뉴스-${projectName(project).slice(0, 30)}.zip`))}>
-            <Download size={14} aria-hidden="true" /> {busy === "zip" ? "만드는 중…" : "이미지 묶음 내려받기"}</button>
+          {(draft && toonUploads(draft).length > 1 ? toonUploads(draft) : [null]).map((post, at) => {
+            // 웹툰형 goes up one 화 per post, so each 화 is its own ZIP (대표 2026-11-04).
+            const name = post && draft ? draft.slides[post.from].fields.episode?.trim() || `${at + 1}화` : "", key = post ? `zip${at + 1}` : "zip";
+            return <button key={key} type="button" className={at ? "yp-btn" : "yp-btn yp-pri"} disabled={!draft || Boolean(busy)} onClick={() => void run(key, async () => saveBlob(await page.client!.cardsFile(project.id, post ? { zip: true, upload: at + 1 } : { zip: true }), `카드뉴스-${projectName(project).slice(0, 30)}${post ? `-${name}` : ""}.zip`))}>
+              <Download size={14} aria-hidden="true" /> {busy === key ? "만드는 중…" : post ? `${name} 내려받기 (${post.to - post.from}장)` : "이미지 묶음 내려받기"}</button>;
+          })}
           <button type="button" className="yp-btn" disabled={!caption} onClick={() => void navigator.clipboard.writeText(caption).then(() => setCopied(true))}><Copy size={14} aria-hidden="true" /> {copied ? "복사했어요" : "캡션 복사"}</button></div>
       </YpSection>
       <YpSection n={2} title="올린 주소" gq="인스타그램 게시물 주소">

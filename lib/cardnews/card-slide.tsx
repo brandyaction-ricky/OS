@@ -4,7 +4,7 @@
 // The look is the MYIN 카드뉴스 디자인 정본 (2026-11-02): white body cards, a blue cover and ending, Pretendard 400 · 500 · 600 at its
 // sizes for 1080 × 1350, 96px text margins, photos and diagrams within 80% of the width, and the explanation right under what it explains.
 import type { CSSProperties, ReactNode } from "react";
-import { CARD_MARK, CARD_SIZE, plainCardText, toonAim, type CardDraft, type CardPhoto, type CardSlide } from "./formats.ts";
+import { CARD_MARK, CARD_SIZE, cardPage, plainCardText, toonAim, type CardDraft, type CardPhoto, type CardSlide } from "./formats.ts";
 
 /** 디자인 정본 §2. Blue cards carry white text and gold only for the marked phrase; gold never sits on a light card. */
 export const CARD_THEME = { paper: "#FFFFFF", soft: "#EFEFF1", blue: "#212CB0", gold: "#EED467", title: "#151D2C", ink: "#1E1D1D", sub: "#43474C", white: "#FFFFFF" };
@@ -245,7 +245,7 @@ function ToonSlide({ draft, slide, index, theme, src }: { draft: CardDraft; slid
     {has("reply") ? <div style={row({ bottom: has("talk") ? 400 : 130 }, true)}>{bubble("reply", has("talk") ? 400 : 130)}</div> : null}
     {has("talk") ? <div style={row({ bottom: 130 })}>{bubble("talk", 130)}</div> : null}
     <div style={row({ bottom: 40 }, true)}><div style={{ display: "flex", alignItems: "center", gap: 14, background: theme.white, borderRadius: 999, padding: "10px 22px", fontSize: 16, color: theme.sub }}>
-      <Logo color={theme.title} height={20} /><span>{`${index + 1} / ${draft.slides.length}`}</span></div></div>
+      <Logo color={theme.title} height={20} /><span>{cardPage(draft, index)}</span></div></div>
   </>;
 }
 
@@ -259,6 +259,6 @@ export function CardSlideView({ draft, index, photos, theme = CARD_THEME }: { dr
     background: onBlue ? theme.blue : slide?.type === "summary" ? theme.soft : theme.paper, color: theme.ink, fontFamily: "Pretendard" }}>
     {slide ? <Body draft={draft} slide={slide} index={index} theme={theme} src={slide.photo ? photos?.[slide.photo.path] : undefined} /> : null}
     <div style={{ display: "flex", position: "absolute", left: PAD, right: PAD, bottom: 64, justifyContent: "space-between", alignItems: "center", fontSize: 16, color: onBlue ? theme.white : theme.sub }}>
-      <Logo color={onBlue ? theme.white : theme.title} height={28} /><span>{`${index + 1} / ${draft.slides.length}`}</span></div>
+      <Logo color={onBlue ? theme.white : theme.title} height={28} /><span>{cardPage(draft, index)}</span></div>
   </div>;
 }

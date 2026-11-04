@@ -11,7 +11,7 @@ import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { CardSlideView } from "@/lib/cardnews/card-slide";
 import { CardError, cardsMissing, nextCards, pickedDraft } from "@/lib/cardnews/cards";
-import { CAPTION_MAX, CARD_FORMAT_IDS, CARD_MAX_SLIDES, CARD_SIZE, CARD_SLIDE_TYPES, cardSignature, plainCardText, type CardDraft } from "@/lib/cardnews/formats";
+import { CAPTION_MAX, CARD_FORMAT_IDS, CARD_SIZE, CARD_SLIDE_TYPES, cardSignature, plainCardText, TOON_MAX_SLIDES, toonUploads, type CardDraft } from "@/lib/cardnews/formats";
 import { storedZip } from "@/lib/cardnews/zip";
 import { projectCardSources, visibleThreadSource, type CardSourceChoice } from "@/lib/cardnews/sources";
 import { applyGateAction, quietHours } from "@/lib/youtube-process/confirm";
@@ -120,7 +120,7 @@ const fieldText = z.string().max(400);
 const draftSchema = z.object({
   id: z.string().min(1).max(40), format: z.enum(CARD_FORMAT_IDS as [CardDraft["format"], ...CardDraft["format"][]]),
   slides: z.array(z.object({ type: z.enum(CARD_SLIDE_TYPES), fields: z.record(fieldText),
-    photo: z.object({ path: z.string().max(200), w: z.number().int().min(1).max(20_000), h: z.number().int().min(1).max(20_000) }).strict().optional() }).strict()).min(1).max(CARD_MAX_SLIDES),
+    photo: z.object({ path: z.string().max(200), w: z.number().int().min(1).max(20_000), h: z.number().int().min(1).max(20_000) }).strict().optional() }).strict()).min(1).max(TOON_MAX_SLIDES),
   caption: z.string().max(CAPTION_MAX + 400), hashtags: z.array(z.string().trim().min(1).max(60)).max(30),
 }).strict();
 export const cardsPatchSchema = z.object({
@@ -206,8 +206,8 @@ export async function cardPng(draft: CardDraft, index: number) {
   const response = new ImageResponse(createElement(CardSlideView, { draft, index, photos }), { ...CARD_SIZE, fonts: await loadFonts() });
   return new Uint8Array(await response.arrayBuffer());
 }
-/** One card as PNG, or every card of the draft as a ZIP; the confirmed draft unless another is named. */
-export async function renderCards(actor: RequestActor, id: string, query: { draft?: string; slide?: number; zip?: boolean }) {
+/** One card as PNG, or the cards of the draft (or of one 웹툰 화, upload = 1, 2 …) as a ZIP; the confirmed draft unless another is named. */
+export async function renderCards(actor: RequestActor, id: string, query: { draft?: string; slide?: number; zip?: boolean; upload?: number }) {
   const project = await getYoutubeProject(actor, id);
   if (project.yp.topic.type !== "card") throw new ApiError(404, "CARD_NOT_FOUND", "카드뉴스가 아니에요.");
   const cards = (await readStages(actor.supabase, project)).cards.data;
@@ -218,8 +218,10 @@ export async function renderCards(actor: RequestActor, id: string, query: { draf
     if (!draft.slides[index]) throw new ApiError(404, "CARD_SLIDE_NOT_FOUND", "그 장이 없어요.");
     return { body: await cardPng(draft, index), type: "image/png", name: `card-${index + 1}.png` };
   }
+  const post = query.upload ? toonUploads(draft)[query.upload - 1] : { from: 0, to: draft.slides.length };
+  if (!post) throw new ApiError(404, "CARD_UPLOAD_NOT_FOUND", "그 화가 없어요.");
   const files = [];
-  for (let index = 0; index < draft.slides.length; index++) files.push({ name: `${String(index + 1).padStart(2, "0")}.png`, data: await cardPng(draft, index) });
+  for (let index = post.from; index < post.to; index++) files.push({ name: `${String(index - post.from + 1).padStart(2, "0")}.png`, data: await cardPng(draft, index) });
   const caption = [draft.caption.trim(), draft.hashtags.map(tag => `#${tag.replace(/^#/, "")}`).join(" ")].filter(Boolean).join("\n\n");
   if (caption) files.push({ name: "caption.txt", data: new TextEncoder().encode(caption) });
   return { body: new Uint8Array(storedZip(files)), type: "application/zip", name: "cardnews.zip" };

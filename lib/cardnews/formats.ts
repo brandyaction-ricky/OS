@@ -4,6 +4,10 @@
 
 export const CARD_SIZE = { width: 1080, height: 1350 } as const;
 export const CARD_MAX_SLIDES = 10;
+/** 웹툰형 is one story in as many cards as it needs, put up as several 화 (대표 2026-11-04); an Instagram post holds 20 pictures. */
+export const TOON_MAX_SLIDES = 100;
+export const TOON_UPLOAD_MAX = 20;
+export const cardMaxSlides = (format: CardFormatId) => format === "webtoon" ? TOON_MAX_SLIDES : CARD_MAX_SLIDES;
 
 export type CardFormatId = "list" | "myth" | "quote" | "compare" | "steps" | "structure" | "webtoon";
 export const CARD_SLIDE_TYPES = ["cover", "item", "summary", "pair", "line", "compare", "step", "map", "part", "end", "toon", "panel"] as const;
@@ -33,11 +37,12 @@ export const CARD_FORMATS: Record<CardFormatId, CardFormat> = {
   structure: { id: "structure", name: "구조형", when: "하나의 개념이 몇 가지 요소로 이뤄질 때 (구성 · 분해)", slides: [cover,
     { type: "map", label: "구조도", min: 1, max: 1, fields: [{ key: "center", label: "중심 개념", max: 12 }, { key: "note", label: "설명", max: 50, optional: true }] },
     { type: "part", label: "요소", min: 2, max: 5, photo: true, fields: [{ key: "title", label: "요소 이름", max: 12 }, { key: "body", label: "설명", max: 60 }] }, end] },
-  // 웹툰형 (대표 2026-11-02, 「웹툰형 캐릭터 설정」): one 화 of an Instagram series in 8~10 cards. Each 칸 is a picture filling the card
-  // (drawn with 「AI로 그리기」 from its 장면, with the 캐릭터 창고 faces of 나오는 사람) and the words sit on it in boxes and bubbles.
-  webtoon: { id: "webtoon", name: "웹툰형", when: "주인공의 하루로 이야기를 들려줄 때 (인스타 연재 · 한 화 8~10장)", slides: [
-    { type: "toon", label: "웹툰 표지", min: 1, max: 1, photo: true, fields: [{ key: "episode", label: "화", max: 6 }, { key: "title", label: "제목", max: 20 }, { key: "scene", label: "표지 장면 (그릴 것)", max: 300, optional: true }] },
-    { type: "panel", label: "칸", min: 5, max: 7, photo: true, fields: [{ key: "scene", label: "장면 (그릴 것)", max: 300, optional: true }, { key: "cast", label: "나오는 사람", max: 20, optional: true },
+  // 웹툰형 (대표 2026-11-02, 「웹툰형 캐릭터 설정」): an Instagram series. Each 칸 is a picture filling the card (drawn with 「AI로
+  // 그리기」 from its 장면, with the 캐릭터 창고 faces of 나오는 사람) and the words sit on it in boxes and bubbles. Since 2026-11-04 the story
+  // takes as many 칸 as it needs and each 웹툰 표지 starts the next 화 (toonUploads); the 오늘의 한 줄 and 마무리 close the last 화.
+  webtoon: { id: "webtoon", name: "웹툰형", when: "주인공의 이야기를 연재할 때 (장수 제한 없이 짜고, 웹툰 표지마다 한 화로 나눠 올려요 · 한 화 20장까지)", slides: [
+    { type: "toon", label: "웹툰 표지", min: 1, max: 10, photo: true, fields: [{ key: "episode", label: "화", max: 6 }, { key: "title", label: "제목", max: 20 }, { key: "scene", label: "표지 장면 (그릴 것)", max: 300, optional: true }] },
+    { type: "panel", label: "칸", min: 5, max: TOON_MAX_SLIDES - 3, photo: true, fields: [{ key: "scene", label: "장면 (그릴 것)", max: 300, optional: true }, { key: "cast", label: "나오는 사람", max: 20, optional: true },
       { key: "narration", label: "해설 상자", max: 40, optional: true }, { key: "talk", label: "대사", max: 40, optional: true }, { key: "reply", label: "받는 대사", max: 40, optional: true },
       { key: "think", label: "속마음", max: 30, optional: true },
       { key: "shout", label: "외침", max: 14, optional: true }, { key: "sfx", label: "효과음", max: 6, optional: true }] },
@@ -69,18 +74,34 @@ export interface CardDraft {
 }
 
 export const slideSpec = (format: CardFormatId, type: CardSlideType) => CARD_FORMATS[format].slides.find(spec => spec.type === type);
+/** A slide's place in its format's order. 웹툰 표지 and 칸 share one, so the next 화 can start between two 칸. */
+const orderRank = (format: CardFormatId, type: CardSlideType) =>
+  CARD_FORMATS[format].slides.findIndex(spec => spec.type === (format === "webtoon" && type === "toon" ? "panel" : type));
+/** The posts a draft goes up as: one for most formats; for 웹툰형 one per 웹툰 표지, the 오늘의 한 줄 and 마무리 riding on the last. */
+export function toonUploads(draft: Pick<CardDraft, "format" | "slides">) {
+  const starts = draft.format === "webtoon" ? draft.slides.flatMap((slide, index) => slide.type === "toon" ? [index] : []) : [];
+  if (starts[0] !== 0) starts.unshift(0);
+  return starts.map((from, at) => ({ from, to: starts[at + 1] ?? draft.slides.length }));
+}
+/** The 「n / total」 in a card's corner, counted within its post. */
+export function cardPage(draft: Pick<CardDraft, "format" | "slides">, index: number) {
+  const post = toonUploads(draft).find(row => index >= row.from && index < row.to) ?? { from: 0, to: draft.slides.length };
+  return `${index - post.from + 1} / ${post.to - post.from}`;
+}
 const blank = (spec: CardSlideSpec): CardSlide => ({ type: spec.type, fields: Object.fromEntries(spec.fields.map(field => [field.key, ""])) });
 /** A new draft with each slide kind at its fewest. */
 export function emptyCardDraft(format: CardFormatId, id: string, by: string, at: string): CardDraft {
   return { id, format, slides: CARD_FORMATS[format].slides.flatMap(spec => Array.from({ length: spec.min }, () => blank(spec))), caption: "", hashtags: [], at, by };
 }
-/** One more body slide after `index` (or the last of its kind), when the format allows it. */
+/** One more body slide after the last of its kind (a 웹툰 표지 after the last 칸, as the next 화), when the format allows it. */
 export function addCardSlide(draft: CardDraft, type: CardSlideType): CardDraft {
   const spec = slideSpec(draft.format, type);
   const count = draft.slides.filter(slide => slide.type === type).length;
-  if (!spec || count >= spec.max || draft.slides.length >= CARD_MAX_SLIDES) return draft;
-  const last = draft.slides.map(slide => slide.type).lastIndexOf(type);
-  return { ...draft, slides: [...draft.slides.slice(0, last + 1), blank(spec), ...draft.slides.slice(last + 1)] };
+  if (!spec || count >= spec.max || draft.slides.length >= cardMaxSlides(draft.format)) return draft;
+  const later = draft.slides.findIndex(slide => orderRank(draft.format, slide.type) > orderRank(draft.format, type));
+  const at = later < 0 ? draft.slides.length : later, slide = blank(spec);
+  if (type === "toon") slide.fields.episode = `${count + 1}화`;
+  return { ...draft, slides: [...draft.slides.slice(0, at), slide, ...draft.slides.slice(at)] };
 }
 export function removeCardSlide(draft: CardDraft, index: number): CardDraft {
   const slide = draft.slides[index];
@@ -94,8 +115,8 @@ export function moveCardSlide(draft: CardDraft, from: number, to: number): CardD
   if (!Number.isInteger(from) || !Number.isInteger(to) || from === to || !draft.slides[from] || !draft.slides[to]) return draft;
   const slides = [...draft.slides];
   slides.splice(to, 0, slides.splice(from, 1)[0]);
-  const order = CARD_FORMATS[draft.format].slides.map(spec => spec.type);
-  if (slides.some((row, at) => at > 0 && order.indexOf(row.type) < order.indexOf(slides[at - 1].type))) return draft;
+  if (slides.some((row, at) => at > 0 && orderRank(draft.format, row.type) < orderRank(draft.format, slides[at - 1].type))) return draft;
+  if (draft.format === "webtoon" && slides[0].type !== "toon") return draft;
   return { ...draft, slides };
 }
 
@@ -125,13 +146,20 @@ export function cardProblems(draft: Pick<CardDraft, "format" | "slides" | "capti
   const blocking: string[] = [], warnings: string[] = [];
   const format = CARD_FORMATS[draft.format];
   if (!format) return { blocking: ["포맷을 골라 주세요"], warnings };
-  if (draft.slides.length > CARD_MAX_SLIDES) blocking.push(`카드는 ${CARD_MAX_SLIDES}장까지예요`);
+  if (draft.slides.length > cardMaxSlides(draft.format)) blocking.push(`카드는 ${cardMaxSlides(draft.format)}장까지예요`);
   for (const spec of format.slides) {
     const count = draft.slides.filter(slide => slide.type === spec.type).length;
     if (count < spec.min || count > spec.max) blocking.push(spec.min === spec.max ? `${spec.label} 장이 ${spec.min}장 있어야 해요` : `${josa(spec.label, "은", "는")} ${spec.min}~${spec.max}장이에요 (지금 ${count}장)`);
   }
-  const order = format.slides.map(spec => spec.type);
-  if (draft.slides.some((slide, index) => index && order.indexOf(slide.type) < order.indexOf(draft.slides[index - 1].type))) blocking.push("카드 순서가 포맷과 달라요");
+  if (draft.slides.some((slide, index) => index && orderRank(draft.format, slide.type) < orderRank(draft.format, draft.slides[index - 1].type))) blocking.push("카드 순서가 포맷과 달라요");
+  if (draft.format === "webtoon") {
+    if (draft.slides[0]?.type !== "toon") blocking.push("첫 장은 웹툰 표지예요");
+    toonUploads(draft).forEach((post, at) => {
+      const name = draft.slides[post.from]?.fields.episode?.trim() || `${at + 1}화`;
+      if (post.to - post.from > TOON_UPLOAD_MAX) blocking.push(`${josa(name, "이", "가")} ${post.to - post.from}장이에요 — 한 번에 ${TOON_UPLOAD_MAX}장까지 올릴 수 있어요`);
+      if (!draft.slides.slice(post.from, post.to).some(slide => slide.type === "panel")) blocking.push(`${name}에 칸이 없어요`);
+    });
+  }
   const seen = new Map<string, number>();
   draft.slides.forEach((slide, index) => {
     const spec = slideSpec(draft.format, slide.type);

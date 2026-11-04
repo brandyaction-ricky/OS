@@ -110,6 +110,11 @@ test("a 웹툰 화 starts by hand and each 칸 brings its 장면 to the drawing 
   await page.locator(".yp-card-big").click({ position: { x: 60, y: 90 } });
   await expect(page.getByRole("button", { name: "꼬리 처음대로" })).toBeVisible();
   await expect(page.getByRole("button", { name: "말풍선 꼬리 맞추기" })).toHaveAttribute("aria-pressed", "false");
+  // 연재 (대표 2026-11-04): the story is not held to 10 cards and 「다음 화 나누기」 starts 2화 after the last 칸.
+  await page.getByRole("button", { name: "다음 화 나누기" }).click();
+  await expect(page.locator(".yp-card-tools b")).toHaveText("카드 9 / 100장 · 2화");
+  await expect(page.getByRole("button", { name: "7장 보기", exact: true })).toContainText("2화 표지");
+  await expect(page.locator(".yp-card-checks")).toContainText("2화에 칸이 없어요");
 });
 
 test("the three diagram formats can be started by hand", async ({ page }) => {
