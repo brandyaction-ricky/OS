@@ -166,7 +166,7 @@ export function CardDrawPanel({ page, projectId, photo, onPhoto, onFile, label, 
       <button type="button" className="yp-btn yp-sm" aria-expanded={mine} disabled={[...scene.trim()].length < 2 || characters === null} onClick={() => setMine(!mine)}>내 GPT로 그리기</button>
       <CostTag kind="ai" />
       <button type="button" className="yp-btn yp-sm" disabled={busy === "draw"} onClick={() => setOpen(false)}>닫기</button></div>
-    {dragging ? <div className="yp-card-drop" aria-hidden="true">여기에 놓으면 {label}에 들어가요</div> : null}
+    {dragging ? <div className="yp-card-drop" aria-hidden="true"><span>여기에 놓으면 {label}에 들어가요</span></div> : null}
     {mine ? <ol className="yp-card-mygpt" aria-label="내 GPT로 그리기">
       <li className={done.includes("sheet") ? "yp-on" : ""}><b>1</b><button type="button" className="yp-btn yp-sm" disabled={!picked.length || Boolean(busy)} onClick={() => void copySheet()}>{busy === "sheet" ? "만드는 중…" : "참고 그림 복사"}</button>
         <span className="yp-hint">{picked.length ? <><a href="https://chatgpt.com/" target="_blank" rel="noreferrer">ChatGPT</a> 새 대화창에 붙여 넣어요 (⌘V)</> : "고른 캐릭터 그림이 없어요 — 2번부터 해요"}</span></li>
