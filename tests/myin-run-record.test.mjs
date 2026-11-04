@@ -20,3 +20,12 @@ test("the 제작 panel shows it, and the route serves it", async () => {
   assert.match(panel, /기록만/);
   assert.doesNotMatch(panel, /method: "(POST|PATCH)"/);
 });
+
+test("the run screen keeps up with steps taken from another account", async () => {
+  const panel = await read("components/myin-v13-panel.tsx");
+  // A step waiting on a person (기획표 · 미리보기 확인) is read again every minute, a machine step every 20 seconds, a finished video never.
+  assert.match(panel, /const pollEvery = working \? 20_000 : run && run\.stage !== "final_ready" \? 60_000 : 0;/);
+  // A refused action (someone else already moved the step) reloads the run instead of leaving the old buttons.
+  assert.match(panel, /finally \{ await load\(\); setBusy\(""\); \}/);
+  assert.match(panel, /reason\.status === 409 \? `\$\{message\} 지금 상태로 화면을 새로 고쳤어요\.`/);
+});

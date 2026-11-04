@@ -158,19 +158,27 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
   }, [accessToken, sourceId, onFinal]);
   useEffect(() => { void load(); }, [load]);
   const working = Boolean(run && (["breath_pending", "voice_pending", "words_pending", "cta_pending", "prep_pending", "clips_pending", "final_pending"].includes(run.stage) && run.status !== "blocked" || (job?.job && ["backlog", "active"].includes(job.job.status))));
+  // While a step waits on a person, another member may take it from their own account: this screen reads the run again every minute,
+  // so a storyboard someone else confirmed does not stay here as 「확인 대기」 (2026-11-04: its button then failed with 「확인을 기다리는
+  // 기획표가 없습니다」).
+  const pollEvery = working ? 20_000 : run && run.stage !== "final_ready" ? 60_000 : 0;
   useEffect(() => {
-    if (!working) return;
-    const timer = window.setInterval(() => void load(), 20_000);
+    if (!pollEvery) return;
+    const timer = window.setInterval(() => void load(), pollEvery);
     return () => window.clearInterval(timer);
-  }, [working, load]);
+  }, [pollEvery, load]);
   if (available === null) return <section className="panel load-error" role="status">영상 제작 정보를 불러오는 중…</section>;
   if (!available) return <section className="panel empty-state"><div><h3>영상 자동 제작은 아직 연결 전입니다</h3><p>지금은 개발용 시험 서버에서만 시범 운영 중입니다. 운영 연결은 대표 승인 후 진행합니다.</p></div></section>;
 
   const act = async (label: string, request: () => Promise<unknown>) => {
     setBusy(label); setError("");
-    try { await request(); await load(); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "처리하지 못했습니다."); }
-    finally { setBusy(""); }
+    try { await request(); }
+    catch (reason) {
+      // A step someone else already moved on (409) is answered with the run as it is now.
+      const message = reason instanceof Error ? reason.message : "처리하지 못했습니다.";
+      setError(reason instanceof ApiRequestError && reason.status === 409 ? `${message} 지금 상태로 화면을 새로 고쳤어요.` : message);
+    }
+    finally { await load(); setBusy(""); }
   };
   const post = (path: string, method: "POST" | "PATCH", body: Record<string, unknown>) =>
     apiRequest(`/api/v1/content/youtube-automation${path}`, { method, token: accessToken, body: JSON.stringify(body) });
