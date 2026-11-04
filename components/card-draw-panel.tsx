@@ -21,6 +21,7 @@ export function CardDrawPanel({ page, projectId, photo, onPhoto, brief, where, d
   const [busy, setBusy] = useState("");
   const [name, setName] = useState("");
   const [copied, setCopied] = useState(false);
+  const [asideText, setAsideText] = useState("");
   const cost = useCostConfirm();
   const model = useCostModels().image;
   const amount = imageEstimate(model, quality, refs.length);
@@ -45,8 +46,9 @@ export function CardDrawPanel({ page, projectId, photo, onPhoto, brief, where, d
   });
   const aside = () => run("aside", async () => {
     const picked = refs.map(id => characters?.find(row => row.id === id)).filter((row): row is CardCharacterView => Boolean(row));
-    await navigator.clipboard.writeText(asideDrawInstruction({ scene: scene.trim(), style, refs: picked.map(row => ({ name: row.name, url: row.url })), where }));
-    setCopied(true);
+    const text = asideDrawInstruction({ scene: scene.trim(), style, refs: picked.map(row => ({ name: row.name, url: row.url })), where });
+    // Some browsers keep the clipboard closed (the app's own browser pane): the brief is shown to copy by hand instead of an error.
+    try { await navigator.clipboard.writeText(text); setCopied(true); setAsideText(""); } catch { setAsideText(text); }
   });
   const keep = () => run("keep", async () => {
     if (!photo) return;
@@ -85,6 +87,9 @@ export function CardDrawPanel({ page, projectId, photo, onPhoto, brief, where, d
       <button type="button" className="yp-btn yp-sm" disabled={[...scene.trim()].length < 2 || characters === null || Boolean(busy)} onClick={() => void aside()}>{copied ? "복사했어요 · Aside에 붙여 넣어요" : "Aside에 맡기기 (지침 복사)"}</button>
       <CostTag kind="ai" />
       <button type="button" className="yp-btn yp-sm" disabled={busy === "draw"} onClick={() => setOpen(false)}>닫기</button></div>
+    {asideText ? <label className="yp-field"><span className="yp-fld-h"><b>Aside 지침</b></span>
+      <span className="yp-hint">이 브라우저는 자동 복사를 막아요. 아래 글을 누르면 전부 선택돼요. 복사해서 Aside에 붙여 넣어요.</span>
+      <textarea className="yp-in" rows={6} readOnly value={asideText} aria-label="Aside 지침" onFocus={event => event.currentTarget.select()} /></label> : null}
     {cost.element}
   </div></>;
 }

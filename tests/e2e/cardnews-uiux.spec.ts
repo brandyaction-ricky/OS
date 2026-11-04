@@ -101,6 +101,10 @@ test("a 웹툰 화 starts by hand and each 칸 brings its 장면 to the drawing 
   await expect(panel.getByLabel("장면 설명")).toHaveValue("밤 11시 사무실, 서윤이 모니터 앞에서 웃는다");
   await expect(panel.getByLabel("그림체")).toHaveValue("webtoon");
   await expect(panel.getByRole("button", { name: "Aside에 맡기기 (지침 복사)" })).toBeEnabled();
+  // Where the clipboard is closed (Playwright, the app's own browser pane) the brief opens in a box to copy by hand.
+  await page.context().clearPermissions();
+  await panel.getByRole("button", { name: "Aside에 맡기기 (지침 복사)" }).click();
+  await expect(panel.getByLabel("Aside 지침")).toHaveValue(/\[카드 그림 그리기 → 브랜디 OS 카드에 넣기\][\s\S]*카드 만들기 › 2장에서 「사진 넣기」/);
   await expect(page.locator(".yp-card-checks")).toContainText("1장 그림이 아직 없어요");
   // 말풍선 꼬리 맞추기 (1화 시안): once the 칸 has its picture, a tap on the preview says where the speaker is.
   await expect(page.getByRole("button", { name: "말풍선 꼬리 맞추기" })).toHaveCount(0);
