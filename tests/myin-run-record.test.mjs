@@ -29,3 +29,26 @@ test("the run screen keeps up with steps taken from another account", async () =
   assert.match(panel, /finally \{ await load\(\); setBusy\(""\); \}/);
   assert.match(panel, /reason\.status === 409 \? `\$\{message\} 지금 상태로 화면을 새로 고쳤어요\.`/);
 });
+
+test("each drawn result keeps the engine it was drawn with", async () => {
+  const run = await read("lib/server/myin-run.ts");
+  // The engine is read when a ③/④ job is taken (the render PC's; a member's own computer must match it) and kept with its result.
+  assert.match(run, /const drawnWith = \(run: MyinRun\) => run\.layout \? Promise\.resolve\(undefined\) : renderPcEngine\(\);/, "none for a 숏폼 (its vertical copy is not in the fingerprint)");
+  assert.equal(run.match(/materialsKey, drawnWith\);/g)?.length, 3, "preparation, clips and the full video");
+  assert.match(run, /const engine = await engineOf\?\.\(run\);/);
+  assert.equal(run.match(/\.\.\.drewWith\(run\)/g)?.length, 3);
+  assert.match(await read("components/myin-run-record.tsx"), /<dt>엔진 버전<\/dt><dd>\{engineLine\(record\)\}<\/dd>/);
+});
+
+test("an earlier video's 채널 모양 only fills a new video's start", async () => {
+  const run = await read("lib/server/myin-run.ts");
+  const earlier = run.slice(run.indexOf("export async function myinEarlierStyles"), run.indexOf("/** Short-lived addresses of the clips"));
+  assert.match(earlier, /actor\.supabase\.from\("os_records"\)/, "only videos this member can read");
+  assert.match(earlier, /\.neq\("parent_id", sourceId\)/, "not the video being started");
+  assert.doesNotMatch(earlier, /save\(|\.insert\(|\.update\(|\.upload\(|createService/, "reading changes nothing");
+  assert.match(await read("app/api/v1/content/youtube-automation/myin/route.ts"), /query\.get\("earlierStyles"\)[\s\S]*myinEarlierStyles\(actor/);
+  const panel = await read("components/myin-v13-panel.tsx");
+  assert.match(panel, /<EarlierStylePick sourceId=\{sourceId\} token=\{accessToken\} styles=\{styles\} onPick=\{setStyleId\} \/>/, "it sets the start's choice");
+  const pick = (await read("components/myin-run-record.tsx")).split("export function EarlierStylePick")[1];
+  assert.doesNotMatch(pick, /method: "(POST|PATCH)"/);
+});
