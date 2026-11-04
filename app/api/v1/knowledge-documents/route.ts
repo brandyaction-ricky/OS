@@ -3,7 +3,7 @@ import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { authenticateRequest, requireAgentScope } from "@/lib/server/auth";
-import { canReadKnowledgeDocument, canAgentWriteDocument, canAgentEditDraft } from "@/lib/server/document-access";
+import { canReadKnowledgeDocument, canAgentWriteDocument, canAgentEditDraft, isAgentOwnSharedDocument } from "@/lib/server/document-access";
 import { readableKnowledgePages } from "@/lib/server/knowledge-page-access";
 import { assertOrganization } from "@/lib/server/organization";
 import { createCanonicalProposal, isDesignatedApprover } from "@/lib/server/document-proposals";
@@ -215,7 +215,7 @@ export async function PATCH(request: Request) {
     }
 
     if (actor.type === "agent") {
-      if(!canAgentEditDraft(actor,current)) throw new ApiError(403,"AGENT_WRITE_DENIED","AI 키는 자신이 만든 AI 초안만 직접 수정할 수 있습니다. 정본은 변경 제안으로 검토합니다.");
+      if(!canAgentEditDraft(actor,current) && !(isAgentOwnSharedDocument(actor,current) && await isDesignatedApprover(actor.ownerId))) throw new ApiError(403,"AGENT_WRITE_DENIED","AI 키는 자신이 만든 AI 초안만 직접 수정할 수 있습니다. 정본은 변경 제안으로 검토합니다.");
       const { data, error } = await service.rpc("os_agent_update_document", {
         p_agent_key_id: actor.id,
         p_organization_id: input.organizationId,

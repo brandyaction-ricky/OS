@@ -4,7 +4,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
-import { CAPTION_MAX, CARD_FORMATS, CARD_FORMAT_IDS, CARD_MAX_SLIDES, cardProblems, cardSignature, type CardDraft, type CardFormatId, type CardSlide } from "@/lib/cardnews/formats";
+import { CAPTION_MAX, CARD_FORMATS, CARD_FORMAT_IDS, cardMaxSlides, cardProblems, TOON_MAX_SLIDES, TOON_UPLOAD_MAX, cardSignature, type CardDraft, type CardFormatId, type CardSlide } from "@/lib/cardnews/formats";
 import { editableFields } from "@/lib/youtube-process/confirm";
 import { projectFromRecord, type YpProject } from "@/lib/youtube-process/project";
 import type { YpCards } from "@/lib/youtube-process/stages";
@@ -52,15 +52,15 @@ export const cardInputKey = (project: Pick<YpProject, "title" | "yp">, cards: Pi
 const NOTES: Partial<Record<CardSlide["type"], string>> = { item: "번호는 OS가 붙여요", summary: "앞 장의 소제목 목록은 OS가 자동으로 넣어요",
   compare: "두 쪽을 같은 기준으로, 왼쪽은 흔한 쪽 · 오른쪽은 권하는 쪽", step: "한 장에 한 단계, 할 일을 행동으로 · 단계 번호와 흐름은 OS가 그려요",
   map: "구조도의 가지는 뒤 요소 장의 이름이 그대로 들어가요", part: "요소 이름은 구조도 가지에 그대로 보여요",
-  toon: "episode는 「1화」처럼, scene은 표지 그림(주인공 한 명이 크게, 아래쪽 1/3은 제목이 앉도록 비워 둠)",
-  panel: "scene은 PD가 「AI로 그리기」에 넣을 그림 설명(글자 없이, 누가 어디서 무엇을 하는지 · 표정 · 배경), cast는 나오는 사람(서윤 · 도현 · 한결 중 + 낙서), 말은 칸마다 한두 개만 · think는 입 밖에 못 낸 속마음(낙서가 나오는 칸에 잘 맞아요) · 외침과 효과음은 한 화에 두세 번 · 효과음은 「빼꼼」「쿵」처럼 짧은 소리" };
+  toon: "웹툰 표지 한 장이 한 화의 시작이에요. 한 화에 메시지를 다 담지 않습니다 — 이야기가 납득되도록 충분히 쌓고, 칸 사이에 표지를 더 넣어 여러 화로 나눕니다(화마다 끝은 다음 화가 궁금한 장면, 깨달음과 오늘의 한 줄은 마지막 화). episode는 「1화」「2화」처럼, scene은 표지 그림(주인공 한 명이 크게, 아래쪽 1/3은 제목이 앉도록 비워 둠)",
+  panel: "scene은 PD가 「AI로 그리기」에 넣을 그림 설명(글자 없이, 누가 어디서 무엇을 하는지 · 표정 · 배경 · talk를 말하는 사람은 왼쪽, reply를 말하는 사람은 오른쪽), cast는 나오는 사람(서윤 · 도현 · 한결 중 + 낙서), 말은 칸마다 한두 개만 · think는 입 밖에 못 낸 속마음(낙서가 나오는 칸에 잘 맞아요) · 외침과 효과음은 한 화에 두세 번 · 효과음은 「빼꼼」「쿵」처럼 짧은 소리" };
 /** Each requested format's slides and fields, written from CARD_FORMATS (the numbers live only there). */
 export function cardFormatSpec(formats: CardFormatId[]) {
   return formats.map(id => {
     const format = CARD_FORMATS[id];
     const slides = format.slides.map(spec => `- ${spec.type} · ${spec.label}: ${spec.min === spec.max ? `${spec.min}장` : `${spec.min}~${spec.max}장`} — `
       + spec.fields.map(field => `${field.key}(${field.label}, ${field.max}자까지${field.optional ? ", 선택" : ""})`).join(", ") + (NOTES[spec.type] ? ` · ${NOTES[spec.type]}` : ""));
-    return `### ${format.name} (format: "${id}") — ${format.when}\n${slides.join("\n")}\n- 전체 ${CARD_MAX_SLIDES}장까지`;
+    return `### ${format.name} (format: "${id}") — ${format.when}\n${slides.join("\n")}\n- 전체 ${cardMaxSlides(id)}장까지${id === "webtoon" ? ` · 한 화(웹툰 표지부터 다음 표지 앞까지) ${TOON_UPLOAD_MAX}장까지` : ""}`;
   }).join("\n\n");
 }
 
@@ -105,7 +105,7 @@ result = { "recommend": { "formats": [이 원본에 가장 맞는 포맷 id 최�
 
 const resultSchema = z.object({
   recommend: z.object({ formats: z.array(z.string()).max(6), why: z.string().max(400) }),
-  drafts: z.array(z.object({ format: z.string(), slides: z.array(z.object({ type: z.string(), fields: z.record(z.string()) })).max(30),
+  drafts: z.array(z.object({ format: z.string(), slides: z.array(z.object({ type: z.string(), fields: z.record(z.string()) })).max(TOON_MAX_SLIDES),
     caption: z.string().max(CAPTION_MAX + 400), hashtags: z.array(z.string().max(60)).max(30) })).min(1).max(3),
 });
 export type CardResult = { recommend: { formats: CardFormatId[]; why: string }; drafts: Pick<CardDraft, "format" | "slides" | "caption" | "hashtags">[] };

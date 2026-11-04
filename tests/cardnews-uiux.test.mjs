@@ -31,7 +31,7 @@ test("body-card reorder preserves every field and does not mutate the original",
 test("all formats keep cover and ending anchored and reject invalid destinations", () => {
   for (const id of formats.CARD_FORMAT_IDS) {
     const before = formats.emptyCardDraft(id, "d", "QA", "t");
-    const at = before.slides.findIndex(slide => formats.slideSpec(id, slide.type).max > 1);   // the first body kind with more than one card
+    const at = before.slides.findIndex((slide, index) => index > 0 && formats.slideSpec(id, slide.type).max > 1);   // the first body kind with more than one card (웹툰 표지 repeats per 화 but opens the story)
     assert.notEqual(formats.moveCardSlide(before, at, at + 1), before, id);
     assert.equal(formats.moveCardSlide(before, 1, before.slides.length - 1), before, id);
     assert.equal(formats.removeCardSlide(before, 0), before, id);
@@ -160,13 +160,13 @@ test("cover batch is restricted to visible card parents and shows a reopened dra
   const empty = actor([], []); assert.deepEqual(plain(await server.readCardCovers(empty, ["hidden"])), {}); assert.equal(empty.calls.length, 0);
 });
 
-// 웹툰형 (대표 2026-11-02): one 화 is 8~10 cards; an AI draft arrives without pictures and passes, but 카드 확정 waits for every picture.
-test("a 웹툰 화 is 8 to 10 cards and 카드 확정 waits for every picture", () => {
+// 웹툰형 (대표 2026-11-02): an AI draft arrives without pictures and passes, but 카드 확정 waits for every picture.
+test("a 웹툰 starts at 8 cards and 카드 확정 waits for every picture", () => {
   const d = formats.emptyCardDraft("webtoon", "w", "QA", "t");
   assert.deepEqual(d.slides.map(slide => slide.type), ["toon", "panel", "panel", "panel", "panel", "panel", "summary", "end"]);
   let full = d;
   for (let i = 0; i < 3; i++) full = formats.addCardSlide(full, "panel");
-  assert.equal(full.slides.length, 10, "two more 칸 at most: 7 칸, 10 cards");
+  assert.equal(full.slides.length, 11, "웹툰형 is not held to 10 cards");
   const filled = { ...d, caption: "캡션", hashtags: [], slides: d.slides.map(slide => ({ ...slide, fields: Object.fromEntries(Object.keys(slide.fields).map(key => [key, key === "episode" ? "1화" : `QA ${key}`.slice(0, 6)])) })) };
   assert.deepEqual(formats.cardProblems(filled).blocking, [], "no picture is not a blocking problem (an AI draft has none)");
   assert.ok(formats.cardProblems(filled).warnings.some(text => text === "1장 그림이 아직 없어요 — 「AI로 그리기」로 그려요"));
@@ -175,6 +175,24 @@ test("a 웹툰 화 is 8 to 10 cards and 카드 확정 waits for every picture", 
   const drawn = { ...filled, slides: filled.slides.map((slide, at) => at < 6 ? { ...slide, photo: { path: "p.png", w: 1024, h: 1280 } } : slide) };
   assert.equal(cards.cardsMissing(cardsRecord(drawn)), "");
   assert.equal(formats.toonArtMissing({ ...drawn, format: "list" }), -1, "only 웹툰형 asks for pictures");
+});
+
+// 연재 (대표 2026-11-04): the story takes as many 칸 as it needs and each 웹툰 표지 starts the next 화, one Instagram post of 20 cards at most.
+test("a 웹툰 story splits into 화 at each 표지 and each 화 goes up as its own post", () => {
+  const fill = draft => ({ ...draft, caption: "캡션", hashtags: [], slides: draft.slides.map(slide => ({ ...slide, fields: Object.fromEntries(Object.keys(slide.fields).map(key => [key, slide.fields[key] || `QA ${key}`.slice(0, 6)])) })) });
+  let d = formats.addCardSlide(formats.emptyCardDraft("webtoon", "w", "QA", "t"), "toon");
+  assert.deepEqual(d.slides.map(slide => slide.type), ["toon", "panel", "panel", "panel", "panel", "panel", "toon", "summary", "end"], "the next 화 starts after the last 칸");
+  assert.equal(d.slides[6].fields.episode, "2화");
+  assert.ok(formats.cardProblems(fill(d)).blocking.includes("2화에 칸이 없어요"));
+  d = formats.addCardSlide(d, "panel");
+  assert.deepEqual(formats.toonUploads(d), [{ from: 0, to: 6 }, { from: 6, to: 10 }], "the 오늘의 한 줄 and 마무리 go up with the last 화");
+  assert.equal(formats.cardPage(d, 7), "2 / 4", "the corner counts within its 화");
+  assert.deepEqual(formats.cardProblems(fill(d)).blocking, []);
+  assert.notEqual(formats.moveCardSlide(d, 5, 6), d, "a 칸 can move into the next 화");
+  assert.equal(formats.moveCardSlide(d, 1, 0), d, "the story still opens on a 웹툰 표지");
+  for (let i = 0; i < 17; i++) d = formats.addCardSlide(d, "panel");
+  assert.ok(formats.cardProblems(fill(d)).blocking.includes("2화가 21장이에요 — 한 번에 20장까지 올릴 수 있어요"));
+  assert.deepEqual(formats.toonUploads({ format: "list", slides: d.slides }), [{ from: 0, to: d.slides.length }], "other formats go up as one post");
 });
 
 // The 웹툰 checks name 화 · 한 줄 정리 with 를, and a field with a 받침 keeps 을 (2026-11-02: 「1장 화을 써 주세요」 on production).
@@ -186,4 +204,13 @@ test("card problems put 을/를 and 이/가 after the field name the Korean way"
   assert.ok(blocking.includes("1장 제목을 써 주세요"));
   d.slides[0].fields = { episode: "1234567", title: "제목" };
   assert.ok(formats.cardProblems(d).blocking.includes("1장 화가 1자 넘쳐요 (6자까지)"));
+});
+
+// 말풍선 꼬리 (1화 시안 2026-11-02): the tail points where the PD tapped the speaker, else left / right of the middle band.
+test("a 웹툰 bubble tail points at the tapped speaker, else at its side of the picture", () => {
+  assert.deepEqual(formats.toonAim({ fields: {} }, "talk"), [28, 40]);
+  assert.deepEqual(formats.toonAim({ fields: {} }, "reply"), [64, 40]);
+  assert.deepEqual(formats.toonAim({ fields: { talkAt: "12,30" } }, "talk"), [12, 30]);
+  assert.deepEqual(formats.toonAim({ fields: { replyAt: "250,9" } }, "reply"), [100, 9], "a tap is kept on the card");
+  assert.deepEqual(formats.toonAim({ fields: { talkAt: "왼쪽" } }, "talk"), [28, 40], "anything else falls back");
 });
