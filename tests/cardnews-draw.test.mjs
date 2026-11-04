@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { asideDrawInstruction, CARD_DRAW_SIZE, cardDrawPrompt } from "../lib/cardnews/draw.ts";
+import { CARD_DRAW_SIZE, cardDrawPrompt, myGptDrawPrompt } from "../lib/cardnews/draw.ts";
 
 // 카드 그림 (대표 2026-11-02): the picture is 4:5 like the card, carries no letters (the card writes them in Pretendard), and names the
 // 캐릭터 창고 pictures in the order they are sent so GPT keeps those faces.
@@ -47,17 +47,16 @@ test("the 웹툰형 job card sends the AI to the 캐릭터 설정 and explains t
   assert.match(readFileSync("lib/server/youtube-ai-jobs.ts", "utf8"), /cast: formats\.includes\("webtoon"\) \? \(await namedProcedures\(service\(\), \[WEBTOON_CAST_TITLE\]\)\)\[0\]/);
 });
 
-// 「Aside에 맡기기」 (대표 2026-11-04): the PD's own GPT draws through Aside with the very words the OS would send, then 「사진 넣기」 puts it on the card.
-test("the Aside drawing brief carries the OS prompt, the reference pictures in order and where the picture goes", () => {
-  const text = asideDrawInstruction({ scene: "서윤이 놀라요", style: "webtoon", refs: [{ name: "서윤 · 주인공 A", url: "https://x/a.png" }, { name: "강점 낙서 6묶음", url: "https://x/b.png" }], where: "카드뉴스 「1화」 › 카드 만들기 › 6장" });
-  assert.ok(text.includes(cardDrawPrompt("서윤이 놀라요", "webtoon", ["서윤 · 주인공 A", "강점 낙서 6묶음"])), "the same prompt as 「그리기」");
-  assert.match(text, /1\) 서윤 · 주인공 A: https:\/\/x\/a\.png\n   2\) 강점 낙서 6묶음: https:\/\/x\/b\.png/);
-  assert.match(text, /세로 4:5\(1024 × 1280\)/);
-  assert.match(text, /브랜디 OS › 카드뉴스 「1화」 › 카드 만들기 › 6장에서 「사진 넣기」/);
-  assert.match(text, /비밀번호는 묻거나 입력하지 마세요/);
-  assert.match(asideDrawInstruction({ scene: "책상", style: "simple", refs: [], where: "w" }), /1\. 참고 그림은 없습니다/);
+// 「내 GPT로 그리기」 (대표 2026-11-04): the PD's own ChatGPT gets the picked 창고 pictures as one side-by-side image, then these words.
+test("the 내 GPT prompt names the side-by-side references in order and keeps the API rules", () => {
+  const text = myGptDrawPrompt("서윤이 놀라요", "webtoon", ["서윤 · 주인공 A", "강점 낙서 6묶음"]);
+  assert.match(text, /webtoon/);
+  assert.match(text, /side by side, left to right: 1\) 서윤 · 주인공 A, 2\) 강점 낙서 6묶음/);
+  assert.match(text, /Scene: 서윤이 놀라요/);
+  assert.match(text, /portrait 4:5 picture \(1024 × 1280\)/);
+  assert.match(text, /Draw no letters/);
+  assert.doesNotMatch(myGptDrawPrompt("책상", "simple", []), /attached image/);
   const panel = readFileSync("components/card-draw-panel.tsx", "utf8");
-  assert.match(panel, /Aside에 맡기기 \(지침 복사\)/);
-  assert.match(panel, /<CostTag kind="ai" \/>/, "the Aside button says it spends the PD's own AI, not the company credit");
+  for (const label of ["내 GPT로 그리기", "참고 그림 복사", "그림 설명 복사", "그린 그림 붙여 넣기"]) assert.ok(panel.includes(label), label);
+  assert.match(panel, /<CostTag kind="ai" \/>/, "the 내 GPT button says it spends the PD's own AI, not the company credit");
 });
-

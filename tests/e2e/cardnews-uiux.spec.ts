@@ -100,7 +100,13 @@ test("a 웹툰 화 starts by hand and each 칸 brings its 장면 to the drawing 
   const panel = page.getByRole("group", { name: "AI로 그리기" });
   await expect(panel.getByLabel("장면 설명")).toHaveValue("밤 11시 사무실, 서윤이 모니터 앞에서 웃는다");
   await expect(panel.getByLabel("그림체")).toHaveValue("webtoon");
-  await expect(panel.getByRole("button", { name: "Aside에 맡기기 (지침 복사)" })).toBeEnabled();
+  // 「내 GPT로 그리기」: three steps; where the clipboard is closed (Playwright, the app's own pane) the words open in a box.
+  await page.context().clearPermissions();
+  await panel.getByRole("button", { name: "내 GPT로 그리기" }).click();
+  const mine = page.getByRole("list", { name: "내 GPT로 그리기" });
+  await mine.getByRole("button", { name: "그림 설명 복사" }).click();
+  await expect(panel.getByLabel("그림 설명")).toHaveValue(/Scene: 밤 11시 사무실, 서윤이 모니터 앞에서 웃는다/);
+  await expect(mine.getByRole("button", { name: "그린 그림 붙여 넣기" })).toBeVisible();
   await expect(page.locator(".yp-card-checks")).toContainText("1장 그림이 아직 없어요");
   // 말풍선 꼬리 맞추기 (1화 시안): once the 칸 has its picture, a tap on the preview says where the speaker is.
   await expect(page.getByRole("button", { name: "말풍선 꼬리 맞추기" })).toHaveCount(0);
@@ -111,6 +117,16 @@ test("a 웹툰 화 starts by hand and each 칸 brings its 장면 to the drawing 
   await page.locator(".yp-card-big").click({ position: { x: 60, y: 90 } });
   await expect(page.getByRole("button", { name: "꼬리 처음대로" })).toBeVisible();
   await expect(page.getByRole("button", { name: "말풍선 꼬리 맞추기" })).toHaveAttribute("aria-pressed", "false");
+  // ⌘V of the picture copied from ChatGPT puts it on the card.
+  const before = await page.locator(".yp-card-big img").getAttribute("src");
+  await page.evaluate(async () => {
+    const canvas = Object.assign(document.createElement("canvas"), { width: 40, height: 50 });
+    canvas.getContext("2d")!.fillRect(0, 0, 40, 50);
+    const blob = await new Promise<Blob>(resolve => canvas.toBlob(b => resolve(b!), "image/png"));
+    const data = new DataTransfer(); data.items.add(new File([blob], "gpt.png", { type: "image/png" }));
+    window.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data }));
+  });
+  await expect(page.locator(".yp-card-big img")).not.toHaveAttribute("src", before ?? "");
   // 연재 (대표 2026-11-04): the story is not held to 10 cards and 「다음 화 나누기」 starts 2화 after the last 칸.
   await page.getByRole("button", { name: "다음 화 나누기" }).click();
   await expect(page.locator(".yp-card-tools b")).toHaveText("카드 9 / 100장 · 2화");
