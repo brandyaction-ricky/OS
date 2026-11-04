@@ -8,7 +8,7 @@ import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { RequestActor } from "./auth";
 import { readDiagramCatalog } from "./diagram-catalog";
-import { editFinalSchema, myinAddEditFinal, myinEditUploads, myinFinalAt, myinFinalForHandoff, myinRunWithWords } from "./myin-run";
+import { editFinalSchema, myinAddEditFinal, myinEditUploads, myinFinalAt, myinFinalForHandoff, myinFinalVersions, myinRunWithWords } from "./myin-run";
 import { currentEngineDownload, ENGINE_BUCKET, ENGINE_PART_BYTES, engineBundleSaved } from "./render-engine";
 import { getYoutubeProject } from "./youtube-process";
 import { actOnFeedback, listFeedback } from "./youtube-process-feedback";
@@ -74,7 +74,7 @@ export async function editStatus(actor: RequestActor, projectId: string) {
     .eq("metadata->>kind", ORDER).is("archived_at", null).order("created_at", { ascending: false }).limit(50);
   const orders = (data ?? []).map((row) => ({ id: row.id, version: row.version, at: row.created_at, ...presentOrder(orderSchema.parse(row.metadata)) }));
   const meta = record ? sessionSchema.parse(record.metadata) : null;
-  return { projectId: project.id, lock: live, base: await myinFinalAt(service, project.id), uploadedAt: await uploadedAt(actor, project),
+  return { projectId: project.id, lock: live, base: await myinFinalAt(service, project.id), uploadedAt: await uploadedAt(actor, project), versions: await myinFinalVersions(service, project.id),
     confirming: live && meta?.confirming ? { at: meta.confirming.at, fromVersion: meta.confirming.fromVersion } : null, orders };
 }
 const presentOrder = (o: Order) => ({ text: o.text, videoAt: o.at, from: o.from, feedbackIds: o.feedbackIds, name: o.name, meaning: o.meaning,
