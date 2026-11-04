@@ -35,14 +35,14 @@ export function ChannelStyleEditor() {
   };
   if (version === null) return error ? <p className="yp-errline" role="alert">{error}</p> : <p className="yp-hint" role="status">불러오는 중이에요…</p>;
   return <form className="yp-card yp-confirm-form" onSubmit={event => { event.preventDefault(); void save(); }}>
-    <p className="yp-hint">채널마다 도식 색 · 영상 끝맺음 · 로고를 정해 두면, 영상 만들기에서 음성을 시작할 때 고른 모양이 그 영상에 고정돼요. 여기서 고쳐도 이미 만들던 영상은 그대로예요. 글꼴과 하단 자막 모양은 로건님 엔진이 받을 수 있게 되면 여기에 더해요.</p>
+    <p className="yp-hint">채널마다 도식 색 · 영상 끝맺음 · 로고를 정해 두면, 영상 만들기에서 음성을 시작할 때 고른 모양이 그 영상에 고정돼요. 여기서 고쳐도 이미 만들던 영상은 그대로예요. 글꼴과 하단 자막 모양은 영상 엔진이 받을 수 있게 되면 여기에 더해요.</p>
     {styles.map((style, index) => <fieldset key={style.id} className="yp-chstyle">
       <legend>{style.name || "새 채널 모양"}{style.version ? ` · v${style.version}` : ""}</legend>
       <div className="yp-chstyle-row">
         <label>이름<input className="yp-in" maxLength={30} value={style.name} onChange={event => set(index, { name: event.target.value })} placeholder="예) 마이인" /></label>
         <label>올릴 유튜브 채널 이름<input className="yp-in" maxLength={60} value={style.channel} onChange={event => set(index, { channel: event.target.value })} placeholder="다르면 업로드할 때 알려 줘요" /></label>
         <button type="button" className="yp-ib" aria-label="이 채널 모양 빼기" onClick={() => { setSaved(false); setStyles(list => list.filter((_, at) => at !== index)); }}><X size={14} /></button></div>
-      <label className="yp-chstyle-check"><input type="checkbox" checked={Boolean(style.tone)} onChange={event => set(index, { tone: event.target.checked ? TONE : null })} /> 도식 색 바꾸기 (로건님 톤앤매너)</label>
+      <label className="yp-chstyle-check"><input type="checkbox" checked={Boolean(style.tone)} onChange={event => set(index, { tone: event.target.checked ? TONE : null })} /> 도식 색 바꾸기 (톤앤매너)</label>
       {style.tone ? <div className="yp-chstyle-row">
         <label>모양 틀<select className="yp-in" value={style.tone.base} onChange={event => set(index, { tone: { ...style.tone!, base: event.target.value as "myin" | "card" } })}>
           <option value="myin">흰 바탕</option><option value="card">바탕 위 흰 카드</option></select></label>
