@@ -4,7 +4,7 @@
 //   node myin-local.mjs <키>   first time (the OS 「내 컴퓨터 연결」 command does this), then just: node myin-local.mjs
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -56,6 +56,45 @@ export function nfcNames(dir) {
   }
 }
 
+/** Parts downloaded into one file, each checked against its size and hash. */
+async function downloadParts(parts, file, what) {
+  writeFileSync(file, "");
+  for (const [n, part] of parts.entries()) {
+    const response = await fetch(part.url);
+    if (!response.ok) throw new Error(`${what} ${n + 1}을 받지 못했어요 (${response.status}).`);
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length !== part.bytes || createHash("sha256").update(bytes).digest("hex") !== part.sha256) throw new Error(`${what} ${n + 1}이 손상됐어요. 다시 실행해 주세요.`);
+    appendFileSync(file, bytes);
+  }
+}
+
+/** 엔진 · 자료 분리 (2026-11-04): the engine's pictures, music and sounds, downloaded once per their fingerprint and kept for every engine that uses them. */
+export async function installAssets(assets, home) {
+  const dir = path.join(home, `assets-${assets.fingerprint}`);
+  if (existsSync(path.join(dir, ".ready"))) return dir;
+  console.log(`엔진 자료(사진 · 음악)를 받는 중이에요 (${assets.parts.length}개 묶음)…`);
+  const tmp = mkdtempSync(path.join(os.tmpdir(), "myin-assets-")), bundle = path.join(tmp, "assets.tar.gz"), partial = `${dir}.partial`;
+  try {
+    await downloadParts(assets.parts, bundle, "엔진 자료 묶음");
+    rmSync(partial, { recursive: true, force: true }); mkdirSync(partial, { recursive: true });
+    if (spawnSync("tar", ["-xzf", bundle, "-C", partial], { stdio: "inherit" }).status !== 0) throw new Error("엔진 자료 묶음을 풀지 못했어요.");
+    nfcNames(partial);
+    writeFileSync(path.join(partial, ".ready"), assets.fingerprint);
+    rmSync(dir, { recursive: true, force: true }); renameSync(partial, dir);
+  } finally { rmSync(tmp, { recursive: true, force: true }); rmSync(partial, { recursive: true, force: true }); }
+  return dir;
+}
+
+/** An engine's own assets folder from the shared store: hard links (no extra disk), so a video's downloads never land in the store. */
+function linkTree(from, to) {
+  mkdirSync(to, { recursive: true });
+  for (const name of readdirSync(from)) {
+    const src = path.join(from, name), dst = path.join(to, name);
+    if (lstatSync(src).isDirectory()) linkTree(src, dst);
+    else { try { linkSync(src, dst); } catch { copyFileSync(src, dst); } }
+  }
+}
+
 /**
  * The render PC's bundle as this PC's engine folder: every part checked against its hash, unpacked, and a Python environment with
  * exactly the render PC's packages. Returns the folder and its Python. An engine already installed is used as it is.
@@ -67,19 +106,14 @@ export async function installEngine(info, home) {
     console.log(`영상 만드는 컴퓨터의 엔진을 받는 중이에요 (${info.parts.length}개 묶음)…`);
     const tmp = mkdtempSync(path.join(os.tmpdir(), "myin-engine-")), bundle = path.join(tmp, "bundle.tar.gz"), partial = `${dir}.partial`;
     try {
-      writeFileSync(bundle, "");
-      for (const [n, part] of info.parts.entries()) {
-        const response = await fetch(part.url);
-        if (!response.ok) throw new Error(`엔진 묶음 ${n + 1}을 받지 못했어요 (${response.status}).`);
-        const bytes = Buffer.from(await response.arrayBuffer());
-        if (bytes.length !== part.bytes || createHash("sha256").update(bytes).digest("hex") !== part.sha256) throw new Error(`엔진 묶음 ${n + 1}이 손상됐어요. 다시 실행해 주세요.`);
-        appendFileSync(bundle, bytes);
-      }
+      await downloadParts(info.parts, bundle, "엔진 묶음");
       rmSync(partial, { recursive: true, force: true }); mkdirSync(partial, { recursive: true });
       // macOS and Windows 10+ both ship tar with gzip.
       if (spawnSync("tar", ["-xzf", bundle, "-C", partial], { stdio: "inherit" }).status !== 0) throw new Error("엔진 묶음을 풀지 못했어요.");
       nfcNames(partial);
       if (readFileSync(path.join(partial, "FINGERPRINT"), "utf8").trim() !== info.fingerprint) throw new Error("받은 엔진이 영상 만드는 컴퓨터 것과 달라요.");
+      // A split engine (2026-11-04) brings its assets from the shared store into its own folder.
+      if (info.assets) linkTree(path.join(await installAssets(info.assets, home), "assets"), path.join(partial, "engine", "pkg", "assets"));
       rmSync(dir, { recursive: true, force: true }); renameSync(partial, dir);
     } finally { rmSync(tmp, { recursive: true, force: true }); rmSync(partial, { recursive: true, force: true }); }
   }
@@ -101,6 +135,10 @@ export async function installEngine(info, home) {
   const older = readdirSync(home).filter((name) => /^engine-[a-f0-9]{32}$/.test(name) && name !== path.basename(dir))
     .map((name) => ({ name, at: statSync(path.join(home, name)).mtimeMs })).sort((a, b) => b.at - a.at);
   for (const old of older.slice(1)) rmSync(path.join(home, old.name), { recursive: true, force: true });
+  // Assets no installed engine names any more only take disk.
+  const named = new Set(readdirSync(home).filter((name) => /^engine-[a-f0-9]{32}$/.test(name))
+    .map((name) => { try { return readFileSync(path.join(home, name, "ASSETS"), "utf8").trim(); } catch { return ""; } }));
+  for (const name of readdirSync(home).filter((n) => /^assets-[a-f0-9]{64}$/.test(n))) if (!named.has(name.slice(7))) rmSync(path.join(home, name), { recursive: true, force: true });
   return { dir, python: venvPython(venv) };
 }
 
@@ -143,7 +181,7 @@ async function main() {
   console.log("내 컴퓨터 영상 만들기를 켰어요. 이 창을 열어 두면 OS에서 「내 컴퓨터」로 고른 미리보기 영상을 만들어요. 끝내려면 Ctrl+C.");
   for (;;) {
     let info;
-    try { info = await api(key, { action: "engine" }); }
+    try { info = await api(key, { action: "engine", split: true }); }
     catch (error) { console.error(`OS에 연결하지 못했어요: ${error.message} · 1분 뒤 다시 해요.`); await sleep(60_000); continue; }
     if (!info.available) { console.log("영상 만드는 컴퓨터가 새 엔진 묶음을 준비하는 중이에요. 5분 뒤 다시 확인해요."); await sleep(5 * 60_000); continue; }
     const engine = await installEngine(info, home);
