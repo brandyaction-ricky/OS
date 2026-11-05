@@ -50,8 +50,8 @@ export const MCP_TOOLS = [
   },
   {
     name: "submit_video_edit",
-    description: "영상 편집기: 사람이 대화로 말한 고칠 점을 편집 주문으로 냅니다. get_video_editor로 읽은 기획표를 고쳐 storyboard 전체로 보내거나, 자막 줄만 고칠 때는 subtitles(i = subtitles 보기의 줄 번호, text = 새 자막)를 보냅니다. text는 사람이 한 말 그대로, meaning은 AI가 이해한 뜻(무엇을 어떻게 바꿨는지)입니다. 최종 검토 피드백에 답하는 주문이면 feedback_ids를 적습니다. OS가 새 기획표와 똑같이 검사하고, 걸린 곳을 돌려주면 고쳐서 다시 냅니다. 주문은 그 영상의 편집기를 연 컴퓨터가 받아 후보 버전을 만듭니다. 이 키 주인이 만들었거나 맡은 영상만 됩니다. records.write 범위가 필요합니다.",
-    inputSchema: { type: "object", properties: { project_id: { type: "string", format: "uuid" }, text: { type: "string" }, at: { type: "string" }, meaning: { type: "string" }, storyboard: { type: "object" }, subtitles: { type: "array", items: { type: "object", properties: { i: { type: "integer", minimum: 0 }, text: { type: "string" } }, required: ["i", "text"], additionalProperties: false } }, feedback_ids: { type: "array", items: { type: "string", format: "uuid" } } }, required: ["project_id", "text"], additionalProperties: false },
+    description: "영상 편집기: 사람이 대화로 말한 고칠 점을 편집 주문으로 냅니다. get_video_editor로 읽은 기획표를 고쳐 storyboard 전체로 보내거나, 자막 줄만 고칠 때는 subtitles(i = subtitles 보기의 줄 번호, text = 새 자막)를 보냅니다. text는 사람이 한 말 그대로, meaning은 AI가 이해한 뜻(무엇을 어떻게 바꿨는지)입니다. 최종 검토 피드백에 답하는 주문이면 feedback_ids를 적습니다. 편집 화면에서 손으로 하는 것(블록 끝 끌기 · 구간 지우기 · 대사 넣기 · 사진 덱 · 자막 줄 · 효과음 · 장면 칸)을 말로 시킬 때는 manual(편집 화면이 쓰는 손 편집 기록, kind 필수)과 그 기록을 만든 버전 version을 보냅니다 — 손 편집은 「완성」을 누를 때 함께 만들어집니다. OS가 새 기획표와 똑같이 검사하고, 걸린 곳을 돌려주면 고쳐서 다시 냅니다. 주문은 그 영상의 편집기를 연 컴퓨터가 받아 후보 버전을 만듭니다. 이 키 주인이 만들었거나 맡은 영상만 됩니다. records.write 범위가 필요합니다.",
+    inputSchema: { type: "object", properties: { project_id: { type: "string", format: "uuid" }, text: { type: "string" }, at: { type: "string" }, meaning: { type: "string" }, storyboard: { type: "object" }, subtitles: { type: "array", items: { type: "object", properties: { i: { type: "integer", minimum: 0 }, text: { type: "string" } }, required: ["i", "text"], additionalProperties: false } }, feedback_ids: { type: "array", items: { type: "string", format: "uuid" } }, manual: { type: "object", properties: { kind: { type: "string" } }, required: ["kind"] }, version: { type: "string" } }, required: ["project_id", "text"], additionalProperties: false },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   },
   {
@@ -393,8 +393,8 @@ export async function callMcpTool(request: ToolRequest, organizationId: string, 
     return fetchApi(`/api/v1/content/youtube-automation/editor?${new URLSearchParams({ projectId: input.project_id, view: input.view, ...(input.since ? { since: input.since } : {}) })}`);
   }
   if (request.name === "submit_video_edit") {
-    const input = z.object({ project_id: documentId, text: z.string(), at: z.string().optional(), meaning: z.string().optional(), storyboard: z.record(z.unknown()).optional(), subtitles: z.array(z.object({ i: z.number().int(), text: z.string() }).strict()).optional(), feedback_ids: z.array(documentId).optional() }).strict().parse(args);
-    return fetchApi("/api/v1/content/youtube-automation/editor", { method: "POST", body: JSON.stringify({ action: "order", projectId: input.project_id, text: input.text, at: input.at, meaning: input.meaning, storyboard: input.storyboard, subtitles: input.subtitles, feedbackIds: input.feedback_ids }) });
+    const input = z.object({ project_id: documentId, text: z.string(), at: z.string().optional(), meaning: z.string().optional(), storyboard: z.record(z.unknown()).optional(), subtitles: z.array(z.object({ i: z.number().int(), text: z.string() }).strict()).optional(), feedback_ids: z.array(documentId).optional(), manual: z.record(z.unknown()).optional(), version: z.string().optional() }).strict().parse(args);
+    return fetchApi("/api/v1/content/youtube-automation/editor", { method: "POST", body: JSON.stringify({ action: "order", projectId: input.project_id, text: input.text, at: input.at, meaning: input.meaning, storyboard: input.storyboard, subtitles: input.subtitles, feedbackIds: input.feedback_ids, manual: input.manual, version: input.version }) });
   }
   if (request.name === "decline_video_order") {
     const input = z.object({ project_id: documentId, order_id: documentId.optional(), feedback_id: documentId.optional(), reason: z.string() }).strict().parse(args);

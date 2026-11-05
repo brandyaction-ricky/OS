@@ -50,7 +50,7 @@ test("writes need records.write, an order passes the storyboard check, and only 
   assert.match(submit, /anchorMyinCues\(storyboard, myin\.words, myin\.speech\)/);
   assert.match(submit, /checkMyinStoryboard\(storyboard, myin\.words, diagramCatalogTypes\(await readDiagramCatalog\(\)\), myin\.speech\)/);
   assert.match(submit, /ApiError\(422, "EDIT_STORYBOARD_ISSUES"/);
-  for (const fn of ["nextEditOrders", "editOrderResult"]) assert.match(edit.slice(edit.indexOf(`export async function ${fn}`)).split("\nexport ")[0], /await lockHolder\(service, actor, project\.id, pc\)/, fn);
+  for (const fn of ["nextEditOrders", "editOrderResult"]) assert.match(edit.slice(edit.indexOf(`export async function ${fn}`)).split("\nexport ")[0], /await (lockHolder|heldSession)\(service, actor, project\.id, pc\)/, fn);
   assert.match(edit, /\.eq\("id", record\.id\)\.eq\("version", record\.version\)/, "the lock is taken with the record version");
   assert.match(edit.slice(edit.indexOf("export async function declineEdit")), /action: "decline", text: input\.reason/, "a declined feedback keeps the reason");
 });
@@ -148,7 +148,7 @@ test("최종 검토 피드백 → 편집 (v2 ④ · v3 6-6): each open video com
   const finish = edit.slice(edit.indexOf("export async function confirmFinish"), edit.indexOf("export async function editHandoff"));
   assert.match(finish, /actOnFeedback\(actor, project\.id, \{ itemId: item\.id, expectedVersion: item\.version, action: "resolve", text: "" \}\)/);
   assert.ok(finish.indexOf("myinAddEditFinal") < finish.indexOf("actOnFeedback"), "marked after the new final is in, so 반영됨 names its version");
-  const poll = edit.slice(edit.indexOf("export async function feedbackEdits"));
+  const poll = edit.slice(edit.indexOf("export async function feedbackEdits")).split("\nexport ")[0];
   assert.doesNotMatch(poll, /editStatus\(|readStages|myinFinal/, "the 30-second feedback poll reads only the lock and the orders");
   const route = await readFile(new URL("../app/api/v1/content/youtube/projects/[id]/feedback/route.ts", import.meta.url), "utf8");
   assert.match(route, /items\.map\(\(item\) => \(\{ \.\.\.item, edit: edits\[item\.id\] \?\? null \}\)\)/);

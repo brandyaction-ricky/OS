@@ -1448,6 +1448,15 @@ export async function myinFinalVersions(service: Service, sourceId: string) {
     edit: final.edit ? { name: final.edit.name, pc: final.edit.pc, fromVersion: final.edit.fromVersion, note: final.edit.note, orders: final.edit.orders.length } : null }));
 }
 
+/** The same list's numbers only, read from the two fields (the editor screen asks every few seconds). */
+export async function myinFinalNumbers(service: Service, sourceId: string) {
+  const { data } = await service.from("os_records").select("final:metadata->final,finals:metadata->finals").eq("parent_id", sourceId).eq("record_type", "ai_job")
+    .eq("metadata->>kind", MYIN_RUN_KIND).is("archived_at", null).order("created_at", { ascending: false }).limit(1);
+  type F = { at: string; edit?: { fromVersion: string } };
+  const row = data?.[0] as { final?: F | null; finals?: F[] | null } | undefined;
+  return [...(row?.finals ?? []), ...(row?.final ? [row.final] : [])].map((final, i) => ({ v: i + 1, at: final.at, edit: final.edit ? { fromVersion: final.edit.fromVersion } : null }));
+}
+
 /** 영상 편집기 (v3 7.2-2): the engine that drew the video's newest final (an edited one names its own), if known. */
 export async function myinFinalEngine(service: Service, sourceId: string) {
   const final = (await latestRun(service, sourceId))?.run.final;

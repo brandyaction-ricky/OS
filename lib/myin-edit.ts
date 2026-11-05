@@ -22,10 +22,11 @@ export function lockDecision(current: EditLock | null | undefined, who: { by: st
   return { kind: "held" as const, lock: current };
 }
 
-export type EditOrderStatus = "queued" | "working" | "done" | "failed" | "declined";
-/** An order moves only forward: queued → working → done | failed, or declined (못 함) before it is done; failed may be queued again. */
+export type EditOrderStatus = "queued" | "working" | "done" | "failed" | "declined" | "cancelled";
+/** An order moves only forward: queued → working → done | failed, or declined (못 함) before it is done; failed may be queued again.
+ *  A hand edit not yet taken may be cancelled (편집 화면 되돌리기). */
 export function orderMove(from: EditOrderStatus, to: EditOrderStatus) {
-  const next: Record<EditOrderStatus, EditOrderStatus[]> = { queued: ["working", "declined"], working: ["done", "failed", "declined", "queued"], failed: ["queued", "declined"], done: [], declined: [] };
+  const next: Record<EditOrderStatus, EditOrderStatus[]> = { queued: ["working", "declined", "cancelled"], working: ["done", "failed", "declined", "queued"], failed: ["queued", "declined"], done: [], declined: [], cancelled: [] };
   return next[from].includes(to);
 }
 
@@ -44,7 +45,7 @@ export function editCheckIssues(c: EditCheck) {
   return out;
 }
 
-export interface FeedOrder { at: string; updatedAt: string; text: string; name: string; from: "chat" | "feedback"; status: EditOrderStatus; result: { version?: string; note: string; at: string } | null }
+export interface FeedOrder { at: string; updatedAt: string; text: string; name: string; from: "chat" | "feedback" | "screen"; status: EditOrderStatus; result: { version?: string; note: string; at: string } | null }
 export interface FeedVersion { at: string; edit: { name: string; pc: string; orders: number } | null }
 /**
  * 편집 소식 (로건 개발 문서 v3 6-5 · P5): what happened to a video's edit since `since`, oldest first, as lines the member's AI chat says
@@ -63,6 +64,8 @@ export function editFeed(state: { lock: { name: string; pc: string; since: strin
       : `관리자 ${e.name}님이 ${e.from?.name}님(${e.from?.pc})의 편집 잠금을 풀었어요${e.reason ? `: ${e.reason}` : "."}` });
   else if (state.lock) out.push({ at: state.lock.since, kind: "editing", text: `${state.lock.name}님이 ${state.lock.pc}에서 편집을 시작했어요.` });
   for (const o of state.orders) {
+    // Hand edits from the editor screen are many small drags: the chat hears only one that could not be made.
+    if (o.from === "screen") { if (o.result && o.status === "failed") out.push({ at: o.result.at, kind: "failed", text: `손 편집 “${o.text}”을 반영하지 못했어요${o.result.note ? `: ${o.result.note}` : "."}` }); continue; }
     out.push({ at: o.at, kind: "order", text: `${o.name}님 ${o.from === "feedback" ? "최종 검토 피드백이" : "주문이"} 들어왔어요: “${o.text}”` });
     if (o.status === "working") out.push({ at: o.updatedAt, kind: "working", text: `“${o.text}” 고치는 중이에요.` });
     if (o.result && o.status === "done") out.push({ at: o.result.at, kind: "done", text: `“${o.text}” 고친 영상이 나왔어요. 편집기에서 보고 완성하면 OS 완성본이 돼요.` });
@@ -88,4 +91,43 @@ export function feedbackEditStates(items: { id: string; status: string; target: 
       : { state: order.status === "failed" ? "failed" : "cannot", ...(note ? { note } : {}) };
   }
   return out;
+}
+
+/** 편집 화면 재료 (편집 화면 이식 2026-11-05 ①): one version's files the editing computer put in the OS for the screen. */
+export interface ScreenVersion { name: string; at: string; files: number; bytes: number; from?: string; note?: string; final?: string }
+/** A material file's name: flat (no folders), and a kind the content bucket takes. */
+export const SCREEN_FILE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}\.(json|srt|mp4|mp3|m4a|wav|jpg|jpeg|png|webp)$/;
+export const SCREEN_FILE_TYPES: Record<string, string> = { json: "application/json", srt: "application/x-subrip", mp4: "video/mp4", mp3: "audio/mpeg", m4a: "audio/mp4",
+  wav: "audio/wav", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
+/** The screen keeps a computer's newest versions only (each ~50 MB with its edit video and sound lines). */
+export const SCREEN_KEEP = 10;
+
+export interface ScreenOrder { id: string; at: string; text: string; videoAt: number | null; version?: string; manual?: Record<string, unknown>; meaning: string;
+  status: EditOrderStatus; result: { version?: string; note: string; at: string } | null }
+const sec = (iso: string) => Date.parse(iso) / 1000;
+const jobStatus = (s: EditOrderStatus) => s === "working" ? "running" : s === "failed" || s === "declined" ? "error" : s;
+/**
+ * 편집 화면 상태: what the editor screen made on a member's computer reads from that computer's server (/api/state), built from the OS — the versions the
+ * editing computer put up, hand edits (manual) apart from chat orders, saved versions as OS final numbers (v1 = first final), and a
+ * 완성 waiting. Times are seconds, as his screen counts them.
+ */
+export function editorScreenState(input: { versions: ScreenVersion[]; finals: { v: number; at: string; edit: { fromVersion: string } | null }[]; orders: ScreenOrder[];
+  save: { at: string } | null; base: string | null; lock: { name: string; pc: string; since: string } | null; now: number }) {
+  const internal = (f: { at: string; edit: { fromVersion: string } | null }) => f.edit?.fromVersion ?? input.versions.find((v) => v.final === f.at)?.name ?? null;
+  const list = input.finals.flatMap((f) => { const name = internal(f); return name && input.versions.some((v) => v.name === name) ? [{ label: `v${f.v}`, internal: name, t: sec(f.at) }] : []; });
+  const saved = new Set(list.map((x) => x.internal));
+  const newest = input.versions.at(-1);
+  const hand = input.orders.filter((o) => o.manual), chat = input.orders.filter((o) => !o.manual);
+  const edits = hand.map((o) => ({ id: o.id, t: sec(o.at), version: o.version ?? null, text: o.text, manual: o.manual, status: jobStatus(o.status), new: o.result?.version ?? null, reason: o.result?.note || null }));
+  return {
+    where: { pick: "mine", up: { mine: true, office: false } }, build: null, stats: {}, now: input.now / 1000, lock: input.lock, base: input.base,
+    versions: input.versions,
+    saves: { list, pending: input.save ? { label: `v${input.finals.length + 1}`, t: sec(input.save.at) } : null },
+    draft: newest && !saved.has(newest.name) ? newest.name : null,
+    pending_count: edits.filter((e) => e.status === "queued" || e.status === "running").length + chat.filter((o) => o.status === "working").length,
+    edits,
+    orders: chat.map((o) => ({ id: o.id, t: sec(o.at), text: o.text, at: o.videoAt, status: o.status === "queued" ? "waiting" : jobStatus(o.status) })),
+    jobs: Object.fromEntries(chat.filter((o) => o.status !== "queued").map((o) => [o.id, { id: o.id, status: jobStatus(o.status), meaning: o.meaning, new: o.result?.version ?? null,
+      ...(o.result ? { t_end: sec(o.result.at), reason: o.result.note } : {}) }])),
+  };
 }
