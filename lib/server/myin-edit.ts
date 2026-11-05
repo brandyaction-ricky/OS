@@ -320,7 +320,7 @@ export async function editHandoff(actor: RequestActor, projectId: string, at?: s
   const images = await Promise.all((session ? sessionSchema.parse(session.metadata).images ?? [] : []).map(async (image) =>
     ({ file: image.file, bytes: image.bytes, credit: image.credit ?? null, url: await myinEditorImageUrl(service, image.path) })));
   return { projectId: project.id, uploadedAt: await uploadedAt(actor, project), ...final, bundle, images,
-    engine: final.edit ? await currentEngineDownload(final.edit.engine) : null };
+    engine: final.edit ? await currentEngineDownload(final.edit.engine, true) : null };
 }
 
 /** 편집 소식 for the member's AI chat: what happened since `since` (an ISO time; none = everything), and the time to ask from next. */

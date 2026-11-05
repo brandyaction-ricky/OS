@@ -20,6 +20,8 @@ New-Item -ItemType Directory -Force -Path $HomeDir | Out-Null
 $Runner = Join-Path $HomeDir "myin-local.mjs"
 Invoke-WebRequest "$OsUrl/myin-local/myin-local.mjs" -OutFile $Runner -UseBasicParsing
 $Launcher = Join-Path ([Environment]::GetFolderPath("Desktop")) "MYIN local render.cmd"
-Set-Content -Path $Launcher -Encoding ASCII -Value "@echo off`r`nnode `"%LOCALAPPDATA%\myin-local\myin-local.mjs`"`r`npause"
+# Each start takes the OS's latest runner first (as the Mac launcher does); offline, the last one runs (2026-11-04).
+$Refresh = "curl.exe -fsSL `"$OsUrl/myin-local/myin-local.mjs`" -o `"%LOCALAPPDATA%\myin-local\myin-local.mjs.new`" && move /Y `"%LOCALAPPDATA%\myin-local\myin-local.mjs.new`" `"%LOCALAPPDATA%\myin-local\myin-local.mjs`" >nul"
+Set-Content -Path $Launcher -Encoding ASCII -Value "@echo off`r`n$Refresh`r`nnode `"%LOCALAPPDATA%\myin-local\myin-local.mjs`"`r`npause"
 Write-Host "Installed. Next time, double-click 'MYIN local render' on the desktop."
 if ($Key) { node $Runner $Key } else { node $Runner }

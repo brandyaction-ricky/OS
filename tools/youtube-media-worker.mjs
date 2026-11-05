@@ -57,8 +57,23 @@ export async function publishEngine() {
   const out = await runCapture("nice", ["-n", "19", "zsh", pack], { env: { ...process.env, MYIN_LIBRARY: myinLibrary, WORKER_PATH: fileURLToPath(import.meta.url) } });
   const file = out.match(/^BUNDLE=(.+)$/m)?.[1], python = out.match(/^PYTHON=(\d+\.\d+)$/m)?.[1];
   if (!file || !python || !path.basename(file).includes(engine())) throw new Error("the pack script did not make this engine's bundle");
+  // 엔진 · 자료 분리 (2026-11-04): the assets bundle goes up once per its own fingerprint; the code bundle names it.
+  const assets = out.match(/^ASSETS=([a-f0-9]{64})$/m)?.[1], assetsFile = out.match(/^ASSETS_BUNDLE=(.+)$/m)?.[1];
+  if (assets && assetsFile) {
+    const count = Math.ceil(statSync(assetsFile).size / ENGINE_PART_BYTES);
+    const answer = await call({ action: "assets_upload", fingerprint: assets, parts: count });
+    if (!answer.have) await call({ action: "assets_ready", fingerprint: assets, parts: await uploadParts(assetsFile, answer.urls) });
+  }
   const bytes = statSync(file).size, count = Math.ceil(bytes / ENGINE_PART_BYTES);
   const { urls } = await call({ action: "engine_upload", fingerprint: engine(), parts: count });
+  const parts = await uploadParts(file, urls);
+  await call({ action: "engine_ready", fingerprint: engine(), python, parts, ...(assets && assetsFile ? { assets } : {}) });
+  console.log(`engine bundle for staff PCs: ${engine()} (${count} parts, ${gb(bytes)} GB${assets ? `, assets ${assets.slice(0, 8)}` : ""})`);
+}
+
+/** A bundle in ≤45 MB parts to the addresses given, each with its size and hash. */
+async function uploadParts(file, urls) {
+  const bytes = statSync(file).size, count = Math.ceil(bytes / ENGINE_PART_BYTES);
   const parts = [], dir = mkdtempSync(path.join(os.tmpdir(), "myin-engine-")), fd = openSync(file, "r");
   try {
     for (let n = 0; n < count; n++) {
@@ -71,8 +86,7 @@ export async function publishEngine() {
       parts.push({ bytes: chunk.length, sha256: createHash("sha256").update(chunk).digest("hex") });
     }
   } finally { closeSync(fd); rmSync(dir, { recursive: true, force: true }); }
-  await call({ action: "engine_ready", fingerprint: engine(), python, parts });
-  console.log(`engine bundle for staff PCs: ${engine()} (${count} parts, ${gb(bytes)} GB)`);
+  return parts;
 }
 
 async function call(body, route = mediaRoute) {

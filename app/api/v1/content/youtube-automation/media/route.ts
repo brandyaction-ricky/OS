@@ -6,7 +6,7 @@ import { safeSecretMatch } from "@/lib/server/auth";
 import { buildYoutubeRenderBrief, claimYoutubeRender, completeYoutubeRender, failYoutubeRender } from "@/lib/server/youtube-render-run";
 import { MYIN_VOICE_PARTS, claimMyinBreath, claimMyinClips, claimMyinCta, claimMyinFinal, claimMyinPrep, claimMyinWords, completeMyinBreath, completeMyinClips, completeMyinCta, completeMyinFinal, completeMyinPrep, completeMyinVoiceBackfill, completeMyinWords, failMyinPrep, failMyinStage, failMyinWords, myinVoiceBackfill } from "@/lib/server/myin-run";
 import { renderPcSignalSchema, saveRenderPcSignal } from "@/lib/server/youtube-render-pc";
-import { engineReadySchema, engineUploadSchema, engineUploadUrls, saveEngineManifest } from "@/lib/server/render-engine";
+import { assetsReadySchema, assetsUploadSchema, assetsUploadUrls, engineReadySchema, engineUploadSchema, engineUploadUrls, saveAssetsManifest, saveEngineManifest } from "@/lib/server/render-engine";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
 import { claimShortformRender,shortformVoice,completeShortformRender,failShortformRender } from "@/lib/server/shortform-render";
 import { claimShortRefs, completeShortRefs, failShortRefs, shortRefsCompleteSchema, shortRefsFailSchema } from "@/lib/server/youtube-process-short-refs";
@@ -29,7 +29,7 @@ const inputSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("complete"), ...lease, videoBytes: z.number().int().positive(), videoSha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
   z.object({ action: z.literal("fail"), ...lease, code: z.string().max(80) }).strict(),
   // 마이인 v13 stage 1: breath commas for Fish (로건 호흡·타이밍), then voice post-processing, words.json and subtitles on the render PC.
-  engineUploadSchema, engineReadySchema,
+  engineUploadSchema, engineReadySchema, assetsUploadSchema, assetsReadySchema,
   z.object({ action: z.literal("myin_breath_claim") }).strict(),
   z.object({ action: z.literal("myin_breath_complete"), runId: z.string().uuid(), lease: z.string().uuid(),
     breaths: z.array(z.object({ index: z.number().int().min(0).max(149), after: z.array(z.number().int().min(0).max(400)).max(80) }).strict()).max(150) }).strict(),
@@ -76,6 +76,8 @@ export async function POST(request: Request) {
     const result = input.action === "heartbeat" ? await saveRenderPcSignal(input)
       : input.action === "engine_upload" ? await engineUploadUrls(input)
       : input.action === "engine_ready" ? await saveEngineManifest(input)
+      : input.action === "assets_upload" ? await assetsUploadUrls(input)
+      : input.action === "assets_ready" ? await saveAssetsManifest(input)
       : input.action === "shorts_claim" ? await claimShortformRender(undefined, input.layoutVersion,input.diagramTypes,input.renderId)
       : input.action === "shorts_voice" ? await shortformVoice(input)
       : input.action === "shorts_complete" ? await completeShortformRender(input)
