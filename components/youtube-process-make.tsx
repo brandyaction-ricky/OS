@@ -2,7 +2,7 @@
 import { CostTag } from "./cost-notice";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { CalendarDays, Check, ChevronRight, Download, Film, FileText, Sparkles, Upload, X } from "lucide-react";
 import { editableFields } from "@/lib/youtube-process/confirm";
 import { myinCleanScript, myinScriptMarkdown } from "@/lib/myin-script";
@@ -34,6 +34,7 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
   const [busy, setBusy] = useState("");
   const [progress, setProgress] = useState<number | null>(null);
   const [finalError, setFinalError] = useState("");   // shown in the upload box: the page-top error was easy to miss below the fold
+  const [dragging, setDragging] = useState(false);
   const [moving, setMoving] = useState(false);
   const finalInput = useRef<HTMLInputElement>(null);
   const reload = page.reload;
@@ -92,6 +93,18 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
   // 업로드 전 급한 수정 (로건 요청 2026-10-30): 컨펌 뒤에도 유튜브에 올리기 전까지 새 최종본 · 썸네일 파일은 올릴 수 있어요.
   const late = project?.yp.stage === "upload" && bundle?.stages.upload.data.run?.status !== "done";
   const canFinal = late || editable && (project?.yp.stage === "make" || reviewFields === "all" || reviewFields.includes("make.final"));
+  // 직원 요청 11/4: the video file can be dragged onto the upload box, as well as picked.
+  const dropFinal = canFinal ? {
+    onDragOver: (event: DragEvent) => { if (event.dataTransfer.types.includes("Files")) { event.preventDefault(); setDragging(true); } },
+    onDragLeave: (event: DragEvent) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false); },
+    onDrop: (event: DragEvent) => {
+      event.preventDefault(); setDragging(false);
+      const file = event.dataTransfer.files[0];
+      if (!file) return;
+      if (!/^video\/(mp4|quicktime|x-m4v|webm)$/.test(file.type) && !/\.(mp4|mov|m4v|webm)$/i.test(file.name)) { setFinalError("영상 파일(mp4 · mov · m4v · webm)만 올릴 수 있어요."); return; }
+      void uploadFinal(file);
+    },
+  } : {};
   const canThumb = late || editable && (project?.yp.stage === "make" || reviewFields === "all" || reviewFields.includes("make.thumbs"));
   const confirmedAt = project?.yp.gates.review.state === "ok" ? project.yp.gates.review.decidedAt ?? "" : "";
   // 일정 is optional (owner decision 2026-10-25): making goes on without a date; the date only feeds 스케줄.
@@ -137,7 +150,7 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
       </div></YpSection>}
       {short && !auto ? <details className="yp-more-fields" open={finals.some(final => final.source === "upload")}><summary>직접 편집한 영상이 있으면 올려요 (선택)</summary>
         {progress !== null ? <div className="yp-drop"><Upload size={22} aria-hidden="true" /><b>올리는 중</b><div className="yp-dprog"><i style={{ width: `${progress}%` }} /></div><span style={{ fontSize: 12 }}>{progress}%, 다 올라갈 때까지 화면을 닫지 마세요</span></div>
-          : canFinal ? <div className="yp-row-btns"><button type="button" className="yp-btn yp-sm" onClick={() => finalInput.current?.click()}><Upload size={14} /> 파일 올리기</button><span className="yp-muted" style={{ fontSize: 12 }}>올린 파일이 최종 검토 새 버전이 돼요</span></div> : null}
+          : canFinal ? <div className={`yp-row-btns${dragging ? " yp-drop-on" : ""}`} {...dropFinal}><button type="button" className="yp-btn yp-sm" onClick={() => finalInput.current?.click()}><Upload size={14} /> 파일 올리기</button><span className="yp-muted" style={{ fontSize: 12 }}>파일을 여기로 끌어다 놓아도 돼요 · 올린 파일이 최종 검토 새 버전이 돼요</span></div> : null}
         <input ref={finalInput} type="file" hidden accept="video/mp4,video/quicktime,video/x-m4v,video/webm" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void uploadFinal(file); }} />
       </details> : <>
       <YpSection n={++n} title={auto ? "최종본 만들기" : "최종본 올리기"} gq={short ? "확정한 대본으로 자동으로 만들어요" : anim ? "원고로 영상을 자동으로 만들어요" : undefined} need>
@@ -148,9 +161,9 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
           voiceText={shortScript ? scriptLines(shortScript.text).map(line => line.text).join(" ") : myinCleanScript(myinScriptMarkdown(null, narrationFromMarkdown(bundle.stages.outline.data.script))).spoken.join("\n")}
           finalNote={<p className="yt-note">최종본 v{finals.length || 1} 완성. {short ? "소리를 확인하고 [다음: 최종 검토]를 눌러요." : "소리를 확인하고 최종 썸네일 A · B를 올려요."}</p>} /> : null}
         {progress !== null ? <div className="yp-drop"><Upload size={22} aria-hidden="true" /><b>최종본 v{finals.length + 1} 올리는 중</b><div className="yp-dprog"><i style={{ width: `${progress}%` }} /></div><span style={{ fontSize: 12 }}>{progress}%, 다 올라갈 때까지 화면을 닫지 마세요</span></div>
-          : canFinal ? <div className={`yp-drop${finals.length ? " yp-ok" : ""}`} style={auto ? { marginTop: 10 } : undefined}>{finals.length ? <Check size={22} aria-hidden="true" /> : <Film size={22} aria-hidden="true" />}
+          : canFinal ? <div className={`yp-drop${finals.length ? " yp-ok" : ""}${dragging ? " yp-drop-on" : ""}`} style={auto ? { marginTop: 10 } : undefined} {...dropFinal}>{finals.length ? <Check size={22} aria-hidden="true" /> : <Film size={22} aria-hidden="true" />}
             <b>{finals.length ? `최종본 v${finals.length} 저장됨` : auto ? "직접 만든 영상이 있으면 올려요" : "영상 파일을 올려 주세요"}</b>
-            <span style={{ fontSize: 12 }}>mp4 · mov · m4v · webm</span>
+            <span style={{ fontSize: 12 }}>{dragging ? "놓으면 바로 올라가요" : "mp4 · mov · m4v · webm · 파일을 여기로 끌어다 놓아도 돼요"}</span>
             <div className="yp-row-btns" style={{ justifyContent: "center" }}><button type="button" className="yp-btn" onClick={() => finalInput.current?.click()}>{finals.length ? "새 버전 올리기" : "파일 올리기"}</button></div>
             {late ? <span style={{ fontSize: 12 }}>최종 검토는 컨펌됐어요. 새 버전을 올리면 업로드 때 그 버전이 올라가요.</span> : null}
             {finalError ? <p className="yp-unsaved" role="alert" style={{ fontSize: 12, margin: "8px 0 0" }}>{finalError}</p> : null}</div> : null}
