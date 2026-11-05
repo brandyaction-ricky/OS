@@ -282,7 +282,7 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
                 {range && duration ? <span className="yp-rg yp-sel" style={{ left: `${range[0] / duration * 100}%`, width: `${(range[1] - range[0]) / duration * 100}%` }} /> : null}
                 <span className="yp-knob" style={{ left: `${duration ? time / duration * 100 : 0}%` }} />
                 {hover !== null && duration ? <span className="yp-hovt" style={{ left: `${hover / duration * 100}%` }}>{fmt(hover)}</span> : null}</div>
-              {jump !== null ? <input className="yp-in yp-tm-in" autoFocus value={jump} onChange={event => setJump(event.target.value)} onBlur={goTo} aria-label="갈 시각 (예: 3:20)" placeholder="3:20"
+              {jump !== null ? <input className="yp-in yp-tm-in" autoFocus value={jump} onFocus={event => event.currentTarget.select()} onChange={event => setJump(event.target.value)} onBlur={goTo} aria-label="갈 시각 (예: 3:20)" placeholder="3:20"
                   onKeyDown={event => { if (event.key === "Enter") goTo(); if (event.key === "Escape") setJump(null); }} />
                 : <button type="button" className="yp-tm yp-tm-btn" title="눌러서 갈 시각을 써요 (예: 3:20)" onClick={() => setJump(fmt(time))}>{fmt(time)} / {fmt(duration)}</button>}</div>
             <div className="yp-ctrl2"><label className="yp-vsel">버전 <select value={ver} onChange={event => { setVerSel(Number(event.target.value)); setRange(null); setTime(0); }} aria-label="영상 버전">
