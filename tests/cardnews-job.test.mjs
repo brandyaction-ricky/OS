@@ -49,7 +49,7 @@ test("the card lists the 정본 by doc_id (GPT pastes it in from there) and the 
   assert.doesNotMatch(card, /웹툰형 — 이야기로/);
   const toon = job.cardJobCard({ project: { title: "주제", yp: { topic: { target: "3년 차", note: "" } } }, cards: { source: { kind: "threads", title: "글", text: "원문" }, focus: "" },
     formats: ["webtoon"], canon: null, voice: [], leaseMinutes: 30 });
-  for (const rule of [/급하게 넣지 않습니다/, /오그라들지 않게/, /클리셰를 적극적으로/, /처음 보는 사람 눈으로/]) assert.match(toon, rule);
+  for (const rule of [/급하게 넣지 않습니다/, /오그라들지 않게/, /클리셰를 적극적으로/, /처음 보는 사람 눈으로/, /해설은 한 화에 두세 줄/, /이름표를 답니다/, /웃음은 이렇게/]) assert.match(toon, rule);
   assert.match(toon, /않습니다\.\n\n## 웹툰형 — 이야기로 씁니다\n- [^]*않기\)\.\n\n## 먼저 끝까지/);
   assert.match(card, /않습니다\.\n\n## 먼저 끝까지/);
   assert.equal(job.canonVersion("> **정본 묶음: v0.1 (2026-10-30).**", 4), "v0.1");
