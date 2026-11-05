@@ -16,6 +16,8 @@ ws/voice/os_voice, versions/, voicever/, jobs/, orders.json).
   L.settings()                                                    the runner's engine folders, Python, fingerprint and render slots
   L.upload_image(project, path)                                   a picture the editor uses, kept by the OS for whoever takes over
   L.cleanup(project, editor)                                      two weeks after YouTube, clear this computer's edit files
+  L.screen_publish(folder)                                        a new OS editor screen for everyone: the folder's page, scripts, styles
+                                                                  (also: python3 -I tools/myin_editor_os.py screen <folder>)
 
 Key: MYIN_LOCAL_KEY, else the 「내 컴퓨터 렌더」 key myin-local saved. Computer name: MYIN_PC, else this computer's name.
 Self-check: python3 -I tools/myin_editor_os.py --self-test
@@ -64,7 +66,7 @@ def _call(method, url, body=None, headers=None):
         raise EditorError(err.get("code", f"HTTP_{e.code}"), err.get("message", f"OS가 {e.code}로 답했어요."))
 
 def api(action, project, **body):
-    data = json.dumps({"action": action, "projectId": project, **{k: v for k, v in body.items() if v is not None}}).encode()
+    data = json.dumps({"action": action, **({"projectId": project} if project else {}), **{k: v for k, v in body.items() if v is not None}}).encode()
     return json.loads(_call("POST", OS_URL + ROUTE, data, {"authorization": f"Bearer {key()}", "content-type": "application/json"}))
 
 def view(project, name="edits"):
@@ -93,6 +95,16 @@ def upload_image(project, path, credit=None):
     up = api("image_upload", project, pc=pc(), type=ctype)
     _put(up["uploadUrl"], path, ctype)
     return api("image_saved", project, pc=pc(), file=up["file"], path=up["path"], credit=credit)["file"]
+
+
+SCREEN_CODE = re.compile(r"^[a-z][a-z0-9_-]{0,40}\.(html|js|css)$")
+
+def screen_publish(folder):
+    """A new OS editor screen, live for everyone at once (대표 결정 2026-11-05): the folder's page, scripts and styles (flat names; others
+    are left out) replace the ones up now. The OS keeps who put it up and when."""
+    names = sorted(n for n in os.listdir(folder) if SCREEN_CODE.match(n))
+    if "index.html" not in names: raise EditorError("EDIT_SCREEN_NO_INDEX", "index.html이 있는 화면 폴더를 골라 주세요.")
+    return api("screen_publish", None, files={n: open(os.path.join(folder, n), encoding="utf-8").read() for n in names})
 
 
 # ── 편집 잠금: 한 영상은 한 사람·한 컴퓨터 ──
@@ -351,6 +363,7 @@ def _self_test():
             if body["action"] == "materials_upload":
                 return self._send({"uploads": [{"name": f["name"], "url": f"{base}/up/m-{f['name']}", "type": SCREEN_TYPES[os.path.splitext(f["name"])[1]]} for f in body["files"]]})
             if body["action"] == "materials_saved": return self._send({"ok": True, "version": {"name": body["version"], "files": 2}})
+            if body["action"] == "screen_publish": return self._send({"ok": True, "files": len(body["files"])})
             if body["action"] == "confirm_start":
                 return self._send({"confirmId": "55555555-5555-4555-8555-555555555555", "videoUploadUrl": base + "/up/video", "srtUploadUrl": base + "/up/srt",
                                    "bundleUploadUrls": [f"{base}/up/part{n}" for n in range(body["bundleParts"])],
@@ -394,6 +407,9 @@ def _self_test():
         assert materials(project, "v1", [vj, px], final="2026-11-04T10:00:00.000Z")["name"] == "v1"
         assert ("PUT", "/up/m-proxy.mp4", "video/mp4") in calls and next(c[2] for c in calls if c[1] == "materials_saved")["final"] == "2026-11-04T10:00:00.000Z"
         save_done(project); assert calls[-1][1] == "save_done"
+        web = os.path.join(ed, "web"); os.makedirs(web)
+        for n in ["index.html", "trim.js", "notes.txt", "Old.JS"]: open(os.path.join(web, n), "w", encoding="utf-8").write("// 화면")
+        assert screen_publish(web)["files"] == 2 and set(calls[-1][2]["files"]) == {"index.html", "trim.js"} and "projectId" not in calls[-1][2], "only the screen's own files, for no one video"
         video = os.path.join(ed, "versions", "v2.mp4"); open(video, "wb").write(b"video-bytes")
         open(os.path.join(ed, "versions", "v2.srt"), "w").write("1\n")
         os.makedirs(os.path.join(ed, "versions", "v2_handouts")); open(os.path.join(ed, "versions", "v2_handouts", "한장정리.png"), "wb").write(b"png"); open(os.path.join(ed, "versions", "v2_handouts", "덱_전체.pdf"), "wb").write(b"pdf")
@@ -432,3 +448,5 @@ def _self_test():
 
 if __name__ == "__main__" and "--self-test" in sys.argv:
     _self_test()
+elif __name__ == "__main__" and sys.argv[1:2] == ["screen"] and len(sys.argv) == 3:
+    print(screen_publish(sys.argv[2]))
