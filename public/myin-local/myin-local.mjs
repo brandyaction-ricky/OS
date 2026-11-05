@@ -113,6 +113,16 @@ export function workerEnv(engine, home, key) {
   return env;
 }
 
+/**
+ * 영상 편집기 (로건 개발 문서 v3 7.2-11): what the editor on this computer reads from the runner — the installed engine's folders, its
+ * Python and fingerprint (the OS refuses a confirm from an older one), and how many 5-second pieces to draw at once. No key in it.
+ */
+export function editorSettings(engine, home, fingerprint, cpus = os.cpus().length) {
+  const env = workerEnv(engine, home, "");
+  return { os: OS_URL, engine: { fingerprint, dir: engine.dir, python: engine.python, pkg: env.MYIN_PKG ?? null, diagrams: env.MYIN_DIAGRAM_DIR ?? null,
+    fonts: env.MYIN_FONT_DIR ?? null, library: env.MYIN_LIBRARY ?? null }, work: path.join(home, "work"), slots: Math.max(1, Math.min(8, cpus - 2)), at: new Date().toISOString() };
+}
+
 // The computer stays awake while this runs (a closed lid or sleep would stop a draft halfway).
 function keepAwake() {
   if (!windows) return spawn("caffeinate", ["-i", "-w", String(process.pid)], { stdio: "ignore" });
@@ -137,6 +147,7 @@ async function main() {
     catch (error) { console.error(`OS에 연결하지 못했어요: ${error.message} · 1분 뒤 다시 해요.`); await sleep(60_000); continue; }
     if (!info.available) { console.log("영상 만드는 컴퓨터가 새 엔진 묶음을 준비하는 중이에요. 5분 뒤 다시 확인해요."); await sleep(5 * 60_000); continue; }
     const engine = await installEngine(info, home);
+    writeFileSync(path.join(home, "editor.json"), JSON.stringify(editorSettings(engine, home, info.fingerprint), null, 1));
     console.log(`엔진 ${info.fingerprint.slice(0, 8)} · 미리보기 영상을 기다리는 중`);
     const code = await new Promise((resolve) => {
       const worker = spawn(process.execPath, [path.join(engine.dir, "tools", "youtube-media-worker.mjs"), "--local"], { stdio: "inherit", env: workerEnv(engine, home, key) });

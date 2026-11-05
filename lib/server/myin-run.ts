@@ -1448,6 +1448,32 @@ export async function myinFinalVersions(service: Service, sourceId: string) {
     edit: final.edit ? { name: final.edit.name, pc: final.edit.pc, fromVersion: final.edit.fromVersion, note: final.edit.note, orders: final.edit.orders.length } : null }));
 }
 
+/** 영상 편집기 (v3 7.2-2): the engine that drew the video's newest final (an edited one names its own), if known. */
+export async function myinFinalEngine(service: Service, sourceId: string) {
+  const final = (await latestRun(service, sourceId))?.run.final;
+  return final?.edit?.engine ?? final?.engine ?? null;
+}
+
+/** 영상 편집기 사진 (v3 7.2-12): where a picture the editor uses goes — the OS keeps it beside the run, apart from 우리 사진 (which re-prepare ④). */
+export async function myinEditorImageUpload(service: Service, sourceId: string, type: string) {
+  const latest = await latestRun(service, sourceId);
+  if (!latest) throw new ApiError(404, "MYIN_RUN_MISSING", "이 영상은 아직 영상 만들기를 시작하지 않았어요.");
+  const ext = OUR_IMAGE_TYPES[type];
+  if (!ext) throw new ApiError(400, "MYIN_OUR_IMAGE_TYPE", "JPG · PNG · WEBP 이미지만 올릴 수 있어요.");
+  const file = `edit-${randomUUID().slice(0, 12)}.${ext}`;
+  const path = outPath(latest.record, latest.run, `editor-images/${file}`);
+  return { file, path, uploadUrl: await uploadUrl(service, OUTPUT_BUCKET, path) };
+}
+/** The picture landed: its size (≤ 20 MB, a larger one is removed), or 0 when it is not there. */
+export async function myinEditorImageSize(service: Service, path: string) {
+  const slash = path.lastIndexOf("/");
+  const { data } = await service.storage.from(OUTPUT_BUCKET).list(path.slice(0, slash), { search: path.slice(slash + 1) });
+  const bytes = Number(data?.find((o) => o.name === path.slice(slash + 1))?.metadata?.size ?? 0);
+  if (bytes > OUR_IMAGE_MAX_BYTES) { await service.storage.from(OUTPUT_BUCKET).remove([path]); throw new ApiError(400, "MYIN_OUR_IMAGE_SIZE", "20MB 이하 이미지만 올릴 수 있어요."); }
+  return bytes;
+}
+export const myinEditorImageUrl = (service: Service, path: string) => sign(service, OUTPUT_BUCKET, path);
+
 /** 문장 테이크: the video whose voice a sentence take must match — its latest run, voiced on the render PC, a longform. */
 export async function myinSayTarget(service: Service, sourceId: string) {
   const latest = await latestRun(service, sourceId);
