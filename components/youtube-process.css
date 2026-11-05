@@ -1451,8 +1451,20 @@
 }
 
 }
-/* 편집 화면 (편집 화면 이식 ②): the editor screen made on a member's computer, over the whole window */
+/* 편집 화면 (편집 화면 이식 ②): the entry on the 제작 tab, and the editor screen made on a member's computer over the whole window */
+.linear-shell .ui-v2.yp .yp-escreen-entry{margin-top:12px}
+.linear-shell .ui-v2.yp .yp-escreen-row{display:flex;align-items:center;gap:12px}
+.linear-shell .ui-v2.yp .yp-escreen-row>svg{flex:none;color:var(--accent-2)}
+.linear-shell .ui-v2.yp .yp-escreen-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;font-size:13px}
+.linear-shell .ui-v2.yp .yp-escreen-txt b{font-size:14px}
+.linear-shell .ui-v2.yp .yp-escreen-tags{display:flex;flex-wrap:wrap;gap:6px}
+.linear-shell .ui-v2.yp .yp-escreen-tags:not(:empty){margin-top:4px}
 .linear-shell .ui-v2.yp .yp-escreen{position:fixed;inset:0;z-index:80;display:flex;flex-direction:column;background:var(--card)}
-.linear-shell .ui-v2.yp .yp-escreen-bar{display:flex;align-items:center;gap:10px;padding:8px 16px;border-bottom:1px solid var(--line);font-size:13px}
-.linear-shell .ui-v2.yp .yp-escreen-bar .yp-btn{margin-left:auto}
+.linear-shell .ui-v2.yp .yp-escreen-bar{flex:none;display:flex;align-items:center;gap:8px;min-height:46px;padding:6px 10px 6px 16px;border-bottom:1px solid var(--line);font-size:13px}
+.linear-shell .ui-v2.yp .yp-escreen-bar>svg{flex:none;color:var(--accent-2)}
+.linear-shell .ui-v2.yp .yp-escreen-bar b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
+.linear-shell .ui-v2.yp .yp-escreen-bar .yp-sp{flex:1}
+.linear-shell .ui-v2.yp .yp-escreen-made{font-size:12px;white-space:nowrap}
 .linear-shell .ui-v2.yp .yp-escreen iframe{flex:1;width:100%;border:0}
+.linear-shell .ui-v2.yp .yp-escreen-wait{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;color:var(--text-2);font-size:14px;text-align:center}
+@media (max-width:640px){.linear-shell .ui-v2.yp .yp-escreen-row{flex-wrap:wrap}.linear-shell .ui-v2.yp .yp-escreen-row .yp-btn{width:100%}.linear-shell .ui-v2.yp .yp-escreen-made{display:none}}
