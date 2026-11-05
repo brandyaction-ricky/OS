@@ -3,7 +3,7 @@ import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
 import { requestSay, sayRequestSchema, sayStatus } from "@/lib/server/myin-say";
-import { cancelEditOrder, confirmFinish, confirmStart, confirmStartSchema, declineEdit, editHandoff, editLock, editNews, editorImageSaved, editorImageUpload, forceUnlock, editOrderResult, editOrderSchema, editorProject, editStatus, materialsSaved, materialsSavedSchema, materialsUpload, materialsUploadSchema, nextEditOrders, requestSave, saveDone, screenFiles, screenView, setEditBase, submitEditOrder } from "@/lib/server/myin-edit";
+import { cancelEditOrder, confirmFinish, confirmStart, confirmStartSchema, declineEdit, editHandoff, editLock, editNews, editorImageSaved, editorImageUpload, forceUnlock, editOrderResult, editOrderSchema, editorProject, editStatus, materialsSaved, materialsSavedSchema, materialsUpload, materialsUploadSchema, nextEditOrders, publishScreenCode, requestSave, saveDone, screenCode, screenFiles, screenPublishSchema, screenView, setEditBase, submitEditOrder } from "@/lib/server/myin-edit";
 import { myinEditorView } from "@/lib/server/myin-run";
 import { listFeedback } from "@/lib/server/youtube-process-feedback";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
@@ -11,7 +11,7 @@ import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const headers = { "cache-control": "private, no-store" };
-const querySchema = z.object({ projectId: z.string().uuid(), view: z.enum(["summary", "scenes", "subtitles", "assets", "orders", "edits", "feed", "screen", "screen_files"]).default("summary"),
+const querySchema = z.object({ projectId: z.string().uuid(), view: z.enum(["summary", "scenes", "subtitles", "assets", "orders", "edits", "feed", "screen", "screen_files", "screen_code"]).default("summary"),
   since: z.string().datetime().optional(), version: z.string().max(40).optional() });
 
 /**
@@ -20,7 +20,7 @@ const querySchema = z.object({ projectId: z.string().uuid(), view: z.enum(["summ
  * scoped, so the project is checked here). orders = the 최종 검토 feedback on the video still open; edits = who holds the edit lock
  * and the orders sent from members' AI chats, with what each became; feed = the same as news lines since `since` (doc v3 6-5: progress
  * reaches people through their AI chat, not the editor screen); screen = what the editor screen reads (its /api/state), screen_files =
- * one version's files for it, signed for an hour.
+ * one version's files for it, signed for six hours, screen_code = the screen's own files.
  */
 export async function GET(request: Request) {
   try {
@@ -32,6 +32,7 @@ export async function GET(request: Request) {
     if (input.view === "feed") return NextResponse.json({ title: project.title, ...await editNews(actor, project.id, input.since ?? null) }, { headers });
     if (input.view === "screen") return NextResponse.json(await screenView(actor, project.id), { headers });
     if (input.view === "screen_files") return NextResponse.json(await screenFiles(actor, project.id, input.version ?? ""), { headers });
+    if (input.view === "screen_code") return NextResponse.json(await screenCode(actor, project.id), { headers });
     if (input.view === "orders") {
       const items = (await listFeedback(actor, project.id)).filter((item) => item.target === "video" && item.status === "open" && !item.deleted);
       return NextResponse.json({ projectId: project.id, title: project.title, orders: items.map(({ id, version, ver, t, range, text, kind, marks, who }) => ({ id, version, ver, t, range, text, kind, marks: marks ?? [], who })) }, { headers });
@@ -57,13 +58,16 @@ const declineSchema = z.object({ orderId: z.string().uuid().optional(), feedback
  * editing on another computer); order and decline come from that member's AI chat (MCP submit_video_edit · decline_video_order); say ·
  * say_status ask the render PC for sentences read again in the video's own voice (doc v3 7.2-1). The editor screen (편집 화면 이식): order with
  * manual = a hand edit, edit_cancel = 되돌리기, save = 완성, base = the version the next edits start from; the editing computer answers a 완성
- * it could not confirm with save_done and puts each version's files up with materials_upload · materials_saved.
+ * it could not confirm with save_done and puts each version's files up with materials_upload · materials_saved. screen_publish (no video) puts
+ * a new editor screen up for everyone.
  */
 export async function POST(request: Request) {
   try {
     if (!canUseYoutubeAutomationPilot(process.env)) throw new ApiError(404, "AUTOMATION_PILOT_DISABLED", "영상 자동화 파일럿이 아직 연결되지 않았습니다.");
     const actor = await authenticateRequest(request, { allowAgent: true, requiredAgentScope: "records.write" });
-    const { action, projectId, ...rest } = postSchema.parse(await request.json());
+    const body = await request.json();
+    if (body?.action === "screen_publish") return NextResponse.json(await publishScreenCode(actor, screenPublishSchema.parse({ files: body.files })), { headers });
+    const { action, projectId, ...rest } = postSchema.parse(body);
     if (action === "lock" || action === "heartbeat" || action === "unlock") return NextResponse.json(await editLock(actor, projectId, z.object({ pc }).strict().parse(rest).pc, action), { headers });
     if (action === "order") return NextResponse.json(await submitEditOrder(actor, projectId, editOrderSchema.parse(rest)), { headers });
     if (action === "next") return NextResponse.json(await nextEditOrders(actor, projectId, z.object({ pc }).strict().parse(rest).pc), { headers });

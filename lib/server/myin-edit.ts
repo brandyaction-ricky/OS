@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { diagramCatalogTypes } from "@/lib/diagram-catalog";
-import { editCheckIssues, editFeed, editLoudnessIssue, editorScreenState, feedbackEditStates, lockDecision, orderMove, SCREEN_FILE, SCREEN_FILE_TYPES, SCREEN_KEEP, withLockEvent, type EditLock, type EditOrderStatus, type LockEvent, type ScreenVersion } from "@/lib/myin-edit";
+import { editCheckIssues, editFeed, editLoudnessIssue, editorScreenState, feedbackEditStates, lockDecision, orderMove, SCREEN_CODE_FILE, SCREEN_FILE, SCREEN_FILE_TYPES, SCREEN_KEEP, withLockEvent, type EditLock, type EditOrderStatus, type LockEvent, type ScreenVersion } from "@/lib/myin-edit";
 import { anchorMyinCues, checkMyinStoryboard } from "@/lib/myin-storyboard";
 import { parseClock } from "@/lib/youtube-process/feedback";
 import type { OsRecord } from "@/lib/record-types";
@@ -546,7 +546,7 @@ export async function screenView(actor: RequestActor, projectId: string) {
     base: meta?.base?.version ?? null, lock: lock ? { name: lock.name, pc: lock.pc, since: lock.since } : null, now: Date.now() });
 }
 
-/** One version's files for the screen to play, readable for an hour. */
+/** One version's files for the screen to play, readable for six hours (an editing afternoon: an address expiring mid-play stops the video). */
 export async function screenFiles(actor: RequestActor, projectId: string, version: string) {
   const project = await editorProject(actor, projectId);
   const service = createServiceSupabase();
@@ -555,6 +555,42 @@ export async function screenFiles(actor: RequestActor, projectId: string, versio
   const dir = screenDir((await projectRow(service, project.id)).owner_id, project.id, meta.screen.lockId, version);
   const { data: listed } = await service.storage.from(SCREEN_BUCKET).list(dir, { limit: 1000 });
   const names = (listed ?? []).map((o) => o.name).filter((name) => SCREEN_FILE.test(name));
-  const { data } = names.length ? await service.storage.from(SCREEN_BUCKET).createSignedUrls(names.map((name) => `${dir}/${name}`), 3_600) : { data: [] };
+  const { data } = names.length ? await service.storage.from(SCREEN_BUCKET).createSignedUrls(names.map((name) => `${dir}/${name}`), 21_600) : { data: [] };
   return { version, files: Object.fromEntries((data ?? []).flatMap((d, i) => d.signedUrl ? [[names[i], d.signedUrl]] : [])) };
+}
+
+// The screen's own code lives in the OS, not in git: its maker puts a new screen up from his computer and it is live for everyone at once
+// (대표 결정 2026-11-05); who put it up and when stay with it. It runs in a sandboxed frame that cannot reach the OS sign-in.
+const SCREEN_CODE_DIR = "editor-screen";
+export const screenPublishSchema = z.object({ files: z.record(z.string().regex(SCREEN_CODE_FILE, "화면 파일 이름(영문 소문자·숫자, 폴더 없이 .html · .js · .css)을 확인해 주세요."), z.string().max(500_000)) }).strict()
+  .refine((d) => "index.html" in d.files && Object.keys(d.files).length <= 40 && Object.values(d.files).reduce((sum, text) => sum + text.length, 0) <= 2_000_000,
+    "index.html과 함께 40개 · 2MB까지 올릴 수 있어요.");
+/** 편집 화면 올리기: the screen's files replace the ones up now (any left out go away). */
+export async function publishScreenCode(actor: RequestActor, input: z.infer<typeof screenPublishSchema>) {
+  const service = createServiceSupabase();
+  const storage = service.storage.from(SCREEN_BUCKET), names = Object.keys(input.files);
+  for (const name of names) {
+    const { error } = await storage.upload(`${SCREEN_CODE_DIR}/${name}`, new Blob([input.files[name]], { type: "text/plain" }), { upsert: true, contentType: "text/plain" });
+    if (error) throw new ApiError(503, "EDIT_SCREEN_UPLOAD_FAILED", `화면 파일을 올리지 못했어요(${name}).`);
+  }
+  const { data: profile } = await service.from("os_profiles").select("display_name").eq("id", actor.ownerId).maybeSingle();
+  const made = { by: actor.ownerId, name: String(profile?.display_name ?? "구성원"), at: new Date().toISOString(), files: names };
+  await storage.upload(`${SCREEN_CODE_DIR}/screen.json`, new Blob([JSON.stringify(made)], { type: "application/json" }), { upsert: true, contentType: "application/json" });
+  const { data: listed } = await storage.list(SCREEN_CODE_DIR, { limit: 1000 });
+  const stale = (listed ?? []).map((o) => o.name).filter((name) => name !== "screen.json" && !names.includes(name));
+  if (stale.length) await storage.remove(stale.map((name) => `${SCREEN_CODE_DIR}/${name}`));
+  return { ok: true, at: made.at, files: names.length };
+}
+
+/** The screen's files as text, for the 제작 tab to put in its frame (read only when someone opens the screen). */
+export async function screenCode(actor: RequestActor, projectId: string) {
+  await editorProject(actor, projectId);
+  const storage = createServiceSupabase().storage.from(SCREEN_BUCKET);
+  const { data: listed } = await storage.list(SCREEN_CODE_DIR, { limit: 100 });
+  const names = (listed ?? []).map((o) => o.name).filter((name) => SCREEN_CODE_FILE.test(name) || name === "screen.json");
+  const texts = await Promise.all(names.map(async (name) => (await storage.download(`${SCREEN_CODE_DIR}/${name}`)).data?.text() ?? null));
+  const files: Record<string, string> = {};
+  let made: { name?: string; at?: string } = {};
+  names.forEach((name, i) => { const text = texts[i]; if (text == null) return; if (name === "screen.json") made = JSON.parse(text); else files[name] = text; });
+  return { files, by: made.name ?? null, at: made.at ?? null };
 }

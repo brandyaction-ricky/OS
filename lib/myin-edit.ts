@@ -101,6 +101,8 @@ export const SCREEN_FILE_TYPES: Record<string, string> = { json: "application/js
   wav: "audio/wav", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
 /** The screen keeps a computer's newest versions only (each ~50 MB with its edit video and sound lines). */
 export const SCREEN_KEEP = 10;
+/** 편집 화면 파일 (편집 화면 이식 ②): the screen's own page, scripts and styles, flat names — what its maker puts up for everyone. */
+export const SCREEN_CODE_FILE = /^[a-z][a-z0-9_-]{0,40}\.(html|js|css)$/;
 
 export interface ScreenOrder { id: string; at: string; text: string; videoAt: number | null; version?: string; manual?: Record<string, unknown>; meaning: string;
   status: EditOrderStatus; result: { version?: string; note: string; at: string } | null }
