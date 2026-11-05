@@ -131,6 +131,8 @@ test("최종 검토 시점 이동 (직원 요청 11/4): a typed time goes to tha
   assert.equal(parseClock("3분"), 180);
   assert.equal(parseClock("12.5초"), 12.5);
   for (const bad of ["", "abc", "3:", ":20", "1:2:3:4", "-5"]) assert.equal(parseClock(bad), null, bad);
+  // The box opens on the current time; it must be selected, or what staff type lands after it ("00:063:20").
+  assert.match(readFileSync("components/youtube-process-final.tsx", "utf8"), /yp-tm-in"[^>]*onFocus=\{event => event\.currentTarget\.select\(\)\}/);
 });
 
 test("썸네일 피드백 (직원 요청 11/4): one note may be for every thumbnail, and a 👍 can be taken back by whoever pressed it", async () => {
