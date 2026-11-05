@@ -11,13 +11,14 @@ import { createServiceSupabase } from "@/lib/supabase/server";
 // S6 최종 검수 feedback (지시서 6-3): one content_feedback record per item, under the project. Needs the M1 record type.
 export interface YpFeedback {
   id: string; version: number; text: string; who: string; whoId: string; at: string;
-  target: "video" | "A" | "B" | "C"; ver: number; t: number | null; range: [number, number] | null;
+  target: "video" | "A" | "B" | "C" | "all"; ver: number; t: number | null; range: [number, number] | null;
   kind: string; sug: string; reaction: boolean; status: "open" | "done" | "declined"; declinedWhy: string; fixedIn: number | null;
   replies: FeedbackReply[]; doneBy: string; doneAt: string; confirmedBy: string; confirmedAt: string; deleted: boolean; editedAt: string;
   marks: FeedbackMark[]; files: FeedbackFile[];
 }
 export const feedbackCreateSchema = z.object({
-  target: z.enum(["video", "A", "B", "C"]), ver: z.number().int().positive(), t: z.number().min(0).max(86_400).nullable().default(null),
+  // "all": one note for every thumbnail at once (직원 요청 11/4).
+  target: z.enum(["video", "A", "B", "C", "all"]), ver: z.number().int().positive(), t: z.number().min(0).max(86_400).nullable().default(null),
   range: z.tuple([z.number().min(0), z.number().min(0)]).nullable().default(null), text: z.string().trim().max(2000).default(""),
   kind: z.enum(["", "제목", "썸네일 문구", "이미지 연출", "기타", "알림"]).default(""), sug: z.string().trim().max(200).default(""), reaction: z.boolean().default(false),
   marks: z.array(z.unknown()).max(20).default([]),

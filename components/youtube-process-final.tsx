@@ -10,7 +10,7 @@ import { CardReviewScreen } from "./youtube-process-card";
 import type { YpFeedbackView } from "./youtube-process-data";
 import { useSession } from "./session-provider";
 import { ApiRequestError } from "@/lib/api-client";
-import { feedbackNotice, compareTime, FEEDBACK_KIND_LABEL, feedbackKind, FEEDBACK_FILES_PER_ITEM, FEEDBACK_FILTER_LABEL, feedbackClosed, feedbackMatches, type FeedbackAction, type FeedbackFile, type FeedbackFilter, type FeedbackMark } from "@/lib/youtube-process/feedback";
+import { feedbackNotice, compareTime, parseClock, FEEDBACK_KIND_LABEL, feedbackKind, FEEDBACK_FILES_PER_ITEM, FEEDBACK_FILTER_LABEL, feedbackClosed, feedbackMatches, type FeedbackAction, type FeedbackFile, type FeedbackFilter, type FeedbackMark } from "@/lib/youtube-process/feedback";
 import { YtCard, YtLookPicker } from "./youtube-process-media";
 import { VoiceFeedbackBox } from "./youtube-process-voice-feedback";
 import { FeedbackTodo } from "./youtube-process-feedback-todo";
@@ -23,7 +23,9 @@ import { alignVersions, mapTime, srtCues, type Anchor, type VersionChange } from
 const fmt = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 const KINDS = ["제목", "썸네일 문구", "이미지 연출", "기타"];
 const closed = feedbackClosed;
-const label = (item: YpFeedbackView) => item.target !== "video" ? `🖼 ${item.target}` : item.range ? `▷ ${fmt(item.range[0])}~${fmt(item.range[1])}` : `▷ ${fmt(item.t ?? 0)}`;
+// 직원 요청 11/4: a thumbnail note can be for all of them at once ("all").
+type ThumbTarget = YpSlot | "all";
+const label = (item: YpFeedbackView) => item.target !== "video" ? `🖼 ${item.target === "all" ? "전체" : item.target}` : item.range ? `▷ ${fmt(item.range[0])}~${fmt(item.range[1])}` : `▷ ${fmt(item.t ?? 0)}`;
 
 /** S6 최종 검토: the latest final with time-coded feedback, the thumbnails, and the 최종 검토 컨펌 (4-7). */
 export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
@@ -39,7 +41,7 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [range, setRange] = useState<[number, number] | null>(null);
-  const [thumbTarget, setThumbTarget] = useState<YpSlot>("A");
+  const [thumbTarget, setThumbTarget] = useState<ThumbTarget>("A");
   const [kind, setKind] = useState("");
   const [sug, setSug] = useState("");
   const [text, setText] = useState("");
@@ -66,6 +68,8 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
   const videoB = useRef<HTMLVideoElement>(null);
   const focusId = useSearchParams().get("feedback");             // N03: a notice opens its item
   const focused = useRef<string | null>(null);
+  const [hover, setHover] = useState<number | null>(null);    // 직원 요청 11/4: the time under the pointer on the bar
+  const [jump, setJump] = useState<string | null>(null);      // …and a typed time to go to
   const [rate, setRate] = useState(1);   // 재생 속도 (2026-10-28 직원 요청: 검토 시간을 줄이게 1 · 1.5 · 2배)
   const video = useRef<HTMLVideoElement>(null);
   const bar = useRef<HTMLDivElement>(null);
@@ -145,14 +149,14 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
     if (!item) return;
     focused.current = focusId;
     setOpen(item.id); setFilter("all"); setQuery("");
-    if (item.target === "video") { setView("video"); if (item.ver !== latest) setVerSel(item.ver); } else { setView("thumb"); setThumbTarget(item.target as YpSlot); }
+    if (item.target === "video") { setView("video"); if (item.ver !== latest) setVerSel(item.ver); } else { setView("thumb"); setThumbTarget(item.target as ThumbTarget); }
     if (closed(item)) setShowDone(true);
     window.setTimeout(() => document.getElementById(`fb-${item.id}`)?.scrollIntoView({ block: "center", behavior: "smooth" }), 300);
   }, [focusId, items, latest]);
 
   const old = view === "video" && ver !== latest;
   // Open long-form items from earlier versions follow the latest one ('vN에서 넘어옴', 3차).
-  const shown = items.filter(item => view === "video" ? item.target === "video" && (item.ver === ver || (ver === latest && item.ver < latest && !closed(item))) : item.target !== "video");
+  const shown = items.filter(item => !(item.reaction && item.deleted)).filter(item => view === "video" ? item.target === "video" && (item.ver === ver || (ver === latest && item.ver < latest && !closed(item))) : item.target !== "video");
   const searching = Boolean(query.trim()) || filter !== "all";
   const matched = shown.filter(item => feedbackMatches(item, query, filter));
   const notices = shown.filter(feedbackNotice);
@@ -165,6 +169,23 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
   const openCount = (target: "video" | "thumb") => items.filter(item => (target === "video" ? item.target === "video" : item.target !== "video") && !closed(item) && !item.reaction && !feedbackNotice(item)).length;
 
   const seek = (seconds: number) => { if (video.current) { video.current.currentTime = seconds; setTime(seconds); } };
+  // ← → move 5 s (Shift: 1 s) wherever the page is, unless someone is typing.
+  const nudge = (step: number) => { const el = video.current; if (el) seek(Math.max(0, Math.min(el.duration || Infinity, el.currentTime + step))); };
+  const nudgeRef = useRef(nudge);
+  nudgeRef.current = nudge;
+  useEffect(() => {
+    if (view !== "video") return;
+    const onKey = (event: KeyboardEvent) => {
+      const el = event.target as HTMLElement | null;
+      if (event.altKey || event.ctrlKey || event.metaKey || el?.closest("input, textarea, select, [contenteditable='true']")) return;
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      event.preventDefault();
+      nudgeRef.current((event.key === "ArrowLeft" ? -1 : 1) * (event.shiftKey ? 1 : 5));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [view]);
+  const goTo = () => { const seconds = jump === null ? null : parseClock(jump); if (seconds !== null) { video.current?.pause(); seek(Math.min(seconds, duration || seconds)); } setJump(null); };
   const toggle = () => { const el = video.current; if (!el || tool) return; if (el.paused) { void el.play(); setRange(null); setDraftMarks([]); } else el.pause(); };
   const at = (clientX: number) => { const rect = bar.current!.getBoundingClientRect(); return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * (duration || 0); };
   const add = async (reaction = false) => {
@@ -208,7 +229,7 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
   // A 카드뉴스 is checked card by card, not watched (설계서 2026-10-30).
   if (project?.yp.topic.type === "card") return <CardReviewScreen page={page} header={header} />;
   const action = page.bundle ? gateAction(page, "review", 4, control, finals.length ? "" : project?.yp.topic.type === "short" ? "최종본을 만들거나 올려 주세요" : "최종본을 올려 주세요") : null;
-  const stamp = view === "video" ? (range ? `▷ ${fmt(range[0])}~${fmt(range[1])}` : `▷ ${fmt(time)}`) : `🖼 ${thumbTarget}`;
+  const stamp = view === "video" ? (range ? `▷ ${fmt(range[0])}~${fmt(range[1])}` : `▷ ${fmt(time)}`) : `🖼 ${thumbTarget === "all" ? "전체" : thumbTarget}`;
   const confirmed = page.bundle?.stages.plan.data.confirmed;
   const plan = { confirmed };
   const make = page.bundle?.stages.make.data;
@@ -246,8 +267,11 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
               {srcB ? <video ref={videoB} src={`${srcB}#t=0.1`} preload="metadata" muted onLoadedData={() => setDrawn(map => ({ ...map, [srcB]: true }))} onLoadedMetadata={event => { event.currentTarget.playbackRate = rate; event.currentTarget.currentTime = compareTime(time, offset, event.currentTarget.duration); }} />
                 : <div className="yp-muted" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", color: "var(--media-muted)" }}>영상을 불러오는 중이에요…</div>}</div> : null}
             </div>
-            <div className="yp-ctrl"><button type="button" className="yp-cb" aria-label={playing ? "멈춤" : "재생"} onClick={toggle}>{playing ? <Pause size={16} /> : <Play size={16} />}</button>
+            <div className="yp-ctrl"><button type="button" className="yp-cb" aria-label="5초 뒤로" title="5초 뒤로 (←, Shift+← 1초)" onClick={() => nudge(-5)}>−5</button>
+              <button type="button" className="yp-cb" aria-label={playing ? "멈춤" : "재생"} onClick={toggle}>{playing ? <Pause size={16} /> : <Play size={16} />}</button>
+              <button type="button" className="yp-cb" aria-label="5초 앞으로" title="5초 앞으로 (→, Shift+→ 1초)" onClick={() => nudge(5)}>+5</button>
               <div className="yp-pb" ref={bar} role="slider" aria-label="재생 위치" aria-valuemin={0} aria-valuemax={Math.round(duration)} aria-valuenow={Math.round(time)} tabIndex={0}
+                onMouseMove={event => { if (duration) setHover(at(event.clientX)); }} onMouseLeave={() => setHover(null)}
                 onMouseDown={event => { drag.current = at(event.clientX); }}
                 onMouseUp={event => { if (drag.current === null || !duration) return; const end = at(event.clientX); const start = drag.current; drag.current = null;
                   if (Math.abs(end - start) > duration / 100) { video.current?.pause(); setRange([Math.min(start, end), Math.max(start, end)]); seek(Math.min(start, end)); } else { setRange(null); seek(end); } }}>
@@ -256,8 +280,11 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
                   ? <span key={item.id} className="yp-rg" style={{ left: `${item.range[0] / duration * 100}%`, width: `${(item.range[1] - item.range[0]) / duration * 100}%` }} />
                   : <span key={item.id} className="yp-mk" style={{ left: `${(item.t ?? 0) / duration * 100}%` }} />) : null}
                 {range && duration ? <span className="yp-rg yp-sel" style={{ left: `${range[0] / duration * 100}%`, width: `${(range[1] - range[0]) / duration * 100}%` }} /> : null}
-                <span className="yp-knob" style={{ left: `${duration ? time / duration * 100 : 0}%` }} /></div>
-              <span className="yp-tm">{fmt(time)} / {fmt(duration)}</span></div>
+                <span className="yp-knob" style={{ left: `${duration ? time / duration * 100 : 0}%` }} />
+                {hover !== null && duration ? <span className="yp-hovt" style={{ left: `${hover / duration * 100}%` }}>{fmt(hover)}</span> : null}</div>
+              {jump !== null ? <input className="yp-in yp-tm-in" autoFocus value={jump} onChange={event => setJump(event.target.value)} onBlur={goTo} aria-label="갈 시각 (예: 3:20)" placeholder="3:20"
+                  onKeyDown={event => { if (event.key === "Enter") goTo(); if (event.key === "Escape") setJump(null); }} />
+                : <button type="button" className="yp-tm yp-tm-btn" title="눌러서 갈 시각을 써요 (예: 3:20)" onClick={() => setJump(fmt(time))}>{fmt(time)} / {fmt(duration)}</button>}</div>
             <div className="yp-ctrl2"><label className="yp-vsel">버전 <select value={ver} onChange={event => { setVerSel(Number(event.target.value)); setRange(null); setTime(0); }} aria-label="영상 버전">
               {[...finals].reverse().map(item => <option key={item.v} value={item.v}>v{item.v}{item.v === latest ? " (최신)" : ""} · {item.source === "myin" || item.source === "short" ? "자동 제작" : item.name}{item.v === active?.v ? " · 올라갈 영상" : item.source !== "upload" && okAt && item.at > okAt ? " · 컨펌 뒤 후보" : ""}</option>)}</select></label>
               <label className="yp-vsel">속도 <select value={rate} onChange={event => { const value = Number(event.target.value); setRate(value); if (video.current) video.current.playbackRate = value; if (videoB.current) videoB.current.playbackRate = value; }} aria-label="재생 속도">
@@ -282,11 +309,11 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
               }}>A {fmt(change.a[0])} · B {fmt(change.b[0])}</button> <span>{change.bText ? `B 「${change.bText.slice(0, 60)}${change.bText.length > 60 ? "…" : ""}」` : ""}{change.aText ? `${change.bText ? " · " : ""}A에만 「${change.aText.slice(0, 40)}${change.aText.length > 40 ? "…" : ""}」` : ""}</span></li>)}</ul></details> : null}
           </> : <div className="yp-tview2" style={{ padding: 12, display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))" }}>
             <div className="yp-yt-pick yp-yt-pick-row"><YtLookPicker /></div>
-            {SLOTS.filter(slot => confirmed?.[slot]).map(slot => <button key={slot} type="button" className={`yp-abc${thumbTarget === slot ? " yp-on" : ""}`} style={{ textAlign: "left" }} onClick={() => setThumbTarget(slot)}>
+            {SLOTS.filter(slot => confirmed?.[slot]).map(slot => <button key={slot} type="button" className={`yp-abc${thumbTarget === slot || thumbTarget === "all" ? " yp-on" : ""}`} style={{ textAlign: "left" }} onClick={() => setThumbTarget(slot)}>
               <div className="yp-abc-h"><span className={`yp-ltag${slot === "C" ? " yp-c" : ""}`}>{slot}</span>{finalPair(plan, make, slot)?.changed ? <span className="yp-tag yp-warn">컨펌본과 다름</span> : null}</div>
               <YtCard page={page} thumb={finalPair(plan, make, slot)?.thumb} path={make.thumbs[slot]?.path} title={finalPair(plan, make, slot)?.title ?? ""} /></button>)}</div>}
         </div>
-        <p className="yp-hint">{view === "video" ? "영상을 누르면 멈추고 그 시간에 써요. 재생 바를 끌면 구간을 골라요." : "썸네일을 누르면 그 썸네일에 피드백을 남겨요."}</p>
+        <p className="yp-hint">{view === "video" ? "영상을 누르면 멈추고 그 시간에 써요. 재생 바를 끌면 구간을 골라요. ← →로 5초씩 옮기고, 시각을 누르면 그 시각으로 바로 가요." : "썸네일을 누르면 그 썸네일에 남겨요. 「전체」를 고르면 모든 썸네일에 한 번에 남겨요."}</p>
       </div>
       <aside className="yp-fbp"><div className="yp-fbp-h"><b>남은 피드백{short ? "" : view === "video" ? " · 영상" : " · 썸네일"} {openCount(view === "video" ? "video" : "thumb")}</b><span className="yp-muted" style={{ fontSize: 12 }}>{view === "video" ? `v${ver} · 러닝타임 순서` : "A → B → C"}</span></div>
         {short ? null : <div className="yp-ftabs yp-two"><button type="button" className={view === "video" ? "yp-on" : ""} onClick={() => setView("video")}>영상 <b>{openCount("video")}</b></button><button type="button" className={view === "thumb" ? "yp-on" : ""} onClick={() => setView("thumb")}>썸네일 <b>{openCount("thumb")}</b></button></div>}
@@ -297,10 +324,10 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
           setOpen(item.id); seek(item.t ?? item.range?.[0] ?? 0); window.setTimeout(() => document.getElementById(`fb-${item.id}`)?.scrollIntoView({ block: "center", behavior: "smooth" }), 50);
         }} /> : null}
         {searching ? <div className="yp-fbl">{matched.length ? matched.map(item => <FeedbackItem key={item.id} item={item} open={open === item.id} latest={latest} onOpen={() => setOpen(open === item.id ? null : item.id)}
-            onSeek={() => { if (item.target === "video") { setView("video"); seek(item.t ?? item.range?.[0] ?? 0); } else setThumbTarget(item.target as YpSlot); }} onAct={(action, value, replyId) => act(item, action, value, replyId)} onOpenFile={openFile} />)
+            onSeek={() => { if (item.target === "video") { setView("video"); seek(item.t ?? item.range?.[0] ?? 0); } else setThumbTarget(item.target as ThumbTarget); }} onAct={(action, value, replyId) => act(item, action, value, replyId)} onOpenFile={openFile} />)
           : <p className="yp-muted" style={{ padding: 8 }}>맞는 피드백이 없어요</p>}</div> :
         <div className="yp-fbl">{openItems.length ? openItems.map(item => <FeedbackItem key={item.id} item={item} open={open === item.id} latest={latest} onOpen={() => setOpen(open === item.id ? null : item.id)}
-            onSeek={() => { if (item.target === "video") { setView("video"); seek(item.t ?? item.range?.[0] ?? 0); } else setThumbTarget(item.target as YpSlot); }} onAct={(action, value, replyId) => act(item, action, value, replyId)} onOpenFile={openFile} />)
+            onSeek={() => { if (item.target === "video") { setView("video"); seek(item.t ?? item.range?.[0] ?? 0); } else setThumbTarget(item.target as ThumbTarget); }} onAct={(action, value, replyId) => act(item, action, value, replyId)} onOpenFile={openFile} />)
           : <p className="yp-muted" style={{ padding: 8 }}>남은 피드백이 없어요</p>}
           {doneItems.length ? <><button type="button" className="yp-solvedbar" onClick={() => setShowDone(value => !value)}>반영됨 {doneItems.length}개 {showDone ? "▾" : "▸"}</button>
             {showDone ? doneItems.map(item => <FeedbackItem key={item.id} item={item} open={open === item.id} latest={latest} onOpen={() => setOpen(open === item.id ? null : item.id)} onSeek={() => seek(item.t ?? 0)} onAct={(action, value, replyId) => act(item, action, value, replyId)} onOpenFile={openFile} />) : null}</> : null}
@@ -309,7 +336,7 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
         {project.yp.stage === "review" || project.yp.stage === "upload" ? <div className="yp-comp">
             {old ? <p className="yp-muted" style={{ margin: "0 0 6px", fontSize: 12 }}>이전 버전 v{ver}에 남겨요. <button type="button" className="yp-lnk" onClick={() => setVerSel(null)}>최신 v{latest} 보기</button></p> : null}
             <div className="yp-comp-h">{view === "video" && playing ? <span className="yp-muted">재생 중. 영상을 누르면 멈추고 시간이 붙어요</span> : <>지금 쓰기 <span className="yp-at">{stamp}</span></>}<span style={{ flex: 1 }} />
-              {view === "thumb" ? <div className="yp-kseg" role="group" aria-label="어느 썸네일">{SLOTS.filter(slot => confirmed?.[slot]).map(slot => <button key={slot} type="button" className={thumbTarget === slot ? "yp-on" : ""} onClick={() => setThumbTarget(slot)}>{slot}</button>)}</div> : null}</div>
+              {view === "thumb" ? <div className="yp-kseg" role="group" aria-label="어느 썸네일">{(["all", ...SLOTS.filter(slot => confirmed?.[slot])] as ThumbTarget[]).map(slot => <button key={slot} type="button" className={thumbTarget === slot ? "yp-on" : ""} onClick={() => setThumbTarget(slot)}>{slot === "all" ? "전체" : slot}</button>)}</div> : null}</div>
             {view === "thumb" ? <><div className="yp-chips" style={{ marginBottom: 6 }}>{KINDS.map(item => <button key={item} type="button" className={`yp-chip${kind === item ? " yp-on" : ""}`} onClick={() => setKind(kind === item ? "" : item)}>{item}</button>)}<span className="yp-muted" style={{ fontSize: 12, alignSelf: "center" }}>안 골라도 돼요</span></div>
               {kind === "제목" || kind === "썸네일 문구" ? <input className="yp-in" style={{ marginBottom: 6 }} value={sug} onChange={event => setSug(event.target.value)} placeholder={kind === "제목" ? "바꿀 제목을 직접 써요" : "바꿀 큰 글자를 직접 써요"} aria-label="직접 제안" /> : null}</> : null}
             {view === "video" ? <div className="yp-tools" role="group" aria-label="화면에 표시하기">
@@ -358,9 +385,11 @@ function FeedbackItem({ item, open, latest, onOpen, onSeek, onAct, onOpenFile }:
       <button type="button" className="yp-lnk yp-tlink" onClick={onSeek}>{label(item)}</button><span className={`yp-tx${item.deleted ? " yp-muted" : ""}`} onClick={onOpen}>{item.deleted ? "삭제된 댓글입니다" : item.text || (item.reaction ? "좋아요" : "")}</span><span className="yp-who">{personName(item.who)}</span>
       {item.status === "declined" ? <span className="yp-tag">반영 안 함</span> : item.status === "done" ? <span className={`yp-tag${item.confirmedBy ? " yp-ok" : ""}`}>{item.confirmedBy ? "확인 완료" : "반영됨"}</span> : item.target === "video" && item.ver < latest && !done ? <span className="yp-tag yp-warn">v{item.ver}에서</span> : null}
       {item.edit ? <span className={`yp-tag${item.edit.state === "failed" || item.edit.state === "cannot" ? " yp-warn" : ""}`} title={item.edit.note}>{EDIT_STATE[item.edit.state]}{item.edit.note ? ` · ${item.edit.note}` : ""}</span> : null}
-      {item.replies.length ? <span className="yp-muted" style={{ fontSize: 12 }}>답글 {item.replies.filter(row => !row.deleted).length}</span> : null}
-      {item.marks?.length ? <span className="yp-muted" style={{ fontSize: 12 }} title="펼치고 시간을 누르면 화면에 보여요">표시 {item.marks.length}</span> : null}
-      {item.files?.length ? <span className="yp-muted" style={{ fontSize: 12 }}><Paperclip size={11} aria-hidden="true" /> {item.files.length}</span> : null}
+      {/* 직원 요청 11/4: a 👍 pressed by mistake can be taken back (it then leaves the list). */}
+      {item.reaction && mine && !item.deleted ? <button type="button" className="yp-lnk yp-mini" disabled={saving} onClick={() => void run("delete")}>👍 취소</button> : null}
+      {item.replies.length ? <span className="yp-muted yp-mini">답글 {item.replies.filter(row => !row.deleted).length}</span> : null}
+      {item.marks?.length ? <span className="yp-muted yp-mini" title="펼치고 시간을 누르면 화면에 보여요">표시 {item.marks.length}</span> : null}
+      {item.files?.length ? <span className="yp-muted yp-mini"><Paperclip size={11} aria-hidden="true" /> {item.files.length}</span> : null}
       <button type="button" className="yp-ib" style={{ width: 24, height: 24 }} aria-label="펼치기" onClick={onOpen}>{open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button></div>
     {open ? <div className="yp-more2"><div className="yp-muted" style={{ fontSize: 12 }}>{new Date(item.at).toLocaleString("ko-KR")}{item.editedAt ? " · 고침" : ""}{item.kind ? ` · ${item.kind}` : ""}{item.target === "video" && item.ver < latest ? ` · v${item.ver}에서 넘어옴` : ""}{item.declinedWhy ? ` · 반영 안 함: ${item.declinedWhy}` : ""}</div>
       {item.status === "done" ? <p className="yp-fi-sug" role="status">반영됨{item.doneBy ? ` · ${personName(item.doneBy)}` : ""}{item.doneAt ? ` · ${when(item.doneAt)}` : ""}{item.fixedIn ? ` · v${item.fixedIn}` : ""}

@@ -41,7 +41,7 @@ export type YpShortPatch = { brief?: Partial<YpShortBrief>; scenes?: YpShortScen
 /** formulas: the company 숏폼 공식 창고, sent with a 숏폼's bundle (대본 step). */
 export interface YpBundle { project: YpProject; stages: YpStagesView; finals: YpFinalView[]; formulas?: YpStoredFormula[] }
 export interface YpFeedbackView {
-  id: string; version: number; text: string; who: string; whoId: string; at: string; target: "video" | "A" | "B" | "C"; ver: number; t: number | null; range: [number, number] | null;
+  id: string; version: number; text: string; who: string; whoId: string; at: string; target: "video" | "A" | "B" | "C" | "all"; ver: number; t: number | null; range: [number, number] | null;
   kind: string; sug: string; reaction: boolean; status: "open" | "done" | "declined"; declinedWhy: string; fixedIn: number | null; replies: FeedbackReply[];
   doneBy?: string; doneAt?: string; confirmedBy?: string; confirmedAt?: string; deleted?: boolean; editedAt?: string; marks?: FeedbackMark[]; files?: FeedbackFile[];
   /** 영상 편집기 (v2 ④ · v3 6-6): where an open video item is in the editor; none while nobody edits the video. */

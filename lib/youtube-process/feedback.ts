@@ -124,6 +124,13 @@ export function feedbackMatches(item: { text: string; who: string; status: strin
 
 /** N07: the B side's time for a given A time, with a manual offset for cuts of different length (never below 0). */
 export const compareTime = (aTime: number, offset: number, bDuration: number) => Math.max(0, Math.min(bDuration || Infinity, aTime + offset));
+/** 직원 요청 11/4 (최종 검토 시점 이동): a typed time — 「3:20」, 「1:02:05」, 「95」 or 「3분 20초」 — in seconds, or null. */
+export function parseClock(text: string): number | null {
+  const korean = text.trim().match(/^(?:(\d+)\s*분)?\s*(?:(\d+(?:\.\d+)?)\s*초)?$/);
+  if (korean && (korean[1] || korean[2])) return Number(korean[1] ?? 0) * 60 + Number(korean[2] ?? 0);
+  if (!/^\d+(?:\.\d+)?(?::\d{1,2}(?:\.\d+)?){0,2}$/.test(text.trim())) return null;
+  return text.trim().split(":").reduce((sum, part) => sum * 60 + Number(part), 0);
+}
 
 /**
  * 음성 피드백 (로건 OS 요청 2026-10-30): 최종 검토 notes about how the voice sounds go to the render PC, which redoes only that

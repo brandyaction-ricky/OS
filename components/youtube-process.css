@@ -457,6 +457,11 @@
 .linear-shell .ui-v2.yp .yp-pb .yp-mk.yp-sug{background:var(--media-muted)}
 .linear-shell .ui-v2.yp .yp-pb .yp-rg{position:absolute;top:8px;height:8px;background:color-mix(in srgb,var(--warning) 50%,transparent);border-radius:2px}
 .linear-shell .ui-v2.yp .yp-pb .yp-rg.yp-sel{background:color-mix(in srgb,var(--accent) 60%,transparent)}
+.linear-shell .ui-v2.yp .yp-pb .yp-hovt{position:absolute;bottom:22px;transform:translateX(-50%);padding:1px 5px;border-radius:4px;background:var(--media-text);color:var(--media-bg);font-size:11px;font-variant-numeric:tabular-nums;pointer-events:none;white-space:nowrap}
+.linear-shell .ui-v2.yp .yp-ctrl .yp-tm-btn{background:none;border:0;padding:2px 4px;border-radius:4px;cursor:text}
+.linear-shell .ui-v2.yp .yp-ctrl .yp-tm-btn:hover{background:color-mix(in srgb,var(--media-text) 12%,transparent)}
+.linear-shell .ui-v2.yp .yp-f1 .yp-mini{font-size:12px}
+.linear-shell .ui-v2.yp .yp-ctrl .yp-tm-in{width:84px;height:24px;font-size:12px;font-variant-numeric:tabular-nums}
 .linear-shell .ui-v2.yp .yp-ctrl2{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:0 12px 10px}
 .linear-shell .ui-v2.yp .yp-fbp{background:var(--card);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;position:sticky;top:calc(48px + 64px);max-height:calc(100vh - 0px - 130px)}
 .linear-shell .ui-v2.yp .yp-fbp-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;border-bottom:1px solid var(--line-soft)}
@@ -779,6 +784,7 @@
 .linear-shell .ui-v2.yp .yp-morepop button:hover{background:var(--panel-2)}
 .linear-shell .ui-v2.yp .yp-morepop .yp-row{display:flex;gap:4px;align-items:center;padding:4px 6px;font-size:12px}
 .linear-shell .ui-v2.yp .yp-rte.yp-drop-on{box-shadow:0 0 0 2px var(--accent)}
+.linear-shell .ui-v2.yp .yp-drop.yp-drop-on,.linear-shell .ui-v2.yp .yp-row-btns.yp-drop-on{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent);border-radius:10px}
 /* 제작 */
 .linear-shell .ui-v2.yp .yp-sched2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
 .linear-shell .ui-v2.yp .yp-sdate{border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:6px}

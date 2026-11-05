@@ -121,3 +121,35 @@ test("voice feedback is told from notes about the picture, the render cut and th
   for (const text of ["구독 멘트 뒤에 씹힘", "쇼릴 끝에 목소리 끊김", "화면이 어색해요", "예시가 실무와 안 맞아요", "자막 위치가 어색"])
     assert.equal(voiceFeedback(text), false, text);
 });
+
+test("최종 검토 시점 이동 (직원 요청 11/4): a typed time goes to that second; anything else goes nowhere", async () => {
+  const { parseClock } = await import("../lib/youtube-process/feedback.ts");
+  assert.equal(parseClock("3:20"), 200);
+  assert.equal(parseClock(" 1:02:05 "), 3725);
+  assert.equal(parseClock("95"), 95);
+  assert.equal(parseClock("3분 20초"), 200);
+  assert.equal(parseClock("3분"), 180);
+  assert.equal(parseClock("12.5초"), 12.5);
+  for (const bad of ["", "abc", "3:", ":20", "1:2:3:4", "-5"]) assert.equal(parseClock(bad), null, bad);
+});
+
+test("썸네일 피드백 (직원 요청 11/4): one note may be for every thumbnail, and a 👍 can be taken back by whoever pressed it", async () => {
+  const { feedbackCreateSchema } = await import("../lib/server/youtube-process-feedback.ts").catch(() => ({}));
+  const source = readFileSync(new URL("../lib/server/youtube-process-feedback.ts", import.meta.url), "utf8");
+  assert.match(source, /target: z\.enum\(\["video", "A", "B", "C", "all"\]\)/);
+  if (feedbackCreateSchema) assert.equal(feedbackCreateSchema.parse({ target: "all", ver: 1, text: "세 개 다 글자가 작아요" }).target, "all");
+  const like = { ...base, text: "", whoId: "u-author", reaction: true };
+  assert.equal(applyFeedback(like, author, { action: "delete" }, now, null, "A").deleted, true);
+  fails(() => applyFeedback(like, editor, { action: "delete" }, now, null, "A"), "DELETE_FORBIDDEN");
+  const screen = readFileSync(new URL("../components/youtube-process-final.tsx", import.meta.url), "utf8");
+  assert.match(screen, /item\.reaction && mine && !item\.deleted \? <button/);
+  assert.match(screen, /items\.filter\(item => !\(item\.reaction && item\.deleted\)\)/);
+});
+
+test("최종본 끌어다 놓기 (직원 요청 11/4): the upload box takes a dropped video only where a file could be picked", () => {
+  const make = readFileSync(new URL("../components/youtube-process-make.tsx", import.meta.url), "utf8");
+  assert.match(make, /const dropFinal = canFinal \?/);
+  assert.equal((make.match(/\{\.\.\.dropFinal\}/g) ?? []).length, 2, "long-form box and the short-form row");
+  assert.match(make, /\.\(mp4\|mov\|m4v\|webm\)\$\/i\.test\(file\.name\)/);
+  assert.ok(make.indexOf("const canFinal") < make.indexOf("const dropFinal"), "defined after canFinal");
+});
