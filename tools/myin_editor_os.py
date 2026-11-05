@@ -6,7 +6,10 @@ ws/voice/os_voice, versions/, voicever/, jobs/, orders.json).
 
   import myin_editor_os as L
   L.lock(project) · L.unlock(project) · L.keep_alive(project)     one video, one editor (renewed every 2 minutes, freed after 10 silent)
-  L.pull_orders(project, editor) · L.report(project, order, ...)  orders from members' AI chats into orders.json, and what each became
+  L.pull_orders(project, editor) · L.report(project, order, ...)  orders from members' AI chats into orders.json, and what each became;
+                                                                  hand edits from the OS editor screen into edits.json once 완성 is pressed
+  L.materials(project, version, files)                            one version's files for the OS editor screen (edit video, sound lines, …)
+  L.save_done(project)                                            a 완성 that made no new final (nothing changed, or it stopped)
   L.confirm(project, editor, version, engine)                     check · bundle · upload; the edit becomes the OS's newest final
   L.say(project, editor, order, text)                             a sentence read again in the video's voice on the render PC (k takes)
   L.restore(project, editor)                                      another computer goes on from an OS final (its materials and pieces)
@@ -111,24 +114,59 @@ def keep_alive(project, every=120):
 
 # ── 편집 주문: AI 채팅 → 이 편집기 ──
 def pull_orders(project, editor):
-    """Takes the waiting orders into orders.json (Logan's format, plus os_id) with each changed storyboard beside the work folder's."""
+    """Takes the waiting orders into orders.json (the editor's format, plus os_id) with each changed storyboard beside the work folder's.
+    Hand edits from the OS editor screen come only after someone pressed 완성: they go to edits.json (the editor's manual_run.py takes them from
+    there), and 완성 itself becomes saves.json's pending save; the version the next edits start from goes to base.json."""
     vo = os.path.join(editor, "ws", "voice", "os_myin"); os.makedirs(vo, exist_ok=True)
-    path = os.path.join(editor, "orders.json"); orders = jl(path, []); known = {o.get("os_id") for o in orders}; new = []
-    for o in api("next", project, pc=pc())["orders"]:
+    path = os.path.join(editor, "orders.json"); orders = jl(path, []); epath = os.path.join(editor, "edits.json"); edits = jl(epath, [])
+    known = {o.get("os_id") for o in orders + edits}; new = []
+    got = api("next", project, pc=pc())
+    for o in got["orders"]:
         if o["id"] in known: continue  # taken before and not answered yet (the editor closed): it comes again
+        if o.get("manual"):
+            e = {"id": f"e{max([int(x['id'][1:]) for x in edits] + [0]) + 1:03d}", "os_id": o["id"], "t": time.time(), "version": o.get("version"), "text": o["text"], "manual": o["manual"]}
+            edits.append(e); new.append(e); continue
         story = None
         if o.get("storyboardUrl"):
             story = f"order_{o['id'][:8]}.json"; _get(o["storyboardUrl"], os.path.join(vo, story))
         entry = {"id": f"o{len(orders) + 1:03d}", "os_id": o["id"], "t": time.time(), "text": o["text"], "at": o.get("videoAt"), "meaning": o.get("meaning", ""),
                  "story": story, "subtitles": o.get("subtitles", []), "feedback": o.get("feedbackIds", []), "status": "waiting"}
         orders.append(entry); new.append(entry)
-    if new: js(path, orders)
+    if any(not e.get("manual") for e in new): js(path, orders)
+    if any(e.get("manual") for e in new): js(epath, edits)
+    spath = os.path.join(editor, "saves.json"); saves = jl(spath, {"list": [], "pending": None}) or {"list": [], "pending": None}
+    if got.get("save") and not saves.get("pending"): saves["pending"] = {"label": "완성", "t": time.time(), "os": got["save"]["at"]}; js(spath, saves)
+    bpath = os.path.join(editor, "base.json")
+    if got.get("base") != (jl(bpath, {}) or {}).get("version"): js(bpath, {"version": got.get("base"), "t": time.time()})
     return new
 
 def report(project, order, status, version=None, note=""):
     """done (a candidate version on this computer) · failed (why) · queued (give it back)."""
     os_id = order.get("os_id") if isinstance(order, dict) else order
     return api("result", project, pc=pc(), orderId=os_id, status=status, version=version, note=note or None)
+
+
+def save_done(project):
+    """완성 that made no new final (nothing changed, or it stopped): the OS screen stops waiting. A confirmed final ends it by itself."""
+    return api("save_done", project, pc=pc())
+
+
+# ── 편집 화면 재료: OS 제작 탭의 편집 화면이 재생할 것 (편집 화면 이식 2026-11-05) ──
+SCREEN_TYPES = {".json": "application/json", ".srt": "application/x-subrip", ".mp4": "video/mp4", ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".wav": "audio/wav",
+                ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
+
+def materials(project, version, files, frm=None, note=None, final=None):
+    """Puts one version's files up for the OS editor screen: version.json (the screen's version object; it names its other files by these
+    file names) and the rest — the edit video (720p, no subtitles), sound lines, wave peaks, subtitles, pictures. Flat names only.
+    `final` = the OS final's time when this version is that final (the first one, taken in as this computer's own)."""
+    names = [os.path.basename(f) for f in files]
+    if "version.json" not in names: raise EditorError("EDIT_MATERIALS_MISSING", "version.json이 있어야 해요.")
+    bad = [n for n in names if os.path.splitext(n)[1].lower() not in SCREEN_TYPES]
+    if bad: raise EditorError("EDIT_MATERIALS_TYPE", f"올릴 수 없는 파일 종류예요: {', '.join(bad[:5])}")
+    up = api("materials_upload", project, pc=pc(), version=version, files=[{"name": n, "bytes": os.path.getsize(f)} for n, f in zip(names, files)])["uploads"]
+    where = {u["name"]: u for u in up}
+    for n, f in zip(names, files): _put(where[n]["url"], f, where[n]["type"])
+    return api("materials_saved", project, pc=pc(), version=version, **{"from": frm}, note=note, final=final)["version"]
 
 
 # ── 문장 테이크: 렌더 PC가 이 영상 목소리로 다시 읽기 (이 컴퓨터엔 목소리 키가 없음) ──
@@ -291,7 +329,7 @@ def _self_test():
     import http.server
     global OS_URL, _ff
     calls, store = [], {}
-    project, order = "33333333-3333-4333-8333-333333333333", "44444444-4444-4444-8444-444444444444"
+    project, order, hand = "33333333-3333-4333-8333-333333333333", "44444444-4444-4444-8444-444444444444", "77777777-7777-4777-8777-777777777777"
     class H(http.server.BaseHTTPRequestHandler):
         def log_message(self, *a): pass
         def _send(self, obj, code=200):
@@ -306,7 +344,13 @@ def _self_test():
             if self.headers["authorization"] != "Bearer bos_pat_test": return self._send({"error": {"code": "INVALID_SESSION", "message": "x"}}, 401)
             if body["action"] == "next":
                 store["/up/story"] = b'{"scenes": [1]}'
-                return self._send({"orders": [{"id": order, "text": "3번 장면 사진 바꿔줘", "videoAt": "1:23", "meaning": "사진 교체", "feedbackIds": [], "storyboardUrl": base + "/files/story", "subtitles": []}]})
+                return self._send({"orders": [{"id": order, "text": "3번 장면 사진 바꿔줘", "videoAt": "1:23", "meaning": "사진 교체", "feedbackIds": [], "storyboardUrl": base + "/files/story", "subtitles": []},
+                                              {"id": hand, "text": "[손으로] 장면 끝 당기기", "videoAt": None, "meaning": "", "feedbackIds": [], "storyboardUrl": None, "subtitles": [],
+                                               "manual": {"kind": "trim", "lane": "scene", "item": 3, "edge": "b", "from": 12.5, "to": 11.9}, "version": "v1"}],
+                                   "save": {"at": "2026-11-05T09:00:00.000Z", "by": order, "name": "편집자"}, "base": None})
+            if body["action"] == "materials_upload":
+                return self._send({"uploads": [{"name": f["name"], "url": f"{base}/up/m-{f['name']}", "type": SCREEN_TYPES[os.path.splitext(f["name"])[1]]} for f in body["files"]]})
+            if body["action"] == "materials_saved": return self._send({"ok": True, "version": {"name": body["version"], "files": 2}})
             if body["action"] == "confirm_start":
                 return self._send({"confirmId": "55555555-5555-4555-8555-555555555555", "videoUploadUrl": base + "/up/video", "srtUploadUrl": base + "/up/srt",
                                    "bundleUploadUrls": [f"{base}/up/part{n}" for n in range(body["bundleParts"])],
@@ -341,8 +385,15 @@ def _self_test():
         for f in ["words.json", "subs_myin.ass", "subs_youtube.srt", "speech.txt", "voice.wav"]: open(os.path.join(snap, f), "w").write("x")
         lock(project); assert calls[-1][2]["pc"] == "test-mac"
         got = pull_orders(project, ed)
-        assert [o["os_id"] for o in got] == [order] and open(os.path.join(vo, got[0]["story"])).read() == '{"scenes": [1]}'
+        assert [o["os_id"] for o in got] == [order, hand] and open(os.path.join(vo, got[0]["story"])).read() == '{"scenes": [1]}'
+        assert [e["os_id"] for e in jl(os.path.join(ed, "edits.json"))] == [hand] and jl(os.path.join(ed, "edits.json"))[0]["manual"]["kind"] == "trim", "a hand edit goes to edits.json"
+        assert [o["os_id"] for o in jl(os.path.join(ed, "orders.json"))] == [order] and jl(os.path.join(ed, "saves.json"))["pending"]["os"] == "2026-11-05T09:00:00.000Z"
         assert pull_orders(project, ed) == [], "an order taken before is not added twice"
+        got = got[:1]
+        vj = os.path.join(ed, "version.json"); js(vj, {"name": "v1", "scenes": []}); px = os.path.join(ed, "proxy.mp4"); open(px, "wb").write(b"mp4")
+        assert materials(project, "v1", [vj, px], final="2026-11-04T10:00:00.000Z")["name"] == "v1"
+        assert ("PUT", "/up/m-proxy.mp4", "video/mp4") in calls and next(c[2] for c in calls if c[1] == "materials_saved")["final"] == "2026-11-04T10:00:00.000Z"
+        save_done(project); assert calls[-1][1] == "save_done"
         video = os.path.join(ed, "versions", "v2.mp4"); open(video, "wb").write(b"video-bytes")
         open(os.path.join(ed, "versions", "v2.srt"), "w").write("1\n")
         os.makedirs(os.path.join(ed, "versions", "v2_handouts")); open(os.path.join(ed, "versions", "v2_handouts", "한장정리.png"), "wb").write(b"png"); open(os.path.join(ed, "versions", "v2_handouts", "덱_전체.pdf"), "wb").write(b"pdf")

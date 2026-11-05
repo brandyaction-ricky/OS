@@ -3,7 +3,7 @@ import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
 import { requestSay, sayRequestSchema, sayStatus } from "@/lib/server/myin-say";
-import { confirmFinish, confirmStart, confirmStartSchema, declineEdit, editHandoff, editLock, editNews, editorImageSaved, editorImageUpload, forceUnlock, editOrderResult, editOrderSchema, editorProject, editStatus, nextEditOrders, submitEditOrder } from "@/lib/server/myin-edit";
+import { cancelEditOrder, confirmFinish, confirmStart, confirmStartSchema, declineEdit, editHandoff, editLock, editNews, editorImageSaved, editorImageUpload, forceUnlock, editOrderResult, editOrderSchema, editorProject, editStatus, materialsSaved, materialsSavedSchema, materialsUpload, materialsUploadSchema, nextEditOrders, requestSave, saveDone, screenFiles, screenView, setEditBase, submitEditOrder } from "@/lib/server/myin-edit";
 import { myinEditorView } from "@/lib/server/myin-run";
 import { listFeedback } from "@/lib/server/youtube-process-feedback";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
@@ -11,14 +11,16 @@ import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const headers = { "cache-control": "private, no-store" };
-const querySchema = z.object({ projectId: z.string().uuid(), view: z.enum(["summary", "scenes", "subtitles", "assets", "orders", "edits", "feed"]).default("summary"), since: z.string().datetime().optional() });
+const querySchema = z.object({ projectId: z.string().uuid(), view: z.enum(["summary", "scenes", "subtitles", "assets", "orders", "edits", "feed", "screen", "screen_files"]).default("summary"),
+  since: z.string().datetime().optional(), version: z.string().max(40).optional() });
 
 /**
  * 영상 편집기 읽기 (로건 개발 문서 2026-11-03 §4-2, MCP get_video_editor): what an AI needs to edit a finished video, read only.
  * A person reads what the database lets them; an AI key only a video its owner made or is assigned (its database client is not
  * scoped, so the project is checked here). orders = the 최종 검토 feedback on the video still open; edits = who holds the edit lock
  * and the orders sent from members' AI chats, with what each became; feed = the same as news lines since `since` (doc v3 6-5: progress
- * reaches people through their AI chat, not the editor screen).
+ * reaches people through their AI chat, not the editor screen); screen = what the editor screen reads (its /api/state), screen_files =
+ * one version's files for it, signed for an hour.
  */
 export async function GET(request: Request) {
   try {
@@ -28,6 +30,8 @@ export async function GET(request: Request) {
     const project = await editorProject(actor, input.projectId);
     if (input.view === "edits") return NextResponse.json({ title: project.title, ...await editStatus(actor, project.id) }, { headers });
     if (input.view === "feed") return NextResponse.json({ title: project.title, ...await editNews(actor, project.id, input.since ?? null) }, { headers });
+    if (input.view === "screen") return NextResponse.json(await screenView(actor, project.id), { headers });
+    if (input.view === "screen_files") return NextResponse.json(await screenFiles(actor, project.id, input.version ?? ""), { headers });
     if (input.view === "orders") {
       const items = (await listFeedback(actor, project.id)).filter((item) => item.target === "video" && item.status === "open" && !item.deleted);
       return NextResponse.json({ projectId: project.id, title: project.title, orders: items.map(({ id, version, ver, t, range, text, kind, marks, who }) => ({ id, version, ver, t, range, text, kind, marks: marks ?? [], who })) }, { headers });
@@ -40,7 +44,8 @@ export async function GET(request: Request) {
 }
 
 const pc = z.string().trim().min(1).max(80);
-const postSchema = z.object({ action: z.enum(["lock", "heartbeat", "unlock", "order", "next", "result", "decline", "confirm_start", "confirm_finish", "handoff", "say", "say_status", "force_unlock", "image_upload", "image_saved"]), projectId: z.string().uuid() }).passthrough();
+const postSchema = z.object({ action: z.enum(["lock", "heartbeat", "unlock", "order", "next", "result", "decline", "confirm_start", "confirm_finish", "handoff", "say", "say_status", "force_unlock", "image_upload", "image_saved",
+  "edit_cancel", "save", "save_done", "base", "materials_upload", "materials_saved"]), projectId: z.string().uuid() }).passthrough();
 const resultSchema = z.object({ pc, orderId: z.string().uuid(), status: z.enum(["done", "failed", "queued"]), version: z.string().trim().max(80).optional(), note: z.string().trim().max(2000).optional() }).strict();
 const finishSchema = z.object({ pc, confirmId: z.string().uuid(), parts: z.array(z.object({ bytes: z.number().int().positive(), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict()).min(1).max(24) }).strict();
 const declineSchema = z.object({ orderId: z.string().uuid().optional(), feedbackId: z.string().uuid().optional(), reason: z.string().trim().min(1).max(1000) }).strict()
@@ -50,7 +55,9 @@ const declineSchema = z.object({ orderId: z.string().uuid().optional(), feedback
  * 영상 편집기 ②-2 (로건 개발 문서 v2): lock · heartbeat · unlock and next · result come from the editor on a member's computer
  * (`pc` names it), and so do confirm_start · confirm_finish (a confirmed final with its material bundle) and handoff (to go on
  * editing on another computer); order and decline come from that member's AI chat (MCP submit_video_edit · decline_video_order); say ·
- * say_status ask the render PC for sentences read again in the video's own voice (doc v3 7.2-1).
+ * say_status ask the render PC for sentences read again in the video's own voice (doc v3 7.2-1). The editor screen (편집 화면 이식): order with
+ * manual = a hand edit, edit_cancel = 되돌리기, save = 완성, base = the version the next edits start from; the editing computer answers a 완성
+ * it could not confirm with save_done and puts each version's files up with materials_upload · materials_saved.
  */
 export async function POST(request: Request) {
   try {
@@ -68,6 +75,12 @@ export async function POST(request: Request) {
     if (action === "force_unlock") return NextResponse.json(await forceUnlock(actor, projectId, z.object({ reason: z.string().trim().min(1).max(300) }).strict().parse(rest).reason), { headers });
     if (action === "say") return NextResponse.json(await requestSay(actor, projectId, sayRequestSchema.parse(rest)), { headers });
     if (action === "say_status") return NextResponse.json(await sayStatus(actor, projectId, z.object({ sayId: z.string().uuid() }).strict().parse(rest).sayId), { headers });
+    if (action === "edit_cancel") return NextResponse.json(await cancelEditOrder(actor, projectId, z.object({ orderId: z.string().uuid() }).strict().parse(rest).orderId), { headers });
+    if (action === "save") { z.object({}).strict().parse(rest); return NextResponse.json(await requestSave(actor, projectId), { headers }); }
+    if (action === "save_done") return NextResponse.json(await saveDone(actor, projectId, z.object({ pc }).strict().parse(rest).pc), { headers });
+    if (action === "base") return NextResponse.json(await setEditBase(actor, projectId, z.object({ version: z.string().max(40).nullable() }).strict().parse(rest).version), { headers });
+    if (action === "materials_upload") return NextResponse.json(await materialsUpload(actor, projectId, materialsUploadSchema.parse(rest)), { headers });
+    if (action === "materials_saved") return NextResponse.json(await materialsSaved(actor, projectId, materialsSavedSchema.parse(rest)), { headers });
     if (action === "handoff") return NextResponse.json(await editHandoff(actor, projectId, z.object({ at: z.string().datetime().optional() }).strict().parse(rest).at), { headers });
     return NextResponse.json(await declineEdit(actor, projectId, declineSchema.parse(rest)), { headers });
   } catch (error) {
