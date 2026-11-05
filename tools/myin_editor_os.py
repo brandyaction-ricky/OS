@@ -10,6 +10,8 @@ ws/voice/os_voice, versions/, voicever/, jobs/, orders.json).
   L.confirm(project, editor, version, engine)                     check · bundle · upload; the edit becomes the OS's newest final
   L.say(project, editor, order, text)                             a sentence read again in the video's voice on the render PC (k takes)
   L.restore(project, editor)                                      another computer goes on from an OS final (its materials and pieces)
+  L.settings()                                                    the runner's engine folders, Python, fingerprint and render slots
+  L.upload_image(project, path)                                   a picture the editor uses, kept by the OS for whoever takes over
   L.cleanup(project, editor)                                      two weeks after YouTube, clear this computer's edit files
 
 Key: MYIN_LOCAL_KEY, else the 「내 컴퓨터 렌더」 key myin-local saved. Computer name: MYIN_PC, else this computer's name.
@@ -70,6 +72,24 @@ def _put(url, path, ctype):
 
 def _get(url, path):
     tmp = path + ".part"; open(tmp, "wb").write(_call("GET", url)); os.replace(tmp, path)
+
+
+def settings():
+    """What myin-local wrote when it installed the engine (v3 7.2-11): engine folders, Python, fingerprint and render slots."""
+    s = jl(os.path.join(home(), "editor.json"))
+    if not s: raise EditorError("EDIT_NO_SETTINGS", "실행기(myin-local)를 한 번 켜 주세요. 엔진을 받은 뒤 편집기 설정이 생겨요.")
+    return s
+
+
+IMAGE_TYPES = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
+
+def upload_image(project, path, credit=None):
+    """A picture the editor uses (v3 7.2-12) goes to the OS's store for this video; returns its OS file name (edit-….jpg)."""
+    ctype = IMAGE_TYPES.get(os.path.splitext(path)[1].lower())
+    if not ctype: raise EditorError("MYIN_OUR_IMAGE_TYPE", "JPG · PNG · WEBP 이미지만 올릴 수 있어요.")
+    up = api("image_upload", project, pc=pc(), type=ctype)
+    _put(up["uploadUrl"], path, ctype)
+    return api("image_saved", project, pc=pc(), file=up["file"], path=up["path"], credit=credit)["file"]
 
 
 # ── 편집 잠금: 한 영상은 한 사람·한 컴퓨터 ──
@@ -243,8 +263,10 @@ def restore(project, editor, at=None):
     files = [f for f in os.listdir(ck) if re.match(r"c\d+\.mp4$", f)]
     if r.returncode or len(files) != len(bounds) + 1:
         raise EditorError("EDIT_RESTORE_PIECES", f"최종본을 나눈 조각 수({len(files)})가 기록({len(bounds) + 1})과 달라요 — 이어받지 않았어요.")
+    images = os.path.join(editor, "ws", "editor-images"); os.makedirs(images, exist_ok=True)
+    for im in h.get("images") or []: _get(im["url"], os.path.join(images, im["file"]))
     js(os.path.join(editor, "pc.json"), {"final": h["at"], "restored_at": time.time()})
-    return {"final": h["at"], "v": h["v"], "video": video, "chunks": len(files), "bounds": bounds, "end": h["edit"]["check"]["end"],
+    return {"final": h["at"], "v": h["v"], "video": video, "images": [im["file"] for im in h.get("images") or []], "chunks": len(files), "bounds": bounds, "end": h["edit"]["check"]["end"],
             "engine": h["edit"]["engine"], "engineDownload": h.get("engine")}
 
 
@@ -290,6 +312,8 @@ def _self_test():
                                    "bundleUploadUrls": [f"{base}/up/part{n}" for n in range(body["bundleParts"])],
                                    **({"summaryUploadUrl": base + "/up/summary", "deckUploadUrl": base + "/up/deck"} if body.get("handouts") else {})})
             if body["action"] == "confirm_finish": return self._send({"ok": True, "final": "2026-11-04T10:00:00.000Z", "v": 2})
+            if body["action"] == "image_upload": return self._send({"file": "edit-0123456789ab.jpg", "path": "o/p/r/editor-images/edit-0123456789ab.jpg", "uploadUrl": base + "/up/img"})
+            if body["action"] == "image_saved": return self._send({"ok": True, "file": body["file"], "bytes": 3})
             if body["action"] == "say": return self._send({"sayId": "66666666-6666-4666-8666-666666666666", "status": "queued"})
             if body["action"] == "say_status":
                 store["/up/take0"] = b"RIFF0"; store["/up/take1"] = b"RIFF1"
@@ -297,6 +321,7 @@ def _self_test():
             if body["action"] == "handoff":
                 parts = [{"bytes": len(store[f"/up/part{n}"]), "sha256": hashlib.sha256(store[f"/up/part{n}"]).hexdigest(), "url": f"{base}/files/part{n}"} for n in range(len([k for k in store if k.startswith("/up/part")]))]
                 return self._send({"at": "2026-11-04T10:00:00.000Z", "v": 2, "videoUrl": base + "/files/video", "srtUrl": base + "/files/srt", "bundle": parts,
+                                   "images": [{"file": "edit-0123456789ab.jpg", "bytes": 3, "credit": None, "url": base + "/files/img"}],
                                    "edit": {"bounds": [300], "engine": "a" * 32, "check": {"end": 10}}, "engine": None})
             self._send({"ok": True})
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H); threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -335,7 +360,14 @@ def _self_test():
         assert {"./os_myin/myin_storyboard.json", "./os_myin/music_match.json", "./os_voice/voice.flac", "./주문기록.json"} <= names and "./os_myin/mix.wav" not in names
         try: confirm(project, ed, "v9", "a" * 32); raise AssertionError("a missing version must stop")
         except EditorError as e: assert e.code == "EDIT_NO_VERSION"
+        img = os.path.join(ed, "photo.jpg"); open(img, "wb").write(b"jpg")
+        assert upload_image(project, img, "Unsplash · 홍길동") == "edit-0123456789ab.jpg" and ("PUT", "/up/img", "image/jpeg") in calls
         other = os.path.join(ed, "other"); r = restore(project, other)
+        assert r["images"] == ["edit-0123456789ab.jpg"] and open(os.path.join(other, "ws", "editor-images", "edit-0123456789ab.jpg"), "rb").read() == b"jpg"
+        os.environ["MYIN_LOCAL_HOME"] = ed
+        try: settings(); raise AssertionError("no settings before the runner ran")
+        except EditorError as e: assert e.code == "EDIT_NO_SETTINGS"
+        js(os.path.join(ed, "editor.json"), {"engine": {"fingerprint": "a" * 32}, "slots": 6}); assert settings()["slots"] == 6
         assert r["chunks"] == 2 and os.path.exists(os.path.join(other, "ws", "voice", "os_myin", "myin_storyboard.json"))
         assert check_issues({"decodeErrors": 0, "frames": 597, "end": 10, "videoSeconds": 10, "audioSeconds": 10}) == ["프레임 수 597 / 예상 600"]
         took = say(project, ed, "o002", "이 문장을 다시 읽어 줘", takes=2, every=0)

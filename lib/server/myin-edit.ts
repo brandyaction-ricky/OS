@@ -8,7 +8,8 @@ import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { RequestActor } from "./auth";
 import { readDiagramCatalog } from "./diagram-catalog";
-import { editFinalSchema, myinAddEditFinal, myinEditUploads, myinFinalAt, myinFinalForHandoff, myinFinalVersions, myinRunWithWords } from "./myin-run";
+import { editFinalSchema, myinAddEditFinal, myinEditorImageSize, myinEditorImageUpload, myinEditorImageUrl, myinEditUploads, myinFinalAt, myinFinalEngine, myinFinalForHandoff, myinFinalVersions, myinRunWithWords } from "./myin-run";
+import { renderPcEngine } from "./youtube-render-pc";
 import { currentEngineDownload, ENGINE_BUCKET, ENGINE_PART_BYTES, engineBundleSaved } from "./render-engine";
 import { getYoutubeProject } from "./youtube-process";
 import { actOnFeedback, listFeedback } from "./youtube-process-feedback";
@@ -31,6 +32,9 @@ const confirmingSchema = confirmStartSchema.omit({ pc: true }).extend({ id: z.st
 const sessionSchema = z.object({ kind: z.literal(SESSION), projectId: z.string().uuid(),
   lock: z.object({ by: z.string().uuid(), name: z.string(), pc: z.string(), since: z.string(), seenAt: z.string(), basedOn: z.string().nullable() }).strict().optional(),
   confirming: confirmingSchema.optional(),
+  // 영상 편집기 사진 (v3 7.2-12): the pictures the video's editors put in, kept by the OS so another computer gets them too.
+  images: z.array(z.object({ file: z.string(), path: z.string(), bytes: z.number().int().positive(), by: z.string(), name: z.string(), at: z.string(),
+    credit: z.string().max(300).optional() }).strict()).max(200).optional(),
   history: z.array(z.object({ kind: z.enum(["lock", "handover", "unlock", "force"]), name: z.string(), pc: z.string(), at: z.string(),
     from: z.object({ name: z.string(), pc: z.string() }).strict().optional(), reason: z.string().optional() }).strict()).optional() }).passthrough();
 const orderSchema = z.object({ kind: z.literal(ORDER), projectId: z.string().uuid(), runId: z.string().uuid(), text: z.string(), at: z.string().nullable(),
@@ -245,6 +249,10 @@ export async function confirmStart(actor: RequestActor, projectId: string, input
   const loud = editLoudnessIssue(input.lufs, input.peak);
   if (loud) throw new ApiError(422, "EDIT_LOUDNESS", `소리 크기 검사에 걸렸어요: ${loud}`);
   if (!await engineBundleSaved(input.engine)) throw new ApiError(409, "EDIT_ENGINE_MISSING", "이 편집에 쓴 엔진 묶음이 OS에 없어요. 엔진을 다시 받은 뒤 고쳐 주세요.");
+  // v3 7.2-2: an older engine is refused — the render PC's engine now, or the one that drew the final being edited (another computer
+  // that took it over installs that one); anything else is out of date.
+  const allowed = [await renderPcEngine(), await myinFinalEngine(service, project.id)].filter((fp): fp is string => Boolean(fp));
+  if (allowed.length && !allowed.includes(input.engine)) throw new ApiError(409, "EDIT_ENGINE_OLD", "이 컴퓨터의 엔진이 오래됐어요. 실행기를 다시 켜서 새 엔진을 받은 뒤 고쳐 주세요.");
   const id = randomUUID();
   const uploads = await myinEditUploads(service, project.id, id, input.handouts);
   const storage = service.storage.from(ENGINE_BUCKET);
@@ -308,7 +316,10 @@ export async function editHandoff(actor: RequestActor, projectId: string, at?: s
     if (error || !data) throw new ApiError(503, "EDIT_SIGN_FAILED", "재료 묶음 주소를 만들지 못했어요.");
     return { ...part, url: data.signedUrl };
   })) : null;
-  return { projectId: project.id, uploadedAt: await uploadedAt(actor, project), ...final, bundle,
+  const session = await sessionRecord(service, project.id);
+  const images = await Promise.all((session ? sessionSchema.parse(session.metadata).images ?? [] : []).map(async (image) =>
+    ({ file: image.file, bytes: image.bytes, credit: image.credit ?? null, url: await myinEditorImageUrl(service, image.path) })));
+  return { projectId: project.id, uploadedAt: await uploadedAt(actor, project), ...final, bundle, images,
     engine: final.edit ? await currentEngineDownload(final.edit.engine) : null };
 }
 
@@ -349,4 +360,29 @@ export async function feedbackEdits(actor: RequestActor, projectId: string, item
     .is("archived_at", null).order("created_at", { ascending: false }).limit(50);
   const orders = (data ?? []).map((row) => orderSchema.parse(row.metadata)).map((o) => ({ feedbackIds: o.feedbackIds, status: o.status, result: o.result ?? null }));
   return feedbackEditStates(items, orders, Boolean(lock && lockDecision(lock, { by: "", pc: "" }, Date.now()).kind === "held"));
+}
+
+/** 영상 편집기 사진 1/2 (v3 7.2-12): where the editor holding the lock puts a picture (JPG · PNG · WEBP, ≤ 20 MB). */
+export async function editorImageUpload(actor: RequestActor, projectId: string, pc: string, type: string) {
+  const project = await editorProject(actor, projectId);
+  const service = createServiceSupabase();
+  await heldSession(service, actor, project.id, pc);
+  return myinEditorImageUpload(service, project.id, type);
+}
+
+/** 2/2: it landed; the video's editor keeps it (with where it came from, for the credits) and hands it to whoever takes the edit over. */
+export async function editorImageSaved(actor: RequestActor, projectId: string, input: { pc: string; file: string; path: string; credit?: string }) {
+  const project = await editorProject(actor, projectId);
+  const service = createServiceSupabase();
+  if (!/^edit-[a-f0-9-]{12}\.(jpg|png|webp)$/.test(input.file) || !input.path.endsWith(`/editor-images/${input.file}`) || !input.path.includes(`/${project.id}/`))
+    throw new ApiError(400, "EDIT_IMAGE_PATH", "이미지를 다시 올려 주세요.");
+  const bytes = await myinEditorImageSize(service, input.path);
+  if (!bytes) throw new ApiError(409, "EDIT_IMAGE_MISSING", "올린 이미지를 찾지 못했어요. 다시 올려 주세요.");
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { record, meta, lock } = await heldSession(service, actor, project.id, input.pc);
+    const image = { file: input.file, path: input.path, bytes, by: lock.by, name: lock.name, at: new Date().toISOString(), ...(input.credit ? { credit: input.credit } : {}) };
+    const next = { ...meta, images: [...(meta.images ?? []).filter((i) => i.file !== input.file), image].slice(-200) };
+    if (await saveSession(service, record, next, who(actor)).then(() => true, () => false)) return { ok: true, file: input.file, bytes };
+  }
+  throw new ApiError(409, "RECORD_VERSION_CONFLICT", "다른 곳에서 먼저 바꿨어요. 다시 해 주세요.");
 }
