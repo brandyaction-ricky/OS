@@ -50,6 +50,10 @@ test("writes need records.write, an order passes the storyboard check, and only 
   assert.match(submit, /anchorMyinCues\(storyboard, myin\.words, myin\.speech\)/);
   assert.match(submit, /checkMyinStoryboard\(storyboard, myin\.words, diagramCatalogTypes\(await readDiagramCatalog\(\)\), myin\.speech\)/);
   assert.match(submit, /ApiError\(422, "EDIT_STORYBOARD_ISSUES"/);
+  const run = await readFile(new URL("../lib/server/myin-run.ts", import.meta.url), "utf8");
+  assert.match(submit, /await myinRunWords\(service, project\.id\)/, "an edit changes a video already made, also once it moved on to 업로드");
+  assert.doesNotMatch(run.slice(run.indexOf("export async function myinRunWords"), run.indexOf("export async function myinRunWithWords")), /currentInput/,
+    "the run and its words are read without the 원고 check (it reads no 원고 outside 제작 · 최종 검토)");
   for (const fn of ["nextEditOrders", "editOrderResult"]) assert.match(edit.slice(edit.indexOf(`export async function ${fn}`)).split("\nexport ")[0], /await (lockHolder|heldSession)\(service, actor, project\.id, pc\)/, fn);
   assert.match(edit, /\.eq\("id", record\.id\)\.eq\("version", record\.version\)/, "the lock is taken with the record version");
   assert.match(edit.slice(edit.indexOf("export async function declineEdit")), /action: "decline", text: input\.reason/, "a declined feedback keeps the reason");
