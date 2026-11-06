@@ -14,6 +14,7 @@ import { youtubeUploadPublication, youtubeUploadRecordId } from "./youtube-uploa
 import { conflict, getYoutubeProject } from "./youtube-process";
 import { confirmedClip } from "./youtube-process-short";
 import { MEDIA_BUCKET, readFinals, readStages, writeStage } from "./youtube-process-stages";
+import { queueStudioTask } from "./youtube-studio";
 
 // S7 [업로드] (지시서 10-2): the browser sends the last final straight to YouTube's resumable session; the OS checks the
 // 최종 검수 OK before opening the session and records the video after.
@@ -139,6 +140,9 @@ export async function completeYoutubeUpload(actor: RequestActor, id: string, inp
       connectionOwnerId: ownerId, finalApproved: true, approvedBy: actor.id, uploadedAt: run.at, projectId: project.id, utmContent: utmCode(project.id) },
   });
   if (error && error.code !== "23505") console.warn(`youtube publish record skipped (${error.code ?? "error"})`);
+  // 스튜디오 작업: what the API cannot set waits for the uploader's AI in Studio (a Short has no end screen or test).
+  if (!short) await queueStudioTask(service, project.id, video.id, { id: channelId, title: (await youtubeConnectionStatus(ownerId)).channelTitle ?? "", ownerId }, actor.ownerId)
+    .catch(reason => console.warn(`studio task skipped (${reason instanceof Error ? reason.message : "error"})`));
   await auditChannelAction(actor.id, ownerId, "youtube", "업로드 결과 확인");
   return { videoId: video.id, videoUrl, thumbnail };
 }

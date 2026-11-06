@@ -8,7 +8,7 @@ import { ENDSCREEN_CARD_DEFAULT, type EndscreenCard } from "@/lib/youtube-proces
 import type { ChannelConnection } from "@/lib/channel-types";
 import { channelMismatch } from "@/lib/youtube-process/channel-style";
 import { projectName, stepHref } from "@/lib/youtube-process/project";
-import { DESC_TEMPLATE, descChecks, descWritten, diagnosisLink, finalPair, reviewOkAt, uploadFinal, linksMissing, pinnedDraft, publishAtProblem, shortLinkProblem, SLOTS, UTM_DESTS, UTM_OPTIONS, utmBase, utmCode, utmUrl, withLinks, type YpMake, type YpUpload } from "@/lib/youtube-process/stages";
+import { DESC_TEMPLATE, descChecks, descWritten, diagnosisLink, finalPair, reviewOkAt, uploadFinal, linksMissing, pinnedDraft, publishAtProblem, shortLinkProblem, SLOTS, UTM_DESTS, UTM_OPTIONS, utmBase, utmCode, utmUrl, withLinks, type YpUpload } from "@/lib/youtube-process/stages";
 import { errorMessage } from "./youtube-process-data";
 import { JobLine, SendDialog, useStaffJob, type SendTab } from "./youtube-process-ai";
 import { draftTag, isGptModel } from "@/lib/youtube-process/gpt-draft";
@@ -17,6 +17,7 @@ import { GateBanner, hhmm, LockedStep, stepAction, Subject, useYpBundle, YpFrame
 import { ShortExportScreen } from "./youtube-process-short";
 import { CardExportScreen } from "./youtube-process-card";
 import { useAssetUrl, YtCard, YtLookPicker, type YpMediaSource } from "./youtube-process-media";
+import { STUDIO_ITEMS, testKind, type StudioItem, type StudioState, type studioStates } from "@/lib/youtube-process/studio";
 
 /** S7 업로드, or 내보내기 for a 숏폼 (download, no YouTube upload). */
 export function YoutubeUploadScreen({ header }: { header: ReactNode }) {
@@ -266,6 +267,7 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
               {goError ? <small className="yp-errline" role="alert">올리지 못했어요: {goError}</small> : reason ? <small className="yp-errline">{reason}</small> : <CostTag kind="youtube" />}</>}</div>
           {progress !== null ? <div className="yp-gauge" role="status"><progress max={100} value={bytes ? progress : undefined} aria-label="유튜브로 보내는 진행률" />
             <small>{bytes ? `${progress}% · ${mb(bytes.loaded)} / ${mb(bytes.total)}${left(bytes) ? ` · 남은 시간 ${left(bytes)}` : ""}` : `${step}…`}</small></div> : null}</section>
+        {done ? <StudioWork page={page} projectId={project.id} /> : null}
       </div>
       <aside className="yp-rside"><section className="yp-card"><div className="yp-card-h">제목 · 썸네일 테스트</div><div className="yp-card-b">
         <div className="yp-yt-pick"><YtLookPicker /></div>
@@ -294,13 +296,60 @@ const localInput = (iso: string) => { const at = new Date(iso); return `${at.get
 const tomorrowSix = () => { const at = new Date(); at.setDate(at.getDate() + 1); at.setHours(18, 0, 0, 0); return at.toISOString(); };
 const whenKo = (iso: string) => { const at = new Date(iso); return `${at.getMonth() + 1}/${at.getDate()} (${"일월화수목금토"[at.getDay()]}) ${pad(at.getHours())}:${pad(at.getMinutes())}`; };
 
-/** Which 테스트 및 비교 the confirmed A · B · C make: titles, thumbnails or both differ. */
-function testKind(plan: Parameters<typeof finalPair>[0], make: YpMake) {
-  const pairs = SLOTS.map(slot => finalPair(plan, make, slot)).filter(Boolean);
-  if (pairs.length < 2) return "";
-  const titles = new Set(pairs.map(pair => pair!.title.trim())).size > 1;
-  const thumbs = new Set(SLOTS.filter(slot => plan.confirmed?.[slot]).map(slot => make.thumbs[slot]?.path ?? slot)).size > 1;
-  return titles && thumbs ? "제목과 썸네일" : thumbs ? "썸네일만" : titles ? "제목만" : "";
+const STUDIO_LABEL: Record<StudioState, string> = { ready: "대기", later: "공개 후 가능", done: "등록됨", failed: "못 함", none: "없음" };
+const STUDIO_SHORT: Record<StudioItem, string> = { endscreen: "최종 화면", test: "테스트", pin: "고정 댓글" };
+type StudioView = { task: { items: ReturnType<typeof studioStates>; testKind: string; channel: string; lock: { name: string; since: string } | null } | null };
+
+/**
+ * 스튜디오 작업 (2026-11-06 staff request): what YouTube's API cannot set (최종 화면 · 테스트 및 비교 · 고정 댓글) each person's own AI
+ * does in Studio from the OS queue; this shows what became of each, and hands one over again.
+ */
+function StudioWork({ page, projectId }: { page: YpPage; projectId: string }) {
+  const [view, setView] = useState<StudioView | null>(null);
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+  const token = page.accessToken, demo = page.demo;
+  const load = useCallback(() => {
+    if (demo || !token) return;
+    apiRequest<StudioView>(`/api/v1/content/youtube/studio?projectId=${projectId}`, { token }).then(setView, () => undefined);
+  }, [demo, token, projectId]);
+  useEffect(load, [load]);
+  // The AI reports while the tab may be open: read again every minute while something is still to do.
+  const waiting = Boolean(view?.task && (view.task.lock || STUDIO_ITEMS.some(item => view.task!.items[item].state === "ready")));
+  useEffect(() => {
+    if (!waiting) return;
+    const timer = window.setInterval(load, 60_000);
+    return () => window.clearInterval(timer);
+  }, [waiting, load]);
+  if (!view) return null;
+  const queue = async (item?: StudioItem) => {
+    setBusy(item ?? "all"); setError("");
+    try { setView(await apiRequest<StudioView>("/api/v1/content/youtube/studio", { token, method: "POST", body: JSON.stringify({ action: "queue", projectId, ...(item ? { item } : {}) }) })); }
+    catch (reason) { setError(errorMessage(reason)); } finally { setBusy(""); }
+  };
+  const task = view.task;
+  const detail = (item: StudioItem) => {
+    const it = task!.items[item];
+    if (it.state === "done") return `${whenKo(it.at!)} · ${it.name}${it.kind ? ` · ${it.kind}` : ""}`;
+    if (it.state === "failed") return it.note ?? "";
+    if (it.state === "later") return it.from ? `${whenKo(it.from)}부터 할 수 있어요` : "비공개 영상이라 공개한 뒤에 할 수 있어요";
+    if (it.state === "none") return "B · C안이 없어 걸지 않아요";
+    return item === "test" ? `「${task!.testKind}」 방식으로 걸어요` : "내 AI가 할 차례예요";
+  };
+  return <YpSection title="스튜디오 작업 · 내 AI">
+    {task ? <ul className="yp-es-rows">{STUDIO_ITEMS.map(item => <li key={item}><span className="yp-muted">{STUDIO_SHORT[item]}</span>
+      <span className="yp-es-v"><span className={`yp-tag${task.items[item].state === "done" ? " yp-acc" : task.items[item].state === "failed" ? " yp-warn" : ""}`}>{STUDIO_LABEL[task.items[item].state]}</span> {detail(item)}</span>
+      {["done", "failed"].includes(task.items[item].state) ? <button type="button" className="yp-btn yp-sm" disabled={Boolean(busy)} onClick={() => void queue(item)}>{busy === item ? "맡기는 중…" : "다시 맡기기"}</button> : null}</li>)}</ul>
+      : <div className="yp-row-btns"><button type="button" className="yp-btn yp-pri" disabled={Boolean(busy)} onClick={() => void queue()}>{busy ? "맡기는 중…" : "내 AI에게 맡기기"}</button></div>}
+    {task?.lock ? <p className="yp-hint">{task.lock.name}님 AI가 스튜디오에서 하는 중이에요 · {whenKo(task.lock.since)}부터</p> : null}
+    {error ? <p className="yp-errline" role="alert">{error}</p> : null}
+    <p className="yp-hint">내 AI에게 「스튜디오 작업 해 줘」라고 말하면 {task?.channel ? `「${task.channel}」 채널` : "올린 채널"} 스튜디오에 최종 화면 · 테스트를 넣고, 고정 댓글은 공개된 뒤에 달아 고정해요. 위 값을 직접 넣어도 돼요.</p>
+    <details className="yp-hint"><summary>처음 한 번 준비할 것</summary><ol>
+      <li>AI 연결 설정에서 get_upload_studio_task · report_studio_done 도구를 「항상 허용」으로 켜요.</li>
+      <li>내 컴퓨터 크롬에 Claude(또는 Codex) 확장을 연결하고, 올릴 채널 권한이 있는 계정으로 유튜브 스튜디오에 로그인해 둬요.</li>
+      <li>고정 댓글은 공개 시각이 지나야 달 수 있어요. 내 AI 예약 작업에 「스튜디오 작업 목록을 30분마다 확인해서 할 게 있으면 해 줘」라고 맡기거나, 공개 뒤 OS 알림이 오면 한마디로 시켜요.</li>
+    </ol></details>
+  </YpSection>;
 }
 function ThumbFile({ page, slot, path }: { page: YpMediaSource; slot: string; path: string }) {
   const url = useAssetUrl(page, path);
