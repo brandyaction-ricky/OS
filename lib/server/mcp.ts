@@ -61,6 +61,18 @@ export const MCP_TOOLS = [
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   },
   {
+    name: "get_upload_studio_task",
+    description: "스튜디오 작업: 유튜브 API로 안 되는 최종 화면 · 제목 · 썸네일 테스트 및 비교 · 고정 댓글을, 롱폼을 올린 뒤 이 키 주인의 AI가 본인 크롬의 유튜브 스튜디오에서 대신 넣습니다. project_id 없이 부르면 할 일이 있는 영상 목록(items의 state: ready = 지금 할 것, later = 고정 댓글처럼 공개 뒤에 할 것과 그 시각 from, done · failed · none)을 줍니다. 예약 작업으로 돌릴 때는 이 목록만 읽고 ready가 있을 때만 진행합니다. 한 영상을 할 때는 project_id와 start=true로 불러 작업을 맡고(같은 영상은 한 사람만, 30분), 채널 · 영상 주소 · 최종 화면(위치 · 동영상 요소 · 링크 요소 · 맞춤 메시지 · 클릭 유도문 · 이미지 주소) · 테스트(방식 · A/B/C 제목 · 썸네일 주소) · 고정 댓글 글 · 절차 문서(procedure: get_document로 읽고 그대로 따릅니다)를 받습니다. 이미지 주소는 6시간 동안 내려받을 수 있습니다. 올릴 채널이 아닌 계정이면 먼저 채널을 바꿉니다. missing이 있는 항목은 하지 말고 report_studio_done에 못 함과 그 이유로 남깁니다. 스튜디오의 마지막 저장 · 게시 전에는 사람에게 확인받고, 이미 고정된 다른 댓글이 있으면 바꾸기 전에 사람에게 묻습니다. knowledge.read 범위가 필요합니다.",
+    inputSchema: { type: "object", properties: { project_id: { type: "string", format: "uuid" }, start: { type: "boolean" } }, additionalProperties: false },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  {
+    name: "report_studio_done",
+    description: "스튜디오 작업: 한 항목(item = endscreen 최종 화면 · test 제목 · 썸네일 테스트 · pin 고정 댓글)을 스튜디오에 넣었으면 done=true(테스트는 kind에 건 방식), 못 했으면 done=false와 note에 사람이 알아듣는 이유를 적습니다. 업로드 탭에 「등록됨」이나 「못 함 · 이유」로 보입니다. 지금 할 항목을 모두 보고하면 작업이 풀려 다른 사람이 맡을 수 있습니다. records.write 범위가 필요합니다.",
+    inputSchema: { type: "object", properties: { project_id: { type: "string", format: "uuid" }, item: { type: "string", enum: ["endscreen", "test", "pin"] }, done: { type: "boolean" }, note: { type: "string" }, kind: { type: "string" } }, required: ["project_id", "item", "done"], additionalProperties: false },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  {
     name: "search_knowledge",
     description: "브랜디 OS 회사 정본과 이 AI 소유자의 초안에서 관련 근거를 검색합니다. 여러 번 찾을 때는 한 번에 하나씩 부르세요(동시에 부르면 실패할 수 있어요).",
     inputSchema: {
@@ -399,6 +411,15 @@ export async function callMcpTool(request: ToolRequest, organizationId: string, 
   if (request.name === "decline_video_order") {
     const input = z.object({ project_id: documentId, order_id: documentId.optional(), feedback_id: documentId.optional(), reason: z.string() }).strict().parse(args);
     return fetchApi("/api/v1/content/youtube-automation/editor", { method: "POST", body: JSON.stringify({ action: "decline", projectId: input.project_id, orderId: input.order_id, feedbackId: input.feedback_id, reason: input.reason }) });
+  }
+  if (request.name === "get_upload_studio_task") {
+    const input = z.object({ project_id: documentId.optional(), start: z.boolean().optional() }).strict().parse(args);
+    if (!input.project_id) return fetchApi("/api/v1/content/youtube/studio");
+    return fetchApi(`/api/v1/content/youtube/studio?${new URLSearchParams({ projectId: input.project_id, view: "task", ...(input.start ? { start: "1" } : {}) })}`);
+  }
+  if (request.name === "report_studio_done") {
+    const input = z.object({ project_id: documentId, item: z.enum(["endscreen", "test", "pin"]), done: z.boolean(), note: z.string().optional(), kind: z.string().optional() }).strict().parse(args);
+    return fetchApi("/api/v1/content/youtube/studio", { method: "POST", body: JSON.stringify({ action: "report", projectId: input.project_id, item: input.item, done: input.done, note: input.note, kind: input.kind }) });
   }
   if (request.name === "list_record_versions") {
     const input = getRecordArgs.parse(args);
