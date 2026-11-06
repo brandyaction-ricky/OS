@@ -299,6 +299,19 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
 }
 
 /** The latest job for one video, and whether the requester's AI has used its key lately (화면 칩 '내 AI'). */
+/**
+ * A run back at 받아쓰기 끝 needs its storyboard again (new words for an edited 원고 or fixed sentences, or 렌더 전 관문's 수정 요청): it goes
+ * to the AI of whoever asked for this video's storyboard last, as their own request (staff test 11-06: the old one closed and waited for a
+ * hand). The first storyboard of a video is still sent by hand; a GPT one is not sent again (company credit).
+ */
+export async function resendStoryboard(sourceId: string) {
+  const { data } = await service().from("os_records").select("*").eq("record_type", "ai_job").eq("metadata->>kind", STAFF_AI_JOB_KIND).eq("parent_id", sourceId)
+    .eq("metadata->>task", "storyboard").is("archived_at", null).order("created_at", { ascending: false }).limit(1);
+  const last = data?.[0] as OsRecord | undefined;
+  if (!last?.owner_id || meta(last).executor) return null;
+  return requestStaffJob({ id: last.owner_id, supabase: service() } as unknown as RequestActor, { task: "storyboard", sourceId });
+}
+
 export async function staffJobStatus(actor: RequestActor, sourceId: string, task: JobMeta["task"]) {
   const [{ data: jobs, error }, { data: keys, error: keyError }] = await Promise.all([
     service().from("os_records").select("*").eq("record_type", "ai_job").eq("metadata->>kind", STAFF_AI_JOB_KIND).eq("parent_id", sourceId)
