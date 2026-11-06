@@ -18,6 +18,7 @@ import { renderPcEngine } from "./youtube-render-pc";
 import { readChannelStyles } from "./youtube-channel-styles";
 import { channelToneSchema, pinStyle } from "@/lib/youtube-process/channel-style";
 import { assertSpokenScript } from "./youtube-script-canon";
+import { notify } from "./youtube-process";
 import { digestVoiceValue, voiceRunId, YOUTUBE_VOICE_BUCKET, YOUTUBE_VOICE_TIMING_BUCKET } from "./youtube-voice-run";
 import { readVoiceDictionary, reportVoiceDictionary } from "./youtube-voice-dictionary";
 import { dictionaryFiles, type VoiceDictionaryFiles } from "@/lib/youtube-process/voice-dictionary";
@@ -492,6 +493,10 @@ const bundleSchema = z.object({
 }).passthrough();
 
 /** Render PC: the bundle is up; the OS reads it back before the run moves on. */
+/** Back at 받아쓰기 끝 with no storyboard: it goes to the AI that wrote the last one (that file imports this one, so it loads here). */
+const resendStoryboard = (sourceId: string, runId: string) => import("./youtube-ai-jobs").then((module) => module.resendStoryboard(sourceId))
+  .catch((error) => console.error(JSON.stringify({ event: "storyboard_resend_failed", runId, message: error instanceof Error ? error.message : String(error) })));
+
 export async function completeMyinWords(input: { runId: string; lease: string; voice?: { parts: number; bytes: number; sha256: string }; preview?: { bytes: number } }, service: Service = createServiceSupabase()) {
   const { record, run } = await leased(service, input.runId, input.lease);
   const path = bundlePath(record, run, input.lease);
@@ -512,6 +517,7 @@ export async function completeMyinWords(input: { runId: string; lease: string; v
   const stage = run.voiceResume ?? "words_ready";
   if (run.voiceResume) next.voiceChanged = { at: new Date().toISOString(), count: run.voiceFixes?.length ?? 0 };
   await save(service, record, "done", stage, next);
+  if (stage === "words_ready") await resendStoryboard(run.sourceId, record.id);
   // His dictionaries as the render PC left them (new lines from voice_fix, or his starting set): the OS keeps what it does not have.
   await reportVoiceDictionary((bundle.data as { dictionary?: Partial<VoiceDictionaryFiles> }).dictionary, { id: record.owner_id ?? "", team: record.team ?? "" }, service)
     .catch((error) => console.error(JSON.stringify({ event: "voice_dictionary_report_failed", message: error instanceof Error ? error.message : String(error) })));
@@ -998,6 +1004,7 @@ export async function completeMyinPrep(input: { runId: string; lease: string }, 
       note: `렌더 전 관문에서 걸린 곳 ${gate.length}개를 고쳐 주세요: ${gate.slice(0, 12).join(" / ")}`.slice(0, 2000), at: new Date().toISOString() } };
     delete back.prepared; delete back.clips; delete back.clipsReview; delete back.sound;
     await save(service, record, "backlog", "words_ready", back);
+    await resendStoryboard(run.sourceId, record.id);
     return { runId: record.id, stage: "words_ready", misses: bundle.misses.length, returned: true };
   }
   // ③ with nothing missing: the drafts are next, without anyone pressing a button. ④ stops here for the sound and photos check;
@@ -1174,6 +1181,9 @@ export async function completeMyinClips(input: { runId: string; lease: string; n
   const next: MyinRun = { ...run, attempts: 0, clips: { items, at: new Date().toISOString(), used: materials(run), ...drewWith(run) } };
   delete next.lease; delete next.lastError; delete next.clipsReview;
   await save(service, record, "done", "clips_review", next);
+  // The drafts wait on a person: whoever confirmed the storyboard and the video's PD hear it (staff test 11-06: nobody knew they were done).
+  const { data: project } = await service.from("os_records").select("assignee_id").eq("id", run.sourceId).maybeSingle();
+  await notify([run.review?.by, project?.assignee_id].filter((id): id is string => Boolean(id)), "ai_result", run.sourceId, `preview:${record.id}:${next.clips!.at}`);
   return { runId: record.id, stage: "clips_review" };
 }
 
