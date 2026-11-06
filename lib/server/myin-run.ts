@@ -209,8 +209,9 @@ export function presentMyinRun(record: OsRecord) {
 /**
  * The latest v13 run for one video, with the frozen transcription (words, speech) once it exists. An admin starts the run (Fish
  * cost) and the content owner's AI writes its storyboard, so the run is found by video, not by who started it.
+ * An edit order needs only this: it changes a video already made, also once 최종 검토 moved the video on to 업로드 (staff test 11-06).
  */
-export async function myinRunWithWords(service: Service, sourceId: string) {
+export async function myinRunWords(service: Service, sourceId: string) {
   const { data } = await service.from("os_records").select("*").eq("parent_id", sourceId).eq("record_type", "ai_job")
     .eq("metadata->>kind", MYIN_RUN_KIND).is("archived_at", null).order("created_at", { ascending: false }).limit(1);
   const record = data?.[0] as OsRecord | undefined;
@@ -220,8 +221,13 @@ export async function myinRunWithWords(service: Service, sourceId: string) {
   const { data: file } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).download(run.words.path);
   if (!file) throw new ApiError(409, "MYIN_BUNDLE_MISSING", "받아쓰기 결과 파일을 찾지 못했습니다.");
   const bundle = JSON.parse(await file.text()) as { words: [number, number, string][]; speech: string };
+  return { record, run, words: bundle.words, speech: bundle.speech ?? "" };
+}
+/** The run with words and the approved script it reads, for writing its storyboard (only while the script can be read: 제작 · 최종 검토). */
+export async function myinRunWithWords(service: Service, sourceId: string) {
+  const myin = await myinRunWords(service, sourceId);
   const input = await currentInput(service, sourceId);
-  return { record, run, words: bundle.words, speech: bundle.speech ?? "", markdown: input.markdown, title: input.title, headCopy: input.headCopy, screenScript: input.screenScript };
+  return { ...myin, markdown: input.markdown, title: input.title, headCopy: input.headCopy, screenScript: input.screenScript };
 }
 
 /** A storyboard the OS checked goes to Logan: kept as a file, summarised for the ③ panel. */

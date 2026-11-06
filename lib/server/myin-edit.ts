@@ -9,7 +9,7 @@ import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { RequestActor } from "./auth";
 import { readDiagramCatalog } from "./diagram-catalog";
-import { editFinalSchema, myinAddEditFinal, myinEditorImageSize, myinEditorImageUpload, myinEditorImageUrl, myinEditUploads, myinFinalAt, myinFinalEngine, myinFinalForHandoff, myinFinalNumbers, myinFinalVersions, myinRunWithWords } from "./myin-run";
+import { editFinalSchema, myinAddEditFinal, myinEditorImageSize, myinEditorImageUpload, myinEditorImageUrl, myinEditUploads, myinFinalAt, myinFinalEngine, myinFinalForHandoff, myinFinalNumbers, myinFinalVersions, myinRunWords } from "./myin-run";
 import { renderPcEngine } from "./youtube-render-pc";
 import { currentEngineDownload, ENGINE_BUCKET, ENGINE_PART_BYTES, engineBundleSaved } from "./render-engine";
 import { getYoutubeProject } from "./youtube-process";
@@ -148,7 +148,7 @@ export const editOrderSchema = z.object({ text: z.string().trim().min(1).max(200
 export async function submitEditOrder(actor: RequestActor, projectId: string, input: z.infer<typeof editOrderSchema>) {
   const project = await editorProject(actor, projectId);
   const service = createServiceSupabase();
-  const myin = await myinRunWithWords(service, project.id);
+  const myin = await myinRunWords(service, project.id);
   let notes: string[] = [];
   let storyboard = input.storyboard;
   if (storyboard) {
