@@ -19,8 +19,8 @@ type Readiness = {
   connections: (ChannelConnection & { publicationAccountKey?: string })[]; publication: Publication | null;
 };
 type Props = { item: OsRecord; onRefresh: () => Promise<void> };
-// 다채널 2단계: a person may hold several Threads accounts, so a choice is the owner and the account.
-const keyOf = (row: { ownerId: string; accountKey?: string }) => `${row.ownerId}:${row.accountKey ?? ""}`;
+// 다채널 2단계: a person may hold several Threads accounts, so a choice is the owner and the account (just the owner where no key came).
+const keyOf = (row: { ownerId: string; accountKey?: string }) => row.accountKey ? `${row.ownerId}:${row.accountKey}` : row.ownerId;
 const publicationKey = (publication: Publication) => keyOf({ ownerId: publication.accountOwnerId, accountKey: publication.accountKey });
 const locksAccount = (publication: Publication | null | undefined) => Boolean(publication && !(publication.state === "retryable" && publication.publishedCount === 0));
 const safePermalink = (value: string) => {
