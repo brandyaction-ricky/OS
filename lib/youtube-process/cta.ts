@@ -3,7 +3,8 @@
 // YouTube offers no API for pinning a comment or editing an end screen, so those stay a person's job.
 export interface CtaVideo { id: string; title: string; description: string; publishedAt: string }
 export interface CtaItem { videoId: string; title: string; before: string; after: string; ok: boolean; error?: string; undone?: boolean }
-export interface CtaChange { id: string; at: string; by: string; find: string; replace: string; items: CtaItem[]; undoneAt?: string }
+/** connectionOwnerId · channelId (다채널 2단계): the connection the videos were changed through, so an undo uses the same one. */
+export interface CtaChange { id: string; at: string; by: string; find: string; replace: string; items: CtaItem[]; undoneAt?: string; connectionOwnerId?: string; channelId?: string }
 
 export const CTA_MAX_VIDEOS = 50;
 export const DESCRIPTION_MAX = 5000;

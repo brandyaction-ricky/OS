@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useSearchParams } from "next/navigation";
 import { Check, Download, ExternalLink, Film, PenLine, Plus, Sparkles, Trash2, Youtube } from "lucide-react";
 import { apiRequest, archiveRecord, createRecord, listRecords, updateRecord, uploadYoutubeFile } from "@/lib/api-client";
-import type { ChannelConnection } from "@/lib/channel-types";
+import { useUploadChannel } from "./youtube-channel-styles";
 import { parseTimedTranscript } from "@/lib/content-input";
 import type { OsRecord } from "@/lib/record-types";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
@@ -83,16 +83,12 @@ export function YoutubeShortsScreen({ header }: { header: ReactNode }) {
     catch (reason) { page.fail(reason); }
   };
   const job = useStaffJob(page, "shorts", loadClips);
-  // A finished clip goes up as a YouTube Short (2026-10-25): title and description from the clip, on the first connected channel.
+  // A finished clip goes up as a YouTube Short (2026-10-25): title and description from the clip, on the longform's channel (다채널 2단계: its
+  // channel card's YouTube channel, else the first connected one).
   // 쇼츠 대본 (2026-10-25): title · first 3 seconds · the longform parts in play order · description, confirmed by the PD (쇼츠 확정).
   const [text, setText] = useState<{ id: string; title: string; hook: string; parts: string; desc: string } | null>(null);
-  const [channelOwner, setChannelOwner] = useState("");
+  const { account } = useUploadChannel(page.bundle?.project.yp.topic.channel);
   const [sending, setSending] = useState<{ id: string; step: string } | null>(null);
-  useEffect(() => {
-    if (page.demo || !page.accessToken) return;
-    apiRequest<{ connections: ChannelConnection[] }>("/api/v1/channels", { token: page.accessToken })
-      .then(result => setChannelOwner(result.connections.find(row => row.platform === "youtube" && row.status === "connected")?.ownerId ?? ""), () => undefined);
-  }, [page.demo, page.accessToken]);
   const saveText = async () => {
     const clip = clips.find(row => row.id === text?.id);
     if (!clip || !text || !page.accessToken) return;
@@ -106,7 +102,7 @@ export function YoutubeShortsScreen({ header }: { header: ReactNode }) {
   };
   const publish = async (clip: OsRecord, renderId: string) => {
     if (!client || !projectId || !page.accessToken) return;
-    const owner = channelOwner ? { connectionOwnerId: channelOwner } : {};
+    const owner = account;
     const send = (body: Record<string, unknown>) => apiRequest<{ uploadUrl?: string }>(`/api/v1/content/youtube/projects/${projectId}/upload`, { token: page.accessToken, method: "POST", body: JSON.stringify({ ...body, clipId: clip.id, ...owner }) });
     setSending({ id: clip.id, step: "영상을 준비하는 중" }); page.setError("");
     try {

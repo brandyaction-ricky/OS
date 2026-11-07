@@ -5,9 +5,8 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { Check, Copy, ExternalLink, FileText, Plus, RefreshCw, Sparkles, Upload, X, Youtube } from "lucide-react";
 import { apiRequest, uploadYoutubeFile } from "@/lib/api-client";
 import { ENDSCREEN_CARD_DEFAULT, type EndscreenCard } from "@/lib/youtube-process/endscreen-card";
-import type { ChannelConnection } from "@/lib/channel-types";
-import { channelMismatch, channelOf } from "@/lib/youtube-process/channel-style";
-import { useChannelCards } from "./youtube-channel-styles";
+import { channelMismatch } from "@/lib/youtube-process/channel-style";
+import { useUploadChannel } from "./youtube-channel-styles";
 import { projectName, stepHref } from "@/lib/youtube-process/project";
 import { DESC_TEMPLATE, descChecks, descWritten, diagnosisLink, finalPair, reviewOkAt, uploadFinal, linksMissing, pinnedDraft, publishAtProblem, shortLinkProblem, SLOTS, UTM_DESTS, UTM_OPTIONS, utmBase, utmCode, utmUrl, withLinks, type YpUpload } from "@/lib/youtube-process/stages";
 import { errorMessage } from "./youtube-process-data";
@@ -33,8 +32,6 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
   const [dirty, setDirty] = useState(false);
   const [savedAt, setSavedAt] = useState("");
   const [send, setSend] = useState<false | SendTab>(false);
-  const [channels, setChannels] = useState<ChannelConnection[]>([]);
-  const [picked, setOwner] = useState("");
   // 채널 모양 (유쓰 요청 5/8): the channel the video's style was made for, compared with the one it goes up on.
   const [runStyle, setRunStyle] = useState<{ name: string; channel: string } | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
@@ -55,11 +52,10 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
   useEffect(() => { if (upload && !dirty) setForm(upload.data); }, [upload, dirty]);
   const project = page.bundle?.project;
   const finals = page.bundle?.finals ?? [];
-  // 다채널 2단계: unless someone picks one, the video goes up on the account named by its channel card's YouTube channel, else the first.
-  const card = channelOf(useChannelCards(), project?.yp.topic.channel);
-  const owner = picked || channels.find(row => card?.channel.trim() && row.accountName.trim() === card.channel.trim())?.ownerId || channels[0]?.ownerId || "";
+  // 다채널 2단계: the YouTube channel the video goes up on — picked here, else its channel card's (useUploadChannel).
+  const { rows: channels, chosen, pick, account } = useUploadChannel(project?.yp.topic.channel);
   // The previews show the channel the video will go up on.
-  const uploadChannel = channels.find(row => row.ownerId === owner)?.accountName;
+  const uploadChannel = chosen?.accountName;
   // The final that goes up: not one the OS made after the 최종 검토 컨펌 (it waits as a candidate, 유쓰 요청 공통 조건 4).
   const last = project ? uploadFinal(finals, reviewOkAt(project.yp.gates.review)) : null;
   const waiting = last ? finals.filter(item => !item.aspect && item.at > last.at && item.source !== "upload") : [];
@@ -77,11 +73,6 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
     return () => { active = false; };
   }, [page.demo, page.accessToken, project?.id, last?.runId]);
 
-  useEffect(() => {
-    if (page.demo || !page.accessToken) return;
-    apiRequest<{ connections: ChannelConnection[] }>("/api/v1/channels", { token: page.accessToken })
-      .then(result => { const rows = result.connections.filter(row => row.platform === "youtube" && row.status === "connected"); setChannels(rows); }, () => setChannels([]));
-  }, [page.demo, page.accessToken]);
   useEffect(() => {
     let active = true;
     if (!last?.runId || page.demo || !page.accessToken) { setMyinSrt(null); return; }
@@ -124,11 +115,11 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
       if (!response?.ok) throw new Error("저장된 최종본을 불러오지 못했어요.");
       const file = new File([await response.blob()], last.name || "final.mp4", { type: "video/mp4" });
       setStep("유튜브로 보내는 중");
-      const session = await page.client.uploadSession(project.id, { fileName: file.name, fileSize: file.size, mimeType: file.type, finalAt: last.at, ...(owner ? { connectionOwnerId: owner } : {}) });
+      const session = await page.client.uploadSession(project.id, { fileName: file.name, fileSize: file.size, mimeType: file.type, finalAt: last.at, ...account });
       const since = Date.now();
       const video = await uploadYoutubeFile(session.uploadUrl, file, (percent, loaded, total) => { setProgress(percent); setBytes({ loaded, total, since }); });
       setStep("결과를 기록하는 중");
-      await page.client.uploadComplete(project.id, { videoId: video.id, finalAt: last.at, ...(owner ? { connectionOwnerId: owner } : {}) });
+      await page.client.uploadComplete(project.id, { videoId: video.id, finalAt: last.at, ...account });
       await page.reload(); setDirty(false);
     } catch (reason) { page.fail(reason); setGoError(errorMessage(reason)); } finally { setProgress(null); setBytes(null); setStep(""); }
   };
@@ -170,7 +161,7 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
       {done ? <div className="yp-note yp-ok" role="status"><Check size={16} className="yp-i" aria-hidden="true" /><div><b>유튜브에 올렸어요.</b> {form.run?.thumbnail === "ok" ? "썸네일 A도 넣었어요." : "썸네일은 스튜디오에서 넣어 주세요."}
         {form.run?.publishAt ? ` ${whenKo(form.run.publishAt)}에 공개돼요.` : ""}<br />
         {form.run?.privacy === "private" && !form.run.publishAt && form.privacy !== "private" ? <><b className="yp-warn-t">유튜브가 비공개로 올렸어요.</b> 스튜디오에서 공개 범위를 바꿔 주세요.<br /></> : null}
-        <Processing page={page} owner={owner} />
+        <Processing page={page} account={account} />
         {form.run?.videoUrl ? <a className="yp-lnk" href={form.run.videoUrl} target="_blank" rel="noreferrer">유튜브에서 보기 <ExternalLink size={12} /></a> : null}</div></div> : <GateBanner page={page} gate="review" />}
       <Subject page={page} />
       <div className="yp-wrap2"><div>
@@ -258,8 +249,8 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
             <input className="yp-in yp-w-auto" type="datetime-local" value={localInput(form.publishAt)} readOnly={!editable} onChange={event => { const at = new Date(event.target.value); if (!Number.isNaN(at.getTime())) edit({ publishAt: at.toISOString() }, true); }} aria-label="공개 예약 시각" /></label> : null}
           {form.privacy === "public" && !form.publishAt ? <p className="yp-hint">올리자마자 모두에게 보여요.</p> : null}
           {channelMismatch(runStyle, uploadChannel) ? <p className="yp-note yp-warn" role="status">이 영상은 「{runStyle!.name}」 모양({runStyle!.channel} 채널용)으로 만들었는데, 올릴 채널은 「{uploadChannel}」이에요. 맞는지 확인해 주세요.</p> : null}
-          {channels.length > 1 ? <label className="yp-lbl">올릴 채널<select className="yp-in" value={owner} onChange={event => setOwner(event.target.value)}>{channels.map(row => <option key={row.ownerId} value={row.ownerId}>{row.accountName}{row.teamShared ? " · 팀 공유" : " · 나만"}</option>)}</select></label> : null}
-          <div style={{ marginTop: 12 }}>{channels.length ? <span className="yp-chan"><Youtube size={15} aria-hidden="true" /> 유튜브 채널 연결됨 · {channels.find(row => row.ownerId === owner)?.accountName}</span>
+          {channels.length > 1 ? <label className="yp-lbl">올릴 채널<select className="yp-in" value={chosen?.channelId ?? ""} onChange={event => pick(event.target.value)}>{channels.map(row => <option key={row.channelId} value={row.channelId}>{row.accountName}{row.teamShared ? " · 팀 공유" : " · 나만"}</option>)}</select></label> : null}
+          <div style={{ marginTop: 12 }}>{channels.length ? <span className="yp-chan"><Youtube size={15} aria-hidden="true" /> 유튜브 채널 연결됨 · {chosen?.accountName}</span>
             : page.demo ? <span className="yp-hint">데모에서는 채널 연결이 없어요</span> : <span className="yp-hint">유튜브 채널이 연결되지 않았어요. <Link className="yp-lnk" href="/settings/account">내 계정 › 채널 연결</Link>에서 연결해요.</span>}</div>
         </YpSection>
         <section className="yp-upgo"><div className="yp-upgo-l"><b>올라갈 영상</b><span>{last ? `v${last.v} · ${last.source === "myin" ? "자동 제작" : last.name}${project?.yp.gates.review.decidedAt && last.at > project.yp.gates.review.decidedAt ? " · 컨펌 뒤 올린 버전" : ""}` : "최종본이 없어요"}</span>
@@ -361,20 +352,21 @@ function ThumbFile({ page, slot, path }: { page: YpMediaSource; slot: string; pa
 }
 
 /** YouTube's processing after the upload, read every 15 seconds while it is still going and the page is open. */
-function Processing({ page, owner }: { page: YpPage; owner: string }) {
+function Processing({ page, account }: { page: YpPage; account: { connectionOwnerId?: string; connectionChannelId?: string } }) {
+  const { connectionOwnerId, connectionChannelId } = account;
   const [state, setState] = useState<{ processing: string; percent: number | null } | null>(null);
   const id = page.bundle?.project.id, client = page.client;
   useEffect(() => {
     if (!id || !client) return;
     let active = true, tries = 0, timer = 0;
-    const read = () => client.uploadStatus(id, owner ? { connectionOwnerId: owner } : {}).then(next => {
+    const read = () => client.uploadStatus(id, { ...(connectionOwnerId ? { connectionOwnerId } : {}), ...(connectionChannelId ? { connectionChannelId } : {}) }).then(next => {
       if (!active) return;
       setState(next);
       if (next.processing === "processing" && ++tries < 120) timer = window.setTimeout(read, 15_000);
     }, () => undefined);
     void read();
     return () => { active = false; window.clearTimeout(timer); };
-  }, [id, client, owner]);
+  }, [id, client, connectionOwnerId, connectionChannelId]);
   if (!state?.processing) return null;
   const text = state.processing === "processing" ? `유튜브가 처리하는 중이에요${state.percent !== null ? ` ${state.percent}%` : ""}.`
     : state.processing === "succeeded" ? "유튜브 처리도 끝났어요." : state.processing === "uploaded" ? "유튜브가 처리를 시작하기 전이에요." : "유튜브 처리에 문제가 있어요. 스튜디오에서 확인해 주세요.";

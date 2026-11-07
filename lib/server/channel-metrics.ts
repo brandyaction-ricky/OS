@@ -17,7 +17,7 @@ export async function collectPostMetrics(connection:MetaConnection,externalId:st
 export function youtubeAnalyticsConnected(connection: Pick<YoutubeStoredConnection,"scope">){return connection.scope.split(/\s+/).includes(YOUTUBE_ANALYTICS_SCOPE);}
 export async function collectYoutubePostMetrics(connection:YoutubeStoredConnection,videoId:string,publishedAt:string,now=new Date()){
   if(!youtubeAnalyticsConnected(connection))throw new ApiError(409,"YOUTUBE_ANALYTICS_SCOPE_REQUIRED","성과 수집 권한을 추가하려면 YouTube 채널을 다시 연결해 주세요.");
-  const accessToken=await getYoutubeAccessToken(connection.owner_id);
+  const accessToken=await getYoutubeAccessToken(connection.owner_id,connection.channel_id);
   const params=new URLSearchParams({ids:"channel==MINE",startDate:publishedAt.slice(0,10),endDate:now.toISOString().slice(0,10),metrics:YOUTUBE_ANALYTICS_METRICS.join(","),filters:`video==${videoId}`});
   const response=await fetch(`https://youtubeanalytics.googleapis.com/v2/reports?${params}`,{headers:{authorization:`Bearer ${accessToken}`},cache:"no-store",signal:AbortSignal.timeout(15000)});
   const body=await response.json().catch(()=>({})) as {columnHeaders?:Array<{name?:string}>;rows?:unknown[][];error?:{message?:string}};

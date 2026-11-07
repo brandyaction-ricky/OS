@@ -2,16 +2,17 @@
 import { useEffect, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { apiRequest } from "@/lib/api-client";
-import { CHANNEL_FORMAT_LABEL, CHANNEL_FORMATS, channelFormats, type ChannelStyle, type ChannelStyleInput } from "@/lib/youtube-process/channel-style";
+import { CHANNEL_FORMAT_LABEL, CHANNEL_FORMATS, channelFormats, channelOf, type ChannelStyle, type ChannelStyleInput } from "@/lib/youtube-process/channel-style";
+import type { ChannelConnection } from "@/lib/channel-types";
 import { useSession } from "./session-provider";
 import { errorMessage } from "./youtube-process-data";
 
 const TONE = { base: "myin" as const, key: "#212CB0", ink: "#1E1D1D", page: "#FFFFFF" };
-const blank = (): ChannelStyleInput => ({ id: crypto.randomUUID(), name: "", channel: "", tone: null, ending: "talk", logo: false, purpose: "", concept: "", topics: "", formats: [...CHANNEL_FORMATS], voice: "" });
+const blank = (): ChannelStyleInput => ({ id: crypto.randomUUID(), name: "", channel: "", tone: null, ending: "talk", logo: false, purpose: "", concept: "", topics: "", formats: [...CHANNEL_FORMATS], voice: "", youtube: "" });
 // 목적 정본 (설계 문서 2026-11-07): channels with the same purpose read one canon, so the purposes in use are offered first.
 const PURPOSES = ["마이인 진단 유입", "문샷 무료강의 유입"];
 type Card = ChannelStyleInput & Partial<Pick<ChannelStyle, "version">>;
-const cardOf = (style: ChannelStyle): Card => ({ ...style, purpose: style.purpose ?? "", concept: style.concept ?? "", topics: style.topics ?? "", formats: channelFormats(style), voice: style.voice ?? "" });
+const cardOf = (style: ChannelStyle): Card => ({ ...style, purpose: style.purpose ?? "", concept: style.concept ?? "", topics: style.topics ?? "", formats: channelFormats(style), voice: style.voice ?? "", youtube: style.youtube ?? "" });
 
 // The 채널 카드 every screen picks from; read once per page and refreshed when the editor saves.
 let cards: Promise<ChannelStyle[]> | null = null;
@@ -29,6 +30,32 @@ export function useChannelCards() {
   return list;
 }
 
+/** The YouTube channels this person may upload to: their own and the ones shared with the team. */
+function useYoutubeConnections() {
+  const { accessToken, demo } = useSession();
+  const [rows, setRows] = useState<ChannelConnection[]>([]);
+  useEffect(() => {
+    if (demo || !accessToken) return;
+    let active = true;
+    apiRequest<{ connections: ChannelConnection[] }>("/api/v1/channels", { token: accessToken })
+      .then(result => { if (active) setRows(result.connections.filter(row => row.platform === "youtube" && row.status === "connected" && row.channelId)); }, () => { if (active) setRows([]); });
+    return () => { active = false; };
+  }, [accessToken, demo]);
+  return rows;
+}
+
+/**
+ * Where a video goes up (다채널 2단계, 2026-11-07): the YouTube channel picked on the screen, else its channel card's, else one named like
+ * the card's 「올릴 유튜브 채널 이름」, else the first. `account` is what the upload calls send.
+ */
+export function useUploadChannel(channel: string | undefined) {
+  const rows = useYoutubeConnections(), card = channelOf(useChannelCards(), channel);
+  const [picked, pick] = useState("");
+  const chosen = rows.find(row => row.channelId === picked) ?? rows.find(row => card?.youtube && row.channelId === card.youtube)
+    ?? rows.find(row => card?.channel.trim() && row.accountName.trim() === card.channel.trim()) ?? rows[0];
+  return { rows, chosen, pick, account: chosen ? { connectionOwnerId: chosen.ownerId, connectionChannelId: chosen.channelId } : {} };
+}
+
 /**
  * 채널 (채널 모양 2026-11-02; 채널 카드 2026-11-07): per channel, what it is for, its concept and topic axis, the formats
  * it runs, and the look Logan's engine takes today — diagram tone, how the video ends, the MYIN logo. A video keeps the look's version
@@ -36,6 +63,7 @@ export function useChannelCards() {
  */
 export function ChannelStyleEditor() {
   const { accessToken, demo } = useSession();
+  const youtube = useYoutubeConnections();
   const [version, setVersion] = useState<number | null>(null);
   const [styles, setStyles] = useState<Card[]>([]);
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [saved, setSaved] = useState(false);
@@ -49,7 +77,7 @@ export function ChannelStyleEditor() {
     if (version === null || !accessToken) return;
     setBusy(true); setError("");
     try {
-      const body = { expectedVersion: version, styles: styles.map(({ id, name, channel, tone, ending, logo, purpose, concept, topics, formats, voice }) => ({ id, name, channel, tone, ending, logo, purpose, concept, topics, formats, voice })) };
+      const body = { expectedVersion: version, styles: styles.map(({ id, name, channel, tone, ending, logo, purpose, concept, topics, formats, voice, youtube }) => ({ id, name, channel, tone, ending, logo, purpose, concept, topics, formats, voice, youtube })) };
       const result = await apiRequest<{ styles: ChannelStyle[]; version: number }>("/api/v1/content/youtube/channel-styles", { method: "PUT", token: accessToken, body: JSON.stringify(body) });
       setStyles(result.styles.map(cardOf)); setVersion(result.version); setSaved(true); cards = Promise.resolve(result.styles);
     } catch (reason) { setError(errorMessage(reason)); } finally { setBusy(false); }
@@ -69,6 +97,9 @@ export function ChannelStyleEditor() {
         <label>컨셉 한 줄<input className="yp-in" maxLength={200} value={style.concept} onChange={event => set(index, { concept: event.target.value })} placeholder="예) 퇴사하고 혼자 사업하는 선배가 직접 해 보고 알려 주는 AI 마케팅" /></label></div>
       <div className="yp-chstyle-row">
         <label>주제 축 (같은 목적의 다른 채널과 겹치지 않게)<input className="yp-in" maxLength={300} value={style.topics} onChange={event => set(index, { topics: event.target.value })} placeholder="예) 반복 업무를 AI에 넘기기 · 자동화 · 에이전트" /></label>
+        <label>올릴 유튜브 채널<select className="yp-in" value={style.youtube} onChange={event => set(index, { youtube: event.target.value })}>
+          <option value="">이름으로 찾기 · 없으면 첫 연결</option>{youtube.map(row => <option key={row.channelId} value={row.channelId}>{row.accountName}</option>)}
+          {style.youtube && !youtube.some(row => row.channelId === style.youtube) ? <option value={style.youtube}>연결이 끊긴 채널</option> : null}</select></label>
         <label>목소리 ID (Fish Audio)<input className="yp-in" maxLength={64} value={style.voice} onChange={event => set(index, { voice: event.target.value.trim() })} placeholder="비우면 기본 목소리" /></label></div>
       <div className="yp-chstyle-row" role="group" aria-label="운영 형식"><span className="yp-hint">운영 형식</span>
         {CHANNEL_FORMATS.map(format => <label key={format} className="yp-chstyle-check"><input type="checkbox" checked={style.formats.includes(format)}

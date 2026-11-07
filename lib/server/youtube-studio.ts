@@ -68,7 +68,7 @@ export async function queueStudioAgain(actor: RequestActor, input: z.infer<typeo
     const { data } = await service.from("os_records").select("metadata").eq("parent_id", project.id).eq("record_type", "content_publish").eq("metadata->>youtubeVideoId", run.videoId).limit(1);
     const meta = (data?.[0]?.metadata ?? {}) as { channelId?: string; connectionOwnerId?: string };
     const ownerId = meta.connectionOwnerId ?? actor.ownerId;
-    await queueStudioTask(service, project.id, run.videoId, { id: meta.channelId ?? "", title: (await youtubeConnectionStatus(ownerId)).channelTitle ?? "", ownerId }, actor.ownerId);
+    await queueStudioTask(service, project.id, run.videoId, { id: meta.channelId ?? "", title: (await youtubeConnectionStatus(ownerId, meta.channelId)).channelTitle ?? "", ownerId }, actor.ownerId);
   } else if (input.item) {
     const task = record.metadata as unknown as StudioTask;
     const reports = { ...task.reports };
