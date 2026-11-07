@@ -6,7 +6,8 @@ import { Check, Copy, ExternalLink, FileText, Plus, RefreshCw, Sparkles, Upload,
 import { apiRequest, uploadYoutubeFile } from "@/lib/api-client";
 import { ENDSCREEN_CARD_DEFAULT, type EndscreenCard } from "@/lib/youtube-process/endscreen-card";
 import type { ChannelConnection } from "@/lib/channel-types";
-import { channelMismatch } from "@/lib/youtube-process/channel-style";
+import { channelMismatch, channelOf } from "@/lib/youtube-process/channel-style";
+import { useChannelCards } from "./youtube-channel-styles";
 import { projectName, stepHref } from "@/lib/youtube-process/project";
 import { DESC_TEMPLATE, descChecks, descWritten, diagnosisLink, finalPair, reviewOkAt, uploadFinal, linksMissing, pinnedDraft, publishAtProblem, shortLinkProblem, SLOTS, UTM_DESTS, UTM_OPTIONS, utmBase, utmCode, utmUrl, withLinks, type YpUpload } from "@/lib/youtube-process/stages";
 import { errorMessage } from "./youtube-process-data";
@@ -33,9 +34,7 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
   const [savedAt, setSavedAt] = useState("");
   const [send, setSend] = useState<false | SendTab>(false);
   const [channels, setChannels] = useState<ChannelConnection[]>([]);
-  const [owner, setOwner] = useState("");
-  // The previews show the channel the video will go up on (유쓰 요청 6/8).
-  const uploadChannel = channels.find(row => row.ownerId === owner)?.accountName;
+  const [picked, setOwner] = useState("");
   // 채널 모양 (유쓰 요청 5/8): the channel the video's style was made for, compared with the one it goes up on.
   const [runStyle, setRunStyle] = useState<{ name: string; channel: string } | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
@@ -56,6 +55,11 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
   useEffect(() => { if (upload && !dirty) setForm(upload.data); }, [upload, dirty]);
   const project = page.bundle?.project;
   const finals = page.bundle?.finals ?? [];
+  // 다채널 2단계: unless someone picks one, the video goes up on the account named by its channel card's YouTube channel, else the first.
+  const card = channelOf(useChannelCards(), project?.yp.topic.channel);
+  const owner = picked || channels.find(row => card?.channel.trim() && row.accountName.trim() === card.channel.trim())?.ownerId || channels[0]?.ownerId || "";
+  // The previews show the channel the video will go up on.
+  const uploadChannel = channels.find(row => row.ownerId === owner)?.accountName;
   // The final that goes up: not one the OS made after the 최종 검토 컨펌 (it waits as a candidate, 유쓰 요청 공통 조건 4).
   const last = project ? uploadFinal(finals, reviewOkAt(project.yp.gates.review)) : null;
   const waiting = last ? finals.filter(item => !item.aspect && item.at > last.at && item.source !== "upload") : [];
@@ -76,7 +80,7 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
   useEffect(() => {
     if (page.demo || !page.accessToken) return;
     apiRequest<{ connections: ChannelConnection[] }>("/api/v1/channels", { token: page.accessToken })
-      .then(result => { const rows = result.connections.filter(row => row.platform === "youtube" && row.status === "connected"); setChannels(rows); setOwner(current => current || rows[0]?.ownerId || ""); }, () => setChannels([]));
+      .then(result => { const rows = result.connections.filter(row => row.platform === "youtube" && row.status === "connected"); setChannels(rows); }, () => setChannels([]));
   }, [page.demo, page.accessToken]);
   useEffect(() => {
     let active = true;
