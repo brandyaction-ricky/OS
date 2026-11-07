@@ -1,11 +1,11 @@
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
-import { channelStyleInput, nextStyles, type ChannelStyle } from "@/lib/youtube-process/channel-style";
+import { channelStyleInput, keepsDefault, nextStyles, type ChannelStyle } from "@/lib/youtube-process/channel-style";
 import type { RequestActor } from "./auth";
 import { ypUuid } from "./youtube-process-stages";
 
-// 채널 모양 (유쓰 요청 5/8): one company record, like the 최종 화면 진단 카드.
+// 채널 모양 (2026-11-02), the 채널 카드 list since 2026-11-07: one company record, like the 최종 화면 진단 카드.
 const stylesId = () => ypUuid("yp-channel-styles");
 
 export async function readChannelStyles() {
@@ -14,11 +14,12 @@ export async function readChannelStyles() {
   return { styles: ((data?.metadata?.styles ?? []) as ChannelStyle[]), version: (data?.version as number | undefined) ?? 0 };
 }
 
-export const channelStylesSchema = z.object({ expectedVersion: z.number().int().min(0), styles: z.array(channelStyleInput).max(12) }).strict();
+export const channelStylesSchema = z.object({ expectedVersion: z.number().int().min(0), styles: z.array(channelStyleInput).max(50) }).strict();
 
 export async function saveChannelStyles(actor: RequestActor, input: z.infer<typeof channelStylesSchema>) {
   const current = await readChannelStyles();
   if (current.version !== input.expectedVersion) throw new ApiError(409, "RECORD_VERSION_CONFLICT", "다른 사람이 먼저 고쳤어요. 새로 불러와 주세요.");
+  if (!keepsDefault(current.styles, input.styles)) throw new ApiError(400, "CHANNEL_DEFAULT_KEPT", "맨 위 기본 채널은 빼거나 옮길 수 없어요. 예전 영상이 모두 이 채널이에요.");
   const styles = nextStyles(current.styles, input.styles, actor.name, new Date().toISOString());
   const service = createServiceSupabase(), metadata = { packageKind: "yp_channel_styles", styles };
   const { data, error } = input.expectedVersion

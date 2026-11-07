@@ -11,6 +11,8 @@ import { useSession } from "./session-provider";
 import { useYoutubeCanConfirm } from "./use-youtube-confirm";
 import { errorMessage, youtubeProcessClient, type YpLegacyTopic, type YpMember } from "./youtube-process-data";
 import { md } from "./youtube-process-frame";
+import { channelOf } from "@/lib/youtube-process/channel-style";
+import { useChannelCards } from "./youtube-channel-styles";
 
 type Filter = "open" | "mine" | "done" | "trash";
 
@@ -48,6 +50,10 @@ export function YoutubeProjectsScreen() {
   const copyDialog = useRef<HTMLDialogElement>(null);
   const purgeDialog = useRef<HTMLDialogElement>(null);
   const admin = profile?.role === "admin";
+  // 다채널 1단계: with two or more 채널 카드 each row names its channel and the list can show one channel.
+  const channels = useChannelCards(), many = channels.length > 1;
+  const [channel, setChannel] = useState("all");
+  const inChannel = (project: YpProject) => channel === "all" || channelOf(channels, project.yp.topic.channel)?.id === channel;
 
   useEffect(() => {
     if (!client) return;
@@ -82,13 +88,13 @@ export function YoutubeProjectsScreen() {
   const openCopy = (project: YpProject) => { setCopying(project); copyDialog.current?.showModal(); };
   const openPurge = (item: YpTrashed) => { setPurging(item); setReason(""); setSure(false); purgeDialog.current?.showModal(); };
 
-  const all = (projects ?? []).filter(project => !platform || projectPlatform(project.yp.topic) === platform);
+  const all = (projects ?? []).filter(project => (!platform || projectPlatform(project.yp.topic) === platform) && inChannel(project));
   const sorted = [...all].sort((a, b) => {
     // What needs someone first (수정 요청, then work to do), waiting ones after, finished last; newest edit first within.
     const rank = (project: YpProject) => ({ fix: 0, todo: 1, hold: 2, wait: 3, done: 4 })[nextAction(project).tone];
     return rank(a) - rank(b) || b.yp.contentUpdatedAt.localeCompare(a.yp.contentUpdatedAt);
   });
-  const trashedHere = trashed.filter(item => !platform || projectPlatform(item.project.yp.topic) === platform);
+  const trashedHere = trashed.filter(item => (!platform || projectPlatform(item.project.yp.topic) === platform) && inChannel(item.project));
   const counts = { open: all.filter(row => row.yp.stage !== "done").length, mine: all.filter(row => row.yp.stage !== "done" && row.assigneeId === profile?.id).length, done: all.filter(row => row.yp.stage === "done").length, trash: trashedHere.length };
   const shown = searchProjects(sorted, query).filter(row => filter === "done" ? row.yp.stage === "done" : row.yp.stage !== "done" && (filter === "open" || row.assigneeId === profile?.id));
   const legacyShown = filter === "done" || filter === "trash" || (platform && platform !== "longform") ? [] : legacy.filter(topic => !query.trim() || topic.title.toLocaleLowerCase("ko-KR").includes(query.trim().toLocaleLowerCase("ko-KR")));
@@ -118,6 +124,8 @@ export function YoutubeProjectsScreen() {
             if (event.target.value === "all") params.delete("platform"); else params.set("platform", event.target.value);
             router.replace(`/content/projects${params.size ? `?${params}` : ""}`, { scroll: false });
           }}><option value="all">전체 플랫폼</option>{(["card", "ad", "short", "longform"] as const).map(key => <option key={key} value={key}>{TOPIC_PLATFORMS[key].label}</option>)}</select></label>
+          {many ? <label className="yp-platform-filter"><span>채널</span><select className="yp-in" aria-label="채널" value={channel} onChange={event => setChannel(event.target.value)}>
+            <option value="all">전체 채널</option>{channels.map(card => <option key={card.id} value={card.id}>{card.name}</option>)}</select></label> : null}
           <span className="yp-sp" />
           <div className="yp-psearch"><Search size={15} className="yp-i" aria-hidden="true" /><input className="yp-in" placeholder="영상 이름으로 찾기" aria-label="영상 검색" value={query} onChange={event => setQuery(event.target.value)} /></div>
         </div>
@@ -144,7 +152,7 @@ export function YoutubeProjectsScreen() {
             const done = Math.min(next.step + (next.tone === "done" ? 0 : 0.5), next.total) / next.total;
             return <div key={project.id} className="yp-mv">
               {/* 로건 QA 10/30: 실사 or 애니메이션 and the last change tell same-titled rows and copies apart without opening them. */}
-              <div className="yp-mv-m"><div className="yp-mv-th">{kind ? <span className={`yp-tag yp-pf-tag yp-pf-${platform}`}>{kind}</span> : null}
+              <div className="yp-mv-m"><div className="yp-mv-th">{many ? <span className="yp-tag">{channelOf(channels, project.yp.topic.channel)?.name}</span> : null}{kind ? <span className={`yp-tag yp-pf-tag yp-pf-${platform}`}>{kind}</span> : null}
                 {project.yp.topic.type === "live" || project.yp.topic.type === "anim" ? <span className="yp-tag">{YP_KIND_SHORT[project.yp.topic.type]}</span> : null}
                 <Link href={next.href} className="yp-mv-t" title={projectName(project)}>{projectName(project)}</Link></div>
                 <div className={`yp-mv-s yp-${next.tone}`}>{next.text}<span className="yp-muted"> · 고친 날 {md(project.yp.contentUpdatedAt)}</span></div></div>

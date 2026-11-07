@@ -20,12 +20,14 @@ import { YoutubeOutlineScreen } from "./youtube-process-outline";
 import { ShortTopicResearch } from "./youtube-process-short-script";
 import { TopicFormulas, TopicRefSearch } from "./youtube-process-topic-research";
 import { noteWithPick } from "@/lib/youtube-process/topic-research";
+import { channelFormats, channelOf, formatOfKind } from "@/lib/youtube-process/channel-style";
+import { useChannelCards } from "./youtube-channel-styles";
 
 const LAST_KEY = "brandy-yp-last-project";
 const VIEWS = ["topic", "draft", "outline"] as const;
-type Form = { title: string; kind: YpKind | null; target: string; note: string; refs: YpRef[]; purpose: "ad" | null; assigneeId: string | null };
+type Form = { title: string; kind: YpKind | null; target: string; note: string; refs: YpRef[]; purpose: "ad" | null; channel: string | null; assigneeId: string | null };
 const formOf = (project: YpProject): Form => ({ title: project.title, kind: project.yp.topic.type, target: project.yp.topic.target, note: project.yp.topic.note, refs: project.yp.topic.refs,
-  purpose: project.yp.topic.purpose ?? null, assigneeId: project.assigneeId });
+  purpose: project.yp.topic.purpose ?? null, channel: project.yp.topic.channel ?? null, assigneeId: project.assigneeId });
 const hhmm = (date: Date) => `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 const md = (iso?: string) => { if (!iso) return ""; const date = new Date(iso); return `${date.getMonth() + 1}/${date.getDate()} ${hhmm(date)}`; };
 const daysSince = (iso?: string) => iso ? Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)) : 0;
@@ -64,7 +66,8 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
   }, []);
   const [projects, setProjects] = useState<YpProject[]>([]);
   const [members, setMembers] = useState<YpMember[]>([]);
-  const [form, setForm] = useState<Form>({ title: "", kind: null, target: "", note: "", refs: [], purpose: null, assigneeId: null });
+  const [form, setForm] = useState<Form>({ title: "", kind: null, target: "", note: "", refs: [], purpose: null, channel: null, assigneeId: null });
+  const channels = useChannelCards();
   const [dirty, setDirty] = useState(false);
   const [savedAt, setSavedAt] = useState("");
   // 로건 피드백 10/26-1: a failed save left the old 「저장됨」 stamp, so it read as saved.
@@ -138,7 +141,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
 
   const save = useCallback(async (next: Form = form): Promise<YpProject | null> => {
     if (!client) return null;
-    const input: YpTopicInput = { title: next.title, kind: next.kind, target: next.target, note: next.note, refs: next.refs, purpose: next.kind === "short" ? next.purpose : null, assigneeId: next.assigneeId };
+    const input: YpTopicInput = { title: next.title, kind: next.kind, target: next.target, note: next.note, refs: next.refs, purpose: next.kind === "short" ? next.purpose : null, channel: next.channel, assigneeId: next.assigneeId };
     const key = JSON.stringify(input);
     if (timer.current) { window.clearTimeout(timer.current); timer.current = null; }
     // One save at a time: a click during a save of the same content uses its result; newer content (a second reference added
@@ -174,7 +177,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
   // filled (or by 임시 저장 · 참고 영상 추가 · 컨펌); a 숏폼 once it has a 주제 and 숏폼 is chosen, because its 참고 영상 need the video.
   const ready = (next: Form) => Boolean(project) || !topicMissing(next.title, { type: next.kind, target: next.target }) || (next.kind === "short" && topicLines(next.title).length > 0);
   const saveIfDirty = () => { if (dirty && editable && ready(form)) void save(); };
-  const open = (key: "title" | "kind" | "target" | "refs" | "note" | "purpose") => project ? topicFieldEditable(project, key) : projectParam === "new";
+  const open = (key: "title" | "kind" | "target" | "refs" | "note" | "purpose" | "channel") => project ? topicFieldEditable(project, key) : projectParam === "new";
   const editAndSave = (patch: Partial<Form>, make = false) => { editRev.current += 1; const next = { ...form, ...patch }; setForm(next); setDirty(true); if (make || ready(next)) void save(next); };
 
   const askTo = useRef<string | undefined>(undefined);
@@ -207,6 +210,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
   const rev = (field: string) => topicGate.state === "changes" && (topicGate.fields ?? []).includes(field);
   const lines = topicLines(form.title);
   const short = form.kind === "short";
+  const channel = channelOf(channels, form.channel);
   const confirmLabel = gateName("topic", form.kind);
   // A longform may go on without 4 참고 영상 (and so 5 공식), but the PD hears it once first (로건 수정 요청 eaf19dee).
   const thin = !short && !form.refs.length;
@@ -259,6 +263,9 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
         <div className="yp-savebar yp-topic-owner">
           <label>담당 PD <select className="yp-pdsel" id="yp-topic-pd" value={form.assigneeId ?? ""} onChange={event => editAndSave({ assigneeId: event.target.value || null })}>
             <option value="">정하지 않음</option>{members.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label>
+          {/* 다채널 1단계 (2026-11-07): with two or more 채널 카드 the video picks its channel, next to its PD. */}
+          {channels.length > 1 ? <label>채널 <select className="yp-pdsel" id="yp-topic-channel" value={channel?.id ?? ""} disabled={!open("channel")} onChange={event => editAndSave({ channel: event.target.value })}>
+            {channels.map((item, index) => <option key={item.id} value={item.id}>{item.name}{index === 0 ? " (기본)" : ""}</option>)}</select></label> : null}
           {project && client ? <TopicDates client={client} id={project.id} /> : null}
         </div>
         <Field n={1} title="주제" question={short ? "처음엔 키워드나 초안이면 돼요" : "어떤 영상을 만들까요?"} need rev={rev("topic.title")}
@@ -270,7 +277,8 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
         </Field>
         <Field n={2} title="유형" need rev={rev("topic.type")}>
           <div className="yp-radio-c" role="radiogroup" aria-label="유형">
-            {(["live", "anim", "short"] as const).map(kind => <label key={kind} className={`yp-rc${form.kind === kind ? " yp-on" : ""}`}>
+            {/* 다채널 1단계 (2026-11-07): only the kinds the video's channel runs show (the one already picked stays). */}
+            {(["live", "anim", "short"] as const).filter(kind => kind === form.kind || channelFormats(channel).includes(formatOfKind(kind))).map(kind => <label key={kind} className={`yp-rc${form.kind === kind ? " yp-on" : ""}`}>
               <input type="radio" name="yp-topic-kind" value={kind} checked={form.kind === kind} disabled={!open("kind")} onChange={() => editAndSave({ kind })} />
               <span><b>{YP_KIND_LABEL[kind]}</b><small>{kind === "live" ? "촬영 · 편집" : kind === "anim" ? "작화 · 이미지 만들기 · 편집" : "15 ~ 60초 세로 영상"}</small></span>
             </label>)}

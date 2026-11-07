@@ -23,7 +23,7 @@ import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
 import type { RequestActor } from "./auth";
 import { generateContentText } from "./content-model";
 import { creditTier } from "./openai-credit";
-import { approverIds, getYoutubeProject, insertProject, listYoutubeProjects, notify, recordConfirmation } from "./youtube-process";
+import { approverIds, assertChannel, getYoutubeProject, insertProject, listYoutubeProjects, notify, recordConfirmation } from "./youtube-process";
 import { MEDIA_BUCKET, readStages, writeStage } from "./youtube-process-stages";
 
 const SOURCE_MAX = 60_000;
@@ -65,14 +65,14 @@ export async function readCardCovers(actor: RequestActor, requested: string[]): 
 }
 
 export const cardCreateSchema = z.discriminatedUnion("from", [
-  z.object({ from: z.literal("none"), title: z.string().trim().min(2).max(200), target: z.string().trim().min(1).max(300), note: z.string().max(2000).default("") }).strict(),
+  z.object({ from: z.literal("none"), title: z.string().trim().min(2).max(200), target: z.string().trim().min(1).max(300), note: z.string().max(2000).default(""), channel: z.string().uuid().optional() }).strict(),
   z.object({ from: z.literal("project"), projectId: z.string().uuid(), focus: z.string().max(500).default("") }).strict(),
   z.object({ from: z.literal("threads"), itemId: z.string().uuid() }).strict(),
 ]);
 
 /** The text a 카드뉴스 starts from: a longform's 원고 (spoken words) and A title, a 숏폼's confirmed 대본, or a Threads post's 글타래. */
 async function sourceOf(actor: RequestActor, input: z.infer<typeof cardCreateSchema>, now: string) {
-  if (input.from === "none") return { title: input.title, target: input.target, note: input.note, source: { kind: "none", title: input.title, text: "", at: now } as YpCardSource, focus: "" };
+  if (input.from === "none") { await assertChannel(input.channel); return { title: input.title, target: input.target, note: input.note, source: { kind: "none", title: input.title, text: "", at: now } as YpCardSource, focus: "", channel: input.channel }; }
   if (input.from === "project") {
     const project = await getYoutubeProject(actor, input.projectId);
     const kind = project.yp.topic.type;
@@ -87,7 +87,7 @@ async function sourceOf(actor: RequestActor, input: z.infer<typeof cardCreateSch
     if (!text.trim()) throw new ApiError(409, "CARD_SOURCE_EMPTY", kind === "short" ? "확정된 대본이 없어요." : "원고가 비어 있어요.");
     return { title: name, target: project.yp.topic.target || "원본 영상과 같아요", note: "", focus: input.focus.trim(),
       source: { kind: kind === "short" ? "short" : "longform", title: name, text: text.slice(0, SOURCE_MAX), at: now } as YpCardSource,
-      from: { kind: kind === "short" ? "short" as const : "longform" as const, id: project.id, title: name } };
+      from: { kind: kind === "short" ? "short" as const : "longform" as const, id: project.id, title: name }, channel: project.yp.topic.channel };
   }
   // A Threads post (콘텐츠 자동화): the writer's own, or one shared to the 팀 검토함, once approved.
   const { data: item, error } = await createServiceSupabase().from("os_records").select("id,title,status,owner_id,metadata").eq("id", input.itemId)
@@ -106,7 +106,9 @@ async function sourceOf(actor: RequestActor, input: z.infer<typeof cardCreateSch
 export async function createCardProject(actor: RequestActor, input: z.infer<typeof cardCreateSchema>) {
   const now = new Date().toISOString();
   const made = await sourceOf(actor, input, now);
-  const meta = newProjectMeta({ type: "card", target: made.target, note: made.note, refs: [] }, now);
+  // A 카드뉴스 is made for the channel of the video it came from, or the one picked; a Threads post has none yet (기본 채널).
+  const channel = "channel" in made ? made.channel : undefined;
+  const meta = newProjectMeta({ type: "card", target: made.target, note: made.note, refs: [], ...(channel ? { channel } : {}) }, now);
   meta.yp = { ...applyGateAction({ yp: meta.yp }, "topic", "confirm", { actor: actor.ownerId, now }), ...("from" in made && made.from ? { cardFrom: made.from } : {}) };
   const project = await insertProject(actor, made.title, actor.ownerId, meta);
   await writeStage(actor.supabase, actor.id, actor.team, project, "cards", { id: null, version: 0 }, { ...emptyStage("cards", "card"), source: made.source, focus: made.focus } satisfies YpCards);

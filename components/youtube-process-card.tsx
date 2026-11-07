@@ -23,6 +23,8 @@ import { errorMessage, youtubeProcessClient, type YpClient } from "./youtube-pro
 import { CardDrawBatch } from "./card-draw-batch";
 import { CardDrawPanel } from "./card-draw-panel";
 import { CardSourcePicker } from "./card-source-picker";
+import { channelFormats } from "@/lib/youtube-process/channel-style";
+import { useChannelCards } from "./youtube-channel-styles";
 import { CardUrlBookmarks } from "./card-url-bookmarks";
 import { GateBanner, gateAction, gateSub, LockedStep, stepAction, Subject, useGate, useLeaveGuard, YpFrame, YpSection, type YpPage } from "./youtube-process-frame";
 
@@ -89,7 +91,9 @@ export function CardStart({ initial = "" }: { initial?: string }) {
   const { accessToken, demo } = useSession();
   const client = useMemo(() => youtubeProcessClient(accessToken, demo), [accessToken, demo]);
   const router = useRouter();
-  const [form, setForm] = useState({ title: initial, target: "", note: "" });
+  const [form, setForm] = useState({ title: initial, target: "", note: "", channel: "" });
+  // 다채널 1단계: the channels that run 카드뉴스; a 카드뉴스 from a video takes that video's channel.
+  const channels = useChannelCards().filter(card => channelFormats(card).includes("card"));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [projects, setProjects] = useState<YpProject[] | null>(null);
@@ -104,7 +108,8 @@ export function CardStart({ initial = "" }: { initial?: string }) {
   const start = async () => {
     if (!client) return;
     setBusy(true); setError("");
-    try { const made = await client.createCard({ from: "none", title: form.title.trim(), target: form.target.trim(), note: form.note.trim() }); router.push(stepHref(1, made.id)); }
+    const channel = form.channel || channels[0]?.id;
+    try { const made = await client.createCard({ from: "none", title: form.title.trim(), target: form.target.trim(), note: form.note.trim(), ...(channel ? { channel } : {}) }); router.push(stepHref(1, made.id)); }
     catch (reason) { setError(errorMessage(reason)); setBusy(false); }
   };
   const open = (projects ?? []).filter(project => project.yp.topic.type === "card" && project.yp.stage !== "done");
@@ -116,6 +121,9 @@ export function CardStart({ initial = "" }: { initial?: string }) {
       <div className="yp-card-h">카드뉴스 시작하기</div>
       <div className="yp-card-b" style={{ display: "grid", gap: 10 }}>
         <p className="yp-hint" style={{ margin: 0 }}>새 주제를 직접 쓰거나 위에서 완료한 롱폼·숏폼·스레드 주제를 가져와 시작해요.</p>
+        {channels.length > 1 ? <label className="yp-field" style={{ margin: 0 }}><span className="yp-fld-h"><b>채널</b></span>
+          <select className="yp-in" aria-label="채널" value={form.channel || channels[0].id} onChange={event => setForm({ ...form, channel: event.target.value })}>
+            {channels.map(card => <option key={card.id} value={card.id}>{card.name}</option>)}</select></label> : null}
         <label className="yp-field" style={{ margin: 0 }}><span className="yp-fld-h"><b>한 줄 주제</b><span className="yp-need">필수</span></span>
           <input className="yp-in" value={form.title} maxLength={200} onChange={event => setForm({ ...form, title: event.target.value })} placeholder="예) 월요일마다 무거운 사람의 공통점" aria-label="한 줄 주제" /></label>
         <label className="yp-field" style={{ margin: 0 }}><span className="yp-fld-h"><b>누구에게</b><span className="yp-need">필수</span></span>
