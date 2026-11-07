@@ -19,17 +19,17 @@ async function google<T>(token: string, path: string, params: Record<string, str
   return body;
 }
 
-async function managed(actor: RequestActor, ownerId: string) {
-  const connection = await authorizeYoutubeConnection(actor, ownerId);
+async function managed(actor: RequestActor, ownerId: string, channelId?: string) {
+  const connection = await authorizeYoutubeConnection(actor, ownerId, channelId);
   if (!String(connection.scope ?? "").split(/\s+/).includes(YOUTUBE_MANAGE_SCOPE))
     throw new ApiError(409, "YOUTUBE_MANAGE_SCOPE_MISSING", "유튜브 연결에 「영상 관리」 권한이 없어요. 내 계정 › 채널 연결에서 「다시 연결」을 눌러 허용해 주세요.");
-  return getYoutubeAccessToken(ownerId);
+  return { token: await getYoutubeAccessToken(ownerId, connection.channel_id), channelId: connection.channel_id };
 }
 
 /** The channel's latest uploads with their descriptions (about 7 quota units for 150). */
-export async function channelVideos(actor: RequestActor, ownerId: string, max = 150): Promise<CtaVideo[]> {
-  await authorizeYoutubeConnection(actor, ownerId);
-  const token = await getYoutubeAccessToken(ownerId);
+export async function channelVideos(actor: RequestActor, ownerId: string, channelId?: string, max = 150): Promise<CtaVideo[]> {
+  const connection = await authorizeYoutubeConnection(actor, ownerId, channelId);
+  const token = await getYoutubeAccessToken(ownerId, connection.channel_id);
   const channel = await google<{ items?: { contentDetails?: { relatedPlaylists?: { uploads?: string } } }[] }>(token, "channels", { part: "contentDetails", mine: "true" });
   const playlistId = channel.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
   if (!playlistId) return [];
@@ -61,9 +61,9 @@ async function setDescription(token: string, videoId: string, change: (current: 
   return { title: snippet.title, before: current, after: next, changed: true };
 }
 
-export const ctaApplySchema = z.object({ action: z.literal("apply"), ownerId: z.string().uuid().optional(), find: z.string().min(1).max(500), replace: z.string().max(1000),
+export const ctaApplySchema = z.object({ action: z.literal("apply"), ownerId: z.string().uuid().optional(), channelId: z.string().trim().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/).optional(), find: z.string().min(1).max(500), replace: z.string().max(1000),
   videoIds: z.array(z.string().regex(/^[A-Za-z0-9_-]{6,20}$/)).min(1).max(CTA_MAX_VIDEOS) }).strict();
-export const ctaUndoSchema = z.object({ action: z.literal("undo"), ownerId: z.string().uuid().optional(), changeId: z.string().uuid() }).strict();
+export const ctaUndoSchema = z.object({ action: z.literal("undo"), ownerId: z.string().uuid().optional(), channelId: z.string().trim().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/).optional(), changeId: z.string().uuid() }).strict();
 
 const changeRecord = (change: CtaChange, actor: RequestActor) => ({ id: change.id, record_type: "content_package", title: `CTA 일괄 바꾸기 · ${change.items.filter(item => item.ok).length}개`,
   description: "", status: "done", priority: "normal", team: actor.team || "콘텐츠", owner_id: actor.id, created_by: actor.id, updated_by: actor.id, tags: ["유튜브", "CTA"],
@@ -71,7 +71,7 @@ const changeRecord = (change: CtaChange, actor: RequestActor) => ({ id: change.i
 
 /** Each video read fresh, changed only if it still has the words; every one recorded (with its text before) for undo. */
 export async function applyCta(actor: RequestActor, input: z.infer<typeof ctaApplySchema>) {
-  const ownerId = input.ownerId ?? actor.id, token = await managed(actor, ownerId);
+  const ownerId = input.ownerId ?? actor.id, { token, channelId } = await managed(actor, ownerId, input.channelId);
   const items: CtaItem[] = [];
   for (const videoId of [...new Set(input.videoIds)]) {
     try {
@@ -79,7 +79,7 @@ export async function applyCta(actor: RequestActor, input: z.infer<typeof ctaApp
       items.push({ videoId, title: done.title, before: done.before, after: done.after, ok: done.changed, ...(done.changed ? {} : { error: "찾을 말이 없어요" }) });
     } catch (error) { items.push({ videoId, title: "", before: "", after: "", ok: false, error: error instanceof ApiError ? error.message : "바꾸지 못했어요" }); }
   }
-  const change: CtaChange = { id: randomUUID(), at: new Date().toISOString(), by: actor.name, find: input.find, replace: input.replace, items };
+  const change: CtaChange = { id: randomUUID(), at: new Date().toISOString(), by: actor.name, find: input.find, replace: input.replace, items, connectionOwnerId: ownerId, channelId };
   const { error } = await createServiceSupabase().from("os_records").insert(changeRecord(change, actor));
   if (error) console.warn(`cta change record skipped (${error.code ?? "error"})`);
   await auditChannelAction(actor.id, ownerId, "youtube", `설명란 일괄 바꾸기 ${items.filter(item => item.ok).length}개`);
@@ -88,12 +88,14 @@ export async function applyCta(actor: RequestActor, input: z.infer<typeof ctaApp
 
 /** Puts each changed description back, unless someone changed it again since. */
 export async function undoCta(actor: RequestActor, input: z.infer<typeof ctaUndoSchema>) {
-  const ownerId = input.ownerId ?? actor.id, token = await managed(actor, ownerId);
   const service = createServiceSupabase();
   const { data } = await service.from("os_records").select("id,metadata").eq("id", input.changeId).eq("metadata->>packageKind", "yp_cta_change").is("archived_at", null).maybeSingle();
   const change = data?.metadata?.change as CtaChange | undefined;
   if (!change) throw new ApiError(404, "CTA_CHANGE_NOT_FOUND", "그 바꾸기 기록을 찾지 못했어요.");
   if (change.undoneAt) throw new ApiError(409, "CTA_ALREADY_UNDONE", "이미 되돌렸어요.");
+  // A change made before 다채널 has no connection on it: the one asked for, else the person's first, as before.
+  const ownerId = change.connectionOwnerId ?? input.ownerId ?? actor.id;
+  const { token } = await managed(actor, ownerId, change.channelId ?? input.channelId);
   const items: CtaItem[] = [];
   for (const item of change.items) {
     if (!item.ok || item.undone) { items.push(item); continue; }

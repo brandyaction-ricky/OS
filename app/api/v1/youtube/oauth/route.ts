@@ -32,9 +32,12 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   try {
     const actor = await authenticateRequest(request);
-    const ownerId = z.string().uuid().parse(new URL(request.url).searchParams.get("ownerId") || actor.id);
+    const params = new URL(request.url).searchParams;
+    const ownerId = z.string().uuid().parse(params.get("ownerId") || actor.id);
+    // 다채널 2단계: which of the person's channels; none = their first (screens before then).
+    const channelId = z.string().trim().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/).optional().parse(params.get("channelId") || undefined);
     assertConnectionAccess(actor, { owner_id: ownerId }, "disconnect");
-    await disconnectYoutube(ownerId);
+    await disconnectYoutube(ownerId, channelId);
     await auditChannelAction(actor.id, ownerId, "youtube", "해제");
     return NextResponse.json({ disconnected: true });
   } catch (error) { return apiErrorResponse(error); }
@@ -43,11 +46,11 @@ export async function DELETE(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const actor = await authenticateRequest(request);
-    const input = z.object({ teamShared: z.boolean() }).parse(await parseJson(request));
-    const connection = await loadYoutubeConnection(actor.id);
+    const input = z.object({ teamShared: z.boolean(), channelId: z.string().trim().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/).optional() }).parse(await parseJson(request));
+    const connection = await loadYoutubeConnection(actor.id, input.channelId);
     if (!connection) throw new ApiError(404, "CHANNEL_NOT_FOUND", "연결된 채널이 없습니다.");
     assertConnectionAccess(actor, connection, "share");
-    const { error } = await createServiceSupabase().from("os_youtube_connections").update({ team_shared: input.teamShared, updated_at: new Date().toISOString() }).eq("owner_id", actor.id);
+    const { error } = await createServiceSupabase().from("os_youtube_connections").update({ team_shared: input.teamShared, updated_at: new Date().toISOString() }).eq("owner_id", actor.id).eq("channel_id", connection.channel_id);
     if (error) throw new ApiError(500, "CHANNEL_SHARE_FAILED", "팀 공유 상태를 저장하지 못했습니다.");
     await auditChannelAction(actor.id, actor.id, "youtube", input.teamShared ? "팀 공유 켜기" : "팀 공유 끄기");
     return NextResponse.json({ teamShared: input.teamShared });

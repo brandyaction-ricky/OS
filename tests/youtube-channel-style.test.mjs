@@ -126,7 +126,41 @@ test("every voice the OS asks Fish for or hands the render PC is the run's chann
   assert.match(worker, /voice = job\.fishVoice\?\.referenceId\?\.trim\(\)/, "the render PC uses the voice the job brings");
 });
 
-test("the upload goes to the account named on the video's channel card unless someone picks another", async () => {
-  const upload = await readFile(new URL("../components/youtube-process-upload.tsx", import.meta.url), "utf8");
-  assert.match(upload, /const owner = picked \|\| channels\.find\(row => card\?\.channel\.trim\(\) && row\.accountName\.trim\(\) === card\.channel\.trim\(\)\)\?\.ownerId \|\| channels\[0\]\?\.ownerId \|\| ""/);
+// 다채널 2단계 (2): one person connects several YouTube channels; every upload names the channel it goes to.
+test("where a video goes up: picked, else its card's channel, else the card's channel name, else the first — on all three upload screens", async () => {
+  const read = (file) => readFile(new URL(`../components/${file}`, import.meta.url), "utf8");
+  const [styles, upload, short, shorts] = await Promise.all([read("youtube-channel-styles.tsx"), read("youtube-process-upload.tsx"), read("youtube-process-short.tsx"), read("youtube-process-shorts.tsx")]);
+  assert.match(styles, /const chosen = rows\.find\(row => row\.channelId === picked\) \?\? rows\.find\(row => card\?\.youtube && row\.channelId === card\.youtube\)\s+\?\? rows\.find\(row => card\?\.channel\.trim\(\) && row\.accountName\.trim\(\) === card\.channel\.trim\(\)\) \?\? rows\[0\];/);
+  assert.match(styles, /account: chosen \? \{ connectionOwnerId: chosen\.ownerId, connectionChannelId: chosen\.channelId \} : \{\}/);
+  for (const [name, screen] of [["upload", upload], ["short", short], ["shorts", shorts]]) {
+    assert.match(screen, /useUploadChannel\((page\.bundle\?\.)?project(\?)?\.yp\.topic\.channel\)/, `${name} uses the shared rule`);
+    assert.doesNotMatch(screen, /"\/api\/v1\/channels"/, `${name} no longer picks the first connection on its own`);
+  }
+  assert.equal(upload.match(/\.\.\.account \}\)/g)?.length, 2, "session and complete send the channel");
+  assert.equal(short.match(/\.\.\.account \}\)/g)?.length, 2);
+  const card = channelStyleInput.parse({ id: moonshot.id, name: "x", channel: "", tone: null, ending: "talk", logo: false });
+  assert.equal(card.youtube, "", "no YouTube channel picked = by name, else the first");
+  const first = nextStyles([], [card], "a", "t1");
+  assert.equal(nextStyles(first, [{ ...card, youtube: "UCabcdefghijklmnopqrstuv" }], "b", "t2")[0].version, 2, "linking a channel is a new version");
+});
+
+test("a YouTube connection is (person, channel): the key, every token, status and disconnect name the channel", async () => {
+  const [migration, rollback, oauth, routeFile, testRoute, uploadServer, cta, metrics] = await Promise.all([
+    "../supabase/migrations/20261107120000_youtube_connections_per_channel.sql", "../supabase/rollback/20261107120000_youtube_connections_per_channel.down.sql",
+    "../lib/server/youtube-oauth.ts", "../app/api/v1/youtube/oauth/route.ts", "../app/api/v1/youtube/oauth/test/route.ts", "../lib/server/youtube-process-upload.ts",
+    "../lib/server/youtube-cta.ts", "../lib/server/channel-metrics.ts"].map((file) => readFile(new URL(file, import.meta.url), "utf8")));
+  assert.match(migration, /add constraint os_youtube_connections_pkey primary key \(owner_id, channel_id\);/);
+  assert.match(rollback, /add constraint os_youtube_connections_pkey primary key \(owner_id\);/);
+  assert.match(oauth, /channelId \? query\.eq\("channel_id", channelId\) : query\.order\("connected_at", \{ ascending: true \}\)\.limit\(1\)/, "no channel named = the person's first, as before");
+  assert.doesNotMatch(oauth, /CHANNEL_REPLACEMENT_REQUIRED/, "a second channel is added, not refused");
+  assert.match(oauth, /const existing = await loadYoutubeConnection\(ownerId, channel\.id\);/);
+  assert.match(oauth, /\.eq\("owner_id", ownerId\)\.eq\("channel_id", connection\.channel_id\);\n  if \(error\) throw new ApiError\(500, "YOUTUBE_TOKEN_SAVE_FAILED"/, "a refreshed token is saved on its own channel");
+  assert.match(oauth, /\.delete\(\)\.eq\("owner_id", ownerId\)\.eq\("channel_id", connection\.channel_id\)/, "disconnect removes one channel");
+  assert.match(routeFile, /\.eq\("owner_id", actor\.id\)\.eq\("channel_id", connection\.channel_id\)/, "team sharing changes one channel");
+  assert.match(routeFile, /await disconnectYoutube\(ownerId, channelId\)/);
+  assert.match(testRoute, /authorizeYoutubeConnection\(actor, ownerId, input\.channelId\)/);
+  assert.equal(uploadServer.match(/authorizeYoutubeConnection\(actor, ownerId, input\.connectionChannelId\)/g)?.length, 5, "longform, its check, processing and both Shorts steps");
+  assert.doesNotMatch(uploadServer, /getYoutubeAccessToken\(ownerId\)|youtubeConnectionStatus\(ownerId\)/);
+  assert.match(cta, /const ownerId = change\.connectionOwnerId \?\? input\.ownerId \?\? actor\.id;/, "an undo uses the connection the change went through");
+  assert.match(metrics, /getYoutubeAccessToken\(connection\.owner_id,connection\.channel_id\)/, "metrics read each channel with its own token");
 });

@@ -1010,6 +1010,14 @@
       "productionApprovedAt": "2026-11-04",
       "appliedEnvironments": ["production"],
       "notes": "Replaces os_agent_update_document (sets os.agent_shared_edit_ok only for the approver's key on the owner's own team/review/reviewed document) and os_workspace_guard_document (lets that one update through while the status stays). No table, row or policy change; other keys, other people's documents, notes, 정본 and status changes keep their rules. Manual undo: supabase/rollback/20261104120000_approver_agent_shared_document_edit.down.sql. Owner approved Production in chat on 2026-11-04 (\"SQL 화면 내가 조작하지 않고 할 수 있게 진행해줘\"). Read-only check first: both production function bodies matched the repository originals (md5 6c84fd2b…, 910582e8…) and the guard trigger was present. The session filled the SQL Editor; auto mode blocked its Run, so the owner pressed Run once: both functions and the schema history row in one transaction, read back (bodies md5 7101bf47…, 91ec998a… = this file; history 1). End to end: the owner's AI key edited the team document 웹툰형 캐릭터 설정 in place (status team, v4 → v5). Not applied to DEV."
+    },
+    {
+      "file": "20261107120000_youtube_connections_per_channel.sql",
+      "sha256": "f430d56a4562c8abdcec3ec0338b2236fa8712387c908f954f7f6f8c4bfcca9f",
+      "purpose": "다채널 2단계 (대표 2026-11-07): one person may connect several YouTube channels — the connection key becomes (owner_id, channel_id); channel_id stays unique across the OS",
+      "requiresApproval": true,
+      "appliedEnvironments": [],
+      "notes": "Changes only os_youtube_connections' primary key (owner_id → owner_id, channel_id); no column, row, function or policy change. Safe before the new code: while each person has one row every owner_id lookup still finds one. Manual undo: supabase/rollback/20261107120000_youtube_connections_per_channel.down.sql (needs one connection per person first)."
     }
   ],
   "legacyMigrations": [

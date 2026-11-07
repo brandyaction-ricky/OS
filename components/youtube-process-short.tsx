@@ -5,8 +5,8 @@ import { shortformDiagramSchema } from "@/lib/shortform-production";
 import { ShortformDiagramFields } from "./shortform-diagram-fields";
 import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, Download, ExternalLink, ImagePlus, Plus, Sparkles, X, Youtube } from "lucide-react";
-import { apiRequest, uploadYoutubeFile } from "@/lib/api-client";
-import type { ChannelConnection } from "@/lib/channel-types";
+import { uploadYoutubeFile } from "@/lib/api-client";
+import { useUploadChannel } from "./youtube-channel-styles";
 import { appealText, shortMissing, type YpShortBrief, type YpShortScene } from "@/lib/youtube-process/short";
 import { scenesFromScript, scriptLines } from "@/lib/youtube-process/short-script";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
@@ -381,16 +381,11 @@ function ShortYoutube({ page, last }: { page: YpPage; last: YpFinalView | null }
   const [form, setForm] = useState({ title: upload.data.title ?? "", desc: upload.data.desc, privacy: upload.data.privacy });
   const [dirty, setDirty] = useState(false);
   const [send, setSend] = useState(false);
-  const [channels, setChannels] = useState<ChannelConnection[]>([]);
-  const [owner, setOwner] = useState("");
+  // 다채널 2단계: the YouTube channel picked here, else the video's channel card's.
+  const { rows: channels, chosen, pick, account } = useUploadChannel(project.yp.topic.channel);
   const [step, setStep] = useState("");
   const job = useStaffJob(page, "short-copy", () => void page.reload());
   useEffect(() => { if (!dirty) setForm({ title: upload.data.title ?? "", desc: upload.data.desc, privacy: upload.data.privacy }); }, [upload.data, dirty]);
-  useEffect(() => {
-    if (page.demo || !page.accessToken) return;
-    apiRequest<{ connections: ChannelConnection[] }>("/api/v1/channels", { token: page.accessToken })
-      .then(result => { const rows = result.connections.filter(row => row.platform === "youtube" && row.status === "connected"); setChannels(rows); setOwner(current => current || rows[0]?.ownerId || ""); }, () => setChannels([]));
-  }, [page.demo, page.accessToken]);
   const save = async (patch: Record<string, unknown> = form) => {
     if (!page.client) return false;
     try {
@@ -410,10 +405,10 @@ function ShortYoutube({ page, last }: { page: YpPage; last: YpFinalView | null }
       const response = url ? await fetch(url) : null;
       if (!response?.ok) throw new Error("저장된 최종본을 불러오지 못했어요.");
       const file = new File([await response.blob()], "short.mp4", { type: "video/mp4" });
-      const session = await page.client.uploadSession(project.id, { fileName: file.name, fileSize: file.size, mimeType: file.type, ...(owner ? { connectionOwnerId: owner } : {}) });
+      const session = await page.client.uploadSession(project.id, { fileName: file.name, fileSize: file.size, mimeType: file.type, ...account });
       const video = await uploadYoutubeFile(session.uploadUrl, file, percent => setStep(`유튜브로 보내는 중 ${percent}%`));
       setStep("결과를 기록하는 중");
-      await page.client.uploadComplete(project.id, { videoId: video.id, ...(owner ? { connectionOwnerId: owner } : {}) });
+      await page.client.uploadComplete(project.id, { videoId: video.id, ...account });
       await page.reload();
     } catch (reason) { page.fail(reason); } finally { setStep(""); }
   };
@@ -434,8 +429,8 @@ function ShortYoutube({ page, last }: { page: YpPage; last: YpFinalView | null }
       <div className="yp-savebar">
         <label className="yp-lbl" style={{ margin: 0 }}>공개 범위 <select className="yp-in" value={form.privacy} onChange={event => { const privacy = event.target.value as typeof form.privacy; edit({ privacy }); void save({ ...form, privacy }); }}>
           <option value="private">비공개</option><option value="unlisted">일부 공개</option><option value="public">공개</option></select></label>
-        {channels.length > 1 ? <select className="yp-in" value={owner} onChange={event => setOwner(event.target.value)} aria-label="유튜브 채널">{channels.map(row => <option key={row.ownerId} value={row.ownerId}>{row.accountName}</option>)}</select>
-          : channels[0] ? <span className="yp-muted">채널: {channels[0].accountName}</span> : null}
+        {channels.length > 1 ? <select className="yp-in" value={chosen?.channelId ?? ""} onChange={event => pick(event.target.value)} aria-label="유튜브 채널">{channels.map(row => <option key={row.channelId} value={row.channelId}>{row.accountName}</option>)}</select>
+          : chosen ? <span className="yp-muted">채널: {chosen.accountName}</span> : null}
         <span className="yp-sp" />
         {missing ? <span className="yp-hint">{missing}</span> : null}
         <button type="button" className="yp-btn yp-pri" disabled={Boolean(missing) || Boolean(step)} onClick={() => void go()}><Youtube size={14} /> {step || "유튜브에 올리기"}</button><CostTag kind="youtube" />

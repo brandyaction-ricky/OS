@@ -9,10 +9,10 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   try {
     const actor = await authenticateRequest(request);
-    const input = z.object({ ownerId: z.string().uuid().optional() }).parse(await parseJson(request));
+    const input = z.object({ ownerId: z.string().uuid().optional(), channelId: z.string().trim().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/).optional() }).parse(await parseJson(request));
     const ownerId = input.ownerId ?? actor.id;
-    const connection = await authorizeYoutubeConnection(actor, ownerId);
-    const token = await getYoutubeAccessToken(ownerId);
+    const connection = await authorizeYoutubeConnection(actor, ownerId, input.channelId);
+    const token = await getYoutubeAccessToken(ownerId, connection.channel_id);
     const response = await fetch("https://www.googleapis.com/youtube/v3/channels?part=id&mine=true", { headers: { authorization: `Bearer ${token}` }, cache: "no-store", signal: AbortSignal.timeout(20_000) });
     const body = await response.json().catch(() => ({}));
     if (!response.ok || !body.items?.some((item: { id: string }) => item.id === connection.channel_id)) throw new ApiError(502, "YOUTUBE_CONNECTION_TEST_FAILED", "연결된 YouTube 채널을 확인하지 못했습니다. 다시 연결해 주세요.");

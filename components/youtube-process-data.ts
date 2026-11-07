@@ -79,9 +79,9 @@ export interface YpClient {
   /** N06: stores one reference image or PDF for a comment and returns what to attach. */
   feedbackUpload(id: string, file: File): Promise<FeedbackFile>;
   feedbackFileUrl(id: string, path: string): Promise<string>;
-  uploadSession(id: string, input: { fileName: string; fileSize: number; mimeType: string; connectionOwnerId?: string; finalAt?: string }): Promise<{ uploadUrl: string; finalV: number }>;
-  uploadComplete(id: string, input: { videoId: string; connectionOwnerId?: string; finalAt?: string }): Promise<{ videoId: string; videoUrl: string; thumbnail: string }>;
-  uploadStatus(id: string, input: { connectionOwnerId?: string }): Promise<{ processing: string; percent: number | null; privacy: string; publishAt: string | null }>;
+  uploadSession(id: string, input: { fileName: string; fileSize: number; mimeType: string; connectionOwnerId?: string; connectionChannelId?: string; finalAt?: string }): Promise<{ uploadUrl: string; finalV: number }>;
+  uploadComplete(id: string, input: { videoId: string; connectionOwnerId?: string; connectionChannelId?: string; finalAt?: string }): Promise<{ videoId: string; videoUrl: string; thumbnail: string }>;
+  uploadStatus(id: string, input: { connectionOwnerId?: string; connectionChannelId?: string }): Promise<{ processing: string; percent: number | null; privacy: string; publishAt: string | null }>;
   /** The 대표's decision on a waiting step, or a note on one the PD confirmed (note · memo). */
   confirm(id: string, gate: YpGate, action: YpApproverAction | "note", expectedVersion: number, extra?: YpConfirmExtra): Promise<YpProject>;
   confirmList(tab: "self" | "wait" | "done" | "hold" | "shorts"): Promise<{ project: YpProject; gate: YpGate }[]>;
@@ -101,9 +101,9 @@ export interface YpClient {
   saveAdResult(id: string, uploadVersion: number, change: { entry?: Omit<AdResult, "at" | "by" | "appeal" | "headCopy" | "id"> & { id?: string }; remove?: string }): Promise<{ ads: AdResult[]; version: number }>;
   adHistory(): Promise<AdHistoryRow[]>;
   /** CTA 일괄 관리: the past changes, and with `videos` the channel's uploads; a change applied or undone. */
-  cta(ownerId: string | null, videos: boolean): Promise<{ history: CtaChangeView[]; videos?: CtaVideo[] }>;
-  ctaApply(input: { ownerId?: string; find: string; replace: string; videoIds: string[] }): Promise<{ change: CtaChangeView }>;
-  ctaUndo(input: { ownerId?: string; changeId: string }): Promise<{ change: CtaChangeView }>;
+  cta(ownerId: string | null, videos: boolean, channelId?: string): Promise<{ history: CtaChangeView[]; videos?: CtaVideo[] }>;
+  ctaApply(input: { ownerId?: string; channelId?: string; find: string; replace: string; videoIds: string[] }): Promise<{ change: CtaChangeView }>;
+  ctaUndo(input: { ownerId?: string; channelId?: string; changeId: string }): Promise<{ change: CtaChangeView }>;
   adopt(id: string): Promise<YpProject>;
   /** 영상 복제 (owner decision 2026-10-28): the same step (제작 at most), voice and video made again. */
   copy(id: string): Promise<YpProject>;
@@ -204,7 +204,7 @@ function apiClient(token: string): YpClient {
     reviewers: async (id, makeVersion, input) => (await apiRequest<{ stage: YpStageView<"make"> }>(`${base}/${id}/reviewers`, { token, method: "PATCH", body: json({ expectedVersion: makeVersion, ...input }) })).stage,
     saveAdResult: (id, uploadVersion, change) => apiRequest(`${base}/${id}/ads`, { token, method: "POST", body: json({ expectedVersion: uploadVersion, ...change }) }),
     adHistory: async () => (await apiRequest<{ rows: AdHistoryRow[] }>("/api/v1/content/youtube/ads", { token })).rows,
-    cta: (ownerId, videos) => apiRequest(`/api/v1/content/youtube/cta?${new URLSearchParams({ ...(ownerId ? { ownerId } : {}), ...(videos ? { videos: "1" } : {}) })}`, { token }),
+    cta: (ownerId, videos, channelId) => apiRequest(`/api/v1/content/youtube/cta?${new URLSearchParams({ ...(ownerId ? { ownerId } : {}), ...(channelId ? { channelId } : {}), ...(videos ? { videos: "1" } : {}) })}`, { token }),
     ctaApply: input => apiRequest("/api/v1/content/youtube/cta", { token, method: "POST", body: json({ action: "apply", ...input }) }),
     ctaUndo: input => apiRequest("/api/v1/content/youtube/cta", { token, method: "POST", body: json({ action: "undo", ...input }) }),
     adopt: async id => (await apiRequest<{ project: YpProject }>("/api/v1/content/youtube/legacy", { token, method: "POST", body: json({ id }) })).project,

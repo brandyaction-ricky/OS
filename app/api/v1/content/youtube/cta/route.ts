@@ -14,7 +14,8 @@ export async function GET(request: Request) {
     const actor = await youtubeActor(request);
     const url = new URL(request.url);
     const ownerId = z.string().uuid().optional().parse(url.searchParams.get("ownerId") || undefined) ?? actor.id;
-    return NextResponse.json({ history: await ctaHistory(), ...(url.searchParams.get("videos") ? { videos: await channelVideos(actor, ownerId) } : {}) }, { headers });
+    const channelId = z.string().trim().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/).optional().parse(url.searchParams.get("channelId") || undefined);
+    return NextResponse.json({ history: await ctaHistory(), ...(url.searchParams.get("videos") ? { videos: await channelVideos(actor, ownerId, channelId) } : {}) }, { headers });
   } catch (error) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "CTA_INVALID", "채널을 확인해 주세요."));
     return apiErrorResponse(error);

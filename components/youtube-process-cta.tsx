@@ -17,31 +17,33 @@ export function CtaBulkScreen() {
   const { accessToken, demo } = useSession();
   const client = useMemo(() => youtubeProcessClient(accessToken, demo), [accessToken, demo]);
   const [channel, setChannel] = useState<ChannelConnection | null | undefined>(undefined);
+  // 다채널 2단계: every connected YouTube channel this person may use; the first is picked, and another can be.
+  const [options, setOptions] = useState<ChannelConnection[]>([]);
   const [videos, setVideos] = useState<CtaVideo[] | null>(null);
   const [history, setHistory] = useState<CtaChangeView[]>([]);
   const [find, setFind] = useState(""), [replace, setReplace] = useState("");
   const [off, setOff] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(""), [error, setError] = useState(""), [done, setDone] = useState<CtaChangeView | null>(null);
-  const ownerId = channel?.ownerId ?? null;
+  const ownerId = channel?.ownerId ?? null, channelId = channel?.channelId;
   useEffect(() => {
     if (demo) { setChannel({ platform: "youtube", ownerId: "demo", accountName: "브랜디액션 (예시)", manageConnected: true } as ChannelConnection); return; }
     if (!accessToken) return;
     apiRequest<{ connections: ChannelConnection[] }>("/api/v1/channels", { token: accessToken })
-      .then(result => setChannel(result.connections.find(row => row.platform === "youtube" && row.status === "connected") ?? null), () => setChannel(null));
+      .then(result => { const rows = result.connections.filter(row => row.platform === "youtube" && row.status === "connected"); setOptions(rows); setChannel(rows[0] ?? null); }, () => setChannel(null));
   }, [accessToken, demo]);
   const load = useCallback(async (withVideos: boolean) => {
     if (!client || channel === undefined) return;
     setBusy(withVideos ? "load" : ""); setError("");
-    try { const result = await client.cta(demo ? null : ownerId, withVideos); setHistory(result.history); if (result.videos) setVideos(result.videos); }
+    try { const result = await client.cta(demo ? null : ownerId, withVideos, demo ? undefined : channelId); setHistory(result.history); if (result.videos) setVideos(result.videos); }
     catch (reason) { setError(errorMessage(reason)); } finally { setBusy(""); }
-  }, [client, channel, demo, ownerId]);
+  }, [client, channel, demo, ownerId, channelId]);
   useEffect(() => { void load(false); }, [load]);
   const rows = useMemo(() => videos && find ? ctaPreview(videos, find, replace) : [], [videos, find, replace]);
   const picked = rows.filter(row => !off.has(row.id)).slice(0, CTA_MAX_VIDEOS);
   const apply = async () => {
     if (!client || !picked.length || !window.confirm(`유튜브에 올린 영상 ${picked.length}개의 설명란을 바꿀까요?\n「${find}」 → 「${replace || "(지우기)"}」\n바꾼 뒤에도 기록에서 되돌릴 수 있어요.`)) return;
     setBusy("apply"); setError(""); setDone(null);
-    try { const result = await client.ctaApply({ ...(demo || !ownerId ? {} : { ownerId }), find, replace, videoIds: picked.map(row => row.id) }); setDone(result.change); setOff(new Set()); await load(true); }
+    try { const result = await client.ctaApply({ ...(demo || !ownerId ? {} : { ownerId, ...(channelId ? { channelId } : {}) }), find, replace, videoIds: picked.map(row => row.id) }); setDone(result.change); setOff(new Set()); await load(true); }
     catch (reason) { setError(errorMessage(reason)); } finally { setBusy(""); }
   };
   const undo = async (change: CtaChangeView) => {
@@ -55,6 +57,8 @@ export function CtaBulkScreen() {
   if (!channel) return <p className="yp-hint">유튜브 채널이 연결되지 않았어요. <Link className="yp-lnk" href="/settings/account">내 계정 › 채널 연결</Link>에서 연결해요.</p>;
   return <div className="yp-stack12">
     <section className="yp-card"><div className="yp-card-b yp-stack10">
+      {options.length > 1 ? <label className="yp-lbl">바꿀 채널<select className="yp-in" value={channelId ?? ""} onChange={event => { setChannel(options.find(row => row.channelId === event.target.value) ?? null); setVideos(null); setOff(new Set()); setDone(null); }}>
+        {options.map(row => <option key={row.channelId} value={row.channelId}>{row.accountName}</option>)}</select></label> : null}
       <p className="yp-hint yp-m0">진단 이름 · 링크 · 멘트가 바뀌면, 「{channel.accountName}」에 올린 영상 설명란에서 옛 말을 찾아 한 번에 바꿔요. 고정 댓글 · 최종 화면은 유튜브가 앱으로 바꾸지 못하게 해서 직접 고쳐야 해요.</p>
       {channel.manageConnected === false ? <p className="yp-note yp-warn" role="status">유튜브 연결에 「영상 관리」 권한이 없어요. 회사 채널을 연결한 분이 <Link className="yp-lnk" href="/settings/account">내 계정 › 채널 연결</Link>에서 「다시 연결」을 눌러 새 권한을 허용하면 바꿀 수 있어요. 찾기 · 미리보기는 지금도 돼요.</p> : null}
       <div className="yp-links yp-two">

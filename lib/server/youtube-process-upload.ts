@@ -19,9 +19,11 @@ import { queueStudioTask } from "./youtube-studio";
 // S7 [업로드] (지시서 10-2): the browser sends the last final straight to YouTube's resumable session; the OS checks the
 // 최종 검수 OK before opening the session and records the video after.
 // finalAt: the final the browser is sending (유쓰 요청 공통 조건 3) — checked at the start, written down at the end.
+// 다채널 2단계 (2026-11-07): which of the person's YouTube channels; none = their first, as before.
+const channelIdSchema = z.string().trim().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/);
 export const uploadSessionSchema = z.object({ fileName: z.string().trim().min(1).max(255), fileSize: z.number().int().positive().max(137_438_953_472),
-  mimeType: z.string().regex(/^video\/[a-z0-9.+-]+$/i), connectionOwnerId: z.string().uuid().optional(), finalAt: z.string().datetime().optional() }).strict();
-export const uploadCompleteSchema = z.object({ videoId: z.string().regex(/^[A-Za-z0-9_-]{6,20}$/), connectionOwnerId: z.string().uuid().optional(), finalAt: z.string().datetime().optional() }).strict();
+  mimeType: z.string().regex(/^video\/[a-z0-9.+-]+$/i), connectionOwnerId: z.string().uuid().optional(), connectionChannelId: channelIdSchema.optional(), finalAt: z.string().datetime().optional() }).strict();
+export const uploadCompleteSchema = z.object({ videoId: z.string().regex(/^[A-Za-z0-9_-]{6,20}$/), connectionOwnerId: z.string().uuid().optional(), connectionChannelId: channelIdSchema.optional(), finalAt: z.string().datetime().optional() }).strict();
 
 /**
  * The page that will send the file (로건 피드백 10/26-9): YouTube answers the browser's PUT with CORS headers only when the
@@ -50,8 +52,8 @@ export async function startYoutubeUpload(actor: RequestActor, id: string, input:
   if (input.finalAt && input.finalAt !== final.at) throw new ApiError(409, "FINAL_CHANGED", "올릴 영상이 바뀌었어요. 화면을 새로 불러온 뒤 다시 눌러 주세요.");
   if (!descWritten(upload.desc)) throw new ApiError(409, "DESCRIPTION_REQUIRED", "설명란을 채워 주세요.");
   const ownerId = input.connectionOwnerId ?? actor.id;
-  await authorizeYoutubeConnection(actor, ownerId);
-  const connection = await youtubeConnectionStatus(ownerId);
+  const connectedChannel = (await authorizeYoutubeConnection(actor, ownerId, input.connectionChannelId)).channel_id;
+  const connection = await youtubeConnectionStatus(ownerId, connectedChannel);
   // A 숏폼 (2026-10-25) goes up as a Short with the title written in 내보내기; a longform with its confirmed A title.
   const short = project.yp.topic.type === "short";
   const title = (short ? upload.title?.trim() || projectName(project) : finalPair(stages.plan.data, stages.make.data, "A")?.title || project.title).trim().slice(0, 100);
@@ -64,7 +66,7 @@ export async function startYoutubeUpload(actor: RequestActor, id: string, input:
   // 로건 요청 10/30: the 이어서 볼 영상 and 다른 유입처 of 1번 always reach the description, also when it was written before they were.
   const description = withLinks(upload.desc, upload.utm).replaceAll("[업로드 후 영상 ID]", utmCode(project.id)).replaceAll(utmUrl(upload.utm), utmUrl(upload.utm, utmCode(project.id))).slice(0, 5000 - credits.length) + credits;
   const tags = short ? (upload.desc.match(/#[^\s#]+/g) ?? []).map(tag => tag.slice(1)).slice(0, 30) : upload.hiddenTags.slice(0, 60);
-  const uploadUrl = await openUploadSession(ownerId, input, { title, description, tags, categoryId: "22" }, uploadStatus(upload), origin);
+  const uploadUrl = await openUploadSession(ownerId, connectedChannel, input, { title, description, tags, categoryId: "22" }, uploadStatus(upload), origin);
   await auditChannelAction(actor.id, ownerId, "youtube", "업로드 세션 생성");
   return { uploadUrl, channelId: connection.channelId, finalV: final.v };
 }
@@ -78,8 +80,8 @@ function uploadStatus(upload: Pick<YpUpload, "privacy" | "publishAt">) {
 }
 
 /** YouTube's resumable session for one file; the browser sends the bytes straight to the returned address. */
-async function openUploadSession(ownerId: string, file: { fileSize: number; mimeType: string }, snippet: { title: string; description: string; tags: string[]; categoryId: string }, status: { privacyStatus: string; publishAt?: string }, origin: string) {
-  const accessToken = await getYoutubeAccessToken(ownerId);
+async function openUploadSession(ownerId: string, channelId: string, file: { fileSize: number; mimeType: string }, snippet: { title: string; description: string; tags: string[]; categoryId: string }, status: { privacyStatus: string; publishAt?: string }, origin: string) {
+  const accessToken = await getYoutubeAccessToken(ownerId, channelId);
   const google = await fetch(`https://www.googleapis.com/upload/youtube/v3/videos?${new URLSearchParams({ uploadType: "resumable", part: "snippet,status" })}`, {
     method: "POST", cache: "no-store",
     headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json; charset=UTF-8", "x-upload-content-length": String(file.fileSize), "x-upload-content-type": file.mimeType, origin },
@@ -92,13 +94,13 @@ async function openUploadSession(ownerId: string, file: { fileSize: number; mime
 }
 
 /** The uploaded video, checked to be on the connected channel. */
-async function channelVideo(ownerId: string, videoId: string) {
-  const accessToken = await getYoutubeAccessToken(ownerId);
+async function channelVideo(ownerId: string, channelId: string, videoId: string) {
+  const accessToken = await getYoutubeAccessToken(ownerId, channelId);
   const response = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=id,snippet,status&id=${encodeURIComponent(videoId)}`, { headers: { authorization: `Bearer ${accessToken}` }, cache: "no-store" });
   const body = await response.json().catch(() => ({})) as { items?: { id: string; snippet?: { title?: string; channelId?: string }; status?: { privacyStatus?: string; publishAt?: string } }[]; error?: { message?: string } };
   if (!response.ok) throw new ApiError(502, "YOUTUBE_UPLOAD_VERIFY_FAILED", "업로드된 영상을 확인하지 못했습니다.", body.error?.message);
   const video = body.items?.[0];
-  const connection = await youtubeConnectionStatus(ownerId);
+  const connection = await youtubeConnectionStatus(ownerId, channelId);
   if (!video || !connection.channelId || video.snippet?.channelId !== connection.channelId) throw new ApiError(409, "YOUTUBE_UPLOAD_OWNERSHIP_FAILED", "연결된 채널의 업로드 결과가 아닙니다.");
   return { video, accessToken, channelId: connection.channelId };
 }
@@ -109,8 +111,8 @@ export async function completeYoutubeUpload(actor: RequestActor, id: string, inp
   // The record names the final that was sent, even if another one became the newest while it went up.
   const final = (input.finalAt ? finals.find(item => item.at === input.finalAt) : null) ?? active;
   const ownerId = input.connectionOwnerId ?? actor.id;
-  await authorizeYoutubeConnection(actor, ownerId);
-  const { video, accessToken, channelId } = await channelVideo(ownerId, input.videoId);
+  const connectedChannel = (await authorizeYoutubeConnection(actor, ownerId, input.connectionChannelId)).channel_id;
+  const { video, accessToken, channelId } = await channelVideo(ownerId, connectedChannel, input.videoId);
   const connection = { channelId };
   const service = createServiceSupabase();
   // thumbnails.set works with the upload permission; a channel without custom thumbnails answers 403 and the person sets it in Studio.
@@ -141,7 +143,7 @@ export async function completeYoutubeUpload(actor: RequestActor, id: string, inp
   });
   if (error && error.code !== "23505") console.warn(`youtube publish record skipped (${error.code ?? "error"})`);
   // 스튜디오 작업: what the API cannot set waits for the uploader's AI in Studio (a Short has no end screen or test).
-  if (!short) await queueStudioTask(service, project.id, video.id, { id: channelId, title: (await youtubeConnectionStatus(ownerId)).channelTitle ?? "", ownerId }, actor.ownerId)
+  if (!short) await queueStudioTask(service, project.id, video.id, { id: channelId, title: (await youtubeConnectionStatus(ownerId, channelId)).channelTitle ?? "", ownerId }, actor.ownerId)
     .catch(reason => console.warn(`studio task skipped (${reason instanceof Error ? reason.message : "error"})`));
   await auditChannelAction(actor.id, ownerId, "youtube", "업로드 결과 확인");
   return { videoId: video.id, videoUrl, thumbnail };
@@ -153,8 +155,8 @@ export async function youtubeProcessing(actor: RequestActor, id: string, input: 
   const run = (await readStages(actor.supabase, project)).upload.data.run;
   if (run?.status !== "done" || !run.videoId) throw new ApiError(409, "UPLOAD_NOT_DONE", "아직 유튜브에 올리지 않았어요.");
   const ownerId = input.connectionOwnerId ?? actor.id;
-  await authorizeYoutubeConnection(actor, ownerId);
-  const accessToken = await getYoutubeAccessToken(ownerId);
+  const connectedChannel = (await authorizeYoutubeConnection(actor, ownerId, input.connectionChannelId)).channel_id;
+  const accessToken = await getYoutubeAccessToken(ownerId, connectedChannel);
   const response = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=status,processingDetails&id=${encodeURIComponent(run.videoId)}`, { headers: { authorization: `Bearer ${accessToken}` }, cache: "no-store" });
   const body = await response.json().catch(() => ({})) as { items?: { status?: { privacyStatus?: string; publishAt?: string; uploadStatus?: string }; processingDetails?: { processingStatus?: string; processingProgress?: { partsTotal?: string; partsProcessed?: string } } }[] };
   const video = body.items?.[0];
@@ -163,7 +165,7 @@ export async function youtubeProcessing(actor: RequestActor, id: string, input: 
   const percent = parts?.partsTotal && Number(parts.partsTotal) > 0 ? Math.round(Number(parts.partsProcessed ?? 0) / Number(parts.partsTotal) * 100) : null;
   return { processing: video.processingDetails?.processingStatus ?? video.status?.uploadStatus ?? "", percent, privacy: video.status?.privacyStatus ?? "", publishAt: video.status?.publishAt ?? null };
 }
-export const uploadStatusSchema = z.object({ connectionOwnerId: z.string().uuid().optional() }).strict();
+export const uploadStatusSchema = z.object({ connectionOwnerId: z.string().uuid().optional(), connectionChannelId: channelIdSchema.optional() }).strict();
 
 // ── 쇼츠 · 칼럼: an adopted clip's vertical video goes up as a Short after the longform (owner request 2026-10-25) ──
 export const clipUploadSessionSchema = uploadSessionSchema.extend({ clipId: z.string().uuid() }).strict();
@@ -186,10 +188,10 @@ export async function startClipUpload(actor: RequestActor, id: string, input: z.
   const text = String(clip.metadata.desc ?? "");
   if (!clip.title.trim() || !text.trim()) throw new ApiError(409, "DESCRIPTION_REQUIRED", "쇼츠 제목과 설명을 채워 주세요.");
   const ownerId = input.connectionOwnerId ?? actor.id;
-  await authorizeYoutubeConnection(actor, ownerId);
+  const connectedChannel = (await authorizeYoutubeConnection(actor, ownerId, input.connectionChannelId)).channel_id;
   const tags = (text.match(/#[^\s#]+/g) ?? []).map(tag => tag.slice(1)).slice(0, 30);
   // A Short goes up with the longform's 공개 범위; its 예약 time is the longform's, so a scheduled longform sends its Shorts private.
-  const uploadUrl = await openUploadSession(ownerId, input, { title: clip.title.trim().slice(0, 100), description: clipDescription(text, longformUrl), tags, categoryId: "22" }, { privacyStatus: stages.upload.data.publishAt ? "private" : stages.upload.data.privacy }, origin);
+  const uploadUrl = await openUploadSession(ownerId, connectedChannel, input, { title: clip.title.trim().slice(0, 100), description: clipDescription(text, longformUrl), tags, categoryId: "22" }, { privacyStatus: stages.upload.data.publishAt ? "private" : stages.upload.data.privacy }, origin);
   await auditChannelAction(actor.id, ownerId, "youtube", "쇼츠 업로드 세션 생성");
   return { uploadUrl };
 }
@@ -197,8 +199,8 @@ export async function startClipUpload(actor: RequestActor, id: string, input: z.
 export async function completeClipUpload(actor: RequestActor, id: string, input: z.infer<typeof clipUploadCompleteSchema>) {
   const { project, clip } = await clipReady(actor, id, input.clipId);
   const ownerId = input.connectionOwnerId ?? actor.id;
-  await authorizeYoutubeConnection(actor, ownerId);
-  const { video, channelId } = await channelVideo(ownerId, input.videoId);
+  const connectedChannel = (await authorizeYoutubeConnection(actor, ownerId, input.connectionChannelId)).channel_id;
+  const { video, channelId } = await channelVideo(ownerId, connectedChannel, input.videoId);
   const videoUrl = `https://www.youtube.com/shorts/${video.id}`;
   const at = new Date().toISOString();
   const { data: saved, error } = await actor.supabase.from("os_records").update({ metadata: { ...clip.metadata, youtube: { videoId: video.id, videoUrl, at, by: actor.name } }, updated_by: actor.id })

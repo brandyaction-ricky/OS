@@ -19,10 +19,12 @@ export const channelStyleInput = z.object({
   purpose: z.string().trim().max(40).default(""), concept: z.string().trim().max(200).default(""), topics: z.string().trim().max(300).default(""),
   formats: z.array(z.enum(CHANNEL_FORMATS)).min(1, "운영 형식을 하나 이상 골라 주세요").max(CHANNEL_FORMATS.length).default([...CHANNEL_FORMATS]),
   voice: z.string().trim().max(64).regex(/^[A-Za-z0-9_-]*$/, "목소리 ID는 영문 · 숫자로 적어 주세요").default(""),
+  // The YouTube channel (its id, from a connection) this channel's videos go up on; empty = matched by name, else the first.
+  youtube: z.string().trim().max(64).regex(/^[A-Za-z0-9_-]*$/).default(""),
 }).strict();
 export type ChannelStyleInput = z.infer<typeof channelStyleInput>;
 /** Cards saved before 2026-11-07 have no purpose · concept · topics · formats · voice: read them as empty and every format. */
-type CardFields = "purpose" | "concept" | "topics" | "formats" | "voice";
+type CardFields = "purpose" | "concept" | "topics" | "formats" | "voice" | "youtube";
 export interface ChannelStyle extends Omit<ChannelStyleInput, CardFields>, Partial<Pick<ChannelStyleInput, CardFields>> { version: number; updatedAt: string; by: string }
 /** What a video keeps of the style it was started with. */
 export type PinnedStyle = Pick<ChannelStyle, "id" | "name" | "version" | "channel" | "tone" | "ending" | "logo">;
@@ -39,7 +41,7 @@ export const keepsDefault = (prev: Pick<ChannelStyle, "id">[], input: Pick<Chann
 /** The list saved: a card that changed gets the next version; an unchanged one keeps its version. */
 export function nextStyles(prev: ChannelStyle[], input: ChannelStyleInput[], by: string, at: string): ChannelStyle[] {
   const look = (style: ChannelStyle | ChannelStyleInput) => JSON.stringify([style.name, style.channel, style.tone, style.ending, style.logo,
-    style.purpose ?? "", style.concept ?? "", style.topics ?? "", channelFormats(style), style.voice ?? ""]);
+    style.purpose ?? "", style.concept ?? "", style.topics ?? "", channelFormats(style), style.voice ?? "", style.youtube ?? ""]);
   return input.map((style) => {
     const before = prev.find((row) => row.id === style.id);
     return before && look(before) === look(style) ? before : { ...style, version: (before?.version ?? 0) + 1, updatedAt: at, by };
