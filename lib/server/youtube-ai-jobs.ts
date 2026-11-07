@@ -37,6 +37,7 @@ import { assertTopicFormulaInputs, saveTopicFormula, topicFormulaCard, topicForm
 import type { NicheVideo } from "@/lib/youtube-process/discover";
 import type { GptTier } from "@/lib/youtube-process/gpt-draft";
 import { readStages } from "./youtube-process-stages";
+import { channelContext } from "./channel-canon";
 import { assertCardJobOpen, cardCanon, cardFormatsSchema, cardInputKey, cardJobCard, cardJobSource, checkCardResult, saveCardDrafts, VOICE_CANON_TITLE, WEBTOON_CAST_TITLE } from "./youtube-process-card-job";
 
 /** The name a job carries: the adopted title, or a v1 project's confirmed A. */
@@ -268,6 +269,8 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
   const attachments = input.task === "script" ? input.attachments || undefined : input.task === "retitle" ? input.reason || undefined : undefined;
   const slot = input.task === "retitle" ? input.slot : undefined;
   const role = input.task === "script" ? input.role : undefined;
+  // 다채널 3단계: a channel without its 목적 정본 is told now, not when its AI takes the job.
+  await channelContext(input.task === "niche" ? null : input.sourceId);
   for (const job of await openJobs(actor.id, input.sourceId, input.task)) {
     const m = meta(job);
     const sameDoer = Boolean(m.executor) === Boolean(gpt);
@@ -517,9 +520,13 @@ async function myinCardDocIds(docs = MYIN_CARD_DOCS) {
 }
 
 export async function claimStaffJob(agent: RequestActor, jobId: string, byGpt = false) {
+  // 다채널 3단계: every card of a project on another channel starts with that channel and its 목적 정본 (GPT gets the 정본 pasted in by
+  // its doc_id, like any document a card names). Read before the job is taken, so a missing 정본 leaves it waiting.
+  const channel = await channelContext((await ownJob(agent, jobId)).parent_id);
   const claimed = await claimJob(agent, jobId, byGpt);
+  const instructions = channel ? `${channel.text}\n\n${claimed.instructions}` : claimed.instructions;
   // GPT answers one strict JSON schema, so only a staff AI gets the report note.
-  return byGpt ? claimed : { ...claimed, instructions: `${claimed.instructions}\n\n${REPORT_NOTE}` };
+  return byGpt ? { ...claimed, instructions } : { ...claimed, instructions: `${instructions}\n\n${REPORT_NOTE}` };
 }
 
 async function claimJob(agent: RequestActor, jobId: string, byGpt: boolean) {

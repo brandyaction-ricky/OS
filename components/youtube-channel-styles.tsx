@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Plus, X } from "lucide-react";
 import { apiRequest } from "@/lib/api-client";
 import { CHANNEL_FORMAT_LABEL, CHANNEL_FORMATS, channelFormats, channelOf, type ChannelStyle, type ChannelStyleInput } from "@/lib/youtube-process/channel-style";
@@ -66,11 +67,13 @@ export function ChannelStyleEditor() {
   const youtube = useYoutubeConnections();
   const [version, setVersion] = useState<number | null>(null);
   const [styles, setStyles] = useState<Card[]>([]);
+  // 다채널 3단계: each purpose's 목적 정본 as the server found it (null = not made yet).
+  const [canons, setCanons] = useState<Record<string, { id: string; title: string } | null>>({});
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [saved, setSaved] = useState(false);
   useEffect(() => {
     if (demo || !accessToken) { setVersion(0); return; }
-    apiRequest<{ styles: ChannelStyle[]; version: number }>("/api/v1/content/youtube/channel-styles", { token: accessToken })
-      .then(result => { setStyles(result.styles.map(cardOf)); setVersion(result.version); }, reason => setError(errorMessage(reason)));
+    apiRequest<{ styles: ChannelStyle[]; version: number; canons: Record<string, { id: string; title: string } | null> }>("/api/v1/content/youtube/channel-styles", { token: accessToken })
+      .then(result => { setStyles(result.styles.map(cardOf)); setVersion(result.version); setCanons(result.canons ?? {}); }, reason => setError(errorMessage(reason)));
   }, [accessToken, demo]);
   const set = (index: number, patch: Partial<ChannelStyleInput>) => { setSaved(false); setStyles(list => list.map((style, at) => at === index ? { ...style, ...patch } : style)); };
   const save = async () => {
@@ -78,8 +81,8 @@ export function ChannelStyleEditor() {
     setBusy(true); setError("");
     try {
       const body = { expectedVersion: version, styles: styles.map(({ id, name, channel, tone, ending, logo, purpose, concept, topics, formats, voice, youtube }) => ({ id, name, channel, tone, ending, logo, purpose, concept, topics, formats, voice, youtube })) };
-      const result = await apiRequest<{ styles: ChannelStyle[]; version: number }>("/api/v1/content/youtube/channel-styles", { method: "PUT", token: accessToken, body: JSON.stringify(body) });
-      setStyles(result.styles.map(cardOf)); setVersion(result.version); setSaved(true); cards = Promise.resolve(result.styles);
+      const result = await apiRequest<{ styles: ChannelStyle[]; version: number; canons: Record<string, { id: string; title: string } | null> }>("/api/v1/content/youtube/channel-styles", { method: "PUT", token: accessToken, body: JSON.stringify(body) });
+      setStyles(result.styles.map(cardOf)); setVersion(result.version); setCanons(result.canons ?? {}); setSaved(true); cards = Promise.resolve(result.styles);
     } catch (reason) { setError(errorMessage(reason)); } finally { setBusy(false); }
   };
   if (version === null) return error ? <p className="yp-errline" role="alert">{error}</p> : <p className="yp-hint" role="status">불러오는 중이에요…</p>;
@@ -95,6 +98,10 @@ export function ChannelStyleEditor() {
       <div className="yp-chstyle-row">
         <label>목적<input className="yp-in" maxLength={40} list="yp-channel-purposes" value={style.purpose} onChange={event => set(index, { purpose: event.target.value })} placeholder="예) 문샷 무료강의 유입" /></label>
         <label>컨셉 한 줄<input className="yp-in" maxLength={200} value={style.concept} onChange={event => set(index, { concept: event.target.value })} placeholder="예) 퇴사하고 혼자 사업하는 선배가 직접 해 보고 알려 주는 AI 마케팅" /></label></div>
+      <p className="yp-hint">{index === 0 ? "기본 채널은 지금 쓰는 마이인 정본을 그대로 읽어요."
+        : !style.purpose.trim() ? "목적을 적으면 AI가 그 목적의 정본(「목적 정본 — 목적」 문서)을 먼저 읽어요."
+        : canons[style.purpose.trim()] ? <>목적 정본: <Link className="yp-lnk" href={`/knowledge?document=${canons[style.purpose.trim()]!.id}`}>「{canons[style.purpose.trim()]!.title}」</Link> — 이 채널의 AI 작업은 이 문서를 먼저 읽어요.</>
+        : `「목적 정본 — ${style.purpose.trim()}」 문서가 아직 없어요(저장하면 다시 찾아요). 이 문서를 OS에 만들어야 이 채널을 AI로 만들 수 있어요.`}</p>
       <div className="yp-chstyle-row">
         <label>주제 축 (같은 목적의 다른 채널과 겹치지 않게)<input className="yp-in" maxLength={300} value={style.topics} onChange={event => set(index, { topics: event.target.value })} placeholder="예) 반복 업무를 AI에 넘기기 · 자동화 · 에이전트" /></label>
         <label>올릴 유튜브 채널<select className="yp-in" value={style.youtube} onChange={event => set(index, { youtube: event.target.value })}>

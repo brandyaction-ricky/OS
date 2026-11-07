@@ -52,3 +52,16 @@ export const pinStyle = ({ id, name, version, channel, tone, ending, logo }: Cha
 /** The 업로드 채널 differs from the one the style was made for (both named): told to the person, never decided for them. */
 export const channelMismatch = (style: Pick<PinnedStyle, "channel"> | null | undefined, uploadChannel: string | null | undefined) =>
   Boolean(style?.channel && uploadChannel && style.channel.trim() !== uploadChannel.trim());
+
+// 다채널 3단계 (2026-11-07): a channel other than the 기본 채널 reads its 목적 정본 — one OS document per purpose, shared by the
+// channels with that purpose — and its card first (lib/server/channel-canon.ts finds the document).
+export const purposeCanonTitle = (purpose: string) => `목적 정본 — ${purpose.trim()}`;
+
+/** What an AI reads first for a channel that is not the 기본 채널: its card, then its 목적 정본 (opened by doc_id). */
+export function channelBriefText(card: ChannelStyle, canon: { id: string; title: string }) {
+  return [`## 이 영상의 채널 — 「${card.name}」 (먼저 읽기)`, `- 목적: ${card.purpose}`, card.concept ? `- 컨셉: ${card.concept}` : "",
+    card.topics ? `- 주제 축: ${card.topics}` : "", `- 운영 형식: ${channelFormats(card).map(format => CHANNEL_FORMAT_LABEL[format]).join(" · ")}`,
+    `- 목적 정본: 「${canon.title}」 (doc_id: ${canon.id}) — 이 채널의 타겟 · 메시지 · 말투 · 행동 유도 · 링크 · 금지 표현은 이 문서를 따릅니다.`,
+    "- 아래 작업 카드가 여는 정본들은 마이인(기본 채널) 기준이에요. 구성 · 분량 · 제출 형식은 그대로 따르고, 내용이 목적 정본과 다르면 목적 정본이 이깁니다. 마이인 진단 · 마이인 링크 · 마이인 전용 표현은 이 채널에 쓰지 않습니다.",
+  ].filter(Boolean).join("\n");
+}

@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { channelFormats, channelMismatch, channelOf, channelStyleInput, formatOfKind, keepsDefault, nextStyles, pinStyle } from "../lib/youtube-process/channel-style.ts";
+import { channelBriefText, channelFormats, channelMismatch, channelOf, channelStyleInput, formatOfKind, keepsDefault, nextStyles, pinStyle, purposeCanonTitle } from "../lib/youtube-process/channel-style.ts";
 
 // 유쓰 요청 5/8 (2026-11-02): per-channel look pinned to a video with its version; the render PC lays it over a copy of the storyboard.
 const style = { id: "11111111-1111-4111-8111-111111111111", name: "마이인", channel: "마이인", tone: { base: "myin", key: "#1F7A4D", ink: "#1B2420", page: "#FFFFFF" }, ending: "talk", logo: true };
@@ -163,4 +163,36 @@ test("a YouTube connection is (person, channel): the key, every token, status an
   assert.doesNotMatch(uploadServer, /getYoutubeAccessToken\(ownerId\)|youtubeConnectionStatus\(ownerId\)/);
   assert.match(cta, /const ownerId = change\.connectionOwnerId \?\? input\.ownerId \?\? actor\.id;/, "an undo uses the connection the change went through");
   assert.match(metrics, /getYoutubeAccessToken\(connection\.owner_id,connection\.channel_id\)/, "metrics read each channel with its own token");
+});
+
+// 다채널 3단계: another channel's AI work reads its card and its 목적 정본 first; the 기본 채널 reads what it always read.
+test("a channel's brief names its card and its 목적 정본 by doc_id, and says the 정본 wins over the 마이인 ones", () => {
+  assert.equal(purposeCanonTitle(" 문샷 무료강의 유입 "), "목적 정본 — 문샷 무료강의 유입");
+  const canon = { id: "44444444-4444-4444-8444-444444444444", title: purposeCanonTitle("문샷 무료강의 유입") };
+  const text = channelBriefText({ ...moonshot, version: 1, updatedAt: "", by: "" }, canon);
+  assert.match(text, /^## 이 영상의 채널 — 「마케팅 신설」 \(먼저 읽기\)/);
+  assert.match(text, /- 목적 정본: 「목적 정본 — 문샷 무료강의 유입」 \(doc_id: 44444444-4444-4444-8444-444444444444\)/, "GPT pastes it in by this doc_id");
+  assert.match(text, /- 운영 형식: 숏폼 · 카드뉴스 · 스레드/);
+  assert.match(text, /내용이 목적 정본과 다르면 목적 정본이 이깁니다\. 마이인 진단 · 마이인 링크 · 마이인 전용 표현은 이 채널에 쓰지 않습니다\./);
+  assert.doesNotMatch(channelBriefText({ ...brandyaction, purpose: "x" }, canon), /컨셉|주제 축/, "empty card lines are left out");
+});
+
+test("every AI job and the second review read the channel; the 기본 채널 and a channel without its 정본 are handled before the job is taken", async () => {
+  const read = (file) => readFile(new URL(file, import.meta.url), "utf8");
+  const [server, jobs, review, review2] = await Promise.all([read("../lib/server/channel-canon.ts"), read("../lib/server/youtube-ai-jobs.ts"),
+    read("../lib/server/youtube-script-review2.ts"), read("../lib/youtube-script-review2.ts")]);
+  assert.match(server, /if \(!card \|\| card\.id === styles\[0\]\.id\) return null;/, "the 기본 채널 adds nothing");
+  assert.match(server, /"CHANNEL_PURPOSE_MISSING"/); assert.match(server, /"CHANNEL_CANON_MISSING"/);
+  assert.match(jobs, /await channelContext\(input\.task === "niche" \? null : input\.sourceId\);\n  for \(const job of await openJobs/, "a request without the 정본 fails at once");
+  const claim = jobs.slice(jobs.indexOf("export async function claimStaffJob"), jobs.indexOf("async function claimJob("));
+  assert.ok(claim.indexOf("channelContext(") < claim.indexOf("await claimJob("), "read before the job is taken");
+  assert.match(claim, /const instructions = channel \? `\$\{channel\.text\}\\n\\n\$\{claimed\.instructions\}` : claimed\.instructions;/);
+  assert.match(claim, /return byGpt \? \{ \.\.\.claimed, instructions \} : \{ \.\.\.claimed, instructions: `\$\{instructions\}\\n\\n\$\{REPORT_NOTE\}` \};/, "staff AI and GPT both");
+  assert.match(review, /const channel = await channelContext\(project\.id\);/);
+  assert.match(review2, /=== \[이 영상의 채널\] ===/);
+  const { review2Prompt } = await import("../lib/youtube-script-review2.ts");
+  const video = { title: "제목", thumbCopy: "", script: "첫 문단" };
+  assert.doesNotMatch(review2Prompt({ review: "r", tone: "t" }, video).prefix, /이 영상의 채널/, "the 기본 채널's review is as before");
+  assert.match(review2Prompt({ review: "r", tone: "t" }, video, { text: "채널 글", title: "목적 정본 — x", content: "정본 본문" }).prefix,
+    /=== \[원고 말투 정본\] ===\nt\n\n=== \[이 영상의 채널\] ===\n채널 글\n\n=== \[목적 정본 — x\] ===\n정본 본문$/);
 });
