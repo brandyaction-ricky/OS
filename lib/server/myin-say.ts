@@ -18,7 +18,8 @@ type Service = ReturnType<typeof createServiceSupabase>;
 const SAY = "youtube_myin_say";
 const LEASE_MS = 10 * 60_000;
 const takeSchema = z.object({ i: z.number().int().min(0), k: z.number().int().min(0), path: z.string(), seconds: z.number().positive(), rise: z.number().nullable() }).strict();
-const sayMeta = z.object({ kind: z.literal(SAY), projectId: z.string().uuid(), runId: z.string().uuid(), sentences: z.array(z.string()), takes: z.number().int(),
+// voiceReference: the run's channel voice (다채널 2단계), so the takes sound like the rest of the video.
+const sayMeta = z.object({ kind: z.literal(SAY), projectId: z.string().uuid(), runId: z.string().uuid(), sentences: z.array(z.string()), takes: z.number().int(), voiceReference: z.string().optional(),
   by: z.string().uuid(), name: z.string(), status: z.enum(["queued", "working", "done", "failed"]),
   lease: z.object({ token: z.string().uuid(), expiresAt: z.string() }).strict().optional(), result: z.array(takeSchema).optional(), error: z.string().optional() }).passthrough();
 type SayMeta = z.infer<typeof sayMeta>;
@@ -40,7 +41,7 @@ export async function requestSay(actor: RequestActor, projectId: string, input: 
   if (!row) throw new ApiError(404, "VIDEO_NOT_FOUND", "영상을 찾지 못했어요.");
   const { data: who } = await service.from("os_profiles").select("display_name").eq("id", actor.ownerId).maybeSingle();
   const id = randomUUID();
-  const meta: SayMeta = { kind: SAY, projectId: project.id, runId: target.runId, sentences: input.sentences, takes: input.takes, by: actor.ownerId,
+  const meta: SayMeta = { kind: SAY, projectId: project.id, runId: target.runId, sentences: input.sentences, takes: input.takes, ...(target.voiceReference ? { voiceReference: target.voiceReference } : {}), by: actor.ownerId,
     name: String(who?.display_name ?? "구성원"), status: "queued" };
   const { error } = await service.from("os_records").insert({ id, record_type: "ai_job", title: `문장 테이크 · ${input.sentences[0]}`.slice(0, 240), description: "", status: "backlog",
     priority: "normal", team: row.team, brand: row.brand, owner_id: row.owner_id, parent_id: project.id, created_by: actor.ownerId, updated_by: actor.ownerId, tags: ["유튜브", "영상편집기"], metadata: meta });
@@ -85,7 +86,7 @@ export async function claimSay(service: Service = createServiceSupabase()) {
       if (error || !signed) throw new ApiError(503, "MYIN_SIGN_FAILED", "업로드 주소를 만들지 못했습니다.");
       return signed.signedUrl;
     }))));
-    return { sayId: row.id, lease: token, sentences: meta.sentences, takes: meta.takes, fishVoice: fishVoice(), uploads };
+    return { sayId: row.id, lease: token, sentences: meta.sentences, takes: meta.takes, fishVoice: fishVoice(meta), uploads };
   }
   return { idle: true as const };
 }

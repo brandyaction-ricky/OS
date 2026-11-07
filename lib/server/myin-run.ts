@@ -16,7 +16,7 @@ import { readSoundCatalog } from "./sound-catalog";
 import { readYoutubeAutomationInput } from "./youtube-automation-input";
 import { renderPcEngine } from "./youtube-render-pc";
 import { readChannelStyles } from "./youtube-channel-styles";
-import { channelToneSchema, pinStyle } from "@/lib/youtube-process/channel-style";
+import { channelOf, channelToneSchema, pinStyle, type ChannelStyle } from "@/lib/youtube-process/channel-style";
 import { assertSpokenScript } from "./youtube-script-canon";
 import { notify } from "./youtube-process";
 import { digestVoiceValue, voiceRunId, YOUTUBE_VOICE_BUCKET, YOUTUBE_VOICE_TIMING_BUCKET } from "./youtube-voice-run";
@@ -79,6 +79,8 @@ const runSchema = z.object({
   // 로건 사람 말투 음성 (2026-10-29): the render PC makes the voice itself, so the paragraphs never get OS files.
   voiceOn: z.literal("render_pc").optional(),
   voiceModel: z.literal(MYIN_VOICE_MODEL), voiceReferenceFingerprint: hex,
+  // 채널 목소리 (다채널 2단계, 2026-11-07): the Fish voice of the video's channel, when its card names one; none = the OS's own voice.
+  voiceReference: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).optional(),
   // 채널 모양 (유쓰 요청 5/8): the style picked when the voice started, with its version — a later change to the 틀 never reaches this video.
   style: z.object({ id: z.string().uuid(), name: z.string(), version: z.number().int().positive(), channel: z.string(), tone: channelToneSchema.nullable(),
     ending: z.enum(["talk", "outro"]), logo: z.boolean() }).strict().optional(),
@@ -303,24 +305,48 @@ export async function latestMyinRun(actor: RequestActor, sourceId: string) {
   return record ? { ...presentMyinRun(record), scriptChanged: await scriptChanged(actor.supabase, parse(record)) } : null;
 }
 
+/**
+ * 같은 대본 다른 채널 막기 (다채널 설계 §6-1): YouTube treats one video on several channels as repetitive content, so a script already
+ * made into a video of one channel is not voiced for another. ponytail: the exact script only (its hash) — a lightly edited copy passes;
+ * add a similarity check if such copies show up.
+ */
+async function assertOneChannel(sourceId: string, markdownHash: string, channel: ChannelStyle | undefined, cards: ChannelStyle[]) {
+  if (cards.length < 2) return;
+  const service = createServiceSupabase();
+  const { data } = await service.from("os_records").select("parent_id").eq("record_type", "ai_job").eq("metadata->>kind", MYIN_RUN_KIND)
+    .eq("metadata->>scriptMarkdownHash", markdownHash).neq("parent_id", sourceId).is("archived_at", null).limit(50);
+  const others = [...new Set((data ?? []).map((row) => row.parent_id as string | null).filter((id): id is string => Boolean(id)))];
+  if (!others.length) return;
+  const { data: projects } = await service.from("os_records").select("metadata").in("id", others).is("archived_at", null);
+  const clash = (projects ?? []).map((row) => channelOf(cards, (row.metadata?.yp as { topic?: { channel?: string } } | undefined)?.topic?.channel)).find((other) => other && other.id !== channel?.id);
+  if (clash) throw new ApiError(409, "SCRIPT_ON_OTHER_CHANNEL", `같은 대본으로 「${clash.name}」 채널 영상을 이미 만들었어요. 채널마다 대본을 다르게 써 주세요.`);
+}
+
+/** The voice a run speaks with: its channel's, else the OS's own (every run made before channels). */
+export const runVoice = (run?: { voiceReference?: string }) => run?.voiceReference || process.env.FISH_VOICE_REFERENCE_ID?.trim() || "";
+
 /** [v13 음성 만들기]: any member who can read the video starts its one run for the approved script (owner decision 2026-10-20: no extra roles). */
 export async function createMyinRun(actor: RequestActor, sourceId: string, styleId?: string) {
   const input = await currentInput(actor.supabase, sourceId);
-  const picked = styleId ? (await readChannelStyles()).styles.find((style) => style.id === styleId) : undefined;
+  const cards = (await readChannelStyles()).styles;
+  const picked = styleId ? cards.find((style) => style.id === styleId) : undefined;
   if (styleId && !picked) throw new ApiError(400, "CHANNEL_STYLE_NOT_FOUND", "고른 채널 모양을 찾지 못했어요. 새로 불러와 주세요.");
   // A 원고 edited after 제작 started reaches the voice here. ponytail: length is left to the 구성안 → 제작 check (no runtime here).
   // A 숏폼's 대본 passed its own check (숏폼 대본 정본 §10) at 대본 확정 and cannot change after it.
   if (!input.layout) await assertSpokenScript(actor.supabase, input.markdown, null);
-  const voiceReference = process.env.FISH_VOICE_REFERENCE_ID?.trim() ?? "";
+  const channel = channelOf(cards, (input.state.source.metadata?.yp as { topic?: { channel?: string } } | undefined)?.topic?.channel);
+  const channelVoice = channel?.voice?.trim() || undefined;
+  const voiceReference = runVoice({ voiceReference: channelVoice });
   if (!process.env.FISH_API_KEY?.trim() || !voiceReference) throw new ApiError(503, "VOICE_WORKER_NOT_CONFIGURED", "Fish Audio 연결을 확인해 주세요.");
   const fingerprint = digestVoiceValue(voiceReference);
   const markdownHash = sha(input.markdown);
+  await assertOneChannel(sourceId, markdownHash, channel, cards);
   // The way the voice is made is part of the run: the same script voiced on the render PC is a new run (new voice), not the old one.
   const onPc = myinVoiceOnRenderPc();
   const runKey = digestVoiceValue([MYIN_RUN_KIND, sourceId, input.inputKey, markdownHash, MYIN_VOICE_MODEL, fingerprint, JSON.stringify(MYIN_VOICE_TUNING), ...(onPc ? ["render_pc"] : [])]);
   const id = voiceRunId(runKey);
   const run: MyinRun = { kind: MYIN_RUN_KIND, runKey, sourceId, inputKey: input.inputKey, script: input.script, scriptMarkdownHash: markdownHash,
-    voiceModel: MYIN_VOICE_MODEL, voiceReferenceFingerprint: fingerprint, attempts: 0, ...(input.layout ? { layout: input.layout } : {}), ...(onPc ? { voiceOn: "render_pc" as const } : {}),
+    voiceModel: MYIN_VOICE_MODEL, voiceReferenceFingerprint: fingerprint, ...(channelVoice ? { voiceReference: channelVoice } : {}), attempts: 0, ...(input.layout ? { layout: input.layout } : {}), ...(onPc ? { voiceOn: "render_pc" as const } : {}),
     ...(picked ? { style: pinStyle(picked) } : {}),
     paragraphs: input.spoken.map((text, index) => ({ index, textHash: sha(text), status: "pending" })) };
   const { data, error } = await actor.supabase.from("os_records").insert({
@@ -387,7 +413,7 @@ export async function processMyinVoiceStep(service: Service = createServiceSupab
   const { record, run } = claimed;
   try {
     const input = await assertCurrent(service, run);
-    const voiceReference = process.env.FISH_VOICE_REFERENCE_ID?.trim() ?? "";
+    const voiceReference = runVoice(run);
     if (!process.env.FISH_API_KEY?.trim() || digestVoiceValue(voiceReference) !== run.voiceReferenceFingerprint)
       throw new ApiError(409, "MYIN_RUN_STALE", "목소리 설정이 바뀌었습니다. v13 음성을 다시 시작해 주세요.");
     const pending = run.paragraphs.find((p) => p.status === "pending");
@@ -454,9 +480,9 @@ async function voiceFiles(service: Service, run: MyinRun) {
     paragraphs.push({ index: p.index, text: input.spoken[p.index], url: data.signedUrl });
   }
   // The voice his stage_voice asks Fish for: the patched one makes every sentence itself, also for an older run that brings files.
-  return { scriptMarkdown: input.markdown, paragraphs, fishVoice: fishVoice() };
+  return { scriptMarkdown: input.markdown, paragraphs, fishVoice: fishVoice(run) };
 }
-export const fishVoice = () => ({ referenceId: process.env.FISH_VOICE_REFERENCE_ID?.trim() ?? "", model: MYIN_VOICE_MODEL });
+export const fishVoice = (run?: { voiceReference?: string }) => ({ referenceId: runVoice(run), model: MYIN_VOICE_MODEL });
 
 /** A 숏폼 run goes only to a render PC whose worker has the vertical engine (it says `short`); an older worker keeps taking longforms. */
 const fits = (short: boolean) => (run: MyinRun) => short || !run.layout;
@@ -741,7 +767,7 @@ export async function claimMyinCta(service: Service = createServiceSupabase(), s
     const story = await storyboardJson(service, run);
     const lines = [];
     for (const c of run.cta ?? []) if (c.status === "pending") lines.push({ index: c.index, uploadUrl: await uploadUrl(service, YOUTUBE_VOICE_BUCKET, ctaPcPath(record, run, c)) });
-    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), storyboard: myinDriftPairs(story), fishVoice: fishVoice(), lines };
+    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), storyboard: myinDriftPairs(story), fishVoice: fishVoice(run), lines };
   } catch (error) {
     await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_CTA_CLAIM_FAILED");
     throw error;
@@ -775,7 +801,7 @@ async function processMyinCtaStep(service: Service) {
     if (pending) {
       const line = story.cta[pending.index]?.line ?? "";
       if (sha(line) !== pending.textHash) throw new ApiError(409, "MYIN_RUN_STALE", "구독 대사가 바뀌었습니다. 자료 준비를 다시 시작해 주세요.");
-      const audio = await synthesizeFishWav(line, { apiKey: process.env.FISH_API_KEY ?? "", referenceId: process.env.FISH_VOICE_REFERENCE_ID?.trim() ?? "", model: MYIN_VOICE_MODEL });
+      const audio = await synthesizeFishWav(line, { apiKey: process.env.FISH_API_KEY ?? "", referenceId: runVoice(run), model: MYIN_VOICE_MODEL });
       const path = `${record.owner_id}/${run.sourceId}/${record.id}/cta_${String(pending.index).padStart(2, "0")}_${pending.textHash.slice(0, 8)}.wav`;
       const { error } = await service.storage.from(YOUTUBE_VOICE_BUCKET).upload(path, new Uint8Array(audio.bytes), { contentType: audio.mimeType, upsert: true });
       if (error) throw new ApiError(502, "VOICE_STORAGE_UPLOAD_FAILED", "구독 대사 음성을 저장하지 못했습니다.");
@@ -955,7 +981,7 @@ export async function claimMyinPrep(service: Service = createServiceSupabase(), 
     }
     const { data: bundle } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).createSignedUploadUrl(prepBundlePath(record, run, lease.token), { upsert: true });
     if (!bundle) throw new ApiError(503, "MYIN_SIGN_FAILED", "결과 업로드 주소를 만들지 못했습니다.");
-    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), draft, placeholders, storyboard: myinDriftPairs(story), assets, cta, ...(cta.some((c) => !c.url) ? { fishVoice: fishVoice() } : {}), siteCapture: story.scenes.some((sc) => sc.type === "site_ad"),
+    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), draft, placeholders, storyboard: myinDriftPairs(story), assets, cta, ...(cta.some((c) => !c.url) ? { fishVoice: fishVoice(run) } : {}), siteCapture: story.scenes.some((sc) => sc.type === "site_ad"),
       sheetUploadUrls: sheetUploads, bundleUploadUrl: bundle.signedUrl, ...(owner ? { seed: await localSeed(service, run) } : {}), ...await subtitlesFor(service, run), ...styleFor(run) };
   } catch (error) {
     await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_PREP_CLAIM_FAILED");
@@ -1504,7 +1530,7 @@ export async function myinSayTarget(service: Service, sourceId: string) {
   const latest = await latestRun(service, sourceId);
   if (!latest) throw new ApiError(404, "MYIN_RUN_MISSING", "이 영상은 아직 영상 만들기를 시작하지 않았어요.");
   if (!voiceFixable(latest.record, latest.run)) throw new ApiError(409, "MYIN_SAY_UNAVAILABLE", "이 영상은 문장만 새로 읽을 수 없어요(10/30 16시 전에 시작한 영상 · 숏폼).");
-  return { runId: latest.record.id, ownerId: latest.record.owner_id ?? "" };
+  return { runId: latest.record.id, ownerId: latest.record.owner_id ?? "", voiceReference: latest.run.voiceReference };
 }
 
 /** 다른 컴퓨터에서 이어받기: a final's files (the newest, or the one made at `at`) for 30 minutes, with what its edit left. */

@@ -7,11 +7,11 @@ import { useSession } from "./session-provider";
 import { errorMessage } from "./youtube-process-data";
 
 const TONE = { base: "myin" as const, key: "#212CB0", ink: "#1E1D1D", page: "#FFFFFF" };
-const blank = (): ChannelStyleInput => ({ id: crypto.randomUUID(), name: "", channel: "", tone: null, ending: "talk", logo: false, purpose: "", concept: "", topics: "", formats: [...CHANNEL_FORMATS] });
+const blank = (): ChannelStyleInput => ({ id: crypto.randomUUID(), name: "", channel: "", tone: null, ending: "talk", logo: false, purpose: "", concept: "", topics: "", formats: [...CHANNEL_FORMATS], voice: "" });
 // 목적 정본 (설계 문서 2026-11-07): channels with the same purpose read one canon, so the purposes in use are offered first.
 const PURPOSES = ["마이인 진단 유입", "문샷 무료강의 유입"];
 type Card = ChannelStyleInput & Partial<Pick<ChannelStyle, "version">>;
-const cardOf = (style: ChannelStyle): Card => ({ ...style, purpose: style.purpose ?? "", concept: style.concept ?? "", topics: style.topics ?? "", formats: channelFormats(style) });
+const cardOf = (style: ChannelStyle): Card => ({ ...style, purpose: style.purpose ?? "", concept: style.concept ?? "", topics: style.topics ?? "", formats: channelFormats(style), voice: style.voice ?? "" });
 
 // The 채널 카드 every screen picks from; read once per page and refreshed when the editor saves.
 let cards: Promise<ChannelStyle[]> | null = null;
@@ -49,7 +49,7 @@ export function ChannelStyleEditor() {
     if (version === null || !accessToken) return;
     setBusy(true); setError("");
     try {
-      const body = { expectedVersion: version, styles: styles.map(({ id, name, channel, tone, ending, logo, purpose, concept, topics, formats }) => ({ id, name, channel, tone, ending, logo, purpose, concept, topics, formats })) };
+      const body = { expectedVersion: version, styles: styles.map(({ id, name, channel, tone, ending, logo, purpose, concept, topics, formats, voice }) => ({ id, name, channel, tone, ending, logo, purpose, concept, topics, formats, voice })) };
       const result = await apiRequest<{ styles: ChannelStyle[]; version: number }>("/api/v1/content/youtube/channel-styles", { method: "PUT", token: accessToken, body: JSON.stringify(body) });
       setStyles(result.styles.map(cardOf)); setVersion(result.version); setSaved(true); cards = Promise.resolve(result.styles);
     } catch (reason) { setError(errorMessage(reason)); } finally { setBusy(false); }
@@ -68,7 +68,8 @@ export function ChannelStyleEditor() {
         <label>목적<input className="yp-in" maxLength={40} list="yp-channel-purposes" value={style.purpose} onChange={event => set(index, { purpose: event.target.value })} placeholder="예) 문샷 무료강의 유입" /></label>
         <label>컨셉 한 줄<input className="yp-in" maxLength={200} value={style.concept} onChange={event => set(index, { concept: event.target.value })} placeholder="예) 퇴사하고 혼자 사업하는 선배가 직접 해 보고 알려 주는 AI 마케팅" /></label></div>
       <div className="yp-chstyle-row">
-        <label>주제 축 (같은 목적의 다른 채널과 겹치지 않게)<input className="yp-in" maxLength={300} value={style.topics} onChange={event => set(index, { topics: event.target.value })} placeholder="예) 반복 업무를 AI에 넘기기 · 자동화 · 에이전트" /></label></div>
+        <label>주제 축 (같은 목적의 다른 채널과 겹치지 않게)<input className="yp-in" maxLength={300} value={style.topics} onChange={event => set(index, { topics: event.target.value })} placeholder="예) 반복 업무를 AI에 넘기기 · 자동화 · 에이전트" /></label>
+        <label>목소리 ID (Fish Audio)<input className="yp-in" maxLength={64} value={style.voice} onChange={event => set(index, { voice: event.target.value.trim() })} placeholder="비우면 기본 목소리" /></label></div>
       <div className="yp-chstyle-row" role="group" aria-label="운영 형식"><span className="yp-hint">운영 형식</span>
         {CHANNEL_FORMATS.map(format => <label key={format} className="yp-chstyle-check"><input type="checkbox" checked={style.formats.includes(format)}
           onChange={event => set(index, { formats: event.target.checked ? CHANNEL_FORMATS.filter(item => item === format || style.formats.includes(item)) : style.formats.filter(item => item !== format) })} /> {CHANNEL_FORMAT_LABEL[format]}</label>)}</div>

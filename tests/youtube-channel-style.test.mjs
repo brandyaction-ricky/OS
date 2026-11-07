@@ -102,3 +102,31 @@ test("every way a project is made carries its channel; the save keeps the 기본
   assert.match(styles, /if \(!keepsDefault\(current\.styles, input\.styles\)\)/);
   assert.match(styles, /max\(50\)/, "room for 20+ channels");
 });
+
+// 다채널 2단계 (2026-11-07): a channel speaks with its own Fish voice; one script is never voiced for two channels.
+test("a card's voice is a Fish id or empty, and changing it is a new version", () => {
+  const input = channelStyleInput.parse({ id: moonshot.id, name: "퇴사 선배", channel: "", tone: null, ending: "talk", logo: false });
+  assert.equal(input.voice, "", "empty = the OS's own voice");
+  assert.equal(channelStyleInput.parse({ ...input, voice: " 0123abcdef0123abcdef0123abcdef01 " }).voice, "0123abcdef0123abcdef0123abcdef01");
+  assert.throws(() => channelStyleInput.parse({ ...input, voice: "id with spaces" }), /목소리 ID/);
+  const first = nextStyles([], [input], "a", "t1");
+  assert.equal(nextStyles(first, [{ ...input, voice: "0123abcdef0123abcdef0123abcdef01" }], "b", "t2")[0].version, 2);
+});
+
+test("every voice the OS asks Fish for or hands the render PC is the run's channel voice", async () => {
+  const [run, say, worker] = await Promise.all([readFile(new URL("../lib/server/myin-run.ts", import.meta.url), "utf8"), readFile(new URL("../lib/server/myin-say.ts", import.meta.url), "utf8"),
+    readFile(new URL("../tools/youtube-media-worker.mjs", import.meta.url), "utf8")]);
+  assert.equal(run.match(/FISH_VOICE_REFERENCE_ID/g)?.length, 1, "the OS's own voice is read in one place, runVoice");
+  assert.match(run, /export const runVoice = \(run\?: \{ voiceReference\?: string \}\) => run\?\.voiceReference \|\| process\.env\.FISH_VOICE_REFERENCE_ID/);
+  assert.equal(run.match(/fishVoice\(\)/g), null, "no job gets the default voice by mistake");
+  assert.equal(run.match(/fishVoice\(run\)/g)?.length, 3, "words, 구독 대사 and prep jobs");
+  assert.match(run, /\.\.\.\(channelVoice \? \{ voiceReference: channelVoice \} : \{\}\)/, "only a channel voice is written on the run");
+  assert.ok(run.indexOf("await assertOneChannel(") < run.indexOf('record_type: "ai_job", title: `${input.state.source.title}'), "checked before the run is made");
+  assert.match(say, /fishVoice: fishVoice\(meta\)/, "sentence takes speak with the run's voice");
+  assert.match(worker, /voice = job\.fishVoice\?\.referenceId\?\.trim\(\)/, "the render PC uses the voice the job brings");
+});
+
+test("the upload goes to the account named on the video's channel card unless someone picks another", async () => {
+  const upload = await readFile(new URL("../components/youtube-process-upload.tsx", import.meta.url), "utf8");
+  assert.match(upload, /const owner = picked \|\| channels\.find\(row => card\?\.channel\.trim\(\) && row\.accountName\.trim\(\) === card\.channel\.trim\(\)\)\?\.ownerId \|\| channels\[0\]\?\.ownerId \|\| ""/);
+});
