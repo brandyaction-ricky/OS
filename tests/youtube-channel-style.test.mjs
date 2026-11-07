@@ -196,3 +196,28 @@ test("every AI job and the second review read the channel; the 기본 채널 and
   assert.match(review2Prompt({ review: "r", tone: "t" }, video, { text: "채널 글", title: "목적 정본 — x", content: "정본 본문" }).prefix,
     /=== \[원고 말투 정본\] ===\nt\n\n=== \[이 영상의 채널\] ===\n채널 글\n\n=== \[목적 정본 — x\] ===\n정본 본문$/);
 });
+
+// 다채널 2단계 (3): one person connects several Instagram and Threads accounts; every use names the account.
+test("an Instagram / Threads connection is (person, platform, account): key, Threads claim, tokens, share and disconnect", async () => {
+  const read = (file) => readFile(new URL(file, import.meta.url), "utf8");
+  const [migration, rollback, original, oauth, route, threads, threadsRoute, comments, metrics, publication, publish] = await Promise.all([
+    "../supabase/migrations/20261107150000_meta_connections_per_account.sql", "../supabase/rollback/20261107150000_meta_connections_per_account.down.sql",
+    "../supabase/migrations/20261029052357_threads_personal_api_publication.sql", "../lib/server/meta-oauth.ts", "../app/api/v1/meta/[action]/route.ts",
+    "../lib/server/threads-publication.ts", "../app/api/v1/content/automation/threads-publication/[id]/route.ts", "../lib/server/channel-comments.ts",
+    "../lib/server/channel-metrics.ts", "../lib/server/channel-publication.ts", "../app/api/v1/content/publish/route.ts"].map(read));
+  assert.match(migration, /add constraint os_meta_connections_pkey primary key \(owner_id, platform, external_account_id\);/);
+  assert.match(rollback, /add constraint os_meta_connections_pkey primary key \(owner_id, platform\);/);
+  const claim = (sql) => sql.slice(sql.indexOf("function public.os_threads_publication_claim("), sql.indexOf("end $$;", sql.indexOf("function public.os_threads_publication_claim(")));
+  assert.equal(claim(migration).replace("\n    and external_account_id=p_external_account_id;", ";"), claim(original), "the claim body is the original's but for the account in its lookup");
+  assert.equal(claim(rollback), claim(original), "the rollback puts the original body back");
+  assert.match(oauth, /: await query\.order\("connected_at", \{ ascending: true \}\)\.limit\(1\)\.maybeSingle\(\);/, "no account named = the person's first, as before");
+  assert.match(oauth, /\.find\(row => metaAccountKey\(row\) === accountKey\)/, "a screen names an account by its key, never the platform id");
+  assert.doesNotMatch(oauth, /CHANNEL_REPLACEMENT_REQUIRED/, "a second account is added, not refused");
+  assert.equal(oauth.match(/\.eq\("external_account_id", connection\.external_account_id\)/g)?.length, 2, "test and refresh write their own account");
+  assert.equal(route.match(/\.eq\("external_account_id", connection\.external_account_id\)/g)?.length, 2, "share and disconnect touch one account");
+  assert.match(threads, /authorizeMetaConnection\(actor, input\.accountOwnerId, "threads", "use", input\.accountKey\)/);
+  assert.match(threadsRoute, /accountKey: z\.string\(\)\.regex\(\/\^\[0-9a-f\]\{24\}\$\/\)\.optional\(\)/);
+  assert.match(comments, /loadMetaConnection\(account\.ownerId,account\.platform as "instagram"\|"threads",account\.accountKey\)/);
+  assert.match(metrics, /loadMetaConnection\(account\.ownerId,account\.platform,account\.accountKey\)/);
+  for (const source of [publication, publish]) assert.match(source, /settings\.account\.platform,"use",settings\.account\.accountKey\)/);
+});

@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { assertActiveChannelOwner, assertConnectionAccess, auditChannelAction, type ChannelActor, type ChannelAction } from "./channel-access";
@@ -63,13 +63,28 @@ async function metaJson(url: string, options: RequestInit) {
   if (!response.ok || body.error) throw new ApiError(response.status === 401 || response.status === 403 ? 403 : 502, "META_CONNECTION_FAILED", "Meta 요청을 확인하지 못했습니다. 테스터 등록·초대 수락·권한과 연결 만료 여부를 확인해 주세요.");
   return body;
 }
-export async function loadMetaConnection(ownerId: string, platform: MetaPlatform) {
-  const { data, error } = await createServiceSupabase().from("os_meta_connections").select("*").eq("owner_id", ownerId).eq("platform", platform).maybeSingle();
+/**
+ * Names one of a person's Instagram / Threads accounts to screens without its platform id (public projections never carry external
+ * identity): the same value for the same owner, platform and account, and nothing a screen can turn back into the id.
+ */
+export const metaAccountKey = (connection: Pick<MetaConnection, "owner_id" | "platform" | "external_account_id">) =>
+  createHash("sha256").update(JSON.stringify(["meta-account", connection.owner_id, connection.platform, connection.external_account_id])).digest("hex").slice(0, 24);
+
+/**
+ * A person's Instagram or Threads connection (다채널 2단계, 2026-11-07: one person may connect several accounts of a platform): the
+ * account named by its key, else their first one — every caller written before then had exactly one.
+ */
+export async function loadMetaConnection(ownerId: string, platform: MetaPlatform, accountKey?: string | null) {
+  const query = createServiceSupabase().from("os_meta_connections").select("*").eq("owner_id", ownerId).eq("platform", platform);
+  // ponytail: a person's accounts of one platform are few; read them all and match the key here instead of storing it.
+  const { data, error } = accountKey
+    ? await query.then(result => ({ ...result, data: ((result.data ?? []) as MetaConnection[]).find(row => metaAccountKey(row) === accountKey) ?? null }))
+    : await query.order("connected_at", { ascending: true }).limit(1).maybeSingle();
   if (error) throw new ApiError(503, "META_SCHEMA_REQUIRED", "채널 연결 저장소가 아직 준비되지 않았습니다. DB 적용 여부를 확인해 주세요.");
   return data as MetaConnection | null;
 }
-export async function authorizeMetaConnection(actor: ChannelActor, ownerId: string, platform: MetaPlatform, action: ChannelAction = "use") {
-  const connection = await loadMetaConnection(ownerId, platform);
+export async function authorizeMetaConnection(actor: ChannelActor, ownerId: string, platform: MetaPlatform, action: ChannelAction = "use", accountKey?: string | null) {
+  const connection = await loadMetaConnection(ownerId, platform, accountKey);
   if (!connection) throw new ApiError(404, "META_NOT_CONNECTED", "연결된 계정이 없습니다.");
   assertConnectionAccess(actor, connection, action);
   if (action === "use") await assertActiveChannelOwner(ownerId);
@@ -77,7 +92,7 @@ export async function authorizeMetaConnection(actor: ChannelActor, ownerId: stri
 }
 export function publicMetaConnection(connection: MetaConnection) {
   const expires = Date.parse(connection.token_expires_at);
-  return { platform: connection.platform, ownerId: connection.owner_id, accountName: connection.account_name,
+  return { platform: connection.platform, ownerId: connection.owner_id, accountKey: metaAccountKey(connection), accountName: connection.account_name,
     accountType: connection.account_type, teamShared: connection.team_shared, status: expires <= Date.now() ? "expired" : connection.status,
     expiresAt: connection.token_expires_at, expiresSoon: expires > Date.now() && expires - Date.now() <= 7 * 86_400_000,
     connectedAt: connection.connected_at, lastSuccessAt: connection.last_success_at, lastErrorCode: connection.last_error_code,
@@ -99,8 +114,8 @@ export async function saveMetaConnection(ownerId: string, platform: MetaPlatform
     if (!accountId || !name || (platform === "instagram" && !["BUSINESS", "MEDIA_CREATOR", "CREATOR"].includes(accountType))) throw new ApiError(400, "META_ACCOUNT_TYPE", "인스타는 프로페셔널 계정인지 확인해 주세요. 연결 계정을 확인하지 못했습니다.");
     encrypted = encryptMetaToken(long.access_token); expiresIn = long.expires_in;
   }
-  const existing = await loadMetaConnection(ownerId, platform);
-  if (existing && existing.external_account_id !== accountId) throw new ApiError(409, "CHANNEL_REPLACEMENT_REQUIRED", "이미 연결된 계정이 있습니다. 먼저 해제한 뒤 다른 계정을 연결해 주세요.");
+  // Another account of the same person is added beside the ones already connected; the same account is refreshed.
+  const existing = await loadMetaConnection(ownerId, platform, metaAccountKey({ owner_id: ownerId, platform, external_account_id: accountId }));
   const now = new Date().toISOString();
   const payload = {
     owner_id: ownerId, platform, external_account_id: accountId, account_name: name, account_type: accountType,
@@ -127,7 +142,7 @@ export async function testMetaConnection(actor: ChannelActor, connection: MetaCo
   if (metaMode() === "live") {
     await metaJson(`${CONFIG[connection.platform].host}/me?fields=${connection.platform === "instagram" ? "user_id,username" : "id,username"}`, { headers: { authorization: `Bearer ${metaAccessToken(connection)}` } });
   }
-  const { error } = await createServiceSupabase().from("os_meta_connections").update({ last_success_at: new Date().toISOString(), last_error_code: null }).eq("owner_id", connection.owner_id).eq("platform", connection.platform);
+  const { error } = await createServiceSupabase().from("os_meta_connections").update({ last_success_at: new Date().toISOString(), last_error_code: null }).eq("owner_id", connection.owner_id).eq("platform", connection.platform).eq("external_account_id", connection.external_account_id);
   if (error) throw new ApiError(500, "META_CHECK_SAVE_FAILED", "연결 확인 결과를 저장하지 못했습니다.");
   await auditChannelAction(actor.id, connection.owner_id, connection.platform, metaMode() === "mock" ? "모의 연결 테스트" : "연결 테스트");
 }
@@ -138,7 +153,7 @@ export async function refreshMetaConnection(actor: ChannelActor, connection: Met
   const token = metaAccessToken(connection);
   const data = await metaJson(`${CONFIG[connection.platform].host}/refresh_access_token?grant_type=${connection.platform === "instagram" ? "ig_refresh_token" : "th_refresh_token"}`, { headers: { authorization: `Bearer ${token}` } });
   if (!data.access_token || !Number.isFinite(data.expires_in) || data.expires_in <= 0) throw new ApiError(502, "META_REFRESH_FAILED", "인증 정보를 갱신하지 못했습니다.");
-  const { error } = await createServiceSupabase().from("os_meta_connections").update({ encrypted_access_token: encryptMetaToken(data.access_token), token_expires_at: new Date(Date.now() + data.expires_in * 1000).toISOString(), updated_at: new Date().toISOString() }).eq("owner_id", connection.owner_id).eq("platform", connection.platform);
+  const { error } = await createServiceSupabase().from("os_meta_connections").update({ encrypted_access_token: encryptMetaToken(data.access_token), token_expires_at: new Date(Date.now() + data.expires_in * 1000).toISOString(), updated_at: new Date().toISOString() }).eq("owner_id", connection.owner_id).eq("platform", connection.platform).eq("external_account_id", connection.external_account_id);
   if (error) throw new ApiError(500, "META_REFRESH_SAVE_FAILED", "갱신한 연결을 저장하지 못했습니다.");
   await auditChannelAction(actor.id, connection.owner_id, connection.platform, "인증 갱신");
 }

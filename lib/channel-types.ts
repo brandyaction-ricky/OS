@@ -2,6 +2,8 @@ export type ChannelPlatform = "youtube" | "instagram" | "threads";
 export interface ChannelConnection {
   platform: ChannelPlatform;
   ownerId: string;
+  /** Instagram / Threads account key (다채널 2단계): names one of a person's accounts of a platform, never the platform id. */
+  accountKey?: string;
   accountName: string;
   accountType: string;
   channelId?: string;

@@ -19,10 +19,10 @@ export async function POST(request:Request){
       throw new ApiError(403,"PERSONAL_AUTOMATION_API_REQUIRED","개인 자동화 콘텐츠는 최종 확인과 발행 화면에서 처리해 주세요.");
     if(current.version!==input.expectedVersion)throw new ApiError(409,"PUBLICATION_CHANGED","게시물이 변경됐습니다. 새로 불러와 주세요.");
     const previous=publicationSettingsSchema.safeParse(current.metadata);
-    if(previous.success)await authorizeMetaConnection(actor,previous.data.account.ownerId,previous.data.account.platform);
+    if(previous.success)await authorizeMetaConnection(actor,previous.data.account.ownerId,previous.data.account.platform,"use",previous.data.account.accountKey);
     const settings=input.operation==="edit"?input.settings:previous.success?previous.data:undefined;
     if(!settings)throw new ApiError(400,"PUBLICATION_SETTINGS_REQUIRED","게시 계정과 문안을 먼저 저장해 주세요.");
-    const connection=await authorizeMetaConnection(actor,settings.account.ownerId,settings.account.platform);
+    const connection=await authorizeMetaConnection(actor,settings.account.ownerId,settings.account.platform,"use",settings.account.accountKey);
     assertMetaModeMatches(connection);
     if(input.operation==="publish"){
       if(input.confirm!==true)throw new ApiError(400,"HUMAN_CONFIRMATION_REQUIRED","사람이 게시 내용을 확인해야 합니다.");

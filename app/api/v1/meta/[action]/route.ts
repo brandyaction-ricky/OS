@@ -9,7 +9,8 @@ import { authorizeMetaConnection, createMetaState, META_COOKIE, metaAuthorizatio
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 type Context = { params: Promise<{ action: string }> };
-const inputSchema = z.object({ platform: z.enum(["instagram", "threads"]), ownerId: z.string().uuid().optional(), teamShared: z.boolean().optional() });
+// accountKey (다채널 2단계): which of the person's accounts on the platform; none = their first (screens before then).
+const inputSchema = z.object({ platform: z.enum(["instagram", "threads"]), ownerId: z.string().uuid().optional(), accountKey: z.string().regex(/^[0-9a-f]{24}$/).optional(), teamShared: z.boolean().optional() });
 
 export async function GET(request: Request, context: Context) {
   try {
@@ -36,17 +37,17 @@ export async function POST(request: Request, context: Context) {
       return response;
     }
     if (!["test", "share", "disconnect", "refresh"].includes(action)) throw new ApiError(404, "NOT_FOUND", "지원하지 않는 채널 작업입니다.");
-    const connection = await authorizeMetaConnection(actor, ownerId, input.platform, action === "share" ? "share" : action === "disconnect" ? "disconnect" : "use");
+    const connection = await authorizeMetaConnection(actor, ownerId, input.platform, action === "share" ? "share" : action === "disconnect" ? "disconnect" : "use", input.accountKey);
     if (action === "test") await testMetaConnection(actor, connection);
     if (action === "refresh") await refreshMetaConnection(actor, connection);
     if (action === "share") {
       if (typeof input.teamShared !== "boolean") throw new ApiError(400, "SHARE_REQUIRED", "공유 여부를 지정해 주세요.");
-      const { error } = await createServiceSupabase().from("os_meta_connections").update({ team_shared: input.teamShared, updated_at: new Date().toISOString() }).eq("owner_id", ownerId).eq("platform", input.platform);
+      const { error } = await createServiceSupabase().from("os_meta_connections").update({ team_shared: input.teamShared, updated_at: new Date().toISOString() }).eq("owner_id", ownerId).eq("platform", input.platform).eq("external_account_id", connection.external_account_id);
       if (error) throw new ApiError(500, "META_SHARE_FAILED", "팀 공유를 저장하지 못했습니다.");
       await auditChannelAction(actor.id, ownerId, input.platform, input.teamShared ? "팀 공유 켜기" : "팀 공유 끄기");
     }
     if (action === "disconnect") {
-      const { error } = await createServiceSupabase().from("os_meta_connections").delete().eq("owner_id", ownerId).eq("platform", input.platform);
+      const { error } = await createServiceSupabase().from("os_meta_connections").delete().eq("owner_id", ownerId).eq("platform", input.platform).eq("external_account_id", connection.external_account_id);
       if (error) throw new ApiError(500, "META_DISCONNECT_FAILED", "연결을 해제하지 못했습니다.");
       await auditChannelAction(actor.id, ownerId, input.platform, "OS 연결 해제");
     }
