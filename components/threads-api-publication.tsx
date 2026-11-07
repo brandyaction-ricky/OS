@@ -11,7 +11,7 @@ import { useSession } from "./session-provider";
 type Publication = {
   state: "running" | "retryable" | "uncertain" | "published" | "mock_complete";
   mode: "mock" | "live";
-  accountOwnerId: string; accountName: string; posts: string[];
+  accountOwnerId: string; accountKey?: string; accountName: string; posts: string[];
   publishedCount: number; total: number; permalink: string; errorCode?: string;
 };
 type Readiness = {
@@ -19,6 +19,9 @@ type Readiness = {
   connections: (ChannelConnection & { publicationAccountKey?: string })[]; publication: Publication | null;
 };
 type Props = { item: OsRecord; onRefresh: () => Promise<void> };
+// 다채널 2단계: a person may hold several Threads accounts, so a choice is the owner and the account.
+const keyOf = (row: { ownerId: string; accountKey?: string }) => `${row.ownerId}:${row.accountKey ?? ""}`;
+const publicationKey = (publication: Publication) => keyOf({ ownerId: publication.accountOwnerId, accountKey: publication.accountKey });
 const locksAccount = (publication: Publication | null | undefined) => Boolean(publication && !(publication.state === "retryable" && publication.publishedCount === 0));
 const safePermalink = (value: string) => {
   try { const url = new URL(value); return url.protocol === "https:" && !url.username && !url.password && ["threads.com", "www.threads.com", "threads.net", "www.threads.net"].includes(url.hostname) ? url.href : null; }
@@ -30,19 +33,18 @@ export function ThreadsApiPublication({ item, onRefresh }: Props) {
   const { accessToken } = useSession();
   const [status, setStatus] = useState<Readiness | null>(null);
   const [loading, setLoading] = useState(true), [verified, setVerified] = useState(false), [busy, setBusy] = useState(false);
-  const [accountOwnerId, setAccountOwnerId] = useState(""), [confirmed, setConfirmed] = useState(false);
+  const [accountKey, setAccountKey] = useState(""), [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState(""), [needsCheck, setNeedsCheck] = useState(false);
   const inFlight = useRef(false), sequence = useRef(0), active = useRef(true);
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   const endpoint = `/api/v1/content/automation/threads-publication/${item.id}`;
   const applyStatus = useCallback((next: Readiness) => {
     setStatus(next); setVerified(true);
-    setAccountOwnerId(previous => {
-      if (locksAccount(next.publication)) return next.publication!.accountOwnerId;
+    setAccountKey(previous => {
+      if (locksAccount(next.publication)) return publicationKey(next.publication!);
       const available = next.connections.filter(row => row.platform === "threads" && row.status === "connected" && row.mock === (next.mode === "mock"));
-      return available.find(row => row.ownerId === previous)?.ownerId
-        ?? available.find(row => row.ownerId === next.publication?.accountOwnerId)?.ownerId
-        ?? available[0]?.ownerId ?? "";
+      const pick = available.find(row => keyOf(row) === previous) ?? (next.publication ? available.find(row => keyOf(row) === publicationKey(next.publication!)) : undefined) ?? available[0];
+      return pick ? keyOf(pick) : "";
     });
   }, []);
   const read = useCallback(async (manual = false) => {
@@ -61,7 +63,7 @@ export function ThreadsApiPublication({ item, onRefresh }: Props) {
   const publication = status?.publication;
   const posts = publication?.posts ?? (Array.isArray(item.metadata.posts) ? item.metadata.posts.filter((post): post is string => typeof post === "string") : []);
   const connected = status?.connections.filter(row => row.platform === "threads" && row.status === "connected" && row.mock === (status.mode === "mock")) ?? [];
-  const account = connected.find(row => row.ownerId === accountOwnerId);
+  const account = connected.find(row => keyOf(row) === accountKey);
   const terminal = publication?.state === "published" || publication?.state === "mock_complete";
   const uncertain = publication?.state === "uncertain", running = publication?.state === "running";
   const retry = publication?.state === "retryable";
@@ -74,7 +76,7 @@ export function ThreadsApiPublication({ item, onRefresh }: Props) {
     if (!canPublish || !confirmed || inFlight.current) return;
     inFlight.current = true; setBusy(true); setConfirmed(false); setError("");
     try {
-      const result = await apiRequest<Readiness>(endpoint, { token: accessToken, method: "POST", body: JSON.stringify({ expectedVersion: item.version, accountOwnerId, expectedAccountKey: account!.publicationAccountKey, confirm: true }) });
+      const result = await apiRequest<Readiness>(endpoint, { token: accessToken, method: "POST", body: JSON.stringify({ expectedVersion: item.version, accountOwnerId: account!.ownerId, ...(account!.accountKey ? { accountKey: account!.accountKey } : {}), expectedAccountKey: account!.publicationAccountKey, confirm: true }) });
       if (!active.current) return;
       applyStatus(result);
       await onRefresh();
@@ -104,10 +106,10 @@ export function ThreadsApiPublication({ item, onRefresh }: Props) {
     {!terminal && !loading && !status?.ready && !uncertain && !running ? <div className="ca-v07-note">{status?.reason || "발행 준비를 확인해 주세요."}</div> : null}
     {!approved && !terminal ? <p><Link href={`/automation/review?sel=${item.id}`}>원고 최종 확인으로 이동 →</Link></p> : null}
     {!terminal ? <label>게시할 Threads 계정
-      <select value={accountOwnerId} disabled={busy || loading || accountLocked} onChange={event => { setAccountOwnerId(event.target.value); setConfirmed(false); }}>
+      <select value={accountKey} disabled={busy || loading || accountLocked} onChange={event => { setAccountKey(event.target.value); setConfirmed(false); }}>
         <option value="">계정을 선택해 주세요</option>
-        {connected.map(row => <option key={row.ownerId} value={row.ownerId}>@{row.accountName.replace(/^@/, "")}{row.teamShared ? " · 팀 공유" : " · 내 계정"}</option>)}
-        {publication && !connected.some(row => row.ownerId === publication.accountOwnerId) ? <option value={publication.accountOwnerId}>@{publication.accountName.replace(/^@/, "")} · 연결 확인 필요</option> : null}
+        {connected.map(row => <option key={keyOf(row)} value={keyOf(row)}>@{row.accountName.replace(/^@/, "")}{row.teamShared ? " · 팀 공유" : " · 내 계정"}</option>)}
+        {publication && !connected.some(row => keyOf(row) === publicationKey(publication)) ? <option value={publicationKey(publication)}>@{publication.accountName.replace(/^@/, "")} · 연결 확인 필요</option> : null}
       </select>
     </label> : null}
     {!terminal && !loading && !account ? <p><Link href="/settings/account">내 계정에서 Threads 연결 확인 →</Link></p> : null}

@@ -1,7 +1,8 @@
 import { z } from "zod";
 
 export const publicationSettingsSchema = z.object({
-  account: z.object({ platform: z.enum(["instagram", "threads"]), ownerId: z.string().uuid() }),
+  // accountKey (다채널 2단계): which of the owner's accounts on the platform; none = their first, as before.
+  account: z.object({ platform: z.enum(["instagram", "threads"]), ownerId: z.string().uuid(), accountKey: z.string().regex(/^[0-9a-f]{24}$/).optional() }),
   platformFormat: z.enum(["ig_carousel", "ig_reel", "threads_text", "threads_chain", "threads_carousel"]),
   publishMode: z.enum(["confirm", "now", "manual"]).default("confirm"),
   caption: z.string().trim().max(2200), hashtags: z.string().trim().max(600).default(""),

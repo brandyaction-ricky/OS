@@ -90,7 +90,7 @@ export async function signPublicationMedia(record: OsRecord, settings: Publicati
 
 export async function publishChannelRecord(actor: RequestActor, record: OsRecord) {
   const settings=publicationSettingsSchema.parse(record.metadata);
-  const connection=await authorizeMetaConnection(actor,settings.account.ownerId,settings.account.platform);
+  const connection=await authorizeMetaConnection(actor,settings.account.ownerId,settings.account.platform,"use",settings.account.accountKey);
   assertMetaModeMatches(connection);
   // Keep actor RLS writes; never elevate record updates to the service role.
   // Live dispatch is a separate environment gate even after checkpoints exist.

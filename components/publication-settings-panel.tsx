@@ -10,6 +10,8 @@ import { renderContentCard } from "@/lib/card-renderer";
 import { demoRecord } from "@/lib/demo-record";
 import { useSession } from "./session-provider";
 import { GuideNumber } from "./page-guide";
+// 다채널 2단계: a person may hold several accounts of a platform, so each choice names the account too (older posts: the first).
+const accountKey = (row?: { platform: string; ownerId: string; accountKey?: string }) => row ? `${row.platform}:${row.ownerId}:${row.accountKey ?? ""}` : "";
 
 export function PublicationSettingsPanel({ record, onClose, onSaved }: { record: OsRecord; onClose:()=>void; onSaved:(record:OsRecord)=>void }) {
   const {accessToken,profile,demo}=useSession();
@@ -87,7 +89,7 @@ export function PublicationSettingsPanel({ record, onClose, onSaved }: { record:
     {demo?<p className="inline-alert">연습용 화면 · 실제 게시·외부 저장 없음</p>:null}
     {error?<div className="inline-alert danger" role="alert">{error}</div>:null}{notice?<div className="inline-alert success" role="status">{notice}</div>:null}
     <fieldset disabled={busy||!editable}>
-      <label><GuideNumber number={1}/>게시 계정<select aria-label="게시 계정" value={`${settings.account.platform}:${settings.account.ownerId}`} onChange={event=>{const account=accounts.find(row=>`${row.platform}:${row.ownerId}`===event.target.value);if(account&&account.platform!=="youtube"){setSettings(old=>({...old,account:{platform:account.platform as "instagram"|"threads",ownerId:account.ownerId},platformFormat:account.platform==="instagram"?"ig_carousel":"threads_text"}));setConfirmed(false);}}}><option value="">{loading?"확인 중…":"내 계정에서 연결하세요"}</option>{accounts.map(account=><option key={`${account.platform}:${account.ownerId}`} value={`${account.platform}:${account.ownerId}`}>{account.accountName}{account.teamShared?" · 팀 공유":" · 나만"}</option>)}</select></label>
+      <label><GuideNumber number={1}/>게시 계정<select aria-label="게시 계정" value={accountKey(accounts.find(row=>row.platform===settings.account.platform&&row.ownerId===settings.account.ownerId&&(!settings.account.accountKey||row.accountKey===settings.account.accountKey)))} onChange={event=>{const account=accounts.find(row=>accountKey(row)===event.target.value);if(account&&account.platform!=="youtube"){setSettings(old=>({...old,account:{platform:account.platform as "instagram"|"threads",ownerId:account.ownerId,...(account.accountKey?{accountKey:account.accountKey}:{})},platformFormat:account.platform==="instagram"?"ig_carousel":"threads_text"}));setConfirmed(false);}}}><option value="">{loading?"확인 중…":"내 계정에서 연결하세요"}</option>{accounts.map(account=><option key={accountKey(account)} value={accountKey(account)}>{account.accountName}{account.teamShared?" · 팀 공유":" · 나만"}</option>)}</select></label>
       <Link href="/settings/account">채널 연결 관리</Link>
       <label>게시 형식<select value={settings.platformFormat} onChange={event=>change("platformFormat",event.target.value as PublicationSettings["platformFormat"])}>{settings.account.platform==="instagram"?<><option value="ig_carousel">인스타 카드뉴스</option><option value="ig_reel">인스타 릴스</option></>:<><option value="threads_text">Threads 한 글</option><option value="threads_chain">Threads 글타래</option><option value="threads_carousel">Threads 캐러셀</option></>}</select></label>
       <label>캡션<textarea value={settings.caption} onChange={event=>change("caption",event.target.value)}/><small>{Array.from(settings.caption).length}자 · 해시태그 포함 인스타 2,200 / Threads 500</small></label>

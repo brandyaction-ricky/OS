@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { ApiError } from "@/lib/http";
 import { CHANNEL_METRICS,YOUTUBE_ANALYTICS_METRICS,dueMetricSnapshot,parseChannelMetrics,parseYoutubeAnalytics,type Snapshot } from "@/lib/channel-metrics";
 import { createServiceSupabase } from "@/lib/supabase/server";
-import { assertMetaModeMatches,metaMode,type MetaConnection } from "./meta-oauth";
+import { assertMetaModeMatches,loadMetaConnection,metaMode,type MetaConnection } from "./meta-oauth";
 import { metaRead } from "./meta-collection";
 import { YOUTUBE_ANALYTICS_SCOPE,getYoutubeAccessToken,type YoutubeStoredConnection } from "./youtube-oauth";
 import type { OsRecord } from "@/lib/record-types";
@@ -49,10 +49,11 @@ export async function syncChannelMetrics(now=new Date(),enabledPlatforms:readonl
         const {data:owner}=await db.from("os_profiles").select("is_active").eq("id",youtubeConnection.owner_id).maybeSingle();if(!owner?.is_active||post.metadata.space==="personal"&&post.owner_id!==youtubeConnection.owner_id)continue;
         values=await collectYoutubePostMetrics(youtubeConnection,videoId,publishedAt,now);metrics=YOUTUBE_ANALYTICS_METRICS;platform=youtubeMetricPlatform(post);ownerId=youtubeConnection.owner_id;dataSource="YouTube Analytics API";
       }else{
-        const account=post.metadata.account as {platform?:"instagram"|"threads";ownerId?:string}|undefined;
+        const account=post.metadata.account as {platform?:"instagram"|"threads";ownerId?:string;accountKey?:string}|undefined;
         if(!account?.ownerId||!account.platform||!(account.platform in CHANNEL_METRICS)||!enabledPlatforms.includes(account.platform))continue;
-        const {data:connection,error:connectionError}=await db.from("os_meta_connections").select("*").eq("owner_id",account.ownerId).eq("platform",account.platform).maybeSingle();
-        if(connectionError||!connection)throw Error("missing connection");
+        // 다채널 2단계: the account the post went out on; none = the owner's first, as before.
+        const connection=await loadMetaConnection(account.ownerId,account.platform,account.accountKey).catch(()=>null);
+        if(!connection)throw Error("missing connection");
         const {data:owner}=await db.from("os_profiles").select("is_active").eq("id",account.ownerId).maybeSingle();if(!owner?.is_active||post.metadata.space==="personal"&&post.owner_id!==account.ownerId)continue;
         assertMetaModeMatches(connection);if(Boolean(post.metadata.mockPublished)!==(metaMode()==="mock"))continue;
         const externalId=Array.isArray(post.metadata.externalIds)?post.metadata.externalIds[0]:null;if(typeof externalId!=="string")continue;
