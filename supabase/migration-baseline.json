@@ -1016,8 +1016,9 @@
       "sha256": "f430d56a4562c8abdcec3ec0338b2236fa8712387c908f954f7f6f8c4bfcca9f",
       "purpose": "다채널 2단계 (대표 2026-11-07): one person may connect several YouTube channels — the connection key becomes (owner_id, channel_id); channel_id stays unique across the OS",
       "requiresApproval": true,
-      "appliedEnvironments": [],
-      "notes": "Changes only os_youtube_connections' primary key (owner_id → owner_id, channel_id); no column, row, function or policy change. Safe before the new code: while each person has one row every owner_id lookup still finds one. Manual undo: supabase/rollback/20261107120000_youtube_connections_per_channel.down.sql (needs one connection per person first)."
+      "productionApprovedAt": "2026-11-07",
+      "appliedEnvironments": ["production"],
+      "notes": "Changes only os_youtube_connections' primary key (owner_id → owner_id, channel_id); no column, row, function or policy change. Safe before the new code: while each person has one row every owner_id lookup still finds one. Manual undo: supabase/rollback/20261107120000_youtube_connections_per_channel.down.sql (needs one connection per person first). Owner approved Production in chat on 2026-11-07 (\"반영해\"). Read-only check first: key PRIMARY KEY (owner_id), 3 connections, none with an empty channel_id, history 0. The session filled the SQL Editor; auto mode blocked its Run, so the owner pressed Run once: the key change and the schema history row in one transaction, read back (key PRIMARY KEY (owner_id, channel_id), 3 connections, history 1). Code (#519) was deployed just before. Not applied to DEV."
     }
   ],
   "legacyMigrations": [
