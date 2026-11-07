@@ -3,23 +3,31 @@ import { ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { youtubeActor } from "@/lib/server/youtube-process";
 import { channelStylesSchema, readChannelStyles, saveChannelStyles } from "@/lib/server/youtube-channel-styles";
+import { purposeCanon } from "@/lib/server/channel-canon";
+import type { ChannelStyle } from "@/lib/youtube-process/channel-style";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const headers = { "cache-control": "private, no-store" };
 
+/** 다채널 3단계: whether each purpose of a channel other than the 기본 채널 has its 목적 정본, for the editor to say. */
+async function withCanons<T extends { styles: ChannelStyle[] }>(result: T) {
+  const purposes = [...new Set(result.styles.slice(1).map(style => style.purpose?.trim() ?? "").filter(Boolean))];
+  return { ...result, canons: Object.fromEntries(await Promise.all(purposes.map(async purpose => [purpose, await purposeCanon(purpose)] as const))) };
+}
+
 /** 채널 카드 (채널 모양, 2026-11-02): a project picks its channel; the look is pinned when a video's voice starts. Kept on 채널/링크 관리 › 채널. */
 export async function GET(request: Request) {
   try {
     await youtubeActor(request);
-    return NextResponse.json(await readChannelStyles(), { headers });
+    return NextResponse.json(await withCanons(await readChannelStyles()), { headers });
   } catch (error) { return apiErrorResponse(error); }
 }
 
 export async function PUT(request: Request) {
   try {
     const actor = await youtubeActor(request);
-    return NextResponse.json(await saveChannelStyles(actor, channelStylesSchema.parse(await parseJson(request, 40_000))), { headers });
+    return NextResponse.json(await withCanons(await saveChannelStyles(actor, channelStylesSchema.parse(await parseJson(request, 40_000)))), { headers });
   } catch (error) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "CHANNEL_STYLES_INVALID", "채널을 확인해 주세요. 이름은 30자, 색은 #RRGGBB, 운영 형식은 하나 이상이에요."));
     return apiErrorResponse(error);

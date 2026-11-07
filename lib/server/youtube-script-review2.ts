@@ -9,6 +9,7 @@ import { generateContentText } from "./content-model";
 import { creditTier } from "./openai-credit";
 import { readStages, writeStage } from "./youtube-process-stages";
 import { scriptCanonDocs } from "./youtube-script-canon";
+import { channelContext } from "./channel-canon";
 
 // 원고 「두 번째 검수」 (owner 2026-10-29, 방식 A): runs by itself when a staff AI's 원고 lands, and again from [다시 검수]. It only
 // shows its judgement; 다음: 제작 is not blocked until the owner decides so after it has been tried on her own live talks.
@@ -31,8 +32,11 @@ export async function reviewScript(who: Who, project: YpProject, tier: GptTier, 
   try {
     const canons = await scriptCanonDocs(who.supabase);
     const pick = stages.plan.data.confirmed?.A;
+    const channel = await channelContext(project.id);
+    const { data: canon } = channel ? await who.supabase.from("os_documents").select("content_md").eq("id", channel.canon.id).maybeSingle() : { data: null };
     const { prefix, prompt, paragraphs } = review2Prompt({ review: canons["원고 검수 정본"], tone: canons["원고 말투 정본"] },
-      { title: pick?.title || projectName(project), thumbCopy: pick?.thumb?.copy || pick?.thumb?.screen || "", script });
+      { title: pick?.title || projectName(project), thumbCopy: pick?.thumb?.copy || pick?.thumb?.screen || "", script },
+      channel ? { text: channel.text, title: channel.canon.title, content: String(canon?.content_md ?? "").slice(0, 40_000) } : undefined);
     const text = await generateContentText({ model, cachedPrefix: prefix, prompt, jsonSchema: REVIEW2_SCHEMA, maxTokens: 32_000, effort, timeoutMs });
     const result = parseReview2(text, paragraphs);
     data = result ? { ...base, state: "done", ...result } : { ...base, state: "failed", error: "GPT 답을 읽지 못했어요. 다시 검수해 주세요." };

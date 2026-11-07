@@ -30,10 +30,13 @@ const RULES = `당신은 [원고 공정 정본] §12-3이 말하는 「별도 �
 - 모든 문장은 한국어로, 직원이 바로 읽고 고칠 수 있는 쉬운 말로 씁니다.`;
 
 /** The stable part first (rules and canons: OpenAI caches a repeated prefix), then this video's 제목 and 원고. */
-export function review2Prompt(canons: { review: string; tone: string }, video: { title: string; thumbCopy: string; script: string }) {
+/** channel (다채널 3단계): a video of another channel is judged with its channel and 목적 정본 too, which win where they differ. */
+export function review2Prompt(canons: { review: string; tone: string }, video: { title: string; thumbCopy: string; script: string },
+  channel?: { text: string; title: string; content: string }) {
   const numbered = numberedScript(video.script);
   return {
-    prefix: `${RULES}\n\n=== [원고 검수 정본] ===\n${canons.review}\n\n=== [원고 말투 정본] ===\n${canons.tone}`,
+    prefix: `${RULES}\n\n=== [원고 검수 정본] ===\n${canons.review}\n\n=== [원고 말투 정본] ===\n${canons.tone}`
+      + (channel ? `\n\n=== [이 영상의 채널] ===\n${channel.text}\n\n=== [${channel.title}] ===\n${channel.content}` : ""),
     prompt: `=== 이 영상 ===\n제목: ${video.title || "(없음)"}\n썸네일 카피: ${video.thumbCopy || "(없음)"}\n\n=== 원고 (문단 ${numbered.paragraphs}개) ===\n${numbered.text}`,
     paragraphs: numbered.paragraphs,
   };
