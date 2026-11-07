@@ -149,7 +149,7 @@ export async function makeShortFromTopic(actor: RequestActor, longformId: string
   const video = stages.upload.data.run?.videoUrl;
   const made = await createYoutubeProject(actor, { title: topic.insight, kind: "short", target: longform.yp.topic.target,
     note: `롱폼 「${projectName(longform)}」에서\n장면: ${topic.scene}${topic.paragraph ? `\n원고: ${topic.paragraph}` : ""}`.slice(0, 2000),
-    refs: video ? [{ url: video, title: projectName(longform).slice(0, 200) }] : [] });
+    refs: video ? [{ url: video, title: projectName(longform).slice(0, 200) }] : [], channel: longform.yp.topic.channel ?? null });
   const short = await saveProject(actor, made, made.version, { yp: { ...made.yp, shortFrom: { projectId: longform.id, title: projectName(longform), topicId: topic.id, scene: topic.scene, paragraph: topic.paragraph } } });
   // ponytail: the 숏폼 is made before the candidate is marked; if marking fails, a second press makes a second 숏폼 (trash it).
   const items: YpShortTopic[] = stages.shortTopics.data.items.map(item => item.id === topic.id ? { ...item, made: { projectId: short.id, at: new Date().toISOString(), by: actor.name } } : item);

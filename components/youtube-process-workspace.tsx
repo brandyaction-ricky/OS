@@ -24,7 +24,7 @@ const SUB: Partial<Record<YoutubeV1Screen | "shorts", string>> = {
   overview: "사람이 하는 일과 AI가 하는 일을 한곳에서 봐요. 고를 것은 오른쪽에 모여요.",
   schedule: "영상별 업로드 예정일을 배치합니다. 왼쪽 목록을 달력으로 끌어 놓으세요.",
   confirm: "PD가 컨펌한 것을 보고 노트를 남기고, 요청받은 건 직접 컨펌해요.",
-  links: "회사 공용 선택값으로 UTM 링크를 만들어 링크 대장에 남기고, 마이인 단축 링크로 줄여요.",
+  links: "채널을 정하고, 회사 공용 선택값으로 UTM 링크를 만들어 링크 대장에 남기고, 마이인 단축 링크로 줄여요.",
   "voice-dictionary": "영상 만드는 컴퓨터가 음성을 만들 때마다 읽는 사전이에요.",
   "card-canon": "같은 시험 묶음을 지금 정본으로 다시 뽑고, 평가표로 채점해 정본 버전끼리 비교해요.",
   "short-canon": "대본을 확정한 숏폼을 지금 정본으로 다시 쓰고, 정본 판정 검사로 채점해 정본 버전끼리 비교해요.",
@@ -33,7 +33,7 @@ const SUB: Partial<Record<YoutubeV1Screen | "shorts", string>> = {
   "script-canon": "롱폼 원고마다 받은 두 번째 검수를 원고 정본 묶음별로 모아, 어느 관문에서 자주 반려되는지 보고 정본을 다듬어요.",
 };
 
-const TITLES: Record<YoutubeV1Screen | "shorts", string> = { overview: "한눈에 보기", projects: "내 영상", plan: "기획", make: "제작", "final-check": "최종 검토", upload: "업로드", shorts: "쇼츠 · 칼럼", schedule: "콘텐츠 일정", confirm: "컨펌", links: "링크관리", "voice-dictionary": "음성 사전", "card-canon": "카드뉴스 정본 다듬기", "short-canon": "숏폼 대본 정본 다듬기", "threads-canon": "스레드 정본 다듬기", "column-canon": "SEO 칼럼 정본 다듬기", "script-canon": "롱폼 원고 정본 다듬기" };
+const TITLES: Record<YoutubeV1Screen | "shorts", string> = { overview: "한눈에 보기", projects: "내 영상", plan: "기획", make: "제작", "final-check": "최종 검토", upload: "업로드", shorts: "쇼츠 · 칼럼", schedule: "콘텐츠 일정", confirm: "컨펌", links: "채널/링크 관리", "voice-dictionary": "음성 사전", "card-canon": "카드뉴스 정본 다듬기", "short-canon": "숏폼 대본 정본 다듬기", "threads-canon": "스레드 정본 다듬기", "column-canon": "SEO 칼럼 정본 다듬기", "script-canon": "롱폼 원고 정본 다듬기" };
 
 /** 유튜브 공정 v1 screens behind YOUTUBE_V1_ENABLED. */
 /**

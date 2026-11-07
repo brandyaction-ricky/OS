@@ -4,20 +4,39 @@
 // compared with the one the video goes up on. Fonts and the subtitle box are fixed in his engine; they join once it takes them.
 import { z } from "zod";
 
+// 채널 카드 (다채널 설계 1단계, 2026-11-07, OS 문서 「다채널 콘텐츠 운영 설계」): the same list grew into the channel itself — what it is for
+// (목적, which 목적 정본 it will read), its one-line concept, its own topic axis and the formats it runs. A project picks its channel; the
+// first card is the 기본 채널, and every project made before channels belongs to it. Voice and accounts join the card in step 2.
 const hex = z.string().regex(/^#[0-9A-Fa-f]{6}$/, "색은 #RRGGBB 로 적어 주세요");
 export const channelToneSchema = z.object({ base: z.enum(["myin", "card"]), key: hex, ink: hex, page: hex }).strict();
+export const CHANNEL_FORMATS = ["long", "short", "card", "threads"] as const;
+export type ChannelFormat = (typeof CHANNEL_FORMATS)[number];
+export const CHANNEL_FORMAT_LABEL: Record<ChannelFormat, string> = { long: "롱폼", short: "숏폼", card: "카드뉴스", threads: "스레드" };
 export const channelStyleInput = z.object({
   id: z.string().uuid(), name: z.string().trim().min(1).max(30), channel: z.string().trim().max(60),
   tone: channelToneSchema.nullable(), ending: z.enum(["talk", "outro"]), logo: z.boolean(),
+  purpose: z.string().trim().max(40).default(""), concept: z.string().trim().max(200).default(""), topics: z.string().trim().max(300).default(""),
+  formats: z.array(z.enum(CHANNEL_FORMATS)).min(1, "운영 형식을 하나 이상 골라 주세요").max(CHANNEL_FORMATS.length).default([...CHANNEL_FORMATS]),
 }).strict();
 export type ChannelStyleInput = z.infer<typeof channelStyleInput>;
-export interface ChannelStyle extends ChannelStyleInput { version: number; updatedAt: string; by: string }
+/** Cards saved before 2026-11-07 have no purpose · concept · topics · formats: read them as empty and every format. */
+export interface ChannelStyle extends Omit<ChannelStyleInput, "purpose" | "concept" | "topics" | "formats">, Partial<Pick<ChannelStyleInput, "purpose" | "concept" | "topics" | "formats">> { version: number; updatedAt: string; by: string }
 /** What a video keeps of the style it was started with. */
 export type PinnedStyle = Pick<ChannelStyle, "id" | "name" | "version" | "channel" | "tone" | "ending" | "logo">;
 
-/** The list saved: a style whose look changed gets the next version; an unchanged one keeps its version. */
+/** The formats a channel runs; a card from before formats runs them all. */
+export const channelFormats = (style: Pick<ChannelStyle, "formats"> | null | undefined): ChannelFormat[] => style?.formats?.length ? style.formats : [...CHANNEL_FORMATS];
+/** The format a project kind belongs to. */
+export const formatOfKind = (kind: "live" | "anim" | "short" | "card"): ChannelFormat => kind === "short" || kind === "card" ? kind : "long";
+/** A project's channel: the card it picked, else the 기본 채널 (the first card) — projects made before channels belong to it. */
+export const channelOf = <T extends { id: string }>(styles: T[], id: string | null | undefined): T | undefined => styles.find(style => style.id === id) ?? styles[0];
+/** The 기본 채널 holds every older project, so a save may not remove it or move another card above it. */
+export const keepsDefault = (prev: Pick<ChannelStyle, "id">[], input: Pick<ChannelStyle, "id">[]) => !prev.length || input[0]?.id === prev[0].id;
+
+/** The list saved: a card that changed gets the next version; an unchanged one keeps its version. */
 export function nextStyles(prev: ChannelStyle[], input: ChannelStyleInput[], by: string, at: string): ChannelStyle[] {
-  const look = (style: ChannelStyleInput) => JSON.stringify([style.name, style.channel, style.tone, style.ending, style.logo]);
+  const look = (style: ChannelStyle | ChannelStyleInput) => JSON.stringify([style.name, style.channel, style.tone, style.ending, style.logo,
+    style.purpose ?? "", style.concept ?? "", style.topics ?? "", channelFormats(style)]);
   return input.map((style) => {
     const before = prev.find((row) => row.id === style.id);
     return before && look(before) === look(style) ? before : { ...style, version: (before?.version ?? 0) + 1, updatedAt: at, by };

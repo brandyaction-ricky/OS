@@ -139,7 +139,7 @@ export async function studioTaskView(actor: RequestActor, projectId: string, sta
   };
 }
 function endscreenValues(upload: YpUpload, card: { name: string; cta: string; link: string; image: string }, code: string, image: string | null) {
-  const missing = [...(upload.utm.next ? [] : ["이어서 볼 영상이 비어 있어요(업로드 탭 1번)."]), ...(card.name && card.image ? [] : ["진단 카드가 비어 있어요(링크관리 › 최종 화면 진단 카드)."])];
+  const missing = [...(upload.utm.next ? [] : ["이어서 볼 영상이 비어 있어요(업로드 탭 1번)."]), ...(card.name && card.image ? [] : ["진단 카드가 비어 있어요(채널/링크 관리 › 최종 화면 진단 카드)."])];
   return { place: "영상 마지막 20초 · 왼쪽에 동영상 요소(이어서 볼 영상), 오른쪽에 링크 요소(진단 카드) · 두 요소 모두 영상 끝까지",
     video: upload.utm.next || null, link: card.link || diagnosisLink(upload.utm, code), message: card.name, cta: card.cta, image, missing };
 }

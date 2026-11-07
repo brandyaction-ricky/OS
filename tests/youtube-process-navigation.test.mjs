@@ -12,7 +12,7 @@ test("the switch is off unless YOUTUBE_V1_ENABLED is exactly true", () => {
 });
 
 test("v1 menu is 내 영상 · 스케줄 · 성과 (owner decision 2026-10-21) and 단축 링크 (2026-10-26); the steps sit under 내 영상; 컨펌 under 대표 메뉴", () => {
-  assert.deepEqual(YOUTUBE_V1_PAGES.map(page => page.label), ["내 영상", "스케줄", "성과", "링크관리"]);
+  assert.deepEqual(YOUTUBE_V1_PAGES.map(page => page.label), ["내 영상", "스케줄", "성과", "채널/링크 관리"]);
   assert.deepEqual(YOUTUBE_V1_STEP_PAGES.map(page => [page.href, page.navHref]), [["/content/plan", "/content/projects"], ["/content/make", "/content/projects"], ["/content/final-check", "/content/projects"], ["/content/upload", "/content/projects"], ["/content/shorts", "/content/projects"],
     // 음성 사전 (로건 OS 요청 2026-10-30): opened from 제작's 음성 확인 and by address, not a menu of its own.
     ["/content/voice-dictionary", "/content/projects"]]);
@@ -54,7 +54,7 @@ test("side menu by what is made (owner 2026-10-29, A안): 공통 + 롱폼 · 숏
   assert.deepEqual(ids.slice(0, 7), ["content", "yt-longform", "yt-short", "yt-ad", "yt-card", "threads", "automation"]);
   assert.deepEqual(stages.map(stage => stage.label).slice(0, 7), ["공통", "롱폼 유튜브", "숏폼 · 릴스", "광고", "카드뉴스", "스레드", "자동화 관리"]);
   // 한눈에 보기 (리키 관제실 시안, owner decision 2026-10-31) leads 공통.
-  assert.deepEqual(stages[0].pages.map(page => page.label), ["한눈에 보기", "주제 찾기", "스케줄", "성과", "링크관리"]);
+  assert.deepEqual(stages[0].pages.map(page => page.label), ["한눈에 보기", "주제 찾기", "스케줄", "성과", "채널/링크 관리"]);
   const threads = stages.find(stage => stage.id === "threads");
   assert.equal(threads.pages[0].label, "스레드 글감 모으기", "레퍼런스 수집 says what it collects");
   assert.equal(threads.pages[0].href, "/automation/references");

@@ -400,7 +400,7 @@ function Endscreen({ page, utm, code, videoId, copy, copied }: { page: YpPage; u
     <ul className="yp-es-rows">{rows.map(([key, label, value]) => <li key={key}><span className="yp-muted">{label}</span><span className="yp-es-v">{value || <span className="yp-warn-t">비어 있어요</span>}</span>
       {value ? <button type="button" className="yp-btn yp-sm" onClick={() => void copy(`es-${key}`, value)}><Copy size={12} /> {copied === `es-${key}` ? "복사됨" : "복사"}</button> : null}</li>)}
       {card.image ? <li><span className="yp-muted">링크 이미지</span><span className="yp-es-v"><a className="yp-lnk" href={card.image} download="진단-썸네일">진단 썸네일 내려받기</a></span></li> : null}</ul>
-    {!card.name || !card.image ? <p className="yp-hint">진단 카드가 비어 있어요. <Link className="yp-lnk" href="/content/links">링크관리 › 최종 화면 진단 카드</Link>에서 한 번만 채우면 모든 영상에 보여요.</p> : null}
+    {!card.name || !card.image ? <p className="yp-hint">진단 카드가 비어 있어요. <Link className="yp-lnk" href="/content/links">채널/링크 관리 › 최종 화면 진단 카드</Link>에서 한 번만 채우면 모든 영상에 보여요.</p> : null}
     <p className="yp-hint" style={{ margin: 0 }}>유튜브는 최종 화면을 API로 받지 않아서 올린 뒤 스튜디오에서 마지막 20초에 넣어요. 스튜디오의 「동영상에서 가져오기」로 지난 영상의 최종 화면을 가져온 뒤 동영상 요소만 바꾸면 빨라요.
       {videoId ? <> <a className="yp-lnk" href={`https://studio.youtube.com/video/${videoId}/edit`} target="_blank" rel="noreferrer">스튜디오에서 열기 <ExternalLink size={12} /></a></> : null}</p>
   </>;

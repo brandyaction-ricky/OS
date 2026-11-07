@@ -20,7 +20,7 @@ export function YoutubeLinksScreen() {
       <button type="button" className={mode === "short" ? "yp-on" : ""} aria-pressed={mode === "short"} onClick={() => setMode("short")}>단축링크만 만들기</button>
       <button type="button" className={mode === "card" ? "yp-on" : ""} aria-pressed={mode === "card"} onClick={() => setMode("card")}>최종 화면 진단 카드</button>
       <button type="button" className={mode === "cta" ? "yp-on" : ""} aria-pressed={mode === "cta"} onClick={() => setMode("cta")}>CTA 일괄 바꾸기</button>
-      <button type="button" className={mode === "style" ? "yp-on" : ""} aria-pressed={mode === "style"} onClick={() => setMode("style")}>채널 모양</button>
+      <button type="button" className={mode === "style" ? "yp-on" : ""} aria-pressed={mode === "style"} onClick={() => setMode("style")}>채널</button>
     </div></div>
     {mode === "utm" ? <UtmLinkSection /> : mode === "short" ? <ShortLinkOnly /> : mode === "card" ? <EndscreenCardEditor /> : mode === "style" ? <ChannelStyleEditor /> : <CtaBulkScreen />}
   </>;

@@ -12,7 +12,7 @@ export async function utmActor(request: Request) {
   const actor = await authenticateRequest(request);
   if (actor.type !== "user") throw new ApiError(403, "USER_SESSION_REQUIRED", "직원 로그인으로 열어 주세요.");
   const { data, error } = await createServiceSupabase().from("os_profiles").select("display_name,member_kind,is_active,role").eq("id", actor.id).single();
-  if (error || !data?.is_active || data.member_kind === "partner") throw new ApiError(403, "UTM_FORBIDDEN", "링크관리는 사내 직원만 쓸 수 있어요.");
+  if (error || !data?.is_active || data.member_kind === "partner") throw new ApiError(403, "UTM_FORBIDDEN", "채널/링크 관리는 사내 직원만 쓸 수 있어요.");
   return { id: actor.id, name: String(data.display_name ?? "구성원"), isAdmin: data.role === "admin" };
 }
 type UtmActor = Awaited<ReturnType<typeof utmActor>>;

@@ -7,6 +7,7 @@ import { newProjectMeta, projectFromRecord, projectName, TOPIC_FIELD_OF, topicFi
 import { applyGateAction, confirmTab, dueReminders, GateError, nextRemindAt, quietHours, type YpApproverAction, type YpGateInput } from "@/lib/youtube-process/confirm";
 import { isDesignatedApprover } from "./document-proposals";
 import { dueReviewers, kstDay, type YpReviewer } from "@/lib/youtube-process/reviewers";
+import { readChannelStyles } from "./youtube-channel-styles";
 
 const COLUMNS = "id,version,title,assignee_id,owner_id,updated_at,metadata";
 const ref = z.object({ url: z.string().url().max(300), videoId: z.string().max(20).optional(), title: z.string().max(200).optional() }).strict();
@@ -18,6 +19,8 @@ const topicFields = {
   note: z.string().max(2000),
   refs: z.array(ref).max(50),
   purpose: z.enum(["ad"]).nullable(),
+  /** The 채널 카드 (다채널 1단계); null puts it back on the 기본 채널. */
+  channel: z.string().uuid().nullable(),
   assigneeId: z.string().uuid().nullable(),
 };
 export const projectCreateSchema = z.object(topicFields).partial().strict();
@@ -72,6 +75,11 @@ async function assertAssignee(actor: RequestActor, assigneeId: string | null | u
   if (error || !data?.is_active) throw new ApiError(400, "ASSIGNEE_INVALID", "담당 PD는 활동 중인 구성원에서 골라 주세요.");
 }
 
+/** A channel picked must be one of the 채널 카드. */
+export async function assertChannel(channel: string | null | undefined) {
+  if (channel && !(await readChannelStyles()).styles.some(style => style.id === channel)) throw new ApiError(400, "CHANNEL_INVALID", "채널을 다시 골라 주세요. 채널/링크 관리 › 채널에 없는 채널이에요.");
+}
+
 export async function insertProject(actor: RequestActor, title: string, assigneeId: string | null, meta: ReturnType<typeof newProjectMeta>) {
   const { data, error } = await actor.supabase.from("os_records").insert({
     record_type: "content_topic", title, description: "", status: "planned", priority: "normal",
@@ -100,7 +108,9 @@ export async function saveProject(actor: RequestActor, project: YpProject, expec
 
 export async function createYoutubeProject(actor: RequestActor, input: z.infer<typeof projectCreateSchema>) {
   await assertAssignee(actor, input.assigneeId);
-  const topic: YpTopic = { type: input.kind ?? null, target: input.target ?? "", note: input.note ?? "", refs: input.refs ?? [], ...(input.purpose ? { purpose: input.purpose } : {}) };
+  await assertChannel(input.channel);
+  const topic: YpTopic = { type: input.kind ?? null, target: input.target ?? "", note: input.note ?? "", refs: input.refs ?? [],
+    ...(input.purpose ? { purpose: input.purpose } : {}), ...(input.channel ? { channel: input.channel } : {}) };
   // 4-2: no PD picked means the person who wrote the topic.
   return insertProject(actor, input.title ?? "", input.assigneeId ?? actor.ownerId, newProjectMeta(topic, new Date().toISOString()));
 }
@@ -119,11 +129,13 @@ export async function updateYoutubeProject(actor: RequestActor, id: string, inpu
       : new ApiError(409, "STAGE_LOCKED", "주제는 컨펌을 받아 확정됐어요.");
   }
   await assertAssignee(actor, assigneeId);
+  await assertChannel(fields.channel);
   const topic = project.yp.topic;
+  const purpose = fields.purpose !== undefined ? fields.purpose : topic.purpose, channel = fields.channel !== undefined ? fields.channel : topic.channel;
   const yp: YpMeta | undefined = keys.length ? {
     ...project.yp,
     topic: { type: fields.kind !== undefined ? fields.kind : topic.type, target: fields.target ?? topic.target, note: fields.note ?? topic.note, refs: fields.refs ?? topic.refs,
-      ...((fields.purpose !== undefined ? fields.purpose : topic.purpose) ? { purpose: (fields.purpose !== undefined ? fields.purpose : topic.purpose)! } : {}) },
+      ...(purpose ? { purpose } : {}), ...(channel ? { channel } : {}) },
     contentUpdatedAt: new Date().toISOString(),
   } : undefined;
   return saveProject(actor, project, expectedVersion, { title: fields.title, assigneeId, yp });

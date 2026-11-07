@@ -27,7 +27,7 @@ const demoCta: { videos: CtaVideo[]; history: CtaChangeView[] } = { history: [],
   { id: "demoVid0003", title: "[예시] 숏폼 · 다른 링크", publishedAt: "2026-10-28T09:00:00Z", description: "전체 영상 보기 ▶ https://youtu.be/demo" },
 ] };
 export interface YpMember { id: string; name: string }
-export interface YpTopicInput { title?: string; kind?: YpKind | null; target?: string; note?: string; refs?: YpRef[]; purpose?: "ad" | null; assigneeId?: string | null }
+export interface YpTopicInput { title?: string; kind?: YpKind | null; target?: string; note?: string; refs?: YpRef[]; purpose?: "ad" | null; channel?: string | null; assigneeId?: string | null }
 export interface YpStageView<K extends YpStageKind = YpStageKind> { id: string | null; version: number; data: YpStageData[K] }
 export type YpStagesView = { [K in YpStageKind]: YpStageView<K> };
 export interface YpFinalView { v: number; at: string; source: "myin" | "short" | "upload"; name: string; bytes: number; durationSeconds: number | null; runId?: string; path?: string; aspect?: "1:1" | "4:5" }
@@ -142,7 +142,7 @@ export interface YpClient {
   removeCardCharacter(characterId: string): Promise<CardCharacterView[]>;
   demo: boolean;
 }
-export type YpCardInput = { from: "none"; title: string; target: string; note?: string } | { from: "project"; projectId: string; focus?: string } | { from: "threads"; itemId: string };
+export type YpCardInput = { from: "none"; title: string; target: string; note?: string; channel?: string } | { from: "project"; projectId: string; focus?: string } | { from: "threads"; itemId: string };
 export interface YpConfirmExtra { fields?: string[]; memo?: string; reason?: string }
 
 const json = (body: unknown) => JSON.stringify(body);

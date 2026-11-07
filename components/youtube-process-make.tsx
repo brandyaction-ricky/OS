@@ -158,7 +158,7 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
         {finals.length ? <ul className="yp-hist" style={{ marginBottom: 10 }}>{[...finals].reverse().map(final => <li key={final.v}><time>v{final.v}{final.v === finals.length ? " 최신" : ""}</time>{confirmedAt && final.at > confirmedAt ? <span className="yp-tag yp-warn">컨펌 뒤 올림</span> : null}
           <span>{final.source === "myin" ? "자동 제작" : final.name} · {md(final.at)} · {sizeLabel(final.bytes)}{final.durationSeconds ? ` · ${Math.floor(final.durationSeconds / 60)}분 ${Math.round(final.durationSeconds % 60)}초` : ""}</span></li>)}</ul> : null}
         {auto && page.demo ? <div className="yp-note yp-gray"><div>데모에서는 자동 제작을 하지 않아요.</div></div> : null}
-        {auto && !page.demo ? <MyinV13Panel sourceId={project.id} title={projectName(project)} embedded onFinal={onFinal} short={short}
+        {auto && !page.demo ? <MyinV13Panel sourceId={project.id} title={projectName(project)} embedded onFinal={onFinal} short={short} channel={project.yp.topic.channel}
           voiceText={shortScript ? scriptLines(shortScript.text).map(line => line.text).join(" ") : myinCleanScript(myinScriptMarkdown(null, narrationFromMarkdown(bundle.stages.outline.data.script))).spoken.join("\n")}
           finalNote={<p className="yt-note">최종본 v{finals.length || 1} 완성. {short ? "소리를 확인하고 [다음: 최종 검토]를 눌러요." : "소리를 확인하고 최종 썸네일 A · B를 올려요."}</p>} /> : null}
         {auto && !page.demo && finals.length ? <EditorScreenEntry token={page.accessToken} projectId={project.id} title={projectName(project)} onFinal={onFinal} /> : null}

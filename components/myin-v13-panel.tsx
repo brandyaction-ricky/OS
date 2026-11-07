@@ -2,6 +2,7 @@
 
 import { DIAGRAM_CATALOG } from "@/lib/shortform-diagram-catalog";
 import { personName } from "@/lib/youtube-process/project";
+import { channelOf } from "@/lib/youtube-process/channel-style";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { apiRequest, ApiRequestError } from "@/lib/api-client";
 import { useSession } from "./session-provider";
@@ -98,7 +99,8 @@ const when = (iso: string) => new Intl.DateTimeFormat("ko-KR", { month: "numeric
  * storyboard and its confirmation, the drafts (2026-10-27: before the paid CTA voice and the sound pass), then the finished video and handouts. Where the pilot is closed
  * (production today) it says so instead.
  */
-export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, voiceText, title = "", short = false }: { sourceId: string; finalNote?: ReactNode; embedded?: boolean; onFinal?: () => void;
+export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, voiceText, title = "", short = false, channel }: { sourceId: string; finalNote?: ReactNode; embedded?: boolean; onFinal?: () => void;
+  /** The project's 채널 카드 (다채널 1단계): its look is picked first; none means the 기본 채널, the first. */ channel?: string;
   /** The video name, for downloaded file names. */ title?: string;
   /** The spoken paragraphs, for the company-money estimate shown before the voice is made (owner request 2026-10-25). */ voiceText?: string;
   /** 숏폼 (2026-10-28): drawn 9:16 by the render PC — no music, 구독 대사 or handouts, and its ④ goes straight on to the full video. */ short?: boolean }) {
@@ -269,11 +271,11 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       <p>{short ? "확정한 대본을 대표 목소리로 읽고, 영상 만드는 컴퓨터가 받아쓰기와 자막을 만들어요." : "승인된 원고를 대표 목소리(drama-3)로 만들고, 영상 만드는 컴퓨터가 다듬어 받아쓰기와 방송 자막을 만듭니다."}</p>
       {run?.scriptChanged ? <p className="yt-note yt-warn">{short ? "확정한 대본이 바뀌었어요. 아래 작업은 옛 대본으로 만든 것이라 더 진행되지 않아요. 새로 만들면 기획표와 미리보기 확인도 다시 거쳐요." : "구성안 원고가 바뀌었어요. 아래 작업은 옛 원고로 만든 것이라 더 진행되지 않아요. 새로 만들면 기획표와 미리보기 확인도 다시 거쳐요."}</p> : null}
       {!run || (run.status === "blocked" && !run.words) || run.scriptChanged ? <div className="yt-actions">
-        {styles.length && (!run || run.scriptChanged) ? <label className="yt-style-pick">채널 모양<select value={styleId ?? run?.style?.id ?? styles[0].id} onChange={(event) => setStyleId(event.target.value)}>
+        {styles.length && (!run || run.scriptChanged) ? <label className="yt-style-pick">채널 모양<select value={styleId ?? run?.style?.id ?? channelOf(styles, channel)!.id} onChange={(event) => setStyleId(event.target.value)}>
           <option value="">기본 (고르지 않음)</option>{styles.map((style) => <option key={style.id} value={style.id}>{style.name} · v{style.version}</option>)}</select></label> : null}
         {styles.length && (!run || run.scriptChanged) ? <EarlierStylePick sourceId={sourceId} token={accessToken} styles={styles} onPick={setStyleId} /> : null}
         <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void (async () => {
-          const pick = styleId ?? run?.style?.id ?? styles[0]?.id ?? "";
+          const pick = styleId ?? run?.style?.id ?? channelOf(styles, channel)?.id ?? "";
           if (run && !run.scriptChanged || await askVoice(voiceText ?? "", "같은 원고로 다시 누르면 들지 않아요", voiceOnPc)) await act("start", () => post("/myin", "POST", { sourceId, ...(pick ? { styleId: pick } : {}) })); })()}>{busy === "start" ? "시작하는 중…" : run?.scriptChanged ? short ? "바뀐 대본으로 음성 다시 만들기" : "바뀐 원고로 v13 음성 다시 만들기" : run ? short ? "음성 다시 시작" : "v13 음성 다시 시작" : short ? "음성 만들기" : "v13 음성 만들기"}</button>
         <small><CostTag kind="paid" amount={voiceText ? voiceEstimate(voiceText, myinVoice).krw : null} /> 같은 {short ? "대본" : "원고"}으로 다시 누르면 만든 음성을 이어 써요.</small>
       </div> : null}
