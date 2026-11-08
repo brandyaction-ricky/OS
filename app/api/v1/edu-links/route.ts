@@ -11,10 +11,10 @@ const headers = { "cache-control": "private, no-store" };
 const invalid = (error: unknown) => {
   if (!(error instanceof ZodError)) return apiErrorResponse(error);
   const said = error.issues[0]?.message ?? "";
-  return apiErrorResponse(new ApiError(400, "EDU_LINK_INVALID", /[가-힣]/.test(said) ? said : "이름·채널·https:// 도착 주소를 확인해 주세요."));
+  return apiErrorResponse(new ApiError(400, "EDU_LINK_INVALID", /[가-힣]/.test(said) ? said : "https://로 시작하는 주소를 넣어 주세요. 이름은 80자, 쓰는 곳은 40자까지예요."));
 };
 
-/** 채널/링크 관리 › 에듀 고정 링크: staff (not partners or AI keys) list, make and change brandyaction-edu.com/go links. */
+/** 채널/링크 관리 › 에듀 단축 링크: staff (not partners or AI keys) list, make and change brandyaction-edu.com/go links. */
 export async function GET(request: Request) {
   try {
     await utmActor(request);

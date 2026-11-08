@@ -37,7 +37,8 @@ test("refuses non-https destinations and malformed keys before calling EDU", () 
   const edu = load(env, () => assert.fail("no call"));
   assert.throws(() => edu.eduLinkCreateSchema.parse({ url: "http://x.example", label: "a", channel: "b" }), /https:\/\//);
   assert.throws(() => edu.eduLinkPatchSchema.parse({ key: "-bad", active: false }), /주소 끝부분/);
-  assert.throws(() => edu.eduLinkCreateSchema.parse({ url: "https://x.example", label: "", channel: "b" }));
+  assert.deepEqual(edu.eduLinkCreateSchema.parse({ url: "https://x.example/a?utm_source=yt" }), { url: "https://x.example/a?utm_source=yt", label: "", channel: "" });
+  assert.throws(() => edu.eduLinkCreateSchema.parse({ url: "https://x.example", label: "a".repeat(81) }));
 });
 
 test("says plainly what went wrong: no settings, EDU's own refusal, a wrong key, an unreachable EDU", async () => {
@@ -47,4 +48,11 @@ test("says plainly what went wrong: no settings, EDU's own refusal, a wrong key,
   await assert.rejects(load(env, () => [500, null]).listEduLinks(), error => error.status === 502 && error.code === "EDU_500");
   const down = load(env, () => { throw new Error("down"); });
   await assert.rejects(down.listEduLinks(), error => error.code === "EDU_UNREACHABLE");
+});
+
+test("UTM 단축 on a 브랜디에듀 link makes an EDU short link; the other brands keep the MYIN one", async () => {
+  const [utm, brands] = await Promise.all([readFile(new URL("../lib/server/utm-links.ts", import.meta.url), "utf8"), readFile(new URL("../lib/utm.ts", import.meta.url), "utf8")]);
+  assert.match(brands, /label: "브랜디에듀", brand: "브랜디액션 에듀"/);
+  assert.match(utm, /link\.brand === "브랜디액션 에듀"\s*\?\s*await makeEduLink\(\{ url: link\.utm_url,/);
+  assert.match(utm, /:\s*await makeMyinShortLink\(\{ url: link\.utm_url, label \}/);
 });

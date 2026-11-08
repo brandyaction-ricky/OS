@@ -5,6 +5,7 @@ import { createServiceSupabase } from "@/lib/supabase/server";
 import { UTM_BRANDS, UTM_KINDS, buildUtmUrl, normalizeUtmCode, parseOriginUrl, utmCodeRule, utmConflicts, utmOptionClash, validUtmCode, type UtmKind } from "@/lib/utm";
 import { UTM_LEDGER, utmLedgerMarkdown, type UtmLedgerRow } from "@/lib/utm-ledger";
 import { makeMyinShortLink } from "./myin-short-links";
+import { makeEduLink } from "./edu-short-links";
 import { authenticateRequest } from "./auth";
 
 // Staff (not partners, not AI keys) use 링크관리; admins also rename or turn off shared choices (기능요청서 2026-10-28 §5).
@@ -147,11 +148,14 @@ export async function readUtmLink(id: string) {
   return (await withCreators([data as UtmLink]))[0];
 }
 
-/** Shortens the saved UTM address with the existing MYIN short link; the UTM row itself stays as it was. */
+/** Shortens the saved UTM address on its brand's site (브랜디에듀 → brandyaction-edu.com/go, else the MYIN short link); the UTM row itself stays as it was. */
 export async function shortenUtmLink(id: string, actor: UtmActor) {
   const link = await readUtmLink(id);
   if (link.short_url) return link;
-  const short = await makeMyinShortLink({ url: link.utm_url, label: link.usage.slice(0, 80) }, actor.id);
+  const label = link.usage.slice(0, 80);
+  const short = link.brand === "브랜디액션 에듀"
+    ? await makeEduLink({ url: link.utm_url, label, channel: (link.params.source?.label ?? "").slice(0, 40), key: "" }, actor.id)
+    : await makeMyinShortLink({ url: link.utm_url, label }, actor.id);
   const { error } = await createServiceSupabase().from("os_utm_links").update({ short_key: short.key, short_url: short.url, updated_at: new Date().toISOString() }).eq("id", id).is("short_url", null);
   if (error) throw new ApiError(503, "UTM_SHORT_SAVE_FAILED", "단축링크는 만들었지만 대장에 연결하지 못했어요. 다시 눌러 주세요.");
   return readUtmLink(id);
