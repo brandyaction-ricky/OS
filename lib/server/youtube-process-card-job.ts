@@ -57,9 +57,11 @@ const NOTES: Partial<Record<CardSlide["type"], string>> = { item: "번호는 OS�
 /** 웹툰형 is a story first (대표 · 직원 2026-11-04): drafts read like a lecture, rushed the message, or only made sense to whoever knew the setting.
  * 2026-11-05: narration explained the world where a reference toon shows it, so less narration, name tags and how the jokes work.
  * 2026-11-06: not everyone doodles, so each 강점 캐릭터 is now its person's battery and only 한결 sees other people's.
- * 2026-11-08: a reference toon's panels carry one line each, read face-first or line-first, and end a story on a wordless panel of hands or things. */
+ * 2026-11-08: a reference toon's panels carry one line each, read face-first or line-first, and end a story on a wordless panel of hands or things.
+ * Same day: hit webtoons' tropes stay in — pent-up frustration in 1 · 2화, release (the charge) in 3화, then a growth panel. */
 export const TOON_STORY = `\n\n## 웹툰형 — 이야기로 씁니다
 - 세계는 이렇습니다. 사람마다 곁에 사는 작은 캐릭터가 그 사람의 배터리라서, 원하는 일을 하면 몸 속이 차오르고 못 하면 닳습니다. 아무도 자기 것은 못 보고 한결만 남의 것을 봅니다. 배터리는 scene에 눈금으로 적고(「별 캐릭터의 몸 속이 아래에서 5%만 파랗게 차 있고 바닥에 축 늘어짐」), 숫자(「2%」)는 그림이 아니라 효과음으로 씁니다.
+- 잘 되는 웹툰의 전형을 살립니다. 1 · 2화는 그 사람이 억눌리고 닳는 고구마를 독자가 답답할 만큼 쌓고, 3화에서 억눌린 걸 뚫는 사이다가 곧 충전 순간이 됩니다. 충전 뒤에는 그 사람이 확 달라지는 성장 컷을 하나 둡니다(일을 해내는 모습 · 주변의 놀란 반응). 판타지는 배터리 하나뿐이고 사건 · 직무 · 말투는 실제 회사 그대로, 사이다는 폭력 · 모욕 없이 회사에서 할 수 있는 말 · 선택 · 결과로 씁니다. 칭찬 · 승진 · 성과 자체는 충전이 아니라 성장의 결과입니다.
 - 진짜 웹툰처럼 사건 · 반응 · 다음 화의 궁금증으로 끌고 갑니다. 우리 메시지를 급하게 넣지 않습니다. 1 · 2화의 해설 · 대사에 「강점」「원함」「마음이 ~해서다」 같은 설명을 쓰지 않고, 메시지는 3화의 깨달음 한 줄과 오늘의 한 줄에만 둡니다. 3화 끝은 캐릭터나 주인공의 짧은 혼잣말과 말 없는 컷 하나로 잔잔하게 닫습니다.
 - 오그라들지 않게 씁니다. 교훈을 정리하는 해설, 감동을 강요하는 말, 자기계발 글 같은 문장을 쓰지 않습니다. 깨달음도 주인공이 그 자리에서 할 법한 짧은 말로 씁니다.
 - 해설은 한 화에 두세 줄까지만 씁니다(이름표는 세지 않음). 「한결만 남의 배터리가 보인다」 같은 설정을 해설로 설명하지 않고, 한결이 「…2%?」 중얼거리면 옆자리가 「뭐가요?」 묻는 장면처럼 보여 줍니다. 이야기는 대사 · 반응 · 효과음으로 끌고 갑니다.
