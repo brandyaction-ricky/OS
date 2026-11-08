@@ -168,7 +168,7 @@
 .kw-share-row small { margin-right: auto; color: var(--kw-muted); }
 .kw-share-row select { flex: 1; min-width: 0; }
 .kw-root label.kw-share-private { display: flex; flex-flow: row nowrap; align-items: flex-start; gap: 8px; cursor: pointer; }
-.kw-share-private input { margin-top: 3px; }
+.kw-root .kw-share-private input { margin-top: 3px; flex: none; }
 .kw-private-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 12px; color: var(--kw-muted); border: 1px solid currentColor; }
 .kw-share-people { border: 1px solid var(--kw-line); border-radius: 10px; overflow: hidden; }
 .kw-root label.kw-share-search { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--kw-line); color: var(--kw-muted); }
