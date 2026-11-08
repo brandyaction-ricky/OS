@@ -1028,6 +1028,13 @@
       "productionApprovedAt": "2026-11-08",
       "appliedEnvironments": ["production"],
       "notes": "Changes os_meta_connections' primary key (owner_id, platform → owner_id, platform, external_account_id) and replaces os_threads_publication_claim with the 20261029052357 body plus an external_account_id filter on its connection lookup; no column, row, policy or grant change. Safe before the new code while each person has one account a platform. Manual undo: supabase/rollback/20261107150000_meta_connections_per_account.down.sql (needs one account per person and platform first). Owner approved Production in chat on 2026-11-08 (\"반영해\"). Read-only check first: key PRIMARY KEY (owner_id, platform), claim body md5 57cbc68a… = the repository original, 0 Instagram/Threads connections, none repeated, history 0. The session filled the SQL Editor (text sha256 = the prepared script); auto mode blocked its Run, so the owner pressed Run once: key change, function and schema history row in one transaction, read back (key PRIMARY KEY (owner_id, platform, external_account_id), claim body md5 76c7fb1b… = this file, 0 connections, history 1). Not applied to DEV."
+    },
+    {
+      "file": "20261108090000_note_owner_only.sql",
+      "sha256": "c04ddc9df632270d382c726be37d6876b750a7d2a1317292c69dbfa06fd93e7a",
+      "purpose": "나만 보기: os_documents.owner_only; 관리자 감사 열람 금지, 작성자 아닌 수정·삭제 금지, 작성자만 켜고 끔(os_set_note_owner_only)",
+      "requiresApproval": true,
+      "notes": "Additive: one column (default false), guard triggers on os_documents and os_note_access_grants, one service-role setter. Rollback-only run on DEV (after the 20261029 RLS it lacks): admin cannot see, audit-open, edit or delete a 나만 보기 note; owner reads and edits; a named reader reads; turning it on removes a live audit grant; child pages follow; other notes keep the audit route. Not applied yet."
     }
   ],
   "legacyMigrations": [

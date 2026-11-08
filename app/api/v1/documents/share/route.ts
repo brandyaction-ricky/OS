@@ -9,12 +9,12 @@ import { createServiceSupabase } from "@/lib/supabase/server";
 
 // Document sharing: a personal note shared read-only with named staff, and external links
 // that anyone with the address can read until they expire or are revoked.
-type ShareDocument = { id: string; owner_id: string; status: string; reader_scope: string; steward_id: string | null };
+type ShareDocument = { id: string; owner_id: string; status: string; reader_scope: string; steward_id: string | null; owner_only: boolean };
 
 
 async function readableDocument(actor: RequestActor, documentId: string) {
   const { data, error } = await createServiceSupabase().from("os_documents")
-    .select("id,owner_id,status,reader_scope,steward_id,parent_document_id").eq("id", documentId).maybeSingle();
+    .select("id,owner_id,status,reader_scope,steward_id,parent_document_id,owner_only").eq("id", documentId).maybeSingle();
   if (error) throw new ApiError(503, "SHARE_UNAVAILABLE", "공유 설정을 불러오지 못했습니다.");
   if (!data || !(await readableKnowledgePages(actor, [data])).has(data.id)) throw new ApiError(404, "DOCUMENT_NOT_FOUND", "이 문서를 볼 권한이 없습니다.");
   return data as ShareDocument;
@@ -45,7 +45,7 @@ export async function GET(request: Request) {
         .eq("document_id", doc.id).order("created_at", { ascending: false }).limit(20) : Promise.resolve({ data: [], error: null }),
     ]);
     if (readers.error || links.error) throw new ApiError(503, "SHARE_UNAVAILABLE", "공유 설정을 불러오지 못했습니다.");
-    return NextResponse.json({ canShareNote, canLink, readerIds: (readers.data ?? []).map(row => row.user_id),
+    return NextResponse.json({ canShareNote, canLink, ownerOnly: doc.owner_only, readerIds: (readers.data ?? []).map(row => row.user_id),
       links: (links.data ?? []).map(row => ({ id: row.id, createdBy: row.created_by, createdAt: row.created_at, expiresAt: row.expires_at, revokedAt: row.revoked_at })) },
     { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) { return apiErrorResponse(error); }
@@ -55,6 +55,7 @@ const schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("readers"), documentId: z.string().uuid(), readerIds: z.array(z.string().uuid()).max(50) }),
   z.object({ action: z.literal("link"), documentId: z.string().uuid(), days: z.union([z.literal(1), z.literal(7), z.literal(30)]) }),
   z.object({ action: z.literal("revoke"), documentId: z.string().uuid(), linkId: z.string().uuid() }),
+  z.object({ action: z.literal("private"), documentId: z.string().uuid(), on: z.boolean() }),
 ]);
 
 export async function POST(request: Request) {
@@ -68,6 +69,14 @@ export async function POST(request: Request) {
       if (error?.message?.includes("READER_INVALID")) throw new ApiError(400, "READER_INVALID", "활성 직원만 선택할 수 있습니다.");
       if (error) throw new ApiError(503, "NOTE_SHARE_FAILED", "공유 설정을 저장하지 못했습니다.");
       return NextResponse.json({ readerIds: input.readerIds });
+    }
+    // 나만 보기: only the owner of a personal note turns it on or off (the database checks it again).
+    if (input.action === "private") {
+      const { error } = await service.rpc("os_set_note_owner_only", { p_actor: actor.id, p_document: doc.id, p_on: input.on });
+      if (error?.message?.includes("NOTE_PRIVATE_OWNER_ONLY")) throw new ApiError(403, "NOTE_PRIVATE_OWNER_ONLY", "노트를 쓴 사람만 「나만 보기」를 바꿀 수 있습니다.");
+      if (error?.message?.includes("NOTE_PRIVATE_DRAFT_ONLY")) throw new ApiError(409, "NOTE_PRIVATE_DRAFT_ONLY", "「나만 보기」는 내 노트에만 쓸 수 있습니다.");
+      if (error) throw new ApiError(503, "NOTE_PRIVATE_FAILED", "「나만 보기」를 저장하지 못했습니다.");
+      return NextResponse.json({ ownerOnly: input.on });
     }
     if (!mayLink(actor, doc)) throw new ApiError(403, "SHARE_LINK_FORBIDDEN", "외부 공개 링크는 작성자나 관리자만 만들거나 해제할 수 있습니다.");
     if (input.action === "revoke") {

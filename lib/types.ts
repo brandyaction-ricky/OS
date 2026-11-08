@@ -42,6 +42,8 @@ export interface KnowledgeDocument {
   meeting_record_id?: string | null;
   /** Canonical only: 'all' (every active member) or 'restricted' (admins, owner, steward, named readers). */
   reader_scope?: "all" | "restricted";
+  /** 나만 보기: a personal note only its owner and the people it is shared with can open, admins included. */
+  owner_only?: boolean;
 }
 
 export interface DocumentVersion {

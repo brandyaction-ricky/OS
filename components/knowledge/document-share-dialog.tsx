@@ -9,7 +9,7 @@ import { useKnowledge } from "./provider";
 import { Modal } from "./ui";
 
 type Link = { id: string; createdBy: string; createdAt: string; expiresAt: string; revokedAt: string | null };
-type Share = { canShareNote: boolean; canLink: boolean; readerIds: string[]; links: Link[] };
+type Share = { canShareNote: boolean; canLink: boolean; ownerOnly?: boolean; readerIds: string[]; links: Link[] };
 
 // Some browsers refuse the clipboard API inside a dialog or an embedded window; then copy the
 // selected text of the field itself.
@@ -30,7 +30,7 @@ function CopyField({ label, value, onCopied }: { label: string; value: string; o
 // Three ways to share one document: the internal address, read-only sharing of a personal note
 // with named staff, and an external link anyone can open until it expires or is revoked.
 export function DocumentShareDialog({ document: doc, close }: { document: KnowledgeDocument; close: () => void }) {
-  const { state, actor, token, notify } = useKnowledge();
+  const { state, actor, token, notify, refresh } = useKnowledge();
   const [share, setShare] = useState<Share | null>(null), [readers, setReaders] = useState<string[]>([]), [query, setQuery] = useState("");
   const [days, setDays] = useState<1 | 7 | 30>(7), [created, setCreated] = useState(""), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const internal = typeof window === "undefined" ? "" : `${window.location.origin}${documentHref(doc)}`;
@@ -51,6 +51,10 @@ export function DocumentShareDialog({ document: doc, close }: { document: Knowle
   const live = (share?.links ?? []).filter(link => !link.revokedAt && Date.parse(link.expiresAt) > Date.now());
   const changed = share && (readers.length !== share.readerIds.length || readers.some(id => !share.readerIds.includes(id)));
   return <Modal title="공유·링크" onClose={close} busy={busy}><div className="kw-modal-body kw-share">
+    {share?.canShareNote && <section><h3>나만 보기</h3>
+      <label className="kw-share-private"><input type="checkbox" checked={share.ownerOnly === true} disabled={busy}
+        onChange={e => { const on = e.target.checked; void run({ action: "private", on }, () => { notify(on ? "나만 보기를 켰습니다" : "나만 보기를 껐습니다"); void refresh(); }); }} />
+        <span>관리자를 포함해 아무도 열 수 없습니다. 아래에서 직접 공유한 사람만 읽을 수 있어요.</span></label></section>}
     <section><h3>사내 링크</h3><p>열람 권한이 있는 직원만 열 수 있습니다.</p>
       <CopyField label="사내 링크" value={internal} onCopied={copied("사내 링크")} /></section>
     <section><h3>특정 직원에게 공유</h3>

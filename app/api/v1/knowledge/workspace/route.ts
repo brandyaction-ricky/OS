@@ -22,6 +22,7 @@ function readError(error: { code?: string }, stage: string) {
 function databaseError(error: { code?: string; message?: string }) {
   if (["42P01","42703","PGRST202","PGRST204","PGRST205"].includes(error.code ?? "")) return new ApiError(503,"KNOWLEDGE_SCHEMA_REQUIRED","회사 문서 저장 구조의 배포가 아직 준비되지 않았습니다. 입력한 내용은 지우지 마세요.");
   if (error.code === "PT409" || error.code === "40001" || error.message?.includes("VERSION_CONFLICT")) return new ApiError(409,"VERSION_CONFLICT","다른 사람이 먼저 수정했습니다. 입력한 내용을 보존했습니다.");
+  if (error.message?.includes("OS_NOTE_OWNER_ONLY")) return new ApiError(403,"NOTE_OWNER_ONLY","작성자가 「나만 보기」로 정한 노트입니다. 작성자가 공유해야 열 수 있습니다.");
   if (error.code === "42501") return new ApiError(403,"KNOWLEDGE_FORBIDDEN","이 작업을 수행할 권한이 없습니다.");
   if (error.code === "P0002") return new ApiError(404,"KNOWLEDGE_NOT_FOUND","이 항목을 볼 권한이 없습니다.");
   if (error.code === "23505") return new ApiError(409,"KNOWLEDGE_DUPLICATE","같은 이름이나 날짜의 항목이 이미 있습니다. 새로 불러온 뒤 확인해 주세요.");
@@ -100,7 +101,7 @@ export async function GET(request: Request) {
     for(const read of [resourcesRead,proposalsRead,approversRead,agentOwnersRead,accessRead]) void read.catch(()=>undefined);
     // Keyset pagination avoids re-evaluating hierarchical RLS for every skipped row. Ids are random UUIDs, so eight
     // id ranges read side by side cover the same rows in about one round trip instead of one page after another.
-    const DOCUMENT_COLUMNS="id,title,folder,parent_document_id,page_order,status,brand,team,tags,source,source_ref,owner_id,steward_id,created_by,current_version,created_at,updated_at,category_id,work_state,due_on,daily_on,review_due_on,archived_at,archived_by,archived_from_status,retention_hold,meeting_record_id,reader_scope";
+    const DOCUMENT_COLUMNS="id,title,folder,parent_document_id,page_order,status,brand,team,tags,source,source_ref,owner_id,steward_id,created_by,current_version,created_at,updated_at,category_id,work_state,due_on,daily_on,review_due_on,archived_at,archived_by,archived_from_status,retention_hold,meeting_record_id,reader_scope,owner_only";
     const listColumns: string = since===null?DOCUMENT_COLUMNS:`${POLICY_FIELDS},updated_at`;
     const bounds=["0","2","4","6","8","a","c","e"].map((from,index,all)=>({from:`${from}0000000-0000-0000-0000-000000000000`,to:all[index+1]?`${all[index+1]}0000000-0000-0000-0000-000000000000`:null}));
     const slices=await Promise.all(bounds.map(async({from,to})=>{
