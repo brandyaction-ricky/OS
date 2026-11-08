@@ -1025,8 +1025,9 @@
       "sha256": "1db49a9a7f3db75b2799b7b507bdd45879d9d2607ebc31d4fbc6d55a4171812c",
       "purpose": "다채널 2단계 (대표 2026-11-07): one person may connect several Instagram and Threads accounts — the connection key becomes (owner_id, platform, external_account_id); the Threads publication claim reads the account it is given",
       "requiresApproval": true,
-      "appliedEnvironments": [],
-      "notes": "Changes os_meta_connections' primary key (owner_id, platform → owner_id, platform, external_account_id) and replaces os_threads_publication_claim with the 20261029052357 body plus an external_account_id filter on its connection lookup; no column, row, policy or grant change. Safe before the new code while each person has one account a platform. Manual undo: supabase/rollback/20261107150000_meta_connections_per_account.down.sql (needs one account per person and platform first)."
+      "productionApprovedAt": "2026-11-08",
+      "appliedEnvironments": ["production"],
+      "notes": "Changes os_meta_connections' primary key (owner_id, platform → owner_id, platform, external_account_id) and replaces os_threads_publication_claim with the 20261029052357 body plus an external_account_id filter on its connection lookup; no column, row, policy or grant change. Safe before the new code while each person has one account a platform. Manual undo: supabase/rollback/20261107150000_meta_connections_per_account.down.sql (needs one account per person and platform first). Owner approved Production in chat on 2026-11-08 (\"반영해\"). Read-only check first: key PRIMARY KEY (owner_id, platform), claim body md5 57cbc68a… = the repository original, 0 Instagram/Threads connections, none repeated, history 0. The session filled the SQL Editor (text sha256 = the prepared script); auto mode blocked its Run, so the owner pressed Run once: key change, function and schema history row in one transaction, read back (key PRIMARY KEY (owner_id, platform, external_account_id), claim body md5 76c7fb1b… = this file, 0 connections, history 1). Not applied to DEV."
     }
   ],
   "legacyMigrations": [
