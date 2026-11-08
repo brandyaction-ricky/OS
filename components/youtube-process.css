@@ -276,12 +276,21 @@
 .linear-shell .ui-v2.yp .yp-ytm .yp-yt-t{font-size:13px}
 .linear-shell .ui-v2.yp .yp-yt.yp-big{width:520px}
 /* 채널 모양 (유쓰 요청 5/8) */
-.linear-shell .ui-v2.yp .yp-chstyle{border:1px solid var(--line-soft);border-radius:10px;padding:10px 12px;margin:0;display:grid;gap:8px}
-.linear-shell .ui-v2.yp .yp-chstyle legend{font-weight:700;font-size:13px;padding:0 4px}
-.linear-shell .ui-v2.yp .yp-chstyle-row{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
+/* 채널 카드 (2026-11-08): the other 채널/링크 관리 tabs' frame — a yp-card per channel, fields one per line, look folded in details */
+.linear-shell .ui-v2.yp .yp-chlist{display:grid;gap:10px;margin-top:10px}
+.linear-shell .ui-v2.yp .yp-chlist>.yp-hint{margin:0}
+.linear-shell .ui-v2.yp .yp-chstyle{display:grid;gap:10px}
+.linear-shell .ui-v2.yp .yp-chstyle label{display:grid;gap:4px;font-size:13px}
+.linear-shell .ui-v2.yp .yp-chstyle label .yp-hint{margin:0}
+.linear-shell .ui-v2.yp .yp-chstyle .yp-kv dd .yp-hint{margin:0 0 0 4px}
+.linear-shell .ui-v2.yp .yp-chstyle-row{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;font-size:13px}
+.linear-shell .ui-v2.yp .yp-chstyle-row label{flex:1 1 140px}
+.linear-shell .ui-v2.yp .yp-chstyle-more>summary{cursor:pointer;margin:0}
+.linear-shell .ui-v2.yp .yp-chstyle-more>.yp-chstyle{margin-top:10px}
+.linear-shell .ui-v2.yp .yp-chlist-acts{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.linear-shell .ui-v2.yp .yp-chlist-acts .yp-hint{margin:0}
 .linear-shell .ui-v2.yp .yp-ask{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px}
 .linear-shell .ui-v2.yp .yp-ask .yp-pdsel{height:40px;min-width:96px;font-size:14px}
-.linear-shell .ui-v2.yp .yp-chstyle-row label{display:grid;gap:4px;font-size:12px;flex:1 1 160px}
 .linear-shell .ui-v2.yp .yp-chstyle .yp-chstyle-check{display:flex;gap:6px;align-items:center;font-size:13px;flex:0 0 auto}
 .linear-shell .ui-v2.yp .yp-chstyle-color{display:flex;gap:6px;align-items:center}
 .linear-shell .ui-v2.yp .yp-chstyle-color input[type=color]{width:36px;height:32px;padding:0;border:1px solid var(--line);border-radius:6px;background:transparent}
