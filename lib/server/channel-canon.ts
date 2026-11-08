@@ -1,6 +1,6 @@
 import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
-import { canonChannels, channelBriefText, channelOf, PURPOSE_CANON_PREFIX, purposeCanonTitle } from "@/lib/youtube-process/channel-style";
+import { canonChannels, channelBriefText, channelOf, followCanon, PURPOSE_CANON_PREFIX, purposeCanonTitle } from "@/lib/youtube-process/channel-style";
 import { readChannelStyles } from "./youtube-channel-styles";
 
 // 다채널 3단계 (2026-11-07, OS 문서 「다채널 콘텐츠 운영 설계」 §2): a channel other than the 기본 채널 makes its content by its
@@ -9,10 +9,11 @@ import { readChannelStyles } from "./youtube-channel-styles";
 
 /** The newest live 목적 정본 for a purpose, or null. */
 export async function purposeCanon(purpose: string) {
-  const { data, error } = await createServiceSupabase().from("os_documents").select("id,title").eq("title", purposeCanonTitle(purpose))
+  const { data, error } = await createServiceSupabase().from("os_documents").select("id,title,content_md").eq("title", purposeCanonTitle(purpose))
     .neq("status", "archived").order("updated_at", { ascending: false }).limit(1);
   if (error) throw new ApiError(503, "CHANNEL_CANON_READ_FAILED", "목적 정본을 읽지 못했어요. 잠시 뒤 다시 해 주세요.");
-  return (data?.[0] ?? null) as { id: string; title: string } | null;
+  const row = data?.[0];
+  return row ? { id: row.id as string, title: row.title as string, channels: canonChannels((row.content_md as string | null) ?? "") } : null;
 }
 
 /** Every live 목적 정본 (newest per title) with the channels its 「채널 카드」 table offers, for the channel card editor. */
@@ -38,5 +39,6 @@ export async function channelContext(projectId: string | null | undefined) {
   if (!card.purpose?.trim()) throw new ApiError(409, "CHANNEL_PURPOSE_MISSING", `「${card.name}」 채널 카드에 목적을 적어 주세요. 채널/링크 관리 › 채널에서 적어요.`);
   const canon = await purposeCanon(card.purpose);
   if (!canon) throw new ApiError(409, "CHANNEL_CANON_MISSING", `「${purposeCanonTitle(card.purpose)}」 문서가 OS에 없어요. 이 채널은 목적 정본을 만든 뒤에 AI로 만들 수 있어요.`);
-  return { card, canon, text: channelBriefText(card, canon) };
+  const followed = followCanon(card, canon.channels);
+  return { card: followed, canon, text: channelBriefText(followed, canon) };
 }

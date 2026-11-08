@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { channelBriefText, channelFormats, channelMismatch, channelOf, channelStyleInput, formatOfKind, keepsDefault, nextStyles, pinStyle, purposeCanonTitle, canonChannels } from "../lib/youtube-process/channel-style.ts";
+import { channelBriefText, channelFormats, channelMismatch, channelOf, channelStyleInput, formatOfKind, keepsDefault, nextStyles, pinStyle, purposeCanonTitle, canonChannels, followCanon } from "../lib/youtube-process/channel-style.ts";
 
 // 유쓰 요청 5/8 (2026-11-02): per-channel look pinned to a video with its version; the render PC lays it over a copy of the storyboard.
 const style = { id: "11111111-1111-4111-8111-111111111111", name: "마이인", channel: "마이인", tone: { base: "myin", key: "#1F7A4D", ink: "#1B2420", page: "#FFFFFF" }, ending: "talk", logo: true };
@@ -235,5 +235,16 @@ test("the editor picks 목적 from the OS 목적 정본 list and fills a channel
   assert.match(route, /purposes: await purposeCanons\(\)/);
   assert.match(editor, /<label>목적<select/); assert.doesNotMatch(editor, /datalist|placeholder="예\)/);
   assert.match(editor, /index === 0 \? <p className="yp-hint">목적 <b>마이인 진단 유입<\/b>/);
-  assert.match(editor, /if \(row\) set\(index, row\)/);
+  assert.match(editor, /if \(pick\) set\(index, pick\)/);
+});
+
+// 대표 2026-11-08 「정본은 언제든 편하게 바꿀 수 있게」: the 정본 table is the one place; a picked channel follows it, in the AI brief and on the card.
+test("a card named like a 정본 row follows that row; renamed in the 정본, it keeps its own until picked again", async () => {
+  const channels = canonChannels("## 11. 채널 카드\n| 채널 | 컨셉 | 주제 축 |\n|---|---|---|\n| 퇴사선배윤익 | 새 컨셉 | ⛔ |\n");
+  assert.deepEqual(followCanon({ name: " 퇴사선배윤익 ", concept: "예전 컨셉", topics: "예전 축" }, channels), { name: " 퇴사선배윤익 ", concept: "새 컨셉", topics: "" });
+  const other = { name: "다른 채널", concept: "내 컨셉", topics: "" };
+  assert.equal(followCanon(other, channels), other);
+  const [server, editor] = await Promise.all(["../lib/server/channel-canon.ts", "../components/youtube-channel-styles.tsx"].map(file => readFile(new URL(file, import.meta.url), "utf8")));
+  assert.match(server, /const followed = followCanon\(card, canon\.channels\);\n  return \{ card: followed, canon, text: channelBriefText\(followed, canon\) \};/);
+  assert.match(editor, /정본 표를 고치면 이 채널과 AI 작업에 바로 반영돼요/);
 });
