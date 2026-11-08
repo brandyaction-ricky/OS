@@ -1,6 +1,6 @@
 import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
-import { channelBriefText, channelOf, purposeCanonTitle } from "@/lib/youtube-process/channel-style";
+import { canonChannels, channelBriefText, channelOf, PURPOSE_CANON_PREFIX, purposeCanonTitle } from "@/lib/youtube-process/channel-style";
 import { readChannelStyles } from "./youtube-channel-styles";
 
 // 다채널 3단계 (2026-11-07, OS 문서 「다채널 콘텐츠 운영 설계」 §2): a channel other than the 기본 채널 makes its content by its
@@ -13,6 +13,16 @@ export async function purposeCanon(purpose: string) {
     .neq("status", "archived").order("updated_at", { ascending: false }).limit(1);
   if (error) throw new ApiError(503, "CHANNEL_CANON_READ_FAILED", "목적 정본을 읽지 못했어요. 잠시 뒤 다시 해 주세요.");
   return (data?.[0] ?? null) as { id: string; title: string } | null;
+}
+
+/** Every live 목적 정본 (newest per title) with the channels its 「채널 카드」 table offers, for the channel card editor. */
+export async function purposeCanons() {
+  const { data, error } = await createServiceSupabase().from("os_documents").select("id,title,content_md").like("title", `${PURPOSE_CANON_PREFIX}%`)
+    .neq("status", "archived").order("updated_at", { ascending: false }).limit(50);
+  if (error) throw new ApiError(503, "CHANNEL_CANON_READ_FAILED", "목적 정본을 읽지 못했어요. 잠시 뒤 다시 해 주세요.");
+  const rows = (data ?? []).filter((row, at, all) => all.findIndex(other => other.title === row.title) === at);
+  return rows.map(row => ({ id: row.id as string, title: row.title as string, purpose: (row.title as string).slice(PURPOSE_CANON_PREFIX.length).trim(),
+    channels: canonChannels((row.content_md as string | null) ?? "") }));
 }
 
 /**

@@ -10,8 +10,9 @@ import { errorMessage } from "./youtube-process-data";
 
 const TONE = { base: "myin" as const, key: "#212CB0", ink: "#1E1D1D", page: "#FFFFFF" };
 const blank = (): ChannelStyleInput => ({ id: crypto.randomUUID(), name: "", channel: "", tone: null, ending: "talk", logo: false, purpose: "", concept: "", topics: "", formats: [...CHANNEL_FORMATS], voice: "", youtube: "" });
-// 목적 정본 (설계 문서 2026-11-07): channels with the same purpose read one canon, so the purposes in use are offered first.
-const PURPOSES = ["마이인 진단 유입", "문샷 무료강의 유입"];
+// 목적 정본 (설계 문서 2026-11-07): a card's 목적 is one of the 「목적 정본 — 목적」 documents, its channel a row of that 정본's 「채널 카드」 table.
+type Canon = { id: string; title: string; purpose: string; channels: { name: string; concept: string; topics: string }[] };
+type Loaded = { styles: ChannelStyle[]; version: number; purposes?: Canon[] };
 type Card = ChannelStyleInput & Partial<Pick<ChannelStyle, "version">>;
 const cardOf = (style: ChannelStyle): Card => ({ ...style, purpose: style.purpose ?? "", concept: style.concept ?? "", topics: style.topics ?? "", formats: channelFormats(style), voice: style.voice ?? "", youtube: style.youtube ?? "" });
 
@@ -67,13 +68,12 @@ export function ChannelStyleEditor() {
   const youtube = useYoutubeConnections();
   const [version, setVersion] = useState<number | null>(null);
   const [styles, setStyles] = useState<Card[]>([]);
-  // 다채널 3단계: each purpose's 목적 정본 as the server found it (null = not made yet).
-  const [canons, setCanons] = useState<Record<string, { id: string; title: string } | null>>({});
+  const [canons, setCanons] = useState<Canon[]>([]);
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [saved, setSaved] = useState(false);
   useEffect(() => {
     if (demo || !accessToken) { setVersion(0); return; }
-    apiRequest<{ styles: ChannelStyle[]; version: number; canons: Record<string, { id: string; title: string } | null> }>("/api/v1/content/youtube/channel-styles", { token: accessToken })
-      .then(result => { setStyles(result.styles.map(cardOf)); setVersion(result.version); setCanons(result.canons ?? {}); }, reason => setError(errorMessage(reason)));
+    apiRequest<Loaded>("/api/v1/content/youtube/channel-styles", { token: accessToken })
+      .then(result => { setStyles(result.styles.map(cardOf)); setVersion(result.version); setCanons(result.purposes ?? []); }, reason => setError(errorMessage(reason)));
   }, [accessToken, demo]);
   const set = (index: number, patch: Partial<ChannelStyleInput>) => { setSaved(false); setStyles(list => list.map((style, at) => at === index ? { ...style, ...patch } : style)); };
   const save = async () => {
@@ -81,29 +81,34 @@ export function ChannelStyleEditor() {
     setBusy(true); setError("");
     try {
       const body = { expectedVersion: version, styles: styles.map(({ id, name, channel, tone, ending, logo, purpose, concept, topics, formats, voice, youtube }) => ({ id, name, channel, tone, ending, logo, purpose, concept, topics, formats, voice, youtube })) };
-      const result = await apiRequest<{ styles: ChannelStyle[]; version: number; canons: Record<string, { id: string; title: string } | null> }>("/api/v1/content/youtube/channel-styles", { method: "PUT", token: accessToken, body: JSON.stringify(body) });
-      setStyles(result.styles.map(cardOf)); setVersion(result.version); setCanons(result.canons ?? {}); setSaved(true); cards = Promise.resolve(result.styles);
+      const result = await apiRequest<Loaded>("/api/v1/content/youtube/channel-styles", { method: "PUT", token: accessToken, body: JSON.stringify(body) });
+      setStyles(result.styles.map(cardOf)); setVersion(result.version); setCanons(result.purposes ?? []); setSaved(true); cards = Promise.resolve(result.styles);
     } catch (reason) { setError(errorMessage(reason)); } finally { setBusy(false); }
   };
   if (version === null) return error ? <p className="yp-errline" role="alert">{error}</p> : <p className="yp-hint" role="status">불러오는 중이에요…</p>;
   return <form className="yp-card yp-confirm-form" onSubmit={event => { event.preventDefault(); void save(); }}>
     <p className="yp-hint">채널마다 목적 · 컨셉 · 주제 축 · 운영 형식과 영상 모양을 정해요. 새 영상과 카드뉴스는 채널을 골라 만들고, 고르지 않으면 맨 위 <b>기본 채널</b>이에요(예전 영상도 모두 기본 채널). 영상 모양은 음성을 시작할 때 그 영상에 고정돼서, 여기서 고쳐도 이미 만들던 영상은 그대로예요.</p>
-    <datalist id="yp-channel-purposes">{[...new Set([...PURPOSES, ...styles.map(style => style.purpose.trim()).filter(Boolean)])].map(purpose => <option key={purpose} value={purpose} />)}</datalist>
-    {styles.map((style, index) => <fieldset key={style.id} className="yp-chstyle">
+    {styles.map((style, index) => { const canon = canons.find(row => row.purpose === style.purpose.trim()); return <fieldset key={style.id} className="yp-chstyle">
       <legend>{style.name || "새 채널"}{index === 0 ? " · 기본 채널" : ""}{style.version ? ` · v${style.version}` : ""}</legend>
       <div className="yp-chstyle-row">
-        <label>채널 이름<input className="yp-in" maxLength={30} value={style.name} onChange={event => set(index, { name: event.target.value })} placeholder="예) 브랜디액션" /></label>
+        <label>채널 이름<input className="yp-in" maxLength={30} value={style.name} onChange={event => set(index, { name: event.target.value })} placeholder="채널 이름" /></label>
         <label>올릴 유튜브 채널 이름<input className="yp-in" maxLength={60} value={style.channel} onChange={event => set(index, { channel: event.target.value })} placeholder="다르면 업로드할 때 알려 줘요" /></label>
         {index === 0 && style.version ? null : <button type="button" className="yp-ib" aria-label="이 채널 빼기" onClick={() => { setSaved(false); setStyles(list => list.filter((_, at) => at !== index)); }}><X size={14} /></button>}</div>
+      {index === 0 ? <p className="yp-hint">목적 <b>마이인 진단 유입</b> — 기본 채널은 지금 쓰는 마이인 정본을 그대로 읽어요. 컨셉 · 주제 축도 그 정본을 따라서 여기에 따로 적지 않아요.</p> : <>
+        <div className="yp-chstyle-row">
+          <label>목적<select className="yp-in" value={style.purpose} onChange={event => set(index, { purpose: event.target.value })}>
+            <option value="">목적 정본 고르기</option>{canons.map(row => <option key={row.id} value={row.purpose}>{row.purpose}</option>)}
+            {style.purpose.trim() && !canon ? <option value={style.purpose}>{style.purpose} (정본 없음)</option> : null}</select></label>
+          {canon?.channels.length ? <label>정본의 채널<select className="yp-in" value={canon.channels.find(row => row.name === style.name.trim())?.name ?? ""}
+            onChange={event => { const row = canon.channels.find(item => item.name === event.target.value); if (row) set(index, row); }}>
+            <option value="">골라서 채우기</option>{canon.channels.map(row => <option key={row.name} value={row.name}>{row.name}</option>)}</select></label> : null}</div>
+        <p className="yp-hint">{!canons.length ? "OS에 「목적 정본 — 목적」 문서가 아직 없어요. 문서를 만들면 여기서 목적을 고를 수 있어요."
+          : !canon ? "목적을 고르면 이 채널의 AI 작업이 그 목적 정본을 먼저 읽어요."
+          : <>목적 정본: <Link className="yp-lnk" href={`/knowledge?document=${canon.id}`}>「{canon.title}」</Link> — 이 채널의 AI 작업은 이 문서를 먼저 읽어요.{canon.channels.length ? " 정본의 채널을 고르면 이름 · 컨셉 · 주제 축이 정본대로 채워져요." : " 정본에 「채널 카드」 표를 넣으면 채널을 골라 채울 수 있어요."}</>}</p>
+        <div className="yp-chstyle-row">
+          <label>컨셉 한 줄<input className="yp-in" maxLength={200} value={style.concept} onChange={event => set(index, { concept: event.target.value })} placeholder="정본의 채널을 고르면 채워져요" /></label>
+          <label>주제 축 (같은 목적의 다른 채널과 겹치지 않게)<input className="yp-in" maxLength={300} value={style.topics} onChange={event => set(index, { topics: event.target.value })} placeholder="정본의 채널을 고르면 채워져요" /></label></div></>}
       <div className="yp-chstyle-row">
-        <label>목적<input className="yp-in" maxLength={40} list="yp-channel-purposes" value={style.purpose} onChange={event => set(index, { purpose: event.target.value })} placeholder="예) 문샷 무료강의 유입" /></label>
-        <label>컨셉 한 줄<input className="yp-in" maxLength={200} value={style.concept} onChange={event => set(index, { concept: event.target.value })} placeholder="예) 퇴사하고 혼자 사업하는 선배가 직접 해 보고 알려 주는 AI 마케팅" /></label></div>
-      <p className="yp-hint">{index === 0 ? "기본 채널은 지금 쓰는 마이인 정본을 그대로 읽어요."
-        : !style.purpose.trim() ? "목적을 적으면 AI가 그 목적의 정본(「목적 정본 — 목적」 문서)을 먼저 읽어요."
-        : canons[style.purpose.trim()] ? <>목적 정본: <Link className="yp-lnk" href={`/knowledge?document=${canons[style.purpose.trim()]!.id}`}>「{canons[style.purpose.trim()]!.title}」</Link> — 이 채널의 AI 작업은 이 문서를 먼저 읽어요.</>
-        : `「목적 정본 — ${style.purpose.trim()}」 문서가 아직 없어요(저장하면 다시 찾아요). 이 문서를 OS에 만들어야 이 채널을 AI로 만들 수 있어요.`}</p>
-      <div className="yp-chstyle-row">
-        <label>주제 축 (같은 목적의 다른 채널과 겹치지 않게)<input className="yp-in" maxLength={300} value={style.topics} onChange={event => set(index, { topics: event.target.value })} placeholder="예) 반복 업무를 AI에 넘기기 · 자동화 · 에이전트" /></label>
         <label>올릴 유튜브 채널<select className="yp-in" value={style.youtube} onChange={event => set(index, { youtube: event.target.value })}>
           <option value="">이름으로 찾기 · 없으면 첫 연결</option>{youtube.map(row => <option key={row.channelId} value={row.channelId}>{row.accountName}</option>)}
           {style.youtube && !youtube.some(row => row.channelId === style.youtube) ? <option value={style.youtube}>연결이 끊긴 채널</option> : null}</select></label>
@@ -122,7 +127,7 @@ export function ChannelStyleEditor() {
         <label>영상 끝맺음<select className="yp-in" value={style.ending} onChange={event => set(index, { ending: event.target.value as "talk" | "outro" })}>
           <option value="talk">마지막 멘트 동안 정리 화면 → 엔딩 화면</option><option value="outro">마이인 타이틀 → 정리 화면 → 엔딩 화면 (예전 방식)</option></select></label>
         <label className="yp-chstyle-check"><input type="checkbox" checked={style.logo} onChange={event => set(index, { logo: event.target.checked })} /> 오른쪽 위 MYIN 로고</label></div>
-    </fieldset>)}
+    </fieldset>; })}
     <div><button type="button" className="yp-btn yp-sm" onClick={() => { setSaved(false); setStyles(list => [...list, blank()]); }}><Plus size={14} /> 채널 추가</button></div>
     <div><button type="submit" className="yp-btn yp-pri" disabled={busy || demo || styles.some(style => !style.name.trim() || !style.formats.length)}>{busy ? "저장하는 중…" : "저장"}</button>
       {demo ? <span className="yp-hint"> 데모에서는 저장하지 않아요.</span> : saved ? <span className="yp-hint" role="status"> 저장했어요. 바뀐 채널은 버전이 하나 올라가요.</span> : null}</div>

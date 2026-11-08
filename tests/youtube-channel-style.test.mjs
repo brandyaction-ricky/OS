@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { channelBriefText, channelFormats, channelMismatch, channelOf, channelStyleInput, formatOfKind, keepsDefault, nextStyles, pinStyle, purposeCanonTitle } from "../lib/youtube-process/channel-style.ts";
+import { channelBriefText, channelFormats, channelMismatch, channelOf, channelStyleInput, formatOfKind, keepsDefault, nextStyles, pinStyle, purposeCanonTitle, canonChannels } from "../lib/youtube-process/channel-style.ts";
 
 // 유쓰 요청 5/8 (2026-11-02): per-channel look pinned to a video with its version; the render PC lays it over a copy of the storyboard.
 const style = { id: "11111111-1111-4111-8111-111111111111", name: "마이인", channel: "마이인", tone: { base: "myin", key: "#1F7A4D", ink: "#1B2420", page: "#FFFFFF" }, ending: "talk", logo: true };
@@ -220,4 +220,20 @@ test("an Instagram / Threads connection is (person, platform, account): key, Thr
   assert.match(comments, /loadMetaConnection\(account\.ownerId,account\.platform as "instagram"\|"threads",account\.accountKey\)/);
   assert.match(metrics, /loadMetaConnection\(account\.ownerId,account\.platform,account\.accountKey\)/);
   for (const source of [publication, publish]) assert.match(source, /settings\.account\.platform,"use",settings\.account\.accountKey\)/);
+});
+
+// 2026-11-08 대표: the 기본 채널 card showed marketing examples; a card's 목적 · channel come from the 정본, not typed.
+test("a 목적 정본's 「채널 카드」 table gives the channels to pick; ⛔ cells stay empty", () => {
+  const md = "# 목적 정본 — x\n\n## 10. 열린 질문\n| a | b |\n\n## 11. 채널 카드\n\n| 채널 | 컨셉 | 주제 축 |\n|---|---|---|\n| 퇴사선배윤익 | 강사가 직접 해 본 자동화 | ⛔ |\n| ⛔ 마케팅 신설 | ⛔ | ⛔ |\n\n## 근거\n| 표 | 아님 |\n";
+  assert.deepEqual(canonChannels(md), [{ name: "퇴사선배윤익", concept: "강사가 직접 해 본 자동화", topics: "" }], "a row without a decided name is left out");
+  assert.deepEqual(canonChannels("# 정본\n본문만"), []);
+});
+
+test("the editor picks 목적 from the OS 목적 정본 list and fills a channel from its table; the 기본 채널 shows the 마이인 정본, no examples", async () => {
+  const read = (file) => readFile(new URL(file, import.meta.url), "utf8");
+  const [editor, route] = await Promise.all([read("../components/youtube-channel-styles.tsx"), read("../app/api/v1/content/youtube/channel-styles/route.ts")]);
+  assert.match(route, /purposes: await purposeCanons\(\)/);
+  assert.match(editor, /<label>목적<select/); assert.doesNotMatch(editor, /datalist|placeholder="예\)/);
+  assert.match(editor, /index === 0 \? <p className="yp-hint">목적 <b>마이인 진단 유입<\/b>/);
+  assert.match(editor, /if \(row\) set\(index, row\)/);
 });
