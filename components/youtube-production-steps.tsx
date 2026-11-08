@@ -14,7 +14,8 @@ interface Render { status: string; stage: string; lastErrorCode: string | null }
 interface VoiceRun { id: string; status: string; stage: string; segmentCount: number; segmentsReady: number; readyIndexes: number[]; needsAttention: string[]; lastErrorCode: string | null; createdAt: string; render: Render | null }
 export interface StaffJob { id: string; status: string; executor?: "gpt" | "staff"; requestedAt: string; claimedAt: string | null; model: string | null; issues: string[]; failReason: string | null; processing: boolean; targetMinutes?: number | null; role?: string | null; slot?: string | null }
 export interface StaffJobStatus { job: StaffJob | null; myAi: { keys: number; lastUsedAt: string | null } }
-interface RenderPc { state: "online" | "offline" | "unknown"; ageSeconds: number | null; diskFreeGb: number | null; lowDisk: boolean; job: { step: string } | null; queue: { voice: number; render: number }; averageRenderMinutes: number | null }
+interface RenderPcOne { name: string; state: "online" | "offline"; ageSeconds: number | null; job: { step: string } | null; diskFreeGb: number; lowDisk: boolean; engineDifferent: boolean }
+interface RenderPc { state: "online" | "offline" | "unknown"; ageSeconds: number | null; diskFreeGb: number | null; lowDisk: boolean; job: { step: string } | null; queue: { voice: number; render: number }; averageRenderMinutes: number | null; pcs?: RenderPcOne[] }
 interface StoredPlan {
   inputKey?: string; templateVersion?: string; generatedAt?: string; unresolvedAcknowledged?: { by?: string; count?: number }; author?: { type?: string; model?: string };
   plan?: { sections?: string[]; scenes?: Array<{ segmentIndex: number; deck: MindmapDeck; items: string[]; section: number }>; unresolved?: string[] };
@@ -282,6 +283,18 @@ export function StaffDesign({ status, busy, onSend }: { status: StaffJobStatus |
 function RenderPcLine({ status }: { status: RenderPc }) {
   const queue = status.queue.voice + status.queue.render;
   if (status.state === "unknown") return <p className="yt-note">영상 만드는 컴퓨터가 아직 OS에 연결되지 않았어요. 연결되면 여기에 상태가 보여요.</p>;
+  // 렌더 PC 여러 대 (2026-11-08): one line per computer; the OS gives each video to one of them by itself.
+  if (status.pcs && status.pcs.length > 1) {
+    const on = status.pcs.filter((pc) => pc.state === "online");
+    return <div className="yt-run">
+      <div className="yt-run-head"><span className="status-pill" data-status={on.length ? "approved" : "failed"}>영상 만드는 컴퓨터 {status.pcs.length}대 중 {on.length}대 켜짐</span>
+        <small>기다리는 작업 {queue}건{status.averageRenderMinutes ? ` · 영상 한 편 평균 ${status.averageRenderMinutes}분` : ""}</small></div>
+      <ul className="yt-list">{status.pcs.map((pc) => <li key={pc.name}>{pc.name || "영상 만드는 컴퓨터"} · {pc.state === "offline" ? `연결 끊김(마지막 신호 ${ago(pc.ageSeconds ?? 0)} 전)`
+        : pc.engineDifferent ? "엔진이 다른 컴퓨터와 달라서 쉬는 중 · 관리자가 새 엔진을 맞춰 주세요"
+        : pc.lowDisk ? `디스크 여유 ${pc.diskFreeGb}GB라 새 영상을 받지 않아요 · 관리자가 공간을 비워 주세요`
+        : pc.job ? RENDER_STEP[pc.job.step] ?? "작업 중" : "쉬는 중"}</li>)}</ul>
+    </div>;
+  }
   return <div className="yt-run">
     <div className="yt-run-head"><span className="status-pill" data-status={status.state === "online" ? "approved" : "failed"}>{status.state === "online" ? "영상 만드는 컴퓨터 켜짐" : "영상 만드는 컴퓨터 연결 끊김"}</span>
       <small>마지막 신호 {ago(status.ageSeconds ?? 0)} 전</small></div>

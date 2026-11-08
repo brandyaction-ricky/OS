@@ -33,6 +33,11 @@ const mindmapDir = process.env.MINDMAP_DIR ?? "";
 const GAP = 0.45; // Logan's pause between paragraphs; his timings and renderer assume it.
 const MIN_DISK_GB = 60; // one render decodes about 45 GB of deck frames under MINDMAP_DIR
 let current = null; // { renderId?, step } while working, for the heartbeat
+// 렌더 PC 여러 대 (2026-11-08): this PC's name on every claim and heartbeat, so a video stays with the PC holding its work folder.
+// RENDER_PC_NAME names it on the screen; without one, the computer's own name.
+const pcName = local ? "" : ((process.env.RENDER_PC_NAME || os.hostname()).replace(/\.local$/, "").replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[^A-Za-z0-9]+/, "").slice(0, 40) || "render-pc");
+const pcField = pcName ? { pc: pcName } : {};
+let held = false; // the OS says this PC's engine differs from the other render PCs': it takes no work until they match
 
 const gb = (bytes) => Math.round(bytes / 1e8) / 10;
 const diskFreeGb = () => { const { bavail, bsize } = statfsSync(mindmapDir || os.tmpdir()); return gb(bavail * bsize); };
@@ -40,9 +45,13 @@ const diskFreeGb = () => { const { bavail, bsize } = statfsSync(mindmapDir || os
 export async function heartbeat() {
   const answer = await call({ action: "heartbeat", diskFreeGb: diskFreeGb(), memUsedGb: gb(os.totalmem() - os.freemem()), memTotalGb: gb(os.totalmem()), job: current,
     packageName: (process.env.MINDMAP_PACKAGE_NAME || path.basename(path.resolve(local ? myinPkg : mindmapDir, ".."))).slice(0, 80),
-    ...(engine() ? { engine: engine() } : {}) }).catch((error) => { console.error(`heartbeat: ${error.message}`); return null; });
+    ...(engine() ? { engine: engine() } : {}), ...pcField }).catch((error) => { console.error(`heartbeat: ${error.message}`); return null; });
+  if (answer && Boolean(answer.engineHeld) !== held) {
+    held = Boolean(answer.engineHeld);
+    console.error(held ? "engine differs from the other render PCs: taking no work" : "engine matches the other render PCs again");
+  }
   // The OS has no bundle of this engine for staff PCs yet: pack and upload it while nothing renders (render PC only).
-  if (!local && answer?.engineBundle === false && !current && !enginePublish && Date.now() >= enginePublishAfter)
+  if (!local && !held && answer?.engineBundle === false && !current && !enginePublish && Date.now() >= enginePublishAfter)
     enginePublish = publishEngine().catch((error) => { console.error(`engine bundle: ${error.message}`); enginePublishAfter = Date.now() + 60 * 60_000; })
       .finally(() => { enginePublish = null; });
 }
@@ -468,11 +477,11 @@ export async function uploadVoiceParts(file, urls) {
  * (downloaded, never recomputed: his sentence gaps come from a seeded random draw, so another run could shift every cue) and the
  * frozen transcription and subtitles.
  */
-export async function myinRebuild(runId, seed) {
+export async function myinRebuild(runId, seed, layout) {
   const work = path.join(myinWork, runId), voiceDir = path.join(work, "voice", "os_voice"), videoDir = path.join(work, "voice", "os_myin");
   // A voice fixed since this computer last took the run (최종 검토 피드백 → the render PC voiced it again) is taken again with its words.
   if (existsSync(path.join(videoDir, "words.json")) && existsSync(path.join(voiceDir, "voice.wav")) && sha256(readFileSync(path.join(voiceDir, "voice.wav"))) === seed.voice.sha256) return;
-  if (!existsSync(work)) { mkdirSync(myinWork, { recursive: true }); copyEngine(myinPkg, work); }
+  if (!existsSync(work)) { mkdirSync(myinWork, { recursive: true }); copyEngine(layout === "short" ? myinPkgShort : myinPkg, work); }
   mkdirSync(voiceDir, { recursive: true }); mkdirSync(videoDir, { recursive: true });
   const parts = [];
   for (const url of seed.voice.urls) {
@@ -590,7 +599,7 @@ export function styleStoryboard(videoDir, myinDir, style) {
 /** Process one v13 words job; returns false when there is none (or this PC has no v13 package). */
 export async function processMyinWords() {
   if (!myinPkg) return false;
-  const job = await call({ action: "myin_claim", ...shortClaim });
+  const job = await call({ action: "myin_claim", ...shortClaim, ...pcField });
   if (job.idle) return false;
   current = { step: "download" };
   const lease = { runId: job.runId, lease: job.lease };
@@ -755,13 +764,13 @@ export async function reportSoundCatalog() {
  */
 export async function processMyinPrep() {
   if (!myinPkg) return false;
-  const job = await call({ action: "myin_prep_claim", ...(local ? { engine: engine() } : shortClaim) });
+  const job = await call({ action: "myin_prep_claim", ...(local ? { engine: engine() } : { ...shortClaim, ...pcField }) });
   if (job.idle) return false;
   current = { step: "download" };
   const lease = { runId: job.runId, lease: job.lease };
   try {
     const work = path.join(myinWork, job.runId);
-    if (job.seed) await myinRebuild(job.runId, job.seed);
+    if (job.seed) await myinRebuild(job.runId, job.seed, job.layout);
     if (!existsSync(work)) throw Object.assign(new Error("no work folder for this run on this PC"), { code: "MYIN_WORK_MISSING" });
     const videoDir = path.join(work, "voice", "os_myin");
     const myinDir = path.join(work, "tools", "myin_pipeline");
@@ -863,11 +872,12 @@ async function blankScenes(myinDir, videoDir, env) {
  */
 export async function processMyinCta() {
   if (!myinPkg || local) return false;
-  const job = await call({ action: "myin_cta_claim", ...shortClaim });
+  const job = await call({ action: "myin_cta_claim", ...shortClaim, ...pcField });
   if (job.idle) return false;
   current = { step: "voice" };
   const lease = { runId: job.runId, lease: job.lease };
   try {
+    if (job.seed) await myinRebuild(job.runId, job.seed, job.layout);
     const { videoDir, myinDir } = myinDirs(job.runId);
     const env = layoutEnv(myinEnv(), job.layout);
     writeFileSync(path.join(videoDir, "myin_storyboard.json"), JSON.stringify(job.storyboard, null, 1));
@@ -901,12 +911,12 @@ print("TIMES " + json.dumps([[s["t0"], s["t1"]] for s in M.resolve(st, w)]))`;
 /** v13 stage 4a: his 720p clips of the opening with its reel and of each metaphor scene, for Logan to check before the full render. */
 export async function processMyinClips() {
   if (!myinPkg) return false;
-  const job = await call({ action: "myin_clips_claim", ...(local ? { engine: engine() } : shortClaim) });
+  const job = await call({ action: "myin_clips_claim", ...(local ? { engine: engine() } : { ...shortClaim, ...pcField }) });
   if (job.idle) return false;
   current = { step: "drawing" };
   const lease = { runId: job.runId, lease: job.lease };
   try {
-    if (job.seed) await myinRebuild(job.runId, job.seed);
+    if (job.seed) await myinRebuild(job.runId, job.seed, job.layout);
     const { videoDir, myinDir } = myinDirs(job.runId);
     const env = layoutEnv(myinEnv(), job.layout);
     writeSubtitles(videoDir, job.subtitlesAss);
@@ -937,12 +947,12 @@ export async function processMyinClips() {
 /** v13 stage 4b: his full render, mix and handouts; the OS gets the video, 한장정리.png, 덱_전체.pdf, subs_youtube.srt and a loudness check. */
 export async function processMyinFinal() {
   if (!myinPkg) return false;
-  const job = await call({ action: "myin_final_claim", ...(local ? { engine: engine() } : shortClaim) });
+  const job = await call({ action: "myin_final_claim", ...(local ? { engine: engine() } : { ...shortClaim, ...pcField }) });
   if (job.idle) return false;
   current = { step: "drawing" };
   const lease = { runId: job.runId, lease: job.lease };
   try {
-    if (job.seed) await myinRebuild(job.runId, job.seed);
+    if (job.seed) await myinRebuild(job.runId, job.seed, job.layout);
     const { work, videoDir, myinDir } = myinDirs(job.runId);
     const env = layoutEnv(myinEnv(), job.layout);
     // ④ sound edits made after the preparation reach the render in the storyboard the OS hands out with the job.
@@ -1092,7 +1102,8 @@ else if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).h
   if (!osUrl.startsWith("https://") || secret.length < 32) throw new Error("OS_URL (https) and YOUTUBE_MEDIA_WORKER_SECRET are required");
   const shortsOnly=process.argv.includes("--shorts-only");
   if (!shortsOnly&&!existsSync(path.join(mindmapDir, "tools", "mindmap_pipeline", "stage_render.py"))) throw new Error("MINDMAP_DIR must point at Logan's unzipped mind-map package");
-  void heartbeat();
+  console.log(`render PC name: ${pcName}`);
+  await heartbeat(); // knows whether this PC's engine is held before it claims anything
   setInterval(() => void heartbeat(), 60_000).unref();
   void reportDiagramCatalog();
   setInterval(() => void reportDiagramCatalog(), 60 * 60_000).unref();
@@ -1100,7 +1111,7 @@ else if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).h
   setInterval(() => void reportSoundCatalog(), 60 * 60_000).unref();
   do {
     // No render ready? Advance the voice queue one step (review or one paragraph) so no separate scheduler is needed.
-    const worked = await (shortsOnly?processShortform():processOne().then((rendered) => rendered || processMyinBreath()).then((rendered) => rendered || processShortRefs()).then((rendered) => rendered || processMyinWords()).then((rendered) => rendered || processMyinSay()).then((rendered) => rendered || processMyinCta()).then((rendered) => rendered || processMyinPrep())
+    const worked = held ? false : await (shortsOnly?processShortform():processOne().then((rendered) => rendered || processMyinBreath()).then((rendered) => rendered || processShortRefs()).then((rendered) => rendered || processMyinWords()).then((rendered) => rendered || processMyinSay()).then((rendered) => rendered || processMyinCta()).then((rendered) => rendered || processMyinPrep())
       .then((rendered) => rendered || processMyinClips()).then((rendered) => rendered || processMyinFinal()).then((rendered) => rendered || (current = { step: "voice" }, call(runId ? { runId } : {}, "worker")).then((step) => {
       if (step.processed) console.log(`voice step: ${JSON.stringify(step).slice(0, 300)}`);
       return step.processed;

@@ -34,7 +34,7 @@ test("each drawn result keeps the engine it was drawn with", async () => {
   const run = await read("lib/server/myin-run.ts");
   // The engine is read when a ③/④ job is taken (the render PC's; a member's own computer must match it) and kept with its result.
   assert.match(run, /const drawnWith = \(run: MyinRun\) => run\.layout \? Promise\.resolve\(undefined\) : renderPcEngine\(\);/, "none for a 숏폼 (its vertical copy is not in the fingerprint)");
-  assert.equal(run.match(/materialsKey, drawnWith\);/g)?.length, 3, "preparation, clips and the full video");
+  assert.equal(run.match(/materialsKey, drawnWith,\s+owner \? undefined : \{ name: pc \}\);/g)?.length, 3, "preparation, clips and the full video");
   assert.match(run, /const engine = await engineOf\?\.\(run\);/);
   assert.equal(run.match(/\.\.\.drewWith\(run\)/g)?.length, 3);
   assert.match(await read("components/myin-run-record.tsx"), /<dt>엔진 버전<\/dt><dd>\{engineLine\(record\)\}<\/dd>/);

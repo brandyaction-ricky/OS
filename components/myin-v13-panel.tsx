@@ -28,7 +28,7 @@ interface MyinRun { id: string; status: string; stage: string; layout?: "short" 
   assetDecisions: Record<string, { decision: "approved" | "excluded" }>; ctaReady: string | null;
   prepared: { misses: string[]; sheets: number; credits: string[]; at: string } | null;
   clips: { name: string; label: string }[] | null; clipsReview: { name: string; note: string; at: string } | null;
-  final: { bytes: number; durationSeconds: number; lufs: number; peak: number; at: string } | null; scriptChanged?: boolean; workingSince?: string | null;
+  final: { bytes: number; durationSeconds: number; lufs: number; peak: number; at: string } | null; scriptChanged?: boolean; workingSince?: string | null; pc?: string | null;
   sound: { report: string; at: string; edited?: { name: string; at: string } } | null; local: { by: string; name: string } | null; localFinish?: { by: string; name: string } | null; localReady: boolean;
   clipsStale?: string[] | null; photoCredits?: Record<string, { source: string; license: string; url: string | null }>;
   voiceFixes?: MyinVoiceFixView[]; voiceCheck?: MyinVoiceCheckView | null; voiceFixable?: boolean; voiceChanged?: { at: string; count: number } | null;
@@ -69,7 +69,7 @@ function StopNote({ run }: { run: MyinRun }) {
 // 내 컴퓨터로 시안 (2026-10-27): the ③ drafts of a run sent to a member's own computer name that computer instead of the render PC,
 // and so do ④ with the full video once they are sent to one (2026-11-03).
 const placedOn = (run: MyinRun) => run.clipsReview ? run.localFinish : run.local;
-const maker = (run: MyinRun) => { const local = placedOn(run); return local ? `${local.name}님 컴퓨터` : "영상 만드는 컴퓨터"; };
+const maker = (run: MyinRun) => { const local = placedOn(run); return local ? `${local.name}님 컴퓨터` : run.pc ? `영상 만드는 컴퓨터(${run.pc})` : "영상 만드는 컴퓨터"; };
 // 로건 사람 말투 음성 (2026-10-29): the render PC makes the voice too — about 13 seconds a paragraph before the transcription.
 const phaseLabel = (run: MyinRun) => run.voiceOnPc && run.stage === "words_pending" ? "영상 만드는 컴퓨터가 음성 · 받아쓰기 · 자막 만드는 중"
   : run.stage === "cta_pending" && run.localFinish && run.voiceOnPc ? `영상 만드는 컴퓨터가 구독 대사 음성을 만들어요 · 그다음 ${maker(run)}가 자료 준비`
