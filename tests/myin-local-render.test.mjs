@@ -40,7 +40,7 @@ test("④ on a member's computer: the render PC makes the 구독 대사 first, t
   assert.match(worker, /if \(cta\.made\) \{ await fetchTo\(cta\.url, path\.join\(ctaDir, `cta_\$\{k\}\.wav`\)\)/, "a finished line is not tightened again");
   assert.match(worker, /processMyinPrep\(\)\.then\(\(done\) => done \|\| processMyinClips\(\)\)\.then\(\(done\) => done \|\| processMyinFinal\(\)\)/, "the member's computer also makes the full video");
   assert.match(worker, /rendered \|\| processMyinCta\(\)\)\.then\(\(rendered\) => rendered \|\| processMyinPrep\(\)\)/, "the render PC makes the lines");
-  assert.match(worker, /action: "myin_final_claim", \.\.\.\(local \? \{ engine: engine\(\) \} : shortClaim\)/);
+  assert.match(worker, /action: "myin_final_claim", \.\.\.\(local \? \{ engine: engine\(\) \} : \{ \.\.\.shortClaim, \.\.\.pcField \}\)/);
   const route = readFileSync("app/api/v1/content/youtube-automation/local-render/route.ts", "utf8");
   assert.match(route, /input\.action === "myin_final_claim"\) await assertLocalEngine/, "only on the render PC's engine");
 });

@@ -11,6 +11,19 @@ export const placeFilter = (owner?: string) => owner
   ? (run: PlacedRun) => localOwner(run) === owner
   : (run: PlacedRun) => !localOwner(run);
 
+/** 렌더 PC 여러 대 (2026-11-08): a render PC's claim (`pc`, its name; none from a worker that sends no name) skips a video pinned to another. */
+export const pinnedElsewhere = (run: { pc?: string }, pc?: string) => Boolean(run.pc) && run.pc !== pc;
+
+/**
+ * A video pinned to another render PC waits for it. When that PC has been off for half an hour, the video moves only if its stage-1
+ * voice is in the OS (the next PC rebuilds the folder from it): the step is taken here, except drafts and the full video, whose ④ files
+ * stay on the PC that prepared them, so the video is prepared again first.
+ */
+export function movePinned(stage: string, run: { words?: { voice?: unknown } | null }, gone: boolean) {
+  if (!gone || !(stage === "words_pending" || run.words?.voice)) return "wait" as const;
+  return stage === "clips_pending" || stage === "final_pending" ? "prepare_again" as const : "take" as const;
+}
+
 export interface LocalRenderStatus { state: "online" | "offline" | "unknown"; ageSeconds: number | null; engine: "same" | "different" | "unknown"; job: { step: string } | null }
 
 /** Why 내 컴퓨터 cannot take this video's drafts right now, or null when it can (`ready`: its stage 1 left the voice for staff Macs). */

@@ -22,7 +22,7 @@ test("a job's result is taken only at the stage it was claimed at and from the m
   assert.match(section("async function claim(", "async function failed"), /startedAt: new Date\(\)\.toISOString\(\), stage,/);
   for (const [claim, end] of [["export async function claimMyinPrep", "/** Render PC: the preview ran."], ["export async function claimMyinClips", "export async function completeMyinClips"],
     ["export async function claimMyinFinal", "export async function completeMyinFinal"]])
-    assert.match(section(claim, end), /, materialsKey, drawnWith\)/, `${claim} hands out its materials key`);
+    assert.match(section(claim, end), /, materialsKey, drawnWith,/, `${claim} hands out its materials key`);
   assert.match(section("export async function completeMyinPrep", "export async function failMyinPrep"), /if \(staleResult\(run\)\)/);
   const clips = section("export async function completeMyinClips", "/** Logan's OK on the clips");
   assert.match(clips, /if \(staleResult\(run\)\)[\s\S]*prepAgain \? "prep_pending" : "clips_pending"/, "an image changed while cutting: prepare again, then cut");

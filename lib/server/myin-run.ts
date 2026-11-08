@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { myinBreathText, myinCleanScript, myinRunMatchesScript, myinScriptMarkdown } from "@/lib/myin-script";
-import { placeFilter } from "@/lib/myin-local";
+import { localOwner, movePinned, pinnedElsewhere, placeFilter } from "@/lib/myin-local";
 import { changedMaterials, type MyinMaterials } from "@/lib/myin-materials";
 import { planVoiceFix } from "@/lib/myin-voice-plan";
 import { applySubtitleEdits, subtitleIssues, subtitleLines, subtitleTextProblem } from "@/lib/myin-subtitles";
@@ -14,7 +14,7 @@ import { MYIN_VOICE_TUNING, synthesizeFishWav } from "./fish-audio";
 import { readDiagramCatalog } from "./diagram-catalog";
 import { readSoundCatalog } from "./sound-catalog";
 import { readYoutubeAutomationInput } from "./youtube-automation-input";
-import { renderPcEngine } from "./youtube-render-pc";
+import { RENDER_PC_NAME, renderPcEngine, renderPcGone } from "./youtube-render-pc";
 import { readChannelStyles } from "./youtube-channel-styles";
 import { channelOf, channelToneSchema, pinStyle, type ChannelStyle } from "@/lib/youtube-process/channel-style";
 import { assertSpokenScript } from "./youtube-script-canon";
@@ -143,6 +143,10 @@ const runSchema = z.object({
   // again never drops one — each stays a version to compare, and its files stay where the render PC put them.
   finals: z.array(finalSchema).max(8).optional(),
   lease: leaseSchema.optional(), attempts: z.number().int().min(0).max(20),
+  // 렌더 PC 여러 대 (2026-11-08): the render PC holding this video's work folder (voice, then ④ files), named by its first claim.
+  pc: z.string().regex(RENDER_PC_NAME).optional(),
+  // The full video was asked for when its PC went away: after ④ preparation on the next PC it starts without another press.
+  resumeFinal: z.literal(true).optional(),
   lastError: z.object({ code: z.string(), at: z.string().datetime(), files: z.array(z.string().max(200)).max(30).optional() }).strict().optional(),
 }).strict();
 type MyinRun = z.infer<typeof runSchema>;
@@ -206,7 +210,7 @@ export function presentMyinRun(record: OsRecord) {
     photoCredits: Object.fromEntries(Object.entries(run.ours ?? {}).map(([file, image]) => [file, image.credit ? { source: image.credit.source, license: image.credit.license, url: image.credit.url }
       : { source: `우리 이미지 · ${image.name}`, license: "", url: null }])), localReady: Boolean(run.words?.voice) && !run.layout,
     // 로건 피드백 10/26-8: when the render PC took this step, so the screen can say how long it has been working.
-    workingSince: record.status === "in_progress" ? run.lease?.startedAt ?? null : null };
+    workingSince: record.status === "in_progress" ? run.lease?.startedAt ?? null : null, pc: run.pc ?? null };
 }
 
 /**
@@ -382,21 +386,42 @@ async function scriptChanged(supabase: RequestActor["supabase"], run: MyinRun) {
   catch (error) { return error instanceof ApiError && error.code === "MYIN_RUN_STALE"; }
 }
 
+/** A render PC's claim (`pc`, its name; none from a worker that sends no name). A member's own computer passes none. */
+interface PcClaim { name?: string }
+
 async function claim(service: Service, stage: string, leaseMs: number, accept: (run: MyinRun) => boolean = () => true, input?: (run: MyinRun) => string,
-  engineOf?: (run: MyinRun) => Promise<string | undefined>) {
+  engineOf?: (run: MyinRun) => Promise<string | undefined>, pc?: PcClaim) {
   const { data } = await service.from("os_records").select("*").eq("record_type", "ai_job").eq("metadata->>kind", MYIN_RUN_KIND)
     .eq("stage", stage).in("status", ["backlog", "in_progress"]).is("archived_at", null).order("created_at").limit(10);
+  const gone = new Map<string, Promise<boolean>>();
   for (const candidate of (data ?? []) as OsRecord[]) {
     let run: MyinRun; try { run = parse(candidate); } catch { continue; }
     if (!accept(run)) continue;
     if (run.lease && Date.parse(run.lease.expiresAt) > Date.now()) continue;
     if (run.attempts >= 3) { await save(service, candidate, "blocked", stage, run).catch(() => null); continue; }
+    // 렌더 PC 여러 대: a video waits for the PC with its work folder, and moves only when that PC has been off for half an hour.
+    // ponytail: the oldest 10 of a stage are looked at, so 10 videos waiting for busy PCs hide an 11th; page if queues grow that long.
+    if (pc && run.pc && pinnedElsewhere(run, pc.name)) {
+      if (!gone.has(run.pc)) gone.set(run.pc, renderPcGone(run.pc));
+      const move = movePinned(stage, run, await gone.get(run.pc)!);
+      if (move === "prepare_again") await prepareAgain(service, candidate, run, stage);
+      if (move !== "take") continue;
+    }
     const engine = await engineOf?.(run);
     const lease = { token: randomUUID(), expiresAt: new Date(Date.now() + leaseMs).toISOString(), startedAt: new Date().toISOString(), stage, ...(input ? { input: input(run) } : {}), ...(engine ? { engine } : {}) };
-    const claimed = await save(service, candidate, "in_progress", stage, { ...run, lease, attempts: run.attempts + 1 }).catch(() => null);
+    const next: MyinRun = { ...run, lease, attempts: run.attempts + 1 };
+    if (pc) { if (pc.name) next.pc = pc.name; else delete next.pc; }
+    const claimed = await save(service, candidate, "in_progress", stage, next).catch(() => null);
     if (claimed) return { record: claimed, run: parse(claimed), lease };
   }
   return null;
+}
+
+/** The video's files that ③ drafts and the full video need are on a PC that is gone: prepare them again on the next PC. */
+async function prepareAgain(service: Service, record: OsRecord, run: MyinRun, stage: string) {
+  const next: MyinRun = { ...run, attempts: 0, ...(stage === "final_pending" ? { resumeFinal: true as const } : {}) };
+  delete next.pc; delete next.lease; delete next.lastError;
+  await save(service, record, "backlog", "prep_pending", next).catch(() => null);
 }
 
 async function failed(service: Service, record: OsRecord, run: MyinRun, code: string, files?: string[]) {
@@ -487,8 +512,8 @@ export const fishVoice = (run?: { voiceReference?: string }) => ({ referenceId: 
 /** A 숏폼 run goes only to a render PC whose worker has the vertical engine (it says `short`); an older worker keeps taking longforms. */
 const fits = (short: boolean) => (run: MyinRun) => short || !run.layout;
 
-export async function claimMyinWords(service: Service = createServiceSupabase(), short = false) {
-  const claimed = await claim(service, "words_pending", WORDS_LEASE_MS, fits(short));
+export async function claimMyinWords(service: Service = createServiceSupabase(), short = false, pc?: string) {
+  const claimed = await claim(service, "words_pending", WORDS_LEASE_MS, fits(short), undefined, undefined, { name: pc });
   if (!claimed) return { idle: true as const };
   const { record, run, lease } = claimed;
   try {
@@ -759,15 +784,16 @@ export async function startMyinPrep(actor: RequestActor, runId: string) {
  */
 const ctaPcPath = (record: OsRecord, run: MyinRun, c: { index: number; textHash: string }) =>
   `${record.owner_id}/${run.sourceId}/${record.id}/cta_${String(c.index).padStart(2, "0")}_${c.textHash.slice(0, 8)}_pc.wav`;
-export async function claimMyinCta(service: Service = createServiceSupabase(), short = false) {
-  const claimed = await claim(service, "cta_pending", WORDS_LEASE_MS, (run) => Boolean(run.voiceOn) && fits(short)(run));
+export async function claimMyinCta(service: Service = createServiceSupabase(), short = false, pc?: string) {
+  const claimed = await claim(service, "cta_pending", WORDS_LEASE_MS, (run) => Boolean(run.voiceOn) && fits(short)(run), undefined, undefined, { name: pc });
   if (!claimed) return { idle: true as const };
   const { record, run, lease } = claimed;
   try {
     const story = await storyboardJson(service, run);
     const lines = [];
     for (const c of run.cta ?? []) if (c.status === "pending") lines.push({ index: c.index, uploadUrl: await uploadUrl(service, YOUTUBE_VOICE_BUCKET, ctaPcPath(record, run, c)) });
-    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), storyboard: myinDriftPairs(story), fishVoice: fishVoice(run), lines };
+    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), storyboard: myinDriftPairs(story), fishVoice: fishVoice(run), lines,
+      ...await seedFor(service, run) };
   } catch (error) {
     await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_CTA_CLAIM_FAILED");
     throw error;
@@ -831,6 +857,8 @@ const sign = async (service: Service, bucket: string, path: string) => {
 type MyinVoice = NonNullable<NonNullable<MyinRun["words"]>["voice"]>;
 const voiceDownload = async (service: Service, voice: MyinVoice) => ({
   urls: await Promise.all(Array.from({ length: voice.parts }, (_, n) => sign(service, YOUTUBE_VOICE_BUCKET, voicePartPath(voice.path, n)))), bytes: voice.bytes, sha256: voice.sha256 });
+/** A render PC rebuilds the stage-1 folder it lacks (a video moved from a PC that went away); a PC that has it keeps it. */
+const seedFor = async (service: Service, run: MyinRun) => run.words?.voice ? { seed: await localSeed(service, run) } : {};
 async function localSeed(service: Service, run: MyinRun) {
   const voice = run.words?.voice;
   if (!voice) throw new ApiError(409, "MYIN_LOCAL_VOICE_MISSING", "이 영상은 내 컴퓨터로 만들 음성 파일이 없어요. 영상 만드는 컴퓨터로 만들어 주세요.");
@@ -950,10 +978,10 @@ const previewStale = (run: MyinRun) => run.clips ? changedSince(run.clips.used, 
 const drawnWith = (run: MyinRun) => run.layout ? Promise.resolve(undefined) : renderPcEngine();
 
 /** Render PC (or, with `owner`, that member's own Mac for a ③ draft): storyboard, approved files, CTA voice and where the sheets and report go. */
-export async function claimMyinPrep(service: Service = createServiceSupabase(), owner?: string, short = false) {
+export async function claimMyinPrep(service: Service = createServiceSupabase(), owner?: string, short = false, pc?: string) {
   // A member's computer takes ④ only once every 구독 대사 line is a file it can use (it cannot make one).
   const claimed = await claim(service, "prep_pending", WORDS_LEASE_MS, (run) => placeFilter(owner)(run) && (!owner || Boolean(run.words?.voice)) && fits(short)(run)
-    && (!owner || !run.clipsReview || (run.cta ?? []).every((c) => c.path)), materialsKey, drawnWith);
+    && (!owner || !run.clipsReview || (run.cta ?? []).every((c) => c.path)), materialsKey, drawnWith, owner ? undefined : { name: pc });
   if (!claimed) return { idle: true as const };
   const { record, run, lease } = claimed;
   try {
@@ -982,7 +1010,7 @@ export async function claimMyinPrep(service: Service = createServiceSupabase(), 
     const { data: bundle } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).createSignedUploadUrl(prepBundlePath(record, run, lease.token), { upsert: true });
     if (!bundle) throw new ApiError(503, "MYIN_SIGN_FAILED", "결과 업로드 주소를 만들지 못했습니다.");
     return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), draft, placeholders, storyboard: myinDriftPairs(story), assets, cta, ...(cta.some((c) => !c.url) ? { fishVoice: fishVoice(run) } : {}), siteCapture: story.scenes.some((sc) => sc.type === "site_ad"),
-      sheetUploadUrls: sheetUploads, bundleUploadUrl: bundle.signedUrl, ...(owner ? { seed: await localSeed(service, run) } : {}), ...await subtitlesFor(service, run), ...styleFor(run) };
+      sheetUploadUrls: sheetUploads, bundleUploadUrl: bundle.signedUrl, ...(owner ? { seed: await localSeed(service, run) } : await seedFor(service, run)), ...await subtitlesFor(service, run), ...styleFor(run) };
   } catch (error) {
     await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_PREP_CLAIM_FAILED");
     throw error;
@@ -1041,7 +1069,8 @@ export async function completeMyinPrep(input: { runId: string; lease: string }, 
   }
   // ③ with nothing missing: the drafts are next, without anyone pressing a button. ④ stops here for the sound and photos check;
   // a 숏폼 has no sound to check (voice only), so its full video starts.
-  const stage = bundle.misses.length ? "prep_ready" : draft ? "clips_pending" : run.layout ? "final_pending" : "prep_ready";
+  const stage = bundle.misses.length ? "prep_ready" : draft ? "clips_pending" : run.layout || run.resumeFinal ? "final_pending" : "prep_ready";
+  delete next.resumeFinal;
   if (stage === "final_pending") retireFinal(next);
   await save(service, record, stage === "prep_ready" ? "done" : "backlog", stage, next);
   // 화면 자동 검사 (2026-10-29): GPT reads the new sheets after this response, while the drafts are being made.
@@ -1181,8 +1210,9 @@ const uploadUrl = async (service: Service, bucket: string, path: string) => {
 const clipItems = (run: MyinRun) => run.layout ? [{ name: "clip_short", label: "숏폼 전체", scene: 1 }]
   : [{ name: "clip_opening", label: "오프닝 + 쇼릴", scene: 1 }, ...(run.storyboard?.metaphors ?? []).map((m) => ({ name: `clip_scene_${m.scene}`, label: `${m.scene}번 장면 · ${m.type}`, scene: m.scene }))];
 
-export async function claimMyinClips(service: Service = createServiceSupabase(), owner?: string, short = false) {
-  const claimed = await claim(service, "clips_pending", CLIPS_LEASE_MS, (run) => placeFilter(owner)(run) && (!owner || Boolean(run.words?.voice)) && fits(short)(run), materialsKey, drawnWith);
+export async function claimMyinClips(service: Service = createServiceSupabase(), owner?: string, short = false, pc?: string) {
+  const claimed = await claim(service, "clips_pending", CLIPS_LEASE_MS, (run) => placeFilter(owner)(run) && (!owner || Boolean(run.words?.voice)) && fits(short)(run), materialsKey, drawnWith,
+    owner ? undefined : { name: pc });
   if (!claimed) return { idle: true as const };
   const { record, run, lease } = claimed;
   try {
@@ -1296,8 +1326,8 @@ const finalFiles = (record: OsRecord, run: MyinRun, lease: string) => ({ video: 
   ...(run.layout ? {} : { summary: outPath(record, run, `summary-${tag(lease)}.png`), deck: outPath(record, run, `deck-${tag(lease)}.pdf`) }) });
 
 /** Render PC: where the finished video, the handouts, the YouTube subtitles and the check report go. */
-export async function claimMyinFinal(service: Service = createServiceSupabase(), short = false, owner?: string) {
-  const claimed = await claim(service, "final_pending", FINAL_LEASE_MS, (run) => placeFilter(owner)(run) && fits(short)(run), materialsKey, drawnWith);
+export async function claimMyinFinal(service: Service = createServiceSupabase(), short = false, owner?: string, pc?: string) {
+  const claimed = await claim(service, "final_pending", FINAL_LEASE_MS, (run) => placeFilter(owner)(run) && fits(short)(run), materialsKey, drawnWith, owner ? undefined : { name: pc });
   if (!claimed) return { idle: true as const };
   const { record, run, lease } = claimed;
   try {
@@ -1330,6 +1360,11 @@ export async function completeMyinFinal(input: { runId: string; lease: string; b
 
 export async function failMyinStage(input: { runId: string; lease: string; code: string }, service: Service = createServiceSupabase()) {
   const { record, run } = await leased(service, input.runId, input.lease);
+  // A render PC without this video's folder (one taken before videos stayed with their PC): prepare again where it is rebuilt.
+  if (input.code === "MYIN_WORK_MISSING" && !localOwner(run) && run.words?.voice && (record.stage === "clips_pending" || record.stage === "final_pending")) {
+    await prepareAgain(service, record, run, record.stage);
+    return { runId: record.id, retry: true };
+  }
   await failed(service, record, run, input.code);
   return { runId: record.id, retry: run.attempts < 3 };
 }

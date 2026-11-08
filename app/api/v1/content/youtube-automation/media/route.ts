@@ -5,7 +5,7 @@ import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { safeSecretMatch } from "@/lib/server/auth";
 import { buildYoutubeRenderBrief, claimYoutubeRender, completeYoutubeRender, failYoutubeRender } from "@/lib/server/youtube-render-run";
 import { MYIN_VOICE_PARTS, claimMyinBreath, claimMyinClips, claimMyinCta, claimMyinFinal, claimMyinPrep, claimMyinWords, completeMyinBreath, completeMyinClips, completeMyinCta, completeMyinFinal, completeMyinPrep, completeMyinVoiceBackfill, completeMyinWords, failMyinPrep, failMyinStage, failMyinWords, myinVoiceBackfill } from "@/lib/server/myin-run";
-import { renderPcSignalSchema, saveRenderPcSignal } from "@/lib/server/youtube-render-pc";
+import { RENDER_PC_NAME, renderPcSignalSchema, saveRenderPcSignal } from "@/lib/server/youtube-render-pc";
 import { assetsReadySchema, assetsUploadSchema, assetsUploadUrls, engineReadySchema, engineUploadSchema, engineUploadUrls, saveAssetsManifest, saveEngineManifest } from "@/lib/server/render-engine";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
 import { claimShortformRender,shortformVoice,completeShortformRender,failShortformRender } from "@/lib/server/shortform-render";
@@ -18,6 +18,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 800;
 
 const lease = { renderId: z.string().uuid(), lease: z.string().uuid() };
+// 렌더 PC 여러 대 (2026-11-08): the PC's name, so a video stays with the PC that holds its work folder.
+const pc = z.string().regex(RENDER_PC_NAME).optional();
 const inputSchema = z.discriminatedUnion("action", [
   z.object({action:z.literal("shorts_claim"),layoutVersion:z.union([z.literal(2),z.literal(3),z.literal(4)]),renderId:z.string().uuid().optional(),diagramTypes:z.array(z.enum(DIAGRAM_TYPES)).max(70).optional()}).strict(),
   z.object({action:z.literal("shorts_voice"),...lease,index:z.number().int().min(0).max(19)}).strict(),
@@ -33,7 +35,7 @@ const inputSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("myin_breath_claim") }).strict(),
   z.object({ action: z.literal("myin_breath_complete"), runId: z.string().uuid(), lease: z.string().uuid(),
     breaths: z.array(z.object({ index: z.number().int().min(0).max(149), after: z.array(z.number().int().min(0).max(400)).max(80) }).strict()).max(150) }).strict(),
-  z.object({ action: z.literal("myin_claim"), short: z.literal(true).optional() }).strict(),
+  z.object({ action: z.literal("myin_claim"), short: z.literal(true).optional(), pc }).strict(),
   z.object({ action: z.literal("myin_complete"), runId: z.string().uuid(), lease: z.string().uuid(),
     voice: z.object({ parts: z.number().int().min(1).max(MYIN_VOICE_PARTS), bytes: z.number().int().positive(), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict().optional(),
     preview: z.object({ bytes: z.number().int().positive() }).strict().optional() }).strict(),
@@ -44,16 +46,16 @@ const inputSchema = z.discriminatedUnion("action", [
     bytes: z.number().int().positive(), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
   // Stage 3: approved photos and music, CTA voice, Logan's preview check.
   // 내 컴퓨터로 ④ (2026-11-03): the 구독 대사 lines a member's own computer cannot make.
-  z.object({ action: z.literal("myin_cta_claim"), short: z.literal(true).optional() }).strict(),
+  z.object({ action: z.literal("myin_cta_claim"), short: z.literal(true).optional(), pc }).strict(),
   z.object({ action: z.literal("myin_cta_complete"), runId: z.string().uuid(), lease: z.string().uuid() }).strict(),
-  z.object({ action: z.literal("myin_prep_claim"), short: z.literal(true).optional() }).strict(),
+  z.object({ action: z.literal("myin_prep_claim"), short: z.literal(true).optional(), pc }).strict(),
   z.object({ action: z.literal("myin_prep_complete"), runId: z.string().uuid(), lease: z.string().uuid() }).strict(),
   z.object({ action: z.literal("myin_prep_fail"), runId: z.string().uuid(), lease: z.string().uuid(), code: z.string().max(80) }).strict(),
   // Stage 4: Logan's clips, then the full render, mix and handouts.
-  z.object({ action: z.literal("myin_clips_claim"), short: z.literal(true).optional() }).strict(),
+  z.object({ action: z.literal("myin_clips_claim"), short: z.literal(true).optional(), pc }).strict(),
   // One clip per metaphor scene plus the opening; a storyboard has at most 200 scenes, and stage diagrams make most of them metaphors.
   z.object({ action: z.literal("myin_clips_complete"), runId: z.string().uuid(), lease: z.string().uuid(), names: z.array(z.string().max(40)).max(201) }).strict(),
-  z.object({ action: z.literal("myin_final_claim"), short: z.literal(true).optional() }).strict(),
+  z.object({ action: z.literal("myin_final_claim"), short: z.literal(true).optional(), pc }).strict(),
   z.object({ action: z.literal("myin_final_complete"), runId: z.string().uuid(), lease: z.string().uuid(), bytes: z.number().int().positive(),
     durationSeconds: z.number().positive().max(14_400), lufs: z.number().min(-70).max(0), peak: z.number().min(-70).max(6) }).strict(),
   z.object({ action: z.literal("myin_stage_fail"), runId: z.string().uuid(), lease: z.string().uuid(), code: z.string().max(80) }).strict(),
@@ -87,19 +89,19 @@ export async function POST(request: Request) {
       : input.action === "complete" ? await completeYoutubeRender(input)
       : input.action === "myin_breath_claim" ? await claimMyinBreath()
       : input.action === "myin_breath_complete" ? await completeMyinBreath(input)
-      : input.action === "myin_claim" ? await claimMyinWords(undefined, Boolean(input.short))
+      : input.action === "myin_claim" ? await claimMyinWords(undefined, Boolean(input.short), input.pc)
       : input.action === "myin_complete" ? await completeMyinWords(input)
       : input.action === "myin_fail" ? await failMyinWords(input)
       : input.action === "myin_voice_backfill" ? await myinVoiceBackfill(input)
       : input.action === "myin_voice_backfill_complete" ? await completeMyinVoiceBackfill(input)
-      : input.action === "myin_cta_claim" ? await claimMyinCta(undefined, Boolean(input.short))
+      : input.action === "myin_cta_claim" ? await claimMyinCta(undefined, Boolean(input.short), input.pc)
       : input.action === "myin_cta_complete" ? await completeMyinCta(input)
-      : input.action === "myin_prep_claim" ? await claimMyinPrep(undefined, undefined, Boolean(input.short))
+      : input.action === "myin_prep_claim" ? await claimMyinPrep(undefined, undefined, Boolean(input.short), input.pc)
       : input.action === "myin_prep_complete" ? await completeMyinPrep(input)
       : input.action === "myin_prep_fail" ? await failMyinPrep(input)
-      : input.action === "myin_clips_claim" ? await claimMyinClips(undefined, undefined, Boolean(input.short))
+      : input.action === "myin_clips_claim" ? await claimMyinClips(undefined, undefined, Boolean(input.short), input.pc)
       : input.action === "myin_clips_complete" ? await completeMyinClips(input)
-      : input.action === "myin_final_claim" ? await claimMyinFinal(undefined, Boolean(input.short))
+      : input.action === "myin_final_claim" ? await claimMyinFinal(undefined, Boolean(input.short), undefined, input.pc)
       : input.action === "myin_final_complete" ? await completeMyinFinal(input)
       : input.action === "myin_stage_fail" ? await failMyinStage(input)
       : input.action === "short_refs_claim" ? await claimShortRefs()
