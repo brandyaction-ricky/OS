@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 type Params = { params: Promise<{ id: string }> };
-const inputSchema = z.object({ expectedVersion: z.number().int().positive(), accountOwnerId: z.string().uuid(), expectedAccountKey: z.string().regex(/^[0-9a-f]{64}$/), confirm: z.literal(true) }).strict();
+const inputSchema = z.object({ expectedVersion: z.number().int().positive(), accountOwnerId: z.string().uuid(), accountKey: z.string().regex(/^[0-9a-f]{24}$/).optional(), expectedAccountKey: z.string().regex(/^[0-9a-f]{64}$/), confirm: z.literal(true) }).strict();
 function target(id: string) {
   if (!z.string().uuid().safeParse(id).success) throw new ApiError(404, "THREADS_SOURCE_NOT_FOUND", "내 쓰레드 원고를 찾을 수 없습니다.");
   return id;

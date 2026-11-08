@@ -6,7 +6,7 @@ import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { RequestActor } from "./auth";
 import { assertHumanOwner, getPersonalRecord } from "./content-automation-v07";
-import { assertMetaModeMatches, authorizeMetaConnection, metaMode, publicMetaConnection, type MetaConnection } from "./meta-oauth";
+import { assertMetaModeMatches, authorizeMetaConnection, metaAccountKey, metaMode, publicMetaConnection, type MetaConnection } from "./meta-oauth";
 import { metaPublishProvider } from "./meta-publishing";
 
 type Run = {
@@ -20,7 +20,7 @@ export type ThreadsPublicationStatus = {
   connections: (ReturnType<typeof publicMetaConnection> & { publicationAccountKey: string })[];
   publication: null | {
     state: Run["state"]; mode: "mock" | "live"; publishedCount: number; total: number; permalink: string; errorCode?: string;
-    accountOwnerId: string; accountName: string; posts: string[];
+    accountOwnerId: string; accountKey: string; accountName: string; posts: string[];
   };
 };
 const CONNECTION_FIELDS = "owner_id,platform,external_account_id,account_name,account_type,scopes,token_expires_at,team_shared,status,connected_at,updated_at,last_success_at,last_error_code";
@@ -34,7 +34,7 @@ export function threadsPublicationEnabled() {
 function publicRun(run: Run | null): ThreadsPublicationStatus["publication"] {
   return run ? { state: run.state, mode: run.mode, publishedCount: run.checkpoint.receipts.length, total: run.posts.length,
     permalink: run.checkpoint.receipts[0]?.permalink ?? "", ...(run.error_code ? { errorCode: run.error_code } : {}),
-    accountOwnerId: run.account_owner_id, accountName: run.account_name, posts: run.posts } : null;
+    accountOwnerId: run.account_owner_id, accountKey: metaAccountKey({ owner_id: run.account_owner_id, platform: "threads", external_account_id: run.external_account_id }), accountName: run.account_name, posts: run.posts } : null;
 }
 async function sourceFor(actor: RequestActor, id: string) {
   assertHumanOwner(actor);
@@ -132,14 +132,15 @@ async function rpc(name: string, values: Record<string, unknown>): Promise<Run> 
   return data as Run;
 }
 
-export async function publishPersonalThreads(actor: RequestActor, id: string, input: { expectedVersion: number; accountOwnerId: string; expectedAccountKey: string; confirm: true }) {
+export async function publishPersonalThreads(actor: RequestActor, id: string, input: { expectedVersion: number; accountOwnerId: string; accountKey?: string; expectedAccountKey: string; confirm: true }) {
   const ownerId = assertHumanOwner(actor);
   if (!threadsPublicationEnabled()) throw new ApiError(503, "THREADS_PUBLICATION_DISABLED", "공식 API 발행은 아직 활성화하지 않았습니다.");
   if (input.confirm !== true) throw new ApiError(400, "HUMAN_CONFIRMATION_REQUIRED", "게시할 원고와 계정을 직접 확인해 주세요.");
   const source = await sourceFor(actor, id);
   const problem = threadsPostsProblem(source.metadata.posts, 1);
   if (problem) throw new ApiError(422, "THREADS_POSTS_INVALID", problem);
-  const connection = await authorizeMetaConnection(actor, input.accountOwnerId, "threads");
+  // 다채널 2단계: the account picked, among the owner's Threads accounts; none = their first, as before.
+  const connection = await authorizeMetaConnection(actor, input.accountOwnerId, "threads", "use", input.accountKey);
   assertMetaModeMatches(connection);
   if (input.expectedAccountKey !== threadsPublicationAccountKey(connection))
     throw new ApiError(409, "THREADS_ACCOUNT_CHANGED", "연결 계정이 바뀌었습니다. 계정과 원고를 다시 확인해 주세요.");
@@ -149,7 +150,7 @@ export async function publishPersonalThreads(actor: RequestActor, id: string, in
     p_account_owner: connection.owner_id, p_external_account_id: connection.external_account_id, p_account_name: connection.account_name,
     p_mode: metaMode(), p_operation: operationId });
   if (run.state === "published") return readThreadsPublicationStatus(actor, id);
-  const settings: PublicationSettings = { account: { platform: "threads", ownerId: connection.owner_id },
+  const settings: PublicationSettings = { account: { platform: "threads", ownerId: connection.owner_id, accountKey: metaAccountKey(connection) },
     platformFormat: run.posts.length === 1 ? "threads_text" : "threads_chain", publishMode: "now",
     caption: run.posts.length === 1 ? run.posts[0] : "", hashtags: "", firstComment: "", replyControl: "everyone", parts: run.posts, media: [] };
   let checkpointUncertain = false;
