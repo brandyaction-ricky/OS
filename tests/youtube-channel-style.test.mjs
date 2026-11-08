@@ -233,8 +233,11 @@ test("the editor picks 목적 from the OS 목적 정본 list and fills a channel
   const read = (file) => readFile(new URL(file, import.meta.url), "utf8");
   const [editor, route] = await Promise.all([read("../components/youtube-channel-styles.tsx"), read("../app/api/v1/content/youtube/channel-styles/route.ts")]);
   assert.match(route, /purposes: await purposeCanons\(\)/);
-  assert.match(editor, /<label>목적<select/); assert.doesNotMatch(editor, /datalist|placeholder="예\)/);
-  assert.match(editor, /index === 0 \? <p className="yp-hint">목적 <b>마이인 진단 유입<\/b>/);
+  assert.match(editor, /<span>목적 <span className="yp-hint">필수 · OS의 목적 정본 문서에서 골라요<\/span><\/span><select/); assert.doesNotMatch(editor, /datalist|placeholder="예\)/);
+  assert.match(editor, /index === 0 \? <dl className="yp-kv"><dt>목적<\/dt><dd>마이인 진단 유입<\/dd>/);
+  // same frame as the other 채널/링크 관리 tabs: a yp-card per channel, the look folded away, no inline style
+  assert.match(editor, /<section key=\{style\.id\} className="yp-card">/); assert.match(editor, /<details className="yp-chstyle-more">/);
+  assert.doesNotMatch(editor.slice(editor.indexOf("export function ChannelStyleEditor")), /style=\{\{/);
   assert.match(editor, /if \(pick\) set\(index, pick\)/);
 });
 
@@ -246,5 +249,5 @@ test("a card named like a 정본 row follows that row; renamed in the 정본, it
   assert.equal(followCanon(other, channels), other);
   const [server, editor] = await Promise.all(["../lib/server/channel-canon.ts", "../components/youtube-channel-styles.tsx"].map(file => readFile(new URL(file, import.meta.url), "utf8")));
   assert.match(server, /const followed = followCanon\(card, canon\.channels\);\n  return \{ card: followed, canon, text: channelBriefText\(followed, canon\) \};/);
-  assert.match(editor, /정본 표를 고치면 이 채널과 AI 작업에 바로 반영돼요/);
+  assert.match(editor, /고치기<\/Link> <span className="yp-hint">고치면 이 채널에 바로 반영돼요/);
 });
