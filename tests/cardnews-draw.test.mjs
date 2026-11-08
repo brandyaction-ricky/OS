@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { CARD_DRAW_SIZE, cardDrawPrompt, castCharacters, myGptBatchPrompt, myGptDrawPrompt } from "../lib/cardnews/draw.ts";
+import { CARD_DRAW_SIZE, cardDrawPrompt, cardsForFiles, castCharacters, myGptBatchPrompt, myGptDrawPrompt, myGptFileName } from "../lib/cardnews/draw.ts";
+import { unzipImages } from "../lib/unzip.ts";
 
 // 카드 그림 (대표 2026-11-02): the picture is 4:5 like the card, carries no letters (the card writes them in Pretendard), and names the
 // 캐릭터 창고 pictures in the order they are sent so GPT keeps those faces.
@@ -68,12 +69,40 @@ test("several cards go to ChatGPT in one brief, each naming its own references",
   assert.deepEqual(castCharacters(rows, "도현 · 낙서").map(row => row.name), ["도현 · 주인공 B", "강점 낙서 6묶음"]);
   assert.deepEqual(castCharacters(rows, ""), []);
   const text = myGptBatchPrompt("webtoon", ["서윤 · 주인공 A", "도현 · 주인공 B", "강점 낙서 6묶음"], [
-    { card: "22장", scene: "낙서가 철퍼덕", refNames: ["서윤 · 주인공 A", "강점 낙서 6묶음"] },
-    { card: "30장", scene: "엘리베이터의 도현", refNames: ["도현 · 주인공 B", "강점 낙서 6묶음"] }]);
+    { card: "22장", file: myGptFileName(21), scene: "낙서가 철퍼덕", refNames: ["서윤 · 주인공 A", "강점 낙서 6묶음"] },
+    { card: "30장", file: myGptFileName(29), scene: "엘리베이터의 도현", refNames: ["도현 · 주인공 B", "강점 낙서 6묶음"] }]);
   assert.match(text, /left to right: 1\) 서윤 · 주인공 A, 2\) 도현 · 주인공 B, 3\) 강점 낙서 6묶음/);
-  assert.match(text, /Draw the 2 pictures below in this order, one picture per reply/);
-  assert.match(text, /Picture 1 — 「22장」 \(in this scene 참고 그림 1 = 서윤 · 주인공 A, 참고 그림 2 = 강점 낙서 6묶음\): 낙서가 철퍼덕/);
-  assert.match(text, /Picture 2 — 「30장」 \(in this scene 참고 그림 1 = 도현 · 주인공 B/);
-  assert.match(text, /wait until I write 다음/);
+  assert.match(text, /Picture 1 — 「22장」 · card-22\.png \(in this scene 참고 그림 1 = 서윤 · 주인공 A, 참고 그림 2 = 강점 낙서 6묶음\): 낙서가 철퍼덕/);
+  assert.match(text, /Picture 2 — 「30장」 · card-30\.png \(in this scene 참고 그림 1 = 도현 · 주인공 B/);
+  // 2026-11-08: ChatGPT drew all 38 of 사건 1 in one reply and offered a ZIP, so the brief now asks for exactly that.
+  assert.match(text, /Draw all 2 pictures below in one go, in this order, without stopping to ask me/);
+  assert.match(text, /give me one ZIP file with all 2 PNGs/);
+  assert.doesNotMatch(text, /다음|one picture per reply/);
+  assert.equal(myGptFileName(4), "card-05.png");
+});
+
+// 받은 ZIP 넣기 (대표 2026-11-08): the ZIP opens in the browser; each picture goes to the card its file name says, else in order.
+test("a ZIP from ChatGPT opens into its pictures, and file names pick the cards", async () => {
+  // Made with Python's zipfile like ChatGPT's: a stored and a deflated picture in a folder, a prompt text and a macOS copy to skip.
+  const pictures = await unzipImages(new Blob([readFileSync(new URL("./fixtures/my-gpt-pictures.zip", import.meta.url))]));
+  assert.deepEqual(pictures.map(file => [file.name, file.type, file.size]), [["card-03.png", "image/png", 146], ["card-02.png", "image/png", 146]]);
+  for (const file of pictures) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    assert.deepEqual([...bytes.slice(1, 4)], [80, 78, 71], "PNG signature");
+    assert.equal(new TextDecoder().decode(bytes.slice(-8, -4)), "IEND", "the whole picture came out");
+  }
+  await assert.rejects(unzipImages(new Blob(["not a zip"])), /ZIP 파일이 아니에요/);
+
+  const cards = [1, 2, 4, 5];
+  assert.deepEqual(cardsForFiles(["card-03.png", "card-02.png"], cards, [1, 4]), [2, 1], "by name, even a card already done");
+  assert.deepEqual(cardsForFiles(["card-02.png", "card-06.png"], cards, [1, 4]), [1, 5], "a skipped picture leaves only its own card empty");
+  assert.deepEqual(cardsForFiles(["image (1).png", "image (2).png"], cards, [1, 4]), [1, 4], "no card names: in order");
+  assert.deepEqual(cardsForFiles(["card-02.png", "my-gpt.png"], cards, [4, 5]), [4, 5], "one unnamed picture: all in order");
+  assert.deepEqual(cardsForFiles(["card-04.png"], cards, [1]), [1], "a name that is no 웹툰 card: in order");
+  assert.deepEqual(cardsForFiles(["card-02.png", "card-02 (1).png"], cards, [1, 4]), [1, 4], "two pictures for one card: in order");
+  assert.deepEqual(cardsForFiles(["a.png", "b.png", "c.png"], cards, [1]), [1], "only as many as there are ticked cards");
+  const panel = readFileSync(new URL("../components/card-draw-batch.tsx", import.meta.url), "utf8");
+  assert.match(panel, /받은 ZIP 넣기/);
+  assert.match(panel, /isZip\(file\) \? unzipImages\(file\)/);
 });
 

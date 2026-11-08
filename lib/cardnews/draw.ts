@@ -53,15 +53,28 @@ export function castCharacters<T extends { name: string }>(characters: T[], cast
 
 /**
  * 「그림 한꺼번에 › 내 GPT」 (대표 2026-11-04): several cards in one ChatGPT conversation. One side-by-side sheet holds every character the
- * cards need; each picture says what its own 「참고 그림 1 · 2」 are, and ChatGPT draws one per reply so the PD can paste them back in order.
+ * cards need, and each picture says what its own 「참고 그림 1 · 2」 are. Since 2026-11-08 ChatGPT draws them all in one go, without
+ * waiting for 「다음」, and hands back one ZIP whose file names say which card each picture is for.
  */
-export function myGptBatchPrompt(style: CardDrawStyle, sheetNames: string[], items: { card: string; scene: string; refNames: string[] }[]) {
+export function myGptBatchPrompt(style: CardDrawStyle, sheetNames: string[], items: { card: string; file: string; scene: string; refNames: string[] }[]) {
   const { width, height } = CARD_DRAW_SIZE;
   return [
     CARD_DRAW_STYLES[style].prompt,
     sheetNames.length ? `The attached image shows these characters side by side, left to right: ${sheetNames.map((name, index) => `${index + 1}) ${name}`).join(", ")}. Draw them exactly as they look there (face, hair, body shape, outfit, line style) in every picture.` : "",
-    `Draw the ${items.length} pictures below in this order, one picture per reply: each a portrait 4:5 picture (${width} × ${height}) for an Instagram card. Under each picture write only its label (like 「${items[0]?.card ?? "1장"}」), then wait until I write 다음. Draw no letters, words, numbers, speech bubbles, captions, logos or watermarks in any picture: the text is added later.`,
-    ...items.map((item, index) => `Picture ${index + 1} — 「${item.card}」${item.refNames.length ? ` (in this scene ${item.refNames.map((name, at) => `참고 그림 ${at + 1} = ${name}`).join(", ")})` : ""}: ${item.scene.trim()}`),
+    `Draw all ${items.length} pictures below in one go, in this order, without stopping to ask me between pictures: each a portrait 4:5 PNG (${width} × ${height}) for an Instagram card, saved under its file name (like 「${items[0]?.file ?? myGptFileName(0)}」). When every picture is done, give me one ZIP file with all ${items.length} PNGs. Draw no letters, words, numbers, speech bubbles, captions, logos or watermarks in any picture: the text is added later.`,
+    ...items.map((item, index) => `Picture ${index + 1} — 「${item.card}」 · ${item.file}${item.refNames.length ? ` (in this scene ${item.refNames.map((name, at) => `참고 그림 ${at + 1} = ${name}`).join(", ")})` : ""}: ${item.scene.trim()}`),
   ].filter(Boolean).join("\n\n");
 }
 
+/** The file name ChatGPT saves a card's picture under: card index 4 (5장) → 「card-05.png」. */
+export const myGptFileName = (index: number) => `card-${String(index + 1).padStart(2, "0")}.png`;
+
+/**
+ * Which card each picture back from ChatGPT goes to (by card index; shorter than `names` once the ticked cards run out): by its file name
+ * when every name points at a different 웹툰 card (「card-05.png」 → 5장), so a picture ChatGPT skipped leaves only its own card empty;
+ * otherwise the ticked cards still waiting, in order.
+ */
+export function cardsForFiles(names: string[], cards: number[], waiting: number[]) {
+  const named = names.map(name => Number(/card-0*(\d+)/i.exec(name)?.[1]) - 1);
+  return named.every(index => cards.includes(index)) && new Set(named).size === named.length ? named : waiting.slice(0, names.length);
+}

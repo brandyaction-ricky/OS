@@ -150,8 +150,9 @@ test("a 웹툰 화 starts by hand and each 칸 brings its 장면 to the drawing 
   await expect(page.locator(".yp-card-checks")).toContainText("2화에 칸이 없어요");
 });
 
-// 그림 한꺼번에 (대표 2026-11-04): the 웹툰 cards still to draw are ticked; 내 GPT pastes fill them in order, the company API draws the ticked ones.
-test("웹툰 pictures are drawn together: pasted back in order, or drawn on the API in one go", async ({ page }) => {
+// 그림 한꺼번에 (대표 2026-11-04): the 웹툰 cards still to draw are ticked; 내 GPT pictures come back (since 2026-11-08 as one ZIP, each
+// going to the card its file name says), the company API draws the ticked ones.
+test("웹툰 pictures are drawn together: put back from one ZIP, or drawn on the API in one go", async ({ page }) => {
   await editor(page);
   await page.getByRole("checkbox", { name: "웹툰형", exact: true }).check();
   await page.getByRole("button", { name: "직접 쓰기", exact: true }).click();
@@ -168,16 +169,10 @@ test("웹툰 pictures are drawn together: pasted back in order, or drawn on the 
   await page.context().clearPermissions();
   await batch.getByRole("button", { name: "내 GPT로 한꺼번에" }).click();
   await batch.getByRole("button", { name: "그림 설명 복사 (2장)" }).click();
-  await expect(batch.getByLabel("한꺼번에 그림 설명")).toHaveValue(/Picture 1 — 「2장」[\s\S]*Picture 2 — 「3장」/);
-  await page.evaluate(async () => {
-    const data = new DataTransfer();
-    for (const name of ["gpt-1.png", "gpt-2.png"]) {
-      const canvas = Object.assign(document.createElement("canvas"), { width: 40, height: 50 });
-      canvas.getContext("2d")!.fillRect(0, 0, name.length, 50);
-      data.items.add(new File([await new Promise<Blob>(resolve => canvas.toBlob(b => resolve(b!), "image/png"))], name, { type: "image/png" }));
-    }
-    window.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data }));
-  });
+  await expect(batch.getByLabel("한꺼번에 그림 설명")).toHaveValue(/Picture 1 — 「2장」 · card-02\.png[\s\S]*Picture 2 — 「3장」 · card-03\.png/);
+  await expect(batch.getByLabel("한꺼번에 그림 설명")).toHaveValue(/one ZIP file with all 2 PNGs/);
+  // The ZIP holds card-03.png before card-02.png in a folder, plus a prompt text and a macOS copy that stay out.
+  await batch.getByLabel("받은 ZIP · 그림 파일").setInputFiles("tests/fixtures/my-gpt-pictures.zip");
   await expect(batch.getByText("✓ 넣었어요")).toHaveCount(2);
   const before = await page.getByRole("button", { name: "2장 보기", exact: true }).locator("img").getAttribute("src");
   await batch.getByRole("checkbox", { name: "2장 고르기" }).check();
