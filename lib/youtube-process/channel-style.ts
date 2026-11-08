@@ -66,6 +66,12 @@ export function canonChannels(markdown: string) {
     .filter(([name]) => name).map(([name, concept = "", topics = ""]) => ({ name: name.slice(0, 30), concept: concept.slice(0, 200), topics: topics.slice(0, 300) }));
 }
 
+/** 대표 2026-11-08 「정본은 언제든 편하게 바꿀 수 있게」: a card named like a row of its 정본's table follows that row, so the 정본 is the one place its concept · topic axis change. */
+export function followCanon<T extends { name: string; concept?: string; topics?: string }>(card: T, channels: ReturnType<typeof canonChannels>) {
+  const row = channels.find(item => item.name === card.name.trim());
+  return row ? { ...card, concept: row.concept, topics: row.topics } : card;
+}
+
 /** What an AI reads first for a channel that is not the 기본 채널: its card, then its 목적 정본 (opened by doc_id). */
 export function channelBriefText(card: ChannelStyle, canon: { id: string; title: string }) {
   return [`## 이 영상의 채널 — 「${card.name}」 (먼저 읽기)`, `- 목적: ${card.purpose}`, card.concept ? `- 컨셉: ${card.concept}` : "",

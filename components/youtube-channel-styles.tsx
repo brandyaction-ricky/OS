@@ -88,7 +88,7 @@ export function ChannelStyleEditor() {
   if (version === null) return error ? <p className="yp-errline" role="alert">{error}</p> : <p className="yp-hint" role="status">불러오는 중이에요…</p>;
   return <form className="yp-card yp-confirm-form" onSubmit={event => { event.preventDefault(); void save(); }}>
     <p className="yp-hint">채널마다 목적 · 컨셉 · 주제 축 · 운영 형식과 영상 모양을 정해요. 새 영상과 카드뉴스는 채널을 골라 만들고, 고르지 않으면 맨 위 <b>기본 채널</b>이에요(예전 영상도 모두 기본 채널). 영상 모양은 음성을 시작할 때 그 영상에 고정돼서, 여기서 고쳐도 이미 만들던 영상은 그대로예요.</p>
-    {styles.map((style, index) => { const canon = canons.find(row => row.purpose === style.purpose.trim()); return <fieldset key={style.id} className="yp-chstyle">
+    {styles.map((style, index) => { const canon = canons.find(item => item.purpose === style.purpose.trim()), row = index ? canon?.channels.find(item => item.name === style.name.trim()) : undefined; return <fieldset key={style.id} className="yp-chstyle">
       <legend>{style.name || "새 채널"}{index === 0 ? " · 기본 채널" : ""}{style.version ? ` · v${style.version}` : ""}</legend>
       <div className="yp-chstyle-row">
         <label>채널 이름<input className="yp-in" maxLength={30} value={style.name} onChange={event => set(index, { name: event.target.value })} placeholder="채널 이름" /></label>
@@ -97,17 +97,18 @@ export function ChannelStyleEditor() {
       {index === 0 ? <p className="yp-hint">목적 <b>마이인 진단 유입</b> — 기본 채널은 지금 쓰는 마이인 정본을 그대로 읽어요. 컨셉 · 주제 축도 그 정본을 따라서 여기에 따로 적지 않아요.</p> : <>
         <div className="yp-chstyle-row">
           <label>목적<select className="yp-in" value={style.purpose} onChange={event => set(index, { purpose: event.target.value })}>
-            <option value="">목적 정본 고르기</option>{canons.map(row => <option key={row.id} value={row.purpose}>{row.purpose}</option>)}
+            <option value="">목적 정본 고르기</option>{canons.map(item => <option key={item.id} value={item.purpose}>{item.purpose}</option>)}
             {style.purpose.trim() && !canon ? <option value={style.purpose}>{style.purpose} (정본 없음)</option> : null}</select></label>
-          {canon?.channels.length ? <label>정본의 채널<select className="yp-in" value={canon.channels.find(row => row.name === style.name.trim())?.name ?? ""}
-            onChange={event => { const row = canon.channels.find(item => item.name === event.target.value); if (row) set(index, row); }}>
-            <option value="">골라서 채우기</option>{canon.channels.map(row => <option key={row.name} value={row.name}>{row.name}</option>)}</select></label> : null}</div>
+          {canon?.channels.length ? <label>정본의 채널<select className="yp-in" value={row?.name ?? ""}
+            onChange={event => { const pick = canon.channels.find(item => item.name === event.target.value); if (pick) set(index, pick); }}>
+            <option value="">골라서 채우기</option>{canon.channels.map(item => <option key={item.name} value={item.name}>{item.name}</option>)}</select></label> : null}</div>
         <p className="yp-hint">{!canons.length ? "OS에 「목적 정본 — 목적」 문서가 아직 없어요. 문서를 만들면 여기서 목적을 고를 수 있어요."
           : !canon ? "목적을 고르면 이 채널의 AI 작업이 그 목적 정본을 먼저 읽어요."
-          : <>목적 정본: <Link className="yp-lnk" href={`/knowledge?document=${canon.id}`}>「{canon.title}」</Link> — 이 채널의 AI 작업은 이 문서를 먼저 읽어요.{canon.channels.length ? " 정본의 채널을 고르면 이름 · 컨셉 · 주제 축이 정본대로 채워져요." : " 정본에 「채널 카드」 표를 넣으면 채널을 골라 채울 수 있어요."}</>}</p>
-        <div className="yp-chstyle-row">
-          <label>컨셉 한 줄<input className="yp-in" maxLength={200} value={style.concept} onChange={event => set(index, { concept: event.target.value })} placeholder="정본의 채널을 고르면 채워져요" /></label>
-          <label>주제 축 (같은 목적의 다른 채널과 겹치지 않게)<input className="yp-in" maxLength={300} value={style.topics} onChange={event => set(index, { topics: event.target.value })} placeholder="정본의 채널을 고르면 채워져요" /></label></div></>}
+          : <>목적 정본: <Link className="yp-lnk" href={`/knowledge?document=${canon.id}`}>「{canon.title}」</Link> — 이 채널의 AI 작업은 이 문서를 먼저 읽어요.{canon.channels.length ? " 정본의 채널을 고르면 그 채널의 컨셉 · 주제 축은 정본을 따라가요." : " 정본에 「채널 카드」 표를 넣으면 채널을 골라 정본을 따라가게 할 수 있어요."}</>}</p>
+        {row ? <p className="yp-hint">컨셉 <b>{row.concept || "정본에서 아직 안 정했어요"}</b> · 주제 축 <b>{row.topics || "정본에서 아직 안 정했어요"}</b> — 정본 표를 고치면 이 채널과 AI 작업에 바로 반영돼요. <Link className="yp-lnk" href={`/knowledge?document=${canon!.id}`}>정본에서 고치기</Link>{" "}(정본에서 채널 이름을 바꾸면 여기서 한 번 다시 골라 주세요.)</p>
+        : <div className="yp-chstyle-row">
+          <label>컨셉 한 줄<input className="yp-in" maxLength={200} value={style.concept} onChange={event => set(index, { concept: event.target.value })} placeholder="정본의 채널을 고르면 정본을 따라가요" /></label>
+          <label>주제 축 (같은 목적의 다른 채널과 겹치지 않게)<input className="yp-in" maxLength={300} value={style.topics} onChange={event => set(index, { topics: event.target.value })} placeholder="정본의 채널을 고르면 정본을 따라가요" /></label></div>}</>}
       <div className="yp-chstyle-row">
         <label>올릴 유튜브 채널<select className="yp-in" value={style.youtube} onChange={event => set(index, { youtube: event.target.value })}>
           <option value="">이름으로 찾기 · 없으면 첫 연결</option>{youtube.map(row => <option key={row.channelId} value={row.channelId}>{row.accountName}</option>)}
