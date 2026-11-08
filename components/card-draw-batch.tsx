@@ -1,17 +1,23 @@
 "use client";
 // 카드 만들기 › 그림 한꺼번에 (대표 2026-11-04): tick the 웹툰 cards to draw — the ones without a picture start ticked — and draw them in
 // one go: on the company API (one click, the cost asked first) or in the PD's own ChatGPT (one sheet and one brief, then the pictures
-// pasted or dropped back, each going to the next ticked card).
+// pasted or dropped back, each going to the next ticked card). Since 2026-11-08 ChatGPT draws them all at once and hands back one ZIP:
+// put in whole, each picture goes to the card its file name says.
 import { useEffect, useRef, useState } from "react";
 import { Images } from "lucide-react";
 import { imageEstimate } from "@/lib/cost";
-import { castCharacters, myGptBatchPrompt, type CardCharacterView } from "@/lib/cardnews/draw";
+import { cardsForFiles, castCharacters, myGptBatchPrompt, myGptFileName, type CardCharacterView } from "@/lib/cardnews/draw";
+import { unzipImages } from "@/lib/unzip";
 import type { CardDraft, CardPhoto } from "@/lib/cardnews/formats";
 import { referenceSheet } from "./card-draw-panel";
 import { CostTag, useCostConfirm, useCostModels } from "./cost-notice";
 import type { YpPage } from "./youtube-process-frame";
 
 type CardState = "drawing" | "done" | "fail";
+const isZip = (file: File) => /\.zip$/i.test(file.name) || /zip/.test(file.type);
+/** Dropped, picked or pasted files as pictures: a ZIP opens into the pictures inside it, sorted by file name. */
+const pictures = async (files: File[]) => (await Promise.all(files.map(file => isZip(file) ? unzipImages(file) : file.type.startsWith("image/") ? [file] : [])))
+  .flat().sort((a, b) => a.name.localeCompare(b.name, "ko", { numeric: true }));
 
 export function CardDrawBatch({ page, projectId, draft, onPlace, onFile }: { page: YpPage; projectId: string; draft: CardDraft;
   onPlace: (index: number, photo: CardPhoto) => void; onFile: (index: number, file: File) => Promise<boolean> }) {
@@ -39,13 +45,18 @@ export function CardDrawBatch({ page, projectId, draft, onPlace, onFile }: { pag
   const drawable = chosen.filter(index => [...scene(index)].length >= 2).sort((a, b) => a - b);
   const amount = drawable.reduce((sum, index) => sum + (imageEstimate(model, "high", refsOf(index).length) ?? 0), 0);
   const set = (index: number, state: CardState) => setStates(current => ({ ...current, [index]: state }));
-  // Pictures coming back from ChatGPT fill the ticked cards in order, skipping the ones already filled.
+  // Pictures coming back from ChatGPT go to the card their file name says (「card-05.png」), or else fill the ticked cards in order,
+  // skipping the ones already filled.
   const pending = drawable.filter(index => states[index] !== "done" && states[index] !== "drawing");
   const putRef = useRef<(files: File[]) => Promise<void>>(async () => {});
-  putRef.current = async files => {
-    const queue = [...pending];
-    for (const file of files) {
-      const index = queue.shift();
+  putRef.current = async raw => {
+    let files: File[];
+    try { files = await pictures(raw); } catch (reason) { setHint(reason instanceof Error ? reason.message : "ZIP을 열지 못했어요."); return; }
+    if (!files.length) { setHint("그림 파일이나 ChatGPT가 준 ZIP만 넣을 수 있어요."); return; }
+    setHint("");
+    const targets = cardsForFiles(files.map(file => file.name), cards.map(({ index }) => index), pending);
+    for (const [at, file] of files.entries()) {
+      const index = targets[at];
       if (index === undefined) { setHint("고른 장이 모두 찼어요. 더 넣으려면 장을 더 골라요."); return; }
       set(index, "drawing");
       set(index, await onFile(index, file) ? "done" : "fail");
@@ -54,9 +65,11 @@ export function CardDrawBatch({ page, projectId, draft, onPlace, onFile }: { pag
 
   useEffect(() => {
     if (!mine) return;
-    const images = (files?: FileList | null) => [...(files ?? [])].filter(row => row.type.startsWith("image/")).sort((a, b) => a.name.localeCompare(b.name, "ko", { numeric: true }));
     const outside = (event: DragEvent) => !event.dataTransfer || event.dataTransfer.types.includes("application/x-card-slide") || !event.dataTransfer.types.includes("Files");
-    const paste = (event: ClipboardEvent) => { const files = images(event.clipboardData?.files); if (files.length) { event.preventDefault(); void putRef.current(files); } };
+    const paste = (event: ClipboardEvent) => {
+      const files = [...(event.clipboardData?.files ?? [])].filter(file => file.type.startsWith("image/") || isZip(file));
+      if (files.length) { event.preventDefault(); void putRef.current(files); }
+    };
     const over = (event: DragEvent) => {
       if (outside(event)) return;
       event.preventDefault(); setDragging(true);
@@ -66,9 +79,7 @@ export function CardDrawBatch({ page, projectId, draft, onPlace, onFile }: { pag
     const drop = (event: DragEvent) => {
       if (outside(event)) return;
       event.preventDefault(); setDragging(false);
-      const files = images(event.dataTransfer?.files);
-      if (files.length) void putRef.current(files);
-      else setHint("그림 파일만 넣을 수 있어요. ChatGPT에서 내려받은 그림을 끌어다 놓거나 「이미지 복사」 후 ⌘V를 눌러요.");
+      void putRef.current([...(event.dataTransfer?.files ?? [])]);
     };
     window.addEventListener("paste", paste); window.addEventListener("dragover", over); window.addEventListener("drop", drop);
     return () => { window.removeEventListener("paste", paste); window.removeEventListener("dragover", over); window.removeEventListener("drop", drop); };
@@ -99,7 +110,7 @@ export function CardDrawBatch({ page, projectId, draft, onPlace, onFile }: { pag
     }
   });
   const copyPrompt = () => run("prompt", async () => {
-    const text = myGptBatchPrompt("webtoon", sheetRows.map(row => row.name), drawable.map(index => ({ card: `${index + 1}장`, scene: scene(index), refNames: refsOf(index).map(row => row.name) })));
+    const text = myGptBatchPrompt("webtoon", sheetRows.map(row => row.name), drawable.map(index => ({ card: `${index + 1}장`, file: myGptFileName(index), scene: scene(index), refNames: refsOf(index).map(row => row.name) })));
     try { await navigator.clipboard.writeText(text); setPromptText(""); } catch { setPromptText(text); }
   });
   const pasteBack = () => run("paste", async () => {
@@ -118,7 +129,7 @@ export function CardDrawBatch({ page, projectId, draft, onPlace, onFile }: { pag
 
   if (!open) return <div className="yp-row-btns"><button type="button" className="yp-btn yp-sm" onClick={() => setOpen(true)}><Images size={13} aria-hidden="true" />그림 한꺼번에</button></div>;
   return <div className="yp-card-batch" role="group" aria-label="그림 한꺼번에">
-    {dragging ? <div className="yp-card-drop" aria-hidden="true"><span>여기에 놓으면 {next === undefined ? "고른 장" : `${next + 1}장`}부터 차례로 들어가요</span></div> : null}
+    {dragging ? <div className="yp-card-drop" aria-hidden="true"><span>여기에 놓으면 들어가요 · ZIP은 파일 이름대로{next === undefined ? "" : `, 이름 없는 그림은 ${next + 1}장부터`}</span></div> : null}
     <p className="yp-hint">그릴 장을 골라요. 그림이 없는 장은 미리 골라 뒀어요. 장면 설명이 있어야 그릴 수 있어요.</p>
     <ul className="yp-card-batch-list">{cards.map(({ slide, index }) => { const on = chosen.includes(index), state = states[index];
       return <li key={index}><label className={on ? "yp-on" : ""}><input type="checkbox" checked={on} disabled={Boolean(busy)} onChange={() => toggle(index)} aria-label={`${index + 1}장 고르기`} />
@@ -134,9 +145,11 @@ export function CardDrawBatch({ page, projectId, draft, onPlace, onFile }: { pag
       <li><b>1</b><button type="button" className="yp-btn yp-sm" disabled={!sheetRows.length || Boolean(busy)} onClick={() => void copySheet()}>{busy === "sheet" ? "만드는 중…" : "참고 그림 복사"}</button>
         <span className="yp-hint"><a href="https://chatgpt.com/" target="_blank" rel="noreferrer">ChatGPT</a> 새 대화창에 붙여 넣어요 (⌘V)</span></li>
       <li><b>2</b><button type="button" className="yp-btn yp-sm" disabled={Boolean(busy)} onClick={() => void copyPrompt()}>그림 설명 복사 ({drawable.length}장)</button>
-        <span className="yp-hint">이어서 붙여 넣고 보내요. 한 장씩 그려 주면 「다음」이라고 보내요</span></li>
-      <li><b>3</b><button type="button" className="yp-btn yp-sm" disabled={Boolean(busy)} onClick={() => void pasteBack()}>그린 그림 붙여 넣기</button>
-        <span className="yp-hint">그림마다 「이미지 복사」 → 여기를 누르거나 ⌘V. 받은 파일 여러 개를 한 번에 끌어다 놓아도 돼요. {next === undefined ? "고른 장이 모두 찼어요" : `다음 그림은 ${next + 1}장에 들어가요`}</span></li>
+        <span className="yp-hint">이어서 붙여 넣고 보내요. 전부 그려서 ZIP 하나로 줘요 — 장 수가 많으면 수십 분 걸려요</span></li>
+      <li><b>3</b><label className="yp-btn yp-sm">받은 ZIP 넣기
+        <input type="file" accept=".zip,application/zip,image/png,image/jpeg,image/webp" multiple hidden aria-label="받은 ZIP · 그림 파일" onChange={event => { void putRef.current([...(event.target.files ?? [])]); event.target.value = ""; }} /></label>
+        <button type="button" className="yp-btn yp-sm" disabled={Boolean(busy)} onClick={() => void pasteBack()}>그림 한 장 붙여 넣기</button>
+        <span className="yp-hint">ChatGPT가 준 ZIP을 내려받아 고르거나 화면에 끌어다 놓아요. 파일 이름대로 장에 들어가요. 그림 한 장은 「이미지 복사」 후 ⌘V. {next === undefined ? "고른 장이 모두 찼어요" : `이름 없는 그림은 ${next + 1}장부터 들어가요`}</span></li>
       {hint ? <li className="yp-card-mygpt-note" role="status">{hint}</li> : null}
     </ol> : null}
     {promptText ? <label className="yp-field"><span className="yp-fld-h"><b>한꺼번에 그림 설명</b></span>
