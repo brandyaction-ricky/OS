@@ -1034,7 +1034,11 @@
       "sha256": "c04ddc9df632270d382c726be37d6876b750a7d2a1317292c69dbfa06fd93e7a",
       "purpose": "나만 보기: os_documents.owner_only; 관리자 감사 열람 금지, 작성자 아닌 수정·삭제 금지, 작성자만 켜고 끔(os_set_note_owner_only)",
       "requiresApproval": true,
-      "notes": "Additive: one column (default false), guard triggers on os_documents and os_note_access_grants, one service-role setter. Rollback-only run on DEV (after the 20261029 RLS it lacks): admin cannot see, audit-open, edit or delete a 나만 보기 note; owner reads and edits; a named reader reads; turning it on removes a live audit grant; child pages follow; other notes keep the audit route. Not applied yet."
+      "productionApprovedAt": "2026-11-08",
+      "appliedEnvironments": [
+        "production"
+      ],
+      "notes": "Owner approved Production on 2026-11-08 (\"DB 반영하고 531 반영해\"); applied in one transaction with its schema history row and read back (column default false, 0 notes on, both triggers, setter service_role only). Additive: one column (default false), guard triggers on os_documents and os_note_access_grants, one service-role setter. Rollback-only run on DEV (after the 20261029 RLS it lacks): admin cannot see, audit-open, edit or delete a 나만 보기 note; owner reads and edits; a named reader reads; turning it on removes a live audit grant; child pages follow; other notes keep the audit route. Not applied to DEV."
     }
   ],
   "legacyMigrations": [
