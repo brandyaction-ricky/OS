@@ -56,6 +56,15 @@ export const channelMismatch = (style: Pick<PinnedStyle, "channel"> | null | und
 // 다채널 3단계 (2026-11-07): a channel other than the 기본 채널 reads its 목적 정본 — one OS document per purpose, shared by the
 // channels with that purpose — and its card first (lib/server/channel-canon.ts finds the document).
 export const purposeCanonTitle = (purpose: string) => `목적 정본 — ${purpose.trim()}`;
+export const PURPOSE_CANON_PREFIX = "목적 정본 — ";
+
+/** A channel row a 목적 정본 offers under 「## 채널 카드」 (| 채널 | 컨셉 | 주제 축 |), so a card is picked from the 정본, not typed. ⛔ = not decided yet. */
+export function canonChannels(markdown: string) {
+  const section = markdown.split(/^##\s+(?:\d+\.\s*)?채널 카드\s*$/m)[1]?.split(/^##\s/m)[0] ?? "";
+  return section.split("\n").filter(line => line.trim().startsWith("|")).slice(2)
+    .map(line => line.trim().replace(/^\||\|$/g, "").split("|").map(cell => cell.includes("⛔") ? "" : cell.trim()))
+    .filter(([name]) => name).map(([name, concept = "", topics = ""]) => ({ name: name.slice(0, 30), concept: concept.slice(0, 200), topics: topics.slice(0, 300) }));
+}
 
 /** What an AI reads first for a channel that is not the 기본 채널: its card, then its 목적 정본 (opened by doc_id). */
 export function channelBriefText(card: ChannelStyle, canon: { id: string; title: string }) {
