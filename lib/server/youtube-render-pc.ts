@@ -29,13 +29,21 @@ export const renderPcSignalSchema = z.object({
   engine: z.string().regex(/^[a-f0-9]{16,64}$/).optional(),
   pc: z.string().regex(RENDER_PC_NAME).optional(),
 }).strict();
-type Signal = Omit<z.infer<typeof renderPcSignalSchema>, "action" | "pc"> & { at: string };
+// since: when a named PC began reporting its current engine.
+type Signal = Omit<z.infer<typeof renderPcSignalSchema>, "action" | "pc"> & { at: string; since?: string };
 type Pc = Signal & { name: string };
 
 export async function saveRenderPcSignal(input: z.infer<typeof renderPcSignalSchema>) {
-  await writeSignal(input.pc ? pcPath(input.pc) : STATUS_PATH, signalOf(input));
+  const signal = signalOf(input);
   // A PC whose engine differs from the other PCs' takes no work, so every video is drawn with the one engine staff PCs match.
-  const held = Boolean(input.pc && input.engine) && fleetEngine(await readPcs()) !== input.engine;
+  let held = false;
+  if (input.pc && input.engine) {
+    const pcs = await readPcs(), before = pcs.find((pc) => pc.name === input.pc);
+    signal.since = before?.engine === input.engine ? before.since ?? before.at : signal.at;
+    // The single file of a worker without a name is not read once a named PC reports, so it never holds one.
+    held = fleetEngine([...pcs.filter((pc) => pc.name && pc.name !== input.pc), { ...signal, name: input.pc }]) !== input.engine;
+  }
+  await writeSignal(input.pc ? pcPath(input.pc) : STATUS_PATH, signal);
   // engineBundle false: the render PC packs and uploads its engine for staff PCs (once per fingerprint, when idle).
   return { ok: true, acceptsWork: input.diskFreeGb >= RENDER_PC_MIN_DISK_GB && !held, ...(held ? { engineHeld: true } : {}),
     ...(input.engine && !held ? { engineBundle: await engineBundleSaved(input.engine) } : {}) };
@@ -59,11 +67,14 @@ async function readPcs(): Promise<Pc[]> {
   return single ? [{ ...single, name: "" }] : [];
 }
 const online = (signal: Signal) => ageOf(signal)! <= OFFLINE_AFTER_SECONDS;
-// ponytail: most online PCs win and a tie takes the lower hash; the release tool updates every PC at once, so a tie lasts minutes.
+/** The engine most online PCs run; on a tie the one running longest, so a PC that joins never holds a PC already at work. */
 function fleetEngine(pcs: Pc[]) {
-  const counts = new Map<string, number>();
-  for (const pc of pcs) if (pc.engine && online(pc)) counts.set(pc.engine, (counts.get(pc.engine) ?? 0) + 1);
-  return [...counts].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))[0]?.[0]
+  const counts = new Map<string, { n: number; since: number }>();
+  for (const pc of pcs) if (pc.engine && online(pc)) {
+    const seen = counts.get(pc.engine), since = Date.parse(pc.since ?? pc.at);
+    counts.set(pc.engine, { n: (seen?.n ?? 0) + 1, since: Math.min(seen?.since ?? since, since) });
+  }
+  return [...counts].sort(([a, x], [b, y]) => y.n - x.n || x.since - y.since || (a < b ? -1 : 1))[0]?.[0]
     ?? pcs.filter((pc) => pc.engine).sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0]?.engine;
 }
 async function writeSignal(path: string, signal: Signal) {

@@ -54,6 +54,13 @@ test("each render PC reports in its own file, and a PC with another engine takes
   assert.equal(odd.acceptsWork, false);
   assert.equal(odd.engineHeld, true);
   assert.equal(await pc.renderPcEngine(), a, "staff PCs match the engine most render PCs run");
+  // A PC that joins on another engine never holds the one already at work, even one to one (whatever the hashes' order).
+  const longAgo = new Date(Date.now() - 3 * 86_400_000).toISOString();
+  const joins = new Map([["render-pc/pcs/mini-office.json", { ...signal(b, 0), since: longAgo }]]);
+  const fresh = await loadRenderPc(joins);
+  assert.equal((await fresh.saveRenderPcSignal(beat("air-2", a))).engineHeld, true, "the newcomer waits, though its hash sorts first");
+  assert.equal((await fresh.saveRenderPcSignal(beat("mini-office", b))).acceptsWork, true);
+  assert.equal(joins.get("render-pc/pcs/mini-office.json").since, longAgo, "kept while the engine stays");
   objects.set("render-pc/pcs/mini-2.json", signal(a, 31));
   assert.equal(await pc.renderPcGone("mini-2"), true, "off for more than half an hour");
   assert.equal(await pc.renderPcGone("mini-office"), false);
