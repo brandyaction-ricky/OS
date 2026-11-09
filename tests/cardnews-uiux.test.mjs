@@ -215,4 +215,15 @@ test("a 웹툰 bubble tail points at the tapped speaker, else at its side of the
   assert.deepEqual(formats.toonAim({ fields: { talkAt: "12,30" } }, "talk"), [12, 30]);
   assert.deepEqual(formats.toonAim({ fields: { replyAt: "250,9" } }, "reply"), [100, 9], "a tap is kept on the card");
   assert.deepEqual(formats.toonAim({ fields: { talkAt: "왼쪽" } }, "talk"), [28, 40], "anything else falls back");
+  assert.deepEqual(formats.toonAim({ fields: { sfxAt: "70,22" } }, "sfx"), [70, 22], "a battery tag is pinned to its character");
+});
+
+// 배터리 숫자 (대표 2026-11-09, 프롤로그 21장): only a bare percentage is drawn as a phone battery; other 효과음 stay letters.
+test("a 웹툰 효과음 that is only a percentage reads as a battery level", () => {
+  assert.equal(formats.toonBattery("2%"), 2);
+  assert.equal(formats.toonBattery(" 80 % "), 80);
+  assert.equal(formats.toonBattery("150%"), 100);
+  assert.equal(formats.toonBattery("휴우"), null);
+  assert.equal(formats.toonBattery("2%?"), null);
+  assert.equal(formats.toonBattery(undefined), null);
 });

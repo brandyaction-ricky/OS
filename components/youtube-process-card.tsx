@@ -8,7 +8,7 @@ import { createContext, Fragment, useCallback, useContext, useEffect, useLayoutE
 import { ArrowDown, ArrowRight, ArrowUp, Copy, Download, GalleryHorizontal, ImagePlus, Plus, Trash2 } from "lucide-react";
 import { CardSlideView } from "@/lib/cardnews/card-slide";
 import { cardsMissing } from "@/lib/cardnews/cards";
-import { addCardSlide, CARD_FORMAT_IDS, CARD_FORMATS, CARD_SIZE, cardLetters, cardMaxSlides, cardProblems, moveCardSlide, parseCardHashtags, removeCardSlide, slideSpec, TOON_AIM, toonUploads, type CardDraft, type CardFormatId, type CardPhoto } from "@/lib/cardnews/formats";
+import { addCardSlide, CARD_FORMAT_IDS, CARD_FORMATS, CARD_SIZE, cardLetters, cardMaxSlides, cardProblems, moveCardSlide, parseCardHashtags, removeCardSlide, slideSpec, TOON_AIM, toonBattery, toonUploads, type CardDraft, type CardFormatId, type CardPhoto } from "@/lib/cardnews/formats";
 import type { CardSourceChoice } from "@/lib/cardnews/sources";
 import { apiRequest } from "@/lib/api-client";
 import { modelName } from "@/lib/cost";
@@ -372,11 +372,11 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
           {editable ? <p className="yp-hint">가장 먼저 읽힐 구절 하나를 *별표*로 감싸면 파란색으로 보여요 (표지 · 마무리는 노란색).</p> : null}
           {spec?.fields.map(field => { const value = draft.slides[current].fields[field.key] ?? ""; const n = cardLetters(value);
             const set = (text: string) => edit({ ...draft, slides: draft.slides.map((row, index) => index === current ? { ...row, fields: { ...row.fields, [field.key]: text } } : row) });
-            const tail = draft.format === "webtoon" && editable && draft.slides[current].photo && value.trim() && field.key in TOON_AIM ? field.key as keyof typeof TOON_AIM : null;
+            const tail = draft.format === "webtoon" && editable && draft.slides[current].photo && value.trim() && field.key in TOON_AIM && (field.key !== "sfx" || toonBattery(value) !== null) ? field.key as keyof typeof TOON_AIM : null;
             const aiming = aim?.index === current && aim.key === tail, aimed = tail ? draft.slides[current].fields[`${tail}At`] : "";
             const aimRow = tail ? <div className="yp-card-aim-row"><button type="button" className="yp-btn yp-sm" aria-pressed={aiming} onClick={() => setAim(aiming ? null : { index: current, key: tail })}>
-              {aiming ? "미리보기에서 말하는 사람을 눌러요" : "말풍선 꼬리 맞추기"}</button>
-              {aimed ? <button type="button" className="yp-btn yp-sm" onClick={() => edit({ ...draft, slides: draft.slides.map((row, index) => index === current ? { ...row, fields: { ...row.fields, [`${tail}At`]: "" } } : row) })}>꼬리 처음대로</button> : null}</div> : null;
+              {tail === "sfx" ? (aiming ? "미리보기에서 배터리 캐릭터를 눌러요" : "배터리 표시 붙이기") : aiming ? "미리보기에서 말하는 사람을 눌러요" : "말풍선 꼬리 맞추기"}</button>
+              {aimed ? <button type="button" className="yp-btn yp-sm" onClick={() => edit({ ...draft, slides: draft.slides.map((row, index) => index === current ? { ...row, fields: { ...row.fields, [`${tail}At`]: "" } } : row) })}>{tail === "sfx" ? "표시 처음대로" : "꼬리 처음대로"}</button> : null}</div> : null;
             return <Fragment key={field.key}><label className="yp-field"><span className="yp-fld-h"><b>{field.label}</b>{field.optional ? <span className="yp-opt">선택</span> : null}
               <span className={n > field.max ? "yp-card-n yp-bad" : "yp-card-n"}>{n}/{field.max}</span>{over[current]?.includes(field.key) ? <span className="yp-tag yp-bad">넘침</span> : null}</span>
               <textarea className="yp-in" rows={field.max > 30 ? 3 : 2} value={value} aria-label={field.label} disabled={!editable} onCompositionStart={() => setComposing(true)} onCompositionEnd={() => setComposing(false)} onChange={event => set(event.target.value)} /></label>{aimRow}</Fragment>; })}
