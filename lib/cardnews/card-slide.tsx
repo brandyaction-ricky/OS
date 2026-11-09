@@ -211,21 +211,27 @@ function ToonSlide({ draft, slide, index, theme, src }: { draft: CardDraft; slid
   // An oval with a tail toward whoever speaks (toonAim: where the PD tapped, or the left / right of the faces the picture keeps in its
   // middle). It left the oval's bottom and pointed at nobody until the 1화 시안 (2026-11-02). The oval sits on its speaker's half of
   // the card: fixed left for 대사, a speaker on the right had their words hang over the listener (대표 2026-11-09, 프롤로그 19장).
-  // The tail starts 140 px in from the oval's outer side on its top edge — the oval's height estimated from its lines, as Satori cannot
-  // measure it — rises straight out of the oval and bends toward the speaker, as tails are drawn (a straight wedge read as a stub,
-  // 대표 2026-11-09), always rising at least half as steeply as it leans. It stops at least 180 px short of the speaker: reaching them,
-  // it stabbed faces in close-ups (대표 2026-11-09, 사건 1). Column-reverse draws the tail after the oval, so its white covers the
-  // oval's edge where they join.
+  // The tail grows out of the top middle of the oval — where its edge is flat, so the join needs no measuring — flaring wide at the
+  // root and tapering as it bends toward the speaker, always rising at least half as steeply as it leans. Its white covers the oval's
+  // line between its two sides and those sides end on that line, so oval and tail read as one outline: a wedge set on the oval looked
+  // like a separate piece (대표 2026-11-09). It stops at least 180 px short of the speaker: reaching them, it stabbed faces in
+  // close-ups (대표 2026-11-09, 사건 1). Satori cannot measure the oval, so its size is estimated from the words (for the aim and for
+  // how far its edge drops at the tail's root). Column-reverse draws the tail after the oval, so the tail is on top.
   const bubble = (name: "talk" | "reply", bottom: number) => {
-    const [ax, ay] = toonAim(slide, name), right = ax >= 50;
-    const lines = Math.min(3, plainCardText(slide.fields[name] ?? "").trim().split("\n").reduce((sum, line) => sum + Math.max(1, Math.ceil([...line].length / 15)), 0));
-    const baseX = right ? W - 196 : 196, baseY = H - bottom - Math.round(lines * 32 * 1.45 + 86);
-    const dx = ax / 100 * W - baseX, dy = Math.min(ay / 100 * H - baseY, -Math.abs(dx) / 2, -40), length = Math.hypot(dx, dy), reach = Math.min(130, Math.max(56, length - 180));
-    const tx = Math.round(170 + dx / length * reach), ty = Math.round(200 + dy / length * reach), bend = Math.round((200 + ty) / 2);
-    return <div style={{ display: "flex", flexDirection: "column-reverse", alignItems: right ? "flex-end" : "flex-start" }}>
+    const [ax, ay] = toonAim(slide, name), right = ax >= 50, text = plainCardText(slide.fields[name] ?? "").trim().split("\n");
+    const lines = Math.min(3, text.reduce((sum, line) => sum + Math.max(1, Math.ceil([...line].length / 15)), 0));
+    const wide = (line: string) => [...line].reduce((sum, letter) => sum + (letter === " " ? 9 : /[\x21-\x7e]/.test(letter) ? 16 : 31), 0);
+    const ovalW = Math.min(480, Math.max(...text.map(wide))) + 140 + 2 * LINE, ovalH = Math.round(lines * 32 * 1.45) + 80 + 2 * LINE;
+    const box = Math.max(ovalW, 340), baseX = right ? W - 56 - box / 2 : 56 + box / 2, baseY = H - bottom - ovalH;
+    const dx = ax / 100 * W - baseX, dy = Math.min(ay / 100 * H - baseY, -Math.abs(dx) / 2, -40), length = Math.hypot(dx, dy), reach = Math.min(130, Math.max(64, length - 180));
+    const tx = Math.round(170 + dx / length * reach), ty = Math.round(200 + dy / length * reach), lean = (tx - 170) * 0.35, bend = Math.round(200 - (200 - ty) * 0.45);
+    // How far below the oval's top its edge sits under the tail's root (32 px either side of the middle).
+    const drop = Math.min(12, Math.round(ovalH / 2 * (1 - Math.sqrt(Math.max(0, 1 - (32 / (ovalW / 2)) ** 2))))), end = 200 + LINE / 2 + drop;
+    return <div style={{ display: "flex", flexDirection: "column-reverse", alignItems: "center" }}>
       <div style={{ display: "flex", maxWidth: 620, background: theme.white, border: `${LINE}px solid ${theme.title}`, borderRadius: "50%", padding: "40px 70px", ...centred }}>{f(name, centred)}</div>
-      <svg width={340} height={200} viewBox="0 0 340 200" style={{ marginBottom: -LINE - 2, ...(right ? { marginRight: -30 } : { marginLeft: -30 }) }}>
-        <path d={`M148 200 Q148 ${bend} ${tx} ${ty} Q192 ${bend} 192 200`} fill={theme.white} stroke={theme.title} strokeWidth={LINE} strokeLinejoin="round" /></svg></div>;
+      <svg width={340} height={220} viewBox="0 0 340 220" style={{ marginBottom: -20 }}>
+        <path d={`M138 ${end + 6} L138 ${end} Q${Math.round(160 + lean)} ${bend} ${tx} ${ty} Q${Math.round(180 + lean)} ${bend} 202 ${end} L202 ${end + 6} Z`} fill={theme.white} />
+        <path d={`M138 ${end} Q${Math.round(160 + lean)} ${bend} ${tx} ${ty} Q${Math.round(180 + lean)} ${bend} 202 ${end}`} fill="none" stroke={theme.title} strokeWidth={LINE} strokeLinejoin="round" /></svg></div>;
   };
   // A battery reading (「2%」) is a phone battery in a white tag on the character it belongs to (sfxAt), pointing down at it. As loose
   // tilted letters it floated apart from the character, and 「폰 배터리가…」 called up no phone (대표 2026-11-09, 프롤로그 21 · 24장).
