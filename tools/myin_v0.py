@@ -15,24 +15,16 @@ import json, os, re, shutil, subprocess, sys, time
 VERSION = "v0"
 
 
-def finished_at(sc):
-    """The source time a scene looks finished: a second after the last phrase it waits for (its pieces are in), never past its end."""
-    times = [sc["t0"]]
-
-    def walk(o):
-        if isinstance(o, dict):
-            for k, v in o.items():
-                if (k == "t" or k.startswith("t_")) and isinstance(v, (int, float)) and sc["t0"] <= v < sc["t1"]: times.append(v)
-                else: walk(v)
-        elif isinstance(o, list):
-            for x in o: walk(x)
-    walk(sc)
-    return min(sc["t1"] - 0.12, max(max(times) + 1.0, sc["t0"] + 0.6))
+def settled_at(sc):
+    """The source time a scene looks finished: its last moment before the next scene's cross-fade (the frame check's last point).
+    Pieces come in on phrase times, on [text, time] pairs or on the scene's own clock (a summary's rows), so only the end has them all —
+    the 11-09 render-PC test caught a two-line statement and the summary half in at «a second after the last cue»."""
+    return max(sc["t0"], sc["t1"] - 0.25)
 
 
 def picture(M, sc, s):
     """The scene as it looks finished, else just after it starts; None when the engine draws neither (the frame check names it)."""
-    for t in (finished_at(s), s["t0"] + 0.6):
+    for t in (settled_at(s), s["t0"] + 0.6):
         try: return M.frame(sc, M.out_time(min(t, s["t1"] - 0.12))).convert("RGB")
         except Exception as e: print(f"장면 그림 못 그림: {s.get('type')} {round(t, 2)}초 ({type(e).__name__}: {e})", flush=True)
     return None
