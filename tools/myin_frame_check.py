@@ -2,7 +2,7 @@
 
 The preview sheet shows each scene at one moment; a diagram that fails later in its scene (Logan's QA: six blank screens) is only seen
 in the finished video. This draws every scene at a few moments with his engine — the same load and frame() the render uses — and lists
-the moments where the picture is one flat colour. No AI, about 0.1 s a frame.
+the moments where the picture is one flat colour, and those where the engine fails to draw (그리기 오류). No AI, about 0.1 s a frame.
 
   cd <MYIN_PKG>/tools/myin_pipeline && python myin_frame_check.py <video job> <out.json> [moments per scene = 5]
   (the preview's environment: STORY, SRC, PYTHONPATH with the diagram folder, MYIN_FONT_DIR)
@@ -15,7 +15,9 @@ MOST = 0.6            # a scene is blank when most of its moments are (early on,
 SKIP = {"endscreen"}  # YouTube puts its own end cards on this plain screen
 
 
-def flat_moments(scenes, M, points):
+def flat_moments(scenes, M, points, errors=None):
+    """The blank moments (most of a scene's); a moment the engine cannot draw goes to `errors` instead (11-09 request: a diagram that breaks
+    only while it moves stopped the 10/28 preview, so every moment is drawn, not only the finished look)."""
     import numpy as np
     out = []
     for i, sc in enumerate(scenes):
@@ -25,7 +27,10 @@ def flat_moments(scenes, M, points):
         for k in range(points):
             ts = a + (b - a) * k / max(1, points - 1)
             T = M.out_time(ts)
-            im = M.frame(scenes, T).convert("L")
+            try: im = M.frame(scenes, T).convert("L")
+            except Exception as e:
+                if errors is not None: errors.append({"scene": i + 1, "type": sc["type"], "t": round(T, 2), "error": f"{type(e).__name__}: {e}"[:160]})
+                continue
             im = im.crop((0, 0, im.width, int(im.height * TOP))).resize((160, 70))
             spread = float(np.asarray(im, np.float32).std())
             if spread < FLAT: out.append({"scene": i + 1, "type": sc["type"], "t": round(T, 2), "spread": round(spread, 2)})
@@ -42,11 +47,14 @@ def main():
     import render_myin as R
     M = R.M
     _, scenes, _ = R.load(job)
-    flat = flat_moments(scenes, M, points)
+    errors = []
+    flat = flat_moments(scenes, M, points, errors)
     # One line per scene, as the preview prints its 「문구 못 찾음」 (the OS reads both the same way).
     lines = [f"[장면 {s}] 빈 화면: {', '.join(str(f['t']) + '초' for f in flat if f['scene'] == s)}" for s in sorted({f["scene"] for f in flat})]
-    json.dump({"scenes": len(scenes), "points": points, "flat": flat, "lines": lines, "sec": round(time.time() - t0, 1)}, open(out, "w", encoding="utf-8"), ensure_ascii=False)
-    print(f"빈 화면 검사: 장면 {len(scenes)}개 × {points}순간 · 빈 화면 {len(lines)}장면 · {round(time.time() - t0, 1)}초", flush=True)
+    lines += [f"[장면 {s}] 그리기 오류: {', '.join(str(f['t']) + '초' for f in errors if f['scene'] == s)} ({next(f['error'] for f in errors if f['scene'] == s)})"
+              for s in sorted({f["scene"] for f in errors})]
+    json.dump({"scenes": len(scenes), "points": points, "flat": flat, "errors": errors, "lines": lines, "sec": round(time.time() - t0, 1)}, open(out, "w", encoding="utf-8"), ensure_ascii=False)
+    print(f"빈 화면 · 그리기 오류 검사: 장면 {len(scenes)}개 × {points}순간 · 빈 화면 {len({f['scene'] for f in flat})}장면 · 오류 {len({f['scene'] for f in errors})}장면 · {round(time.time() - t0, 1)}초", flush=True)
 
 
 if __name__ == "__main__":

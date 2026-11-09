@@ -133,3 +133,16 @@ export function editorScreenState(input: { versions: ScreenVersion[]; finals: { 
       ...(o.result ? { t_end: sec(o.result.at), reason: o.result.note } : {}) }])),
   };
 }
+
+/** 장면 그림 (편집기 3차 요청, 2026-11-09): before a longform's first final its ③ is a still of each scene, the screen's first version. */
+export const DRAFT_VERSION = "v0";
+/**
+ * 첫 「완성」: before the first final, what 완성 does depends on what waits — nothing: ④ · ⑤ start from the storyboard as it is;
+ * hand edits or chat orders: the editing computer applies them to the storyboard first (draft_finish), so none can start without one.
+ */
+export function firstSave(input: { ready: boolean; making: boolean; open: number; editor: boolean }) {
+  if (input.making) return "making" as const;
+  if (!input.ready) return "not_ready" as const;
+  if (!input.open) return "finish" as const;
+  return input.editor ? "editor" as const : "need_editor" as const;
+}

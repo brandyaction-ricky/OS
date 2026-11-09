@@ -28,6 +28,8 @@ interface MyinRun { id: string; status: string; stage: string; layout?: "short" 
   assetDecisions: Record<string, { decision: "approved" | "excluded" }>; ctaReady: string | null;
   prepared: { misses: string[]; sheets: number; credits: string[]; at: string } | null;
   clips: { name: string; label: string }[] | null; clipsReview: { name: string; note: string; at: string } | null;
+  /** 장면 그림 v0 (편집기 3차 요청 11-09): a longform's ③ as each scene's finished picture, on the editor screen. */ stills?: { at: string; files: number } | null;
+  screenCheckAuto?: boolean;
   final: { bytes: number; durationSeconds: number; lufs: number; peak: number; at: string } | null; scriptChanged?: boolean; workingSince?: string | null; pc?: string | null;
   sound: { report: string; at: string; edited?: { name: string; at: string } } | null; local: { by: string; name: string } | null; localFinish?: { by: string; name: string } | null; localReady: boolean;
   clipsStale?: string[] | null; photoCredits?: Record<string, { source: string; license: string; url: string | null }>;
@@ -75,7 +77,7 @@ const phaseLabel = (run: MyinRun) => run.voiceOnPc && run.stage === "words_pendi
   : run.stage === "cta_pending" && run.localFinish && run.voiceOnPc ? `영상 만드는 컴퓨터가 구독 대사 음성을 만들어요 · 그다음 ${maker(run)}가 자료 준비`
   : run.stage === "final_pending" ? `${maker(run)}가 전체 영상 만드는 중`
   : run.stage === "prep_pending" ? run.clipsReview ? `${maker(run)}가 자료 준비 · 다시 점검 중` : `${maker(run)}가 미리보기 준비 · ${run.layout === "short" ? "" : "자동 선곡 · "}점검 중`
-  : run.stage === "clips_pending" ? `${maker(run)}가 미리보기 영상 만드는 중`
+  : run.stage === "clips_pending" ? `${maker(run)}가 ${run.layout === "short" ? "미리보기 영상" : "미리보기(장면 그림)"} 만드는 중`
   : run.stage === "prep_ready" ? run.clipsReview ? "자료 준비 끝 · 사운드 확인 대기" : "미리보기 점검 끝" : PHASE[run.stage] ?? run.stage;
 
 const KIND: Record<string, string> = { people: "인물 사진", situations: "상황 사진", bgm: "음악" };
@@ -130,6 +132,8 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
   // 20-second poll made the browser download every clip again (2026-10-29: about 970 times a clip a day, most of the OS's egress).
   const outputsFor = useRef({ key: "", at: 0 });
   const [place, setPlace] = useState<DraftPlace>("pc");
+  // GPT 화면 검사 (편집기 3차 요청 11-09: 급할 땐 끄고 바로 편집으로): on unless turned off when the storyboard is confirmed.
+  const [screenCheck, setScreenCheck] = useState(true);
   // 채널 모양 (유쓰 요청 5/8): picked when the voice starts and pinned to the video with its version.
   const [styles, setStyles] = useState<{ id: string; name: string; version: number }[]>([]);
   const [styleId, setStyleId] = useState<string | null>(null);
@@ -335,8 +339,10 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
           {run.stage === "storyboard_review" ? <p>{short ? "확인 완료를 누르면 숏폼 미리보기가 바로 시작돼요." : "확인 완료를 누르면 3단계 미리보기가 바로 시작됩니다. 기획표의 사진 · 도식 · 글자 · 음악으로 미리보기 영상을 만들고, 구독 대사 음성(유료)과 사운드 편집은 미리보기 확인 뒤 4단계에서 합니다."}</p> : null}
           <label>메모 (수정 요청할 때는 필수)<textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder={short ? "예) 3번 장면은 큰 글자로, 도식 칸 글자를 줄여서" : "예) 7번 비유는 빼고, 구독은 두 번째 섹션 끝으로"} /></label>
           {run.stage === "storyboard_review" && !short ? <DraftPlacePicker value={place} onChange={setPlace} status={localPc} ready={run.localReady} token={accessToken} onConnected={() => void reloadLocal()} /> : null}
+          {run.stage === "storyboard_review" ? <label className="yt-check"><input type="checkbox" checked={screenCheck} onChange={(event) => setScreenCheck(event.target.checked)} />
+            점검 시트가 나오면 GPT가 바로 화면을 검사해요 <CostTag kind="paid" /> <small>급하면 끄고 바로 편집으로 넘어가요. 빈 화면 · 그리기 오류 검사는 언제나 해요(무료).</small></label> : null}
           <div className="yt-actions">
-            {run.stage === "storyboard_review" ? <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void act("confirm", () => post("/myin", "PATCH", { action: "review", runId: run.id, decision: "confirmed", note, place }))}>{busy === "confirm" ? "저장 중…" : "기획표 확인 완료 · 미리보기 만들기"}</button> : null}
+            {run.stage === "storyboard_review" ? <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void act("confirm", () => post("/myin", "PATCH", { action: "review", runId: run.id, decision: "confirmed", note, place, screenCheck }))}>{busy === "confirm" ? "저장 중…" : "기획표 확인 완료 · 미리보기 만들기"}</button> : null}
             <button type="button" className="secondary-button" disabled={Boolean(busy) || !note.trim()} onClick={() => void act("revise", () => post("/myin", "PATCH", { action: "review", runId: run.id, decision: "revise", note }))}>수정 요청</button>
           </div>
           {run.review?.decision === "confirmed" ? <small>{personName(run.review.name)} 확인 · {when(run.review.at)}{run.review.note ? ` · ${run.review.note}` : ""}</small> : null}
@@ -345,7 +351,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
     </Step>
 
     <Step index={2} state={step3} title={short ? "미리보기 확인 (로건, 유쓰)" : "미리보기 확인 (도식 · 글자 · 음악 — 로건, 유쓰)"} idBase="myin-step">
-      {short ? <p>기획표 확인이 끝나면 자동으로 시작해요. 숏폼 전체를 세로 미리보기로 만들어요. 고칠 곳이 있으면 [수정 요청]을 눌러요.</p> : <p>기획표 확인이 끝나면 자동으로 시작합니다. 고른 곳(영상 만드는 컴퓨터 또는 내 컴퓨터)이 기획표의 사진을 받아 넣고(받지 못한 사진만 회색 「사진 자리」), 자동 선곡으로 장면마다 곡을 깔고, 문구 위치를 점검한 뒤 오프닝·쇼릴과 비유 장면을 720p 미리보기 영상으로 먼저 만듭니다. 고칠 곳이 있으면 [수정 요청]을 눌러요. 기획표가 메모와 함께 내 AI에게 다시 가요.</p>}
+      {short ? <p>기획표 확인이 끝나면 자동으로 시작해요. 숏폼 전체를 세로 미리보기로 만들어요. 고칠 곳이 있으면 [수정 요청]을 눌러요.</p> : <p>기획표 확인이 끝나면 자동으로 시작합니다. 고른 곳(영상 만드는 컴퓨터 또는 내 컴퓨터)이 기획표의 사진을 받아 넣고(받지 못한 사진만 회색 「사진 자리」), 자동 선곡으로 장면마다 곡을 깔고, 문구 위치와 장면마다 다섯 순간(빈 화면 · 그리기 오류)을 점검한 뒤 장면마다 다 나온 모습을 그림으로 만들어 편집 화면에 깝니다(엔진이 아직 장면 그림을 못 그리는 컴퓨터는 720p 미리보기 영상). 고칠 곳이 있으면 [수정 요청]을 눌러요. 기획표가 메모와 함께 내 AI에게 다시 가요.</p>}
       {run && !materials && ["prep_pending", "clips_pending"].includes(run.stage) ? <div className="yt-run"><div className="yt-run-head"><RunState run={run} /></div>
         {draftWaiting ? placeButtons(run) : null}</div> : null}
       {run?.prepared && !materials ? <div className="yt-run">
@@ -353,7 +359,8 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
         {run.prepared.misses.length ? <ul className="yt-list">{run.prepared.misses.map((m) => <li key={m}>{m}</li>)}</ul> : null}
       </div> : null}
       {/* ③ and ④ both prepare new sheets; the screen check reads each set, the last chance being before the full video. */}
-      {run?.prepared ? <MyinScreenCheck runId={run.id} preparedAt={run.prepared.at} token={accessToken} onScene={(sheet) => void showSheet(sheet)} /> : null}
+      {run?.prepared ? <MyinScreenCheck runId={run.id} preparedAt={run.prepared.at} token={accessToken} onScene={(sheet) => void showSheet(sheet)}
+        auto={run.screenCheckAuto !== false} onAuto={(on) => act("screen_auto", () => post("/myin", "PATCH", { action: "screen_check_auto", runId: run.id, on }))} /> : null}
       {run?.prepared ? <details className="yt-details" open={sheetsOpen} onToggle={(event) => { const open = (event.target as HTMLDetailsElement).open; setSheetsOpen(open); if (open && !sheets.length) void showSheets(); }}>
         <summary>점검 시트 {run.prepared.sheets}장 보기</summary>
         <p className="yt-note">장면마다 한 컷씩입니다. 쇼릴 뒤부터는 컷 시각이 조금 앞당겨져 보이니(점검 기능의 특성), 문구 확인은 위 개수로 합니다.</p>
@@ -366,7 +373,20 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       {outputs?.clips.length ? <details className="yt-details" open={run?.stage === "clips_review"}><summary>장면 미리보기 {outputs.clips.length}개</summary>
         <div className="yt-clips">{outputs.clips.map((clip) => <div key={clip.label} style={{ display: "grid", gap: 4, minWidth: 0 }}>
           <small title={clip.label}>{clipName(clip.label)}</small>{clip.url ? <video src={clip.url} controls preload="metadata" style={short ? { width: "100%", aspectRatio: "9 / 16", borderRadius: 8, background: "#000" } : { width: "100%", aspectRatio: "16 / 9", borderRadius: 8, background: "#000" }} /> : null}</div>)}</div></details> : null}
-      {run?.stage === "clips_review" && !materials ? <div className="yt-note">
+      {run?.stage === "clips_review" && !materials && run.stills ? <div className="yt-note">
+        <strong>장면 그림 · 편집 화면에서 고치기</strong>
+        <p>장면마다 다 나온 모습을 그림 한 장씩으로 만들어 아래 [편집 화면]의 타임라인에 깔았어요(v0). 끌어서 자르거나 AI 채팅으로 고치고, 다 됐으면 편집 화면의 「완성」이나 아래 버튼을 눌러요. 그때 {maker(run)}가 사진 · 구독 대사를 준비하고 움직이는 첫 최종본(v1)까지 이어서 만들어요.</p>
+        {run.clipsStale?.length ? <div className="yt-actions"><p className="yt-note yt-warn">장면 그림을 만든 뒤 {run.clipsStale.join(" · ")}이(가) 바뀌었어요. 다시 만든 뒤 완성해 주세요.</p>
+          <button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => void act("prep", () => post("/myin", "PATCH", { action: "prepare", runId: run.id }))}>{busy === "prep" ? "시작하는 중…" : "장면 그림 다시 만들기"}</button></div> : null}
+        <div className="yt-actions"><button type="button" className="primary-button" disabled={Boolean(busy) || Boolean(run.clipsStale?.length)} onClick={() => void (async () => {
+          if (!window.confirm(`지금 기획표로 완성해요. ${maker(run)}가 사진을 확정하고 구독 대사 음성을 만든 뒤 1080p 60fps 전체 영상까지 이어서 만들어요. 시작할까요?`)) return;
+          if (board && !await askVoice(board.cta.map((c) => c.line).join("\n"), "이미 만든 문장은 다시 들지 않아요", Boolean(run.voiceOnPc))) return;
+          await act("clips", () => post("/editor", "POST", { action: "save", projectId: sourceId }));
+        })()}>{busy === "clips" ? "시작하는 중…" : "완성 · 움직이는 첫 최종본 만들기"}</button>
+          {board?.cta.length ? <CostTag kind="paid" /> : null}
+          <small>완성하지 않은 손 편집이 있으면 편집하는 컴퓨터가 먼저 반영해요.</small></div>
+      </div> : null}
+      {run?.stage === "clips_review" && !materials && !run.stills ? <div className="yt-note">
         <strong>로건, 유쓰 확인</strong>
         <label>메모 (수정 요청할 때는 필수)<textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="예) 오프닝 좋음 · 7번 빙산 장면 글자가 넘쳐요" /></label>
         {run.clipsStale?.length ? <div className="yt-actions"><p className="yt-note yt-warn">미리보기를 만든 뒤 {run.clipsStale.join(" · ")}이(가) 바뀌었어요. 지금 미리보기는 옛 재료라서 확인할 수 없어요.</p>
@@ -388,7 +408,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
     </Step>
 
     <Step index={3} state={step4} title={short ? "사진 확정" : "자료 준비 (사진 · 구독 대사 · 사운드)"} idBase="myin-step">
-      <p>{short ? "미리보기를 확인하면 사진을 확정하고 바로 전체 영상을 만들어요. 숏폼은 음악 없이 목소리만 들어가요." : "미리보기 확인을 누르면 자동으로 시작합니다. 미리보기의 사진을 확정하고 구독 대사 음성을 만든 뒤 고른 곳(영상 만드는 컴퓨터 또는 내 컴퓨터)이 다시 점검합니다. 끝나면 아래에서 음악 · 앰비언스 · 효과음을 확인하고 고친 뒤 [전체 영상 만들기]를 누릅니다. 전체 영상도 같은 곳에서 만들어요."}</p>
+      <p>{short ? "미리보기를 확인하면 사진을 확정하고 바로 전체 영상을 만들어요. 숏폼은 음악 없이 목소리만 들어가요." : run?.stills ? "편집 화면에서 「완성」을 누르면 자동으로 시작해 전체 영상까지 이어서 만들어요. 사운드는 편집 화면에서 고쳐요. 점검에서 걸린 곳이 있으면 여기서 멈춰요." : "미리보기 확인을 누르면 자동으로 시작합니다. 미리보기의 사진을 확정하고 구독 대사 음성을 만든 뒤 고른 곳(영상 만드는 컴퓨터 또는 내 컴퓨터)이 다시 점검합니다. 끝나면 아래에서 음악 · 앰비언스 · 효과음을 확인하고 고친 뒤 [전체 영상 만들기]를 누릅니다. 전체 영상도 같은 곳에서 만들어요."}</p>
       {run && finishWaiting && run.stage !== "final_pending" ? placeButtons(run) : null}
       {materials && assetsUsed.length ? <ul className="yt-list">{assetsUsed.map((a) => { const swap = run?.photoCredits?.[a.file], url = swap ? swap.url : a.url;
         return <li key={a.file}>{KIND[a.kind] ?? a.kind} · {a.file} · {swap ? `${swap.source}${swap.license ? ` · ${swap.license}` : ""} (바꾼 사진)` : a.source}{url ? <> <a href={url} target="_blank" rel="noreferrer">출처</a></> : null}</li>; })}</ul> : null}

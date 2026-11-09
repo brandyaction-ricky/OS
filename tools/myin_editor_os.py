@@ -163,6 +163,13 @@ def save_done(project):
     return api("save_done", project, pc=pc())
 
 
+def draft_finish(project, storyboard, orders=()):
+    """장면 그림 v0 (before the video's first final): the storyboard the hand edits made — a dict or a JSON file — goes to the OS instead of a
+    rendered final; the OS checks it and makes v1 with ④ · ⑤. `orders` = the OS ids of the orders it answers (they become done)."""
+    story = storyboard if isinstance(storyboard, dict) else json.load(open(storyboard, encoding="utf-8"))
+    return api("draft_finish", project, pc=pc(), storyboard=story, orders=list(orders))
+
+
 # ── 편집 화면 재료: OS 제작 탭의 편집 화면이 재생할 것 (편집 화면 이식 2026-11-05) ──
 SCREEN_TYPES = {".json": "application/json", ".srt": "application/x-subrip", ".mp4": "video/mp4", ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".wav": "audio/wav",
                 ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}

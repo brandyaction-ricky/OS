@@ -36,7 +36,7 @@ test("each drawn result keeps the engine it was drawn with", async () => {
   assert.match(run, /const drawnWith = \(run: MyinRun\) => run\.layout \? Promise\.resolve\(undefined\) : renderPcEngine\(\);/, "none for a 숏폼 (its vertical copy is not in the fingerprint)");
   assert.equal(run.match(/materialsKey, drawnWith,\s+owner \? undefined : \{ name: pc \}\);/g)?.length, 3, "preparation, clips and the full video");
   assert.match(run, /const engine = await engineOf\?\.\(run\);/);
-  assert.equal(run.match(/\.\.\.drewWith\(run\)/g)?.length, 3);
+  assert.equal(run.match(/\.\.\.drewWith\(run\)/g)?.length, 4, "preparation, clips, scene pictures and the full video");
   assert.match(await read("components/myin-run-record.tsx"), /<dt>엔진 버전<\/dt><dd>\{engineLine\(record\)\}<\/dd>/);
 });
 

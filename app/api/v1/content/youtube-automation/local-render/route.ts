@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
-import { claimMyinClips, claimMyinFinal, claimMyinPrep, completeMyinClips, completeMyinFinal, completeMyinPrep, failMyinPrep, failMyinStage } from "@/lib/server/myin-run";
+import { claimMyinClips, claimMyinFinal, claimMyinPrep, completeMyinClips, completeMyinFinal, completeMyinPrep, failMyinPrep, failMyinStage, myinStillsUpload, stillFiles, stills } from "@/lib/server/myin-run";
 import { assertLocalEngine, renderPcEngine, renderPcSignalSchema, saveLocalRenderSignal } from "@/lib/server/youtube-render-pc";
 import { currentEngineDownload } from "@/lib/server/render-engine";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
@@ -21,8 +21,9 @@ const inputSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("myin_prep_claim"), engine }).strict(),
   z.object({ action: z.literal("myin_prep_complete"), ...lease }).strict(),
   z.object({ action: z.literal("myin_prep_fail"), ...lease, code: z.string().max(80) }).strict(),
-  z.object({ action: z.literal("myin_clips_claim"), engine }).strict(),
-  z.object({ action: z.literal("myin_clips_complete"), ...lease, names: z.array(z.string().max(40)).max(201) }).strict(),
+  z.object({ action: z.literal("myin_clips_claim"), engine, stills: z.literal(true).optional() }).strict(),
+  z.object({ action: z.literal("myin_stills_upload"), ...lease, files: stillFiles }).strict(),
+  z.object({ action: z.literal("myin_clips_complete"), ...lease, names: z.array(z.string().max(40)).max(201).optional(), stills }).strict(),
   // ④ on this computer (2026-11-03): the full video, from the folder its own preparation filled.
   z.object({ action: z.literal("myin_final_claim"), engine }).strict(),
   z.object({ action: z.literal("myin_final_complete"), ...lease, bytes: z.number().int().positive(), durationSeconds: z.number().positive().max(14_400),
@@ -40,14 +41,15 @@ export async function POST(request: Request) {
     if (!canUseYoutubeAutomationPilot(process.env)) throw new ApiError(404, "AUTOMATION_PILOT_DISABLED", "영상 자동화 파일럿이 아직 연결되지 않았습니다.");
     const actor = await authenticateRequest(request, { allowAgent: true, requiredAgentScope: "records.write" });
     if (actor.type !== "agent") throw new ApiError(403, "LOCAL_RENDER_KEY_REQUIRED", "「내 컴퓨터 연결」 키로만 쓸 수 있어요.");
-    const input = inputSchema.parse(await parseJson(request, 8_000));
+    const input = inputSchema.parse(await parseJson(request, 32_000));
     if (input.action === "myin_prep_claim" || input.action === "myin_clips_claim" || input.action === "myin_final_claim") await assertLocalEngine(input.engine);
     const result = input.action === "heartbeat" ? await saveLocalRenderSignal(actor.ownerId, input)
       : input.action === "engine" ? await currentEngineDownload(await renderPcEngine(), Boolean(input.split))
       : input.action === "myin_prep_claim" ? await claimMyinPrep(undefined, actor.ownerId)
       : input.action === "myin_prep_complete" ? await completeMyinPrep(input)
       : input.action === "myin_prep_fail" ? await failMyinPrep(input)
-      : input.action === "myin_clips_claim" ? await claimMyinClips(undefined, actor.ownerId)
+      : input.action === "myin_clips_claim" ? await claimMyinClips(undefined, actor.ownerId, false, undefined, Boolean(input.stills))
+      : input.action === "myin_stills_upload" ? await myinStillsUpload(input)
       : input.action === "myin_clips_complete" ? await completeMyinClips(input)
       : input.action === "myin_final_claim" ? await claimMyinFinal(undefined, false, actor.ownerId)
       : input.action === "myin_final_complete" ? await completeMyinFinal(input)

@@ -2,14 +2,14 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { diagramCatalogTypes } from "@/lib/diagram-catalog";
-import { editCheckIssues, editFeed, editLoudnessIssue, editorScreenState, feedbackEditStates, lockDecision, orderMove, SCREEN_CODE_FILE, SCREEN_FILE, SCREEN_FILE_TYPES, SCREEN_KEEP, withLockEvent, type EditLock, type EditOrderStatus, type LockEvent, type ScreenVersion } from "@/lib/myin-edit";
+import { DRAFT_VERSION, editCheckIssues, editFeed, editLoudnessIssue, editorScreenState, feedbackEditStates, firstSave, lockDecision, orderMove, SCREEN_CODE_FILE, SCREEN_FILE, SCREEN_FILE_TYPES, SCREEN_KEEP, withLockEvent, type EditLock, type EditOrderStatus, type LockEvent, type ScreenVersion } from "@/lib/myin-edit";
 import { anchorMyinCues, checkMyinStoryboard } from "@/lib/myin-storyboard";
 import { parseClock } from "@/lib/youtube-process/feedback";
 import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { RequestActor } from "./auth";
 import { readDiagramCatalog } from "./diagram-catalog";
-import { editFinalSchema, myinAddEditFinal, myinEditorImageSize, myinEditorImageUpload, myinEditorImageUrl, myinEditUploads, myinFinalAt, myinFinalEngine, myinFinalForHandoff, myinFinalNumbers, myinFinalVersions, myinRunWords } from "./myin-run";
+import { editFinalSchema, finishMyinDraft, myinAddEditFinal, myinEditorImageSize, myinEditorImageUpload, myinEditorImageUrl, myinEditUploads, myinFinalAt, myinFinalEngine, myinFinalForHandoff, myinFinalNumbers, myinFinalVersions, myinDraftState, myinRunWords } from "./myin-run";
 import { renderPcEngine } from "./youtube-render-pc";
 import { currentEngineDownload, ENGINE_BUCKET, ENGINE_PART_BYTES, engineBundleSaved } from "./render-engine";
 import { getYoutubeProject } from "./youtube-process";
@@ -74,9 +74,9 @@ async function sessionRecord(service: Service, projectId: string) {
   return (data?.[0] as OsRecord | undefined) ?? null;
 }
 async function projectRow(service: Service, projectId: string) {
-  const { data } = await service.from("os_records").select("id,owner_id,team,brand").eq("id", projectId).maybeSingle();
+  const { data } = await service.from("os_records").select("id,owner_id,team,brand,title").eq("id", projectId).maybeSingle();
   if (!data) throw new ApiError(404, "VIDEO_NOT_FOUND", "영상을 찾지 못했어요.");
-  return data as { id: string; owner_id: string; team: string; brand: string | null };
+  return data as { id: string; owner_id: string; team: string; brand: string | null; title: string };
 }
 const newRecord = (row: { owner_id: string; team: string; brand: string | null }, by: string, title: string, metadata: unknown, parent: string) =>
   ({ record_type: "ai_job", title: title.slice(0, 240), description: "", status: "backlog", priority: "normal", team: row.team, brand: row.brand,
@@ -455,12 +455,20 @@ export async function requestSave(actor: RequestActor, projectId: string) {
   const project = await editorProject(actor, projectId);
   const service = createServiceSupabase();
   const { meta, lock } = await liveLock(service, project.id);
-  if (!lock || !meta) throw new ApiError(409, "EDIT_NO_EDITOR", "편집기를 연 컴퓨터가 없어요. 편집하는 컴퓨터에서 편집기를 열어 주세요.");
   const finals = await myinFinalNumbers(service, project.id);
   const label = `v${finals.length + 1}`;
   const { data } = await service.from("os_records").select("metadata").eq("parent_id", project.id).eq("record_type", "ai_job").eq("metadata->>kind", ORDER)
     .in("metadata->>status", ["queued", "working"]).is("archived_at", null).limit(200);
   const open = (data ?? []).length;
+  // 첫 「완성」 (장면 그림 v0, 편집기 3차 요청 11-09): no final yet — ④ · ⑤ make v1 from the storyboard, after the editing computer applied any edits.
+  if (!finals.length) {
+    const draft = await myinDraftState(service, project.id);
+    const step = firstSave({ ready: draft.ready, making: Boolean(draft.making), open, editor: Boolean(lock) });
+    if (step === "not_ready") throw new ApiError(409, "EDIT_DRAFT_NOT_READY", "장면 그림이 나온 뒤에 완성할 수 있어요.");
+    if (step === "need_editor") throw new ApiError(409, "EDIT_NO_EDITOR", `완성 전 편집 ${open}개를 반영할 컴퓨터가 없어요. 편집하는 컴퓨터에서 편집기를 열거나, 편집을 되돌린 뒤 완성해 주세요.`);
+    if (step === "finish" || step === "making") { await finishMyinDraft(actor, project.id); return { ok: true, label, making: true }; }
+  }
+  if (!lock || !meta) throw new ApiError(409, "EDIT_NO_EDITOR", "편집기를 연 컴퓨터가 없어요. 편집하는 컴퓨터에서 편집기를 열어 주세요.");
   if (meta.save) return { ok: true, label, waiting: open };
   const state = editorScreenState({ versions: meta.screen?.lockId === lockKey(lock) ? meta.screen.versions : [], finals, orders: [], save: null, base: null, lock: null, now: Date.now() });
   if (!open && !state.draft) return { ok: true, label: null, same: true };
@@ -542,8 +550,96 @@ export async function screenView(actor: RequestActor, projectId: string) {
   const orders = (data ?? []).reverse().map((row) => { const o = orderSchema.parse(row.metadata);
     return { id: row.id, at: row.created_at, text: o.text, videoAt: o.at ? parseClock(o.at) : null, version: o.version, manual: o.manual, meaning: o.meaning, status: o.status,
       result: o.result ? { version: o.result.version, note: o.result.note, at: o.result.at } : null }; });
-  return editorScreenState({ versions: meta?.screen?.versions ?? [], finals: await myinFinalNumbers(service, project.id), orders, save: meta?.save ?? null,
+  const finals = await myinFinalNumbers(service, project.id);
+  // 장면 그림 v0's 완성 is made by ④ · ⑤ in the OS: the screen says 「v1 완성 중」 until the first final lands.
+  const making = !finals.length && !meta?.save && meta?.screen ? (await myinDraftState(service, project.id)).making : null;
+  return editorScreenState({ versions: meta?.screen?.versions ?? [], finals, orders, save: meta?.save ?? (making ? { at: making } : null),
     base: meta?.base?.version ?? null, lock: lock ? { name: lock.name, pc: lock.pc, since: lock.since } : null, now: Date.now() });
+}
+
+// ── 장면 그림 v0 (편집기 3차 요청, 2026-11-09): the editor screen before the first final ────────────────────────────────────────────────
+// The computer that made ③ (render PC or a member's own) puts the scene pictures and the laid timeline up as version v0, under the run's
+// id as its "lock" folder; a person's editing computer that takes the lock later starts its own versions from v1, as before.
+
+/** v0's folder: the project's editor folder, named by the run that drew it. */
+const draftDir = async (service: Service, projectId: string, runId: string) => screenDir((await projectRow(service, projectId)).owner_id, projectId, runId, DRAFT_VERSION);
+
+/** 장면 그림 1/2: upload addresses for v0's files (an earlier v0 of this run goes first: a new storyboard drew new pictures). */
+export async function draftMaterialsUpload(service: Service, projectId: string, runId: string, files: { name: string; bytes: number }[]) {
+  const parsed = materialsUploadSchema.parse({ pc: "render", version: DRAFT_VERSION, files });
+  const dir = await draftDir(service, projectId, runId);
+  await removeDir(service, dir).catch(() => undefined);
+  const storage = service.storage.from(SCREEN_BUCKET), uploads: { name: string; url: string; type: string }[] = [];
+  for (let i = 0; i < parsed.files.length; i += 25) uploads.push(...await Promise.all(parsed.files.slice(i, i + 25).map(async (file) => {
+    const { data, error } = await storage.createSignedUploadUrl(`${dir}/${file.name}`, { upsert: true });
+    if (error || !data) throw new ApiError(503, "EDIT_SIGN_FAILED", "장면 그림 업로드 주소를 만들지 못했어요.");
+    return { name: file.name, url: data.signedUrl, type: SCREEN_FILE_TYPES[file.name.split(".").pop()!.toLowerCase()] };
+  })));
+  return { uploads };
+}
+
+/** 장면 그림 2/2: v0 is the screen's only version (any versions of an earlier run go, and so do hand edits not yet made on them). */
+export async function registerDraftVersion(service: Service, projectId: string, runId: string) {
+  const row = await projectRow(service, projectId), dir = screenDir(row.owner_id, projectId, runId, DRAFT_VERSION);
+  const { data } = await service.storage.from(SCREEN_BUCKET).list(dir, { limit: 1000 });
+  const files = (data ?? []).filter((o) => SCREEN_FILE.test(o.name));
+  if (!files.some((o) => o.name === "version.json")) throw new ApiError(409, "EDIT_MATERIALS_MISSING", "장면 그림의 version.json이 올라가지 않았어요.");
+  const version: ScreenVersion = { name: DRAFT_VERSION, at: new Date().toISOString(), files: files.length, bytes: files.reduce((sum, o) => sum + Number(o.metadata?.size ?? 0), 0),
+    note: "장면 그림 · 움직임은 「완성」 때 만들어요" };
+  let dropped: string[] = [], saved = false;
+  for (let attempt = 0; attempt < 3 && !saved; attempt++) {
+    let record = await sessionRecord(service, projectId);
+    if (!record) {
+      const { data: made } = await service.from("os_records").insert(newRecord(row, row.owner_id, `${row.title} · 영상 편집기`, { kind: SESSION, projectId }, projectId)).select("*").maybeSingle();
+      if (!made) continue;
+      record = made as OsRecord;
+    }
+    const meta = sessionSchema.parse(record.metadata);
+    dropped = meta.screen && meta.screen.lockId !== runId ? meta.screen.versions.map((v) => screenDir(row.owner_id, projectId, meta.screen!.lockId, v.name)) : [];
+    const next = { ...meta, screen: { lockId: runId, versions: [version] } };
+    delete next.save; delete next.base;
+    saved = await saveSession(service, record, next, row.owner_id).then(() => true, () => false);
+  }
+  if (!saved) throw new ApiError(409, "RECORD_VERSION_CONFLICT", "편집 화면에 장면 그림을 올리지 못했어요. 다시 해 주세요.");
+  for (const old of dropped) await removeDir(service, old).catch(() => undefined);
+  const { data: rows } = await service.from("os_records").select("id,version,metadata").eq("parent_id", projectId).eq("record_type", "ai_job").eq("metadata->>kind", ORDER)
+    .eq("metadata->>status", "queued").is("archived_at", null).limit(200);
+  for (const waiting of rows ?? []) if (orderSchema.parse(waiting.metadata).manual)
+    await moveOrder(service, waiting, "cancelled", row.owner_id, { result: { note: "새 장면 그림이 나와서 지웠어요", at: new Date().toISOString(), by: row.owner_id } }).catch(() => undefined);
+  return { files: version.files, bytes: version.bytes };
+}
+
+/** The first final landed: v0 leaves the screen (an editing computer puts that final up as its own version, as for any final). */
+export async function dropDraftVersion(service: Service, projectId: string, runId: string) {
+  const row = await projectRow(service, projectId);
+  await changeSession(service, projectId, row.owner_id, (m) => { const next = { ...m }; if (m.screen?.lockId === runId) delete next.screen; return next; });
+  await removeDir(service, screenDir(row.owner_id, projectId, runId, DRAFT_VERSION)).catch(() => undefined);
+}
+
+export const draftFinishSchema = z.object({ pc: z.string().trim().min(1).max(80), storyboard: z.record(z.unknown()), orders: z.array(z.string().uuid()).max(200).default([]) }).strict();
+/**
+ * 첫 「완성」 with edits: the editing computer that holds the lock applied the hand edits (and chat orders) to v0's storyboard and sends
+ * it here instead of a rendered final. It is checked like any storyboard; ④ · ⑤ then make v1 from it, and the orders it answers are done.
+ */
+export async function draftFinish(actor: RequestActor, projectId: string, input: z.infer<typeof draftFinishSchema>) {
+  const project = await editorProject(actor, projectId);
+  const service = createServiceSupabase();
+  const { meta } = await heldSession(service, actor, project.id, input.pc);
+  if ((await myinFinalNumbers(service, project.id)).length) throw new ApiError(409, "EDIT_HAS_FINAL", "이미 완성본이 있어요. 고친 버전은 확정으로 올려 주세요.");
+  const myin = await myinRunWords(service, project.id);
+  const anchored = anchorMyinCues(input.storyboard, myin.words, myin.speech);
+  const storyboard = anchored.storyboard as Record<string, unknown>;
+  const checked = checkMyinStoryboard(storyboard, myin.words, diagramCatalogTypes(await readDiagramCatalog()), myin.speech);
+  if (checked.issues.length || !checked.story) throw new ApiError(422, "EDIT_STORYBOARD_ISSUES", `기획표 검사에서 걸린 곳 ${checked.issues.length}개: ${checked.issues.join(" / ")}`);
+  // Someone pressed 완성 meanwhile with nothing waiting: v1 is already being made from the storyboard as it was, so this one is not used.
+  if ((await finishMyinDraft(actor, project.id, { storyboard, images: meta.images ?? [] })).making) throw new ApiError(409, "EDIT_ALREADY_MAKING", "이미 첫 완성본을 만드는 중이에요. 나온 뒤 그 완성본에서 다시 고쳐 주세요.");
+  const at = new Date().toISOString();
+  if (input.orders.length) {
+    const { data: rows } = await service.from("os_records").select("id,version,metadata").in("id", input.orders).eq("parent_id", project.id).eq("metadata->>kind", ORDER);
+    for (const row of rows ?? []) await moveOrder(service, row, "done", who(actor), { result: { version: "v1", note: "첫 완성본에 들어가요", at, by: who(actor) } }).catch(() => undefined);
+  }
+  await changeSession(service, project.id, who(actor), (m) => { const next = { ...m }; delete next.save; return next; });
+  return { ok: true, label: "v1", making: true, notes: [...checked.notes, ...(anchored.changed.length ? [`받아쓰기에 맞춘 문구 ${anchored.changed.length}개`] : [])] };
 }
 
 /** One version's files for the screen to play, readable for six hours (an editing afternoon: an address expiring mid-play stops the video). */

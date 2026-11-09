@@ -796,11 +796,19 @@ export async function processMyinPrep() {
         writeFileSync(storyFile, JSON.stringify(job.storyboard, null, 1));
       }
     }
+    // 11-09 request: what ③ already fetched on this computer is not fetched again at ④ — the same file from the same place (a signed address
+    // without its token: a new upload is a new path). A 「사진 자리」 was never fetched, so it is.
+    const fetchedFile = path.join(videoDir, "photos-fetched.json");
+    let fetched = {};
+    try { fetched = JSON.parse(readFileSync(fetchedFile, "utf8")); } catch { fetched = {}; }
     for (const asset of job.assets) {
-      mkdirSync(path.join(work, "assets", asset.kind), { recursive: true });
-      try { await fetchTo(asset.url, path.join(work, "assets", asset.kind, asset.file)); }
+      const file = path.join(work, "assets", asset.kind, asset.file), from = String(asset.url).split("?")[0];
+      mkdirSync(path.dirname(file), { recursive: true });
+      if (fetched[`${asset.kind}/${asset.file}`] === from && existsSync(file)) continue;
+      try { await fetchTo(asset.url, file); fetched[`${asset.kind}/${asset.file}`] = from; }
       catch (error) { if (!job.draft) throw error; console.error(`myin draft photo kept as 사진 자리: ${asset.file}: ${error.message}`); }   // ③ goes on
     }
+    writeFileSync(fetchedFile, JSON.stringify(fetched));
     const bgmDir = path.join(work, "assets", "bgm");
     mkdirSync(bgmDir, { recursive: true });
     if (existsSync(path.join(myinLibrary, "bgm"))) for (const name of readdirSync(path.join(myinLibrary, "bgm")).filter((n) => n.endsWith(".mp3")))
@@ -908,10 +916,34 @@ st = json.load(open("../../voice/os_myin/myin_storyboard.json", encoding="utf-8"
 w = json.load(open("../../voice/os_myin/words.json", encoding="utf-8"))
 print("TIMES " + json.dumps([[s["t0"], s["t1"]] for s in M.resolve(st, w)]))`;
 
+// 장면 그림 v0 (편집기 3차 요청, 2026-11-09): our script next to this file, run inside the engine with the editor's own functions, which the engine
+// carries from that release on (tools/editor/engine_common.py). Only a computer with both asks for scene pictures instead of clips.
+const v0Script = path.join(path.dirname(fileURLToPath(import.meta.url)), "myin_v0.py");
+export const stillsReady = (pkg = myinPkg) => Boolean(pkg) && existsSync(v0Script) && existsSync(path.join(pkg, "tools", "editor", "engine_common.py"));
+
+/** v0's files as the editor screen takes them: the version, the edit video, pictures and sound lines (flat names). */
+export const stillFileList = (dir) => readdirSync(dir).filter((name) => /^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}\.(json|srt|mp4|m4a|jpg)$/.test(name)).sort()
+  .map((name) => ({ name, bytes: statSync(path.join(dir, name)).size })).filter((file) => file.bytes > 0);
+
+/** 장면 그림 v0: every scene's finished look and the laid timeline, up to the editor screen; no clip is drawn. */
+async function drawStills(job, lease, { videoDir, myinDir }, drawEnv) {
+  const out = path.join(videoDir, "v0"), editor = path.join(myinDir, "..", "editor");
+  // A run folder copied from the engine before it carried the editor functions takes them from the engine now.
+  if (!existsSync(path.join(editor, "engine_common.py"))) cpSync(path.join(myinPkg, "tools", "editor"), editor, { recursive: true });
+  await runAsync(myinPython, [v0Script, out], { cwd: myinDir, env: drawEnv });
+  const files = stillFileList(out);
+  current.step = "upload";
+  const { uploads } = await call({ action: "myin_stills_upload", ...lease, files });
+  for (const item of uploads) await upload(item.url, path.join(out, item.name), item.type);
+  await call({ action: "myin_clips_complete", ...lease, stills: { files: files.length } });
+  console.log(`myin scene pictures ready: ${job.runId} (${files.length} files)`);
+}
+
 /** v13 stage 4a: his 720p clips of the opening with its reel and of each metaphor scene, for Logan to check before the full render. */
 export async function processMyinClips() {
   if (!myinPkg) return false;
-  const job = await call({ action: "myin_clips_claim", ...(local ? { engine: engine() } : { ...shortClaim, ...pcField }) });
+  const stills = stillsReady() ? { stills: true } : {};
+  const job = await call({ action: "myin_clips_claim", ...(local ? { engine: engine() } : { ...shortClaim, ...pcField }), ...stills });
   if (job.idle) return false;
   current = { step: "drawing" };
   const lease = { runId: job.runId, lease: job.lease };
@@ -921,6 +953,7 @@ export async function processMyinClips() {
     const env = layoutEnv(myinEnv(), job.layout);
     writeSubtitles(videoDir, job.subtitlesAss);
     const drawEnv = { ...env, STORY: styleStoryboard(videoDir, myinDir, job.style) };
+    if (job.stills) { await drawStills(job, lease, { videoDir, myinDir }, drawEnv); return true; }
     const out = await runCapture(myinPython, ["-c", RESOLVE_PY], { cwd: myinDir, env });
     const times = JSON.parse(out.split("\n").find((line) => line.startsWith("TIMES ")).slice(6));
     const names = [];

@@ -9,7 +9,7 @@ import { md } from "./youtube-process-frame";
 const ROUTE = "/api/v1/content/youtube-automation/editor";
 const STORE = "editor-screen:";
 type Lock = { name: string; pc: string; since: string } | null;
-type Screen = { versions: unknown[]; lock: Lock; saves: { pending: { label: string } | null }; edits: { status: string }[] };
+type Screen = { versions: { name: string }[]; lock: Lock; saves: { list: unknown[]; pending: { label: string } | null }; edits: { status: string }[] };
 
 /** Who is editing, a 완성 on its way, hand edits not in a final yet — the same few words on the 제작 tab and over the screen. */
 function ScreenTags({ s }: { s: Screen }) {
@@ -41,12 +41,14 @@ export function EditorScreenEntry({ token, projectId, title, onFinal }: { token:
   // Nothing to show until a computer opened the editor or put files up.
   if (!token || !screen || (!screen.versions.length && !screen.lock)) return null;
   const ready = screen.versions.length > 0;
+  // 장면 그림 v0: before the first final the screen holds each scene's picture; 완성 makes the moving video (v1) in the OS.
+  const draft = !screen.saves.list.length && screen.versions.some(v => v.name === "v0");
   return <><div className="yp-card yp-escreen-entry">
     <div className="yp-card-b yp-escreen-row">
       <Scissors size={18} aria-hidden="true" />
       <div className="yp-escreen-txt">
         <b>편집 화면</b>
-        <span className="yp-muted">{ready ? "손으로 자르고 옮긴 뒤 「완성」을 누르면 새 최종본이 돼요." : "편집하는 컴퓨터가 편집 재료를 올리면 열 수 있어요."}</span>
+        <span className="yp-muted">{draft ? "장면 그림으로 먼저 고쳐요. 「완성」을 누르면 움직이는 첫 최종본(v1)을 만들어요." : ready ? "손으로 자르고 옮긴 뒤 「완성」을 누르면 새 최종본이 돼요." : "편집하는 컴퓨터가 편집 재료를 올리면 열 수 있어요."}</span>
         <div className="yp-escreen-tags"><ScreenTags s={screen} /></div>
       </div>
       <button ref={button} type="button" className="yp-btn yp-pri" disabled={!ready} onClick={() => setOpen(true)}>편집 화면 열기</button>

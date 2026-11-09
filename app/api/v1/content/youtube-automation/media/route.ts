@@ -4,7 +4,7 @@ import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { safeSecretMatch } from "@/lib/server/auth";
 import { buildYoutubeRenderBrief, claimYoutubeRender, completeYoutubeRender, failYoutubeRender } from "@/lib/server/youtube-render-run";
-import { MYIN_VOICE_PARTS, claimMyinBreath, claimMyinClips, claimMyinCta, claimMyinFinal, claimMyinPrep, claimMyinWords, completeMyinBreath, completeMyinClips, completeMyinCta, completeMyinFinal, completeMyinPrep, completeMyinVoiceBackfill, completeMyinWords, failMyinPrep, failMyinStage, failMyinWords, myinVoiceBackfill } from "@/lib/server/myin-run";
+import { MYIN_VOICE_PARTS, claimMyinBreath, claimMyinClips, claimMyinCta, claimMyinFinal, claimMyinPrep, claimMyinWords, completeMyinBreath, completeMyinClips, completeMyinCta, completeMyinFinal, completeMyinPrep, completeMyinVoiceBackfill, completeMyinWords, failMyinPrep, failMyinStage, failMyinWords, myinStillsUpload, myinVoiceBackfill, stillFiles, stills } from "@/lib/server/myin-run";
 import { RENDER_PC_NAME, renderPcSignalSchema, saveRenderPcSignal } from "@/lib/server/youtube-render-pc";
 import { assetsReadySchema, assetsUploadSchema, assetsUploadUrls, engineReadySchema, engineUploadSchema, engineUploadUrls, saveAssetsManifest, saveEngineManifest } from "@/lib/server/render-engine";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
@@ -52,9 +52,11 @@ const inputSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("myin_prep_complete"), runId: z.string().uuid(), lease: z.string().uuid() }).strict(),
   z.object({ action: z.literal("myin_prep_fail"), runId: z.string().uuid(), lease: z.string().uuid(), code: z.string().max(80) }).strict(),
   // Stage 4: Logan's clips, then the full render, mix and handouts.
-  z.object({ action: z.literal("myin_clips_claim"), short: z.literal(true).optional(), pc }).strict(),
+  // stills: this worker's engine draws a longform's scene pictures (장면 그림 v0, 2026-11-09) in place of the clips.
+  z.object({ action: z.literal("myin_clips_claim"), short: z.literal(true).optional(), pc, stills: z.literal(true).optional() }).strict(),
+  z.object({ action: z.literal("myin_stills_upload"), runId: z.string().uuid(), lease: z.string().uuid(), files: stillFiles }).strict(),
   // One clip per metaphor scene plus the opening; a storyboard has at most 200 scenes, and stage diagrams make most of them metaphors.
-  z.object({ action: z.literal("myin_clips_complete"), runId: z.string().uuid(), lease: z.string().uuid(), names: z.array(z.string().max(40)).max(201) }).strict(),
+  z.object({ action: z.literal("myin_clips_complete"), runId: z.string().uuid(), lease: z.string().uuid(), names: z.array(z.string().max(40)).max(201).optional(), stills }).strict(),
   z.object({ action: z.literal("myin_final_claim"), short: z.literal(true).optional(), pc }).strict(),
   z.object({ action: z.literal("myin_final_complete"), runId: z.string().uuid(), lease: z.string().uuid(), bytes: z.number().int().positive(),
     durationSeconds: z.number().positive().max(14_400), lufs: z.number().min(-70).max(0), peak: z.number().min(-70).max(6) }).strict(),
@@ -99,7 +101,8 @@ export async function POST(request: Request) {
       : input.action === "myin_prep_claim" ? await claimMyinPrep(undefined, undefined, Boolean(input.short), input.pc)
       : input.action === "myin_prep_complete" ? await completeMyinPrep(input)
       : input.action === "myin_prep_fail" ? await failMyinPrep(input)
-      : input.action === "myin_clips_claim" ? await claimMyinClips(undefined, undefined, Boolean(input.short), input.pc)
+      : input.action === "myin_clips_claim" ? await claimMyinClips(undefined, undefined, Boolean(input.short), input.pc, Boolean(input.stills))
+      : input.action === "myin_stills_upload" ? await myinStillsUpload(input)
       : input.action === "myin_clips_complete" ? await completeMyinClips(input)
       : input.action === "myin_final_claim" ? await claimMyinFinal(undefined, Boolean(input.short), undefined, input.pc)
       : input.action === "myin_final_complete" ? await completeMyinFinal(input)
