@@ -93,7 +93,16 @@ test("a 웹툰 화 starts by hand and each 칸 brings its 장면 to the drawing 
   await expect(page.locator(".yp-card-big [data-card-field=talk]")).toHaveText("네, 괜찮아요!");
   // The tilted 효과음 letters reach past their box; that must not count as 넘침 (it would block 카드 확정).
   await page.getByLabel("효과음", { exact: true }).fill("빼꼼");
+  // The 해설 hexagon and the 속마음 oval are pictures behind their words; the words must paint on top in the preview (hidden till 2026-11-09).
+  const wordsOnTop = (name: string) => page.locator(`.yp-card-big [data-card-field=${name}]`).evaluate(field => {
+    field.scrollIntoView({ block: "center" });   // clear of the sticky step bar
+    const box = field.getBoundingClientRect(), hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+    return Boolean(hit && field.contains(hit));
+  });
+  await page.getByLabel("해설 상자", { exact: true }).fill("밤 11시");
+  expect(await wordsOnTop("narration")).toBe(true);
   await page.getByLabel("속마음", { exact: true }).fill("근데 나 왜\n또 괜찮다고 했지?");
+  expect(await wordsOnTop("think")).toBe(true);
   await expect(page.getByRole("button", { name: "2장 보기", exact: true })).not.toContainText("넘침");
   await expect(page.locator(".yp-card-checks")).not.toContainText("넘쳐요");
   await expect(page.getByRole("button", { name: "내 GPT로 그리기" })).toBeVisible();   // beside 「AI로 그리기」 before the panel opens

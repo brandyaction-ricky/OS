@@ -205,6 +205,9 @@ function ToonSlide({ draft, slide, index, theme, src }: { draft: CardDraft; slid
   // card's width pushed to its end.
   const row = (edge: { top: number } | { bottom: number }, end = false): CSSProperties => ({ display: "flex", position: "absolute", left: 56, width: W - 112, ...edge, justifyContent: end ? "flex-end" : "flex-start" });
   const centred: CSSProperties = { textAlign: "center", justifyContent: "center" };
+  // The 해설 · 속마음 · 외침 shapes are absolute pictures behind their words. A browser paints positioned boxes over plain ones, so the
+  // preview showed the shapes empty (2026-11-09, 사건 1); the words stand positioned too and, coming later, paint on top. Satori draws in order.
+  const lettered: CSSProperties = { ...centred, position: "relative" };
   // An oval with a tail toward whoever speaks (toonAim: where the PD tapped, or the left / right of the faces the picture keeps in its
   // middle). It left the oval's bottom and pointed at nobody until the 1화 시안 (2026-11-02). The tail starts 140 px in from the
   // oval's outer side on its top edge — the oval's height estimated from its lines, as Satori cannot measure it — and always rises at
@@ -229,15 +232,15 @@ function ToonSlide({ draft, slide, index, theme, src }: { draft: CardDraft; slid
         {slide.photo ? "" : `그림 자리 · ${plainCardText(slide.fields.scene ?? "").trim().slice(0, 90) || "장면을 쓰고 「AI로 그리기」로 그려요"}`}</div>}
     {slide.type === "toon" ? <div style={{ display: "flex", flexDirection: "column", position: "absolute", left: 64, bottom: 128, maxWidth: 800, background: theme.white, borderRadius: 24, padding: "32px 44px" }}>
       {f("episode", { color: theme.blue, marginBottom: 12 })}{f("title")}</div> : null}
-    {has("narration") ? <Hexagon slide={slide} width={think || shout ? 440 : 760} theme={theme}>{f("narration", centred)}</Hexagon> : null}
+    {has("narration") ? <Hexagon slide={slide} width={think || shout ? 440 : 760} theme={theme}>{f("narration", lettered)}</Hexagon> : null}
     {think ? <div style={row({ top: 40 }, true)}><div style={{ display: "flex", position: "relative", width: 540, height: 330, alignItems: "center", justifyContent: "center" }}>
       <svg width={540} height={330} viewBox="0 0 540 330" style={{ position: "absolute", left: 0, top: 0 }}>
         <path d={SPIKES} stroke={theme.white} strokeWidth={10} strokeLinecap="round" /><path d={SPIKES} stroke={theme.title} strokeWidth={4} strokeLinecap="round" />
         <ellipse cx={270} cy={165} rx={224} ry={130} fill={theme.white} /></svg>
-      {f("think", { ...centred, maxWidth: 330 })}</div></div> : null}
+      {f("think", { ...lettered, maxWidth: 330 })}</div></div> : null}
     {shout ? <div style={row({ top: shoutTop }, !think || shoutTop > 40)}><div style={{ display: "flex", position: "relative", width: 500, height: 280, alignItems: "center", justifyContent: "center" }}>
       <svg width={500} height={280} viewBox="0 0 540 300" preserveAspectRatio="none" style={{ position: "absolute", left: 0, top: 0 }}><polygon points={BURST} fill={theme.white} stroke={theme.title} strokeWidth={LINE} strokeLinejoin="round" /></svg>
-      {f("shout", { ...centred, maxWidth: 320, transform: "skewX(-8deg)" })}</div></div> : null}
+      {f("shout", { ...lettered, maxWidth: 320, transform: "skewX(-8deg)" })}</div></div> : null}
     {/* No data-card-field: the tilted, stepping letters always reach past their own box, and 6 letters never need cutting. */}
     {has("sfx") ? <div style={{ display: "flex", position: "absolute", left: 72, top: 600, transform: "rotate(-10deg)", alignItems: "flex-start" }}>
       {[...plainCardText(slide.fields.sfx ?? "").trim()].slice(0, 8).map((letter, at) => <span key={at} style={{ display: "flex", fontSize: 112, fontWeight: 600, lineHeight: 1, color: theme.title,
