@@ -40,7 +40,7 @@
 .screen-vault .vault-tree-top button { width:28px; height:28px; flex:none; display:grid; place-items:center; border:0; border-radius:6px; background:transparent; color:var(--muted); }
 .screen-vault .vault-tree-top button:hover,.screen-vault .vault-tree-top button[aria-pressed=true] { background:var(--surface-hover); color:var(--text); }
 .screen-vault .vault-workspace .folder-tree-item { display:flex; align-items:center; }
-.screen-vault .vault-workspace .folder-tree-item .folder-tree-row { flex:1; min-width:0; width:auto; margin-left:0; grid-template-columns:17px minmax(0,1fr) auto; padding-right:36px; }
+.screen-vault .vault-workspace .folder-tree-item .folder-tree-row { flex:1; min-width:0; width:auto; margin-left:0; grid-template-columns:17px minmax(0,1fr) auto; padding-inline:8px 36px; }
 .screen-vault .vault-workspace .vault-folder-expand { width:24px; height:28px; flex:none; display:grid; place-items:center; border:0; border-radius:6px; background:transparent; color:var(--muted); }
 .screen-vault .vault-workspace .vault-folder-expand:hover { background:var(--surface-hover); color:var(--text); }
 .screen-vault .vault-workspace .editor-pane { background:var(--os-document-canvas); }
