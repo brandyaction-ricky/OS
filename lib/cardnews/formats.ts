@@ -149,6 +149,8 @@ export function cardProblems(draft: Pick<CardDraft, "format" | "slides" | "capti
   if (draft.slides.length > cardMaxSlides(draft.format)) blocking.push(`카드는 ${cardMaxSlides(draft.format)}장까지예요`);
   for (const spec of format.slides) {
     const count = draft.slides.filter(slide => slide.type === spec.type).length;
+    // A story runs over several 웹툰 카드뉴스 (one 웹툰 화 each, 대표 2026-11-09): only its last one closes with 오늘의 한 줄 and 마무리.
+    if (draft.format === "webtoon" && !count && (spec.type === "summary" || spec.type === "end")) continue;
     if (count < spec.min || count > spec.max) blocking.push(spec.min === spec.max ? `${spec.label} 장이 ${spec.min}장 있어야 해요` : `${josa(spec.label, "은", "는")} ${spec.min}~${spec.max}장이에요 (지금 ${count}장)`);
   }
   if (draft.slides.some((slide, index) => index && orderRank(draft.format, slide.type) < orderRank(draft.format, draft.slides[index - 1].type))) blocking.push("카드 순서가 포맷과 달라요");
