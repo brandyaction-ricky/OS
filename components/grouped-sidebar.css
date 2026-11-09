@@ -17,7 +17,7 @@
 .os-app .os-sidebar .nav-section-trigger { padding: 7px 8px; gap: 6px; min-height: 36px; font-size: var(--os-text-body); font-weight: 500; color: var(--os-nav-text); border-radius: var(--os-radius-sm); }
 .os-app .os-sidebar .nav-group-label { min-width: 0; white-space: nowrap; }
 .os-app .os-sidebar .nav-section-trigger:hover { background: var(--os-nav-hover); }
-.os-app .os-sidebar .nav-section.active > .nav-section-trigger { background: var(--os-nav-hover); color: var(--os-nav-text); font-weight: 600; }
+.os-app .os-sidebar .nav-section.active > .nav-section-trigger { border-radius: 0; background: var(--os-nav-hover); color: var(--os-nav-text); font-weight: 600; }
 .os-app .os-sidebar .nav-section-trigger .nav-icon { display: grid; place-items: center; width: 22px; height: 22px; flex: none; border-radius: var(--os-radius-xs); color: var(--os-nav-category); background: color-mix(in srgb, var(--os-nav-category) 10%, transparent); }
 .os-sidebar [data-stage="yt-longform"] { --os-nav-category: var(--os-nav-longform); }
 .os-sidebar [data-stage="yt-short"] { --os-nav-category: var(--os-nav-short); }
@@ -32,7 +32,7 @@
 .os-app .os-sidebar .nav-section-pages .page-link svg { color: inherit; }
 /* Keep the foreground and background paired above the kit's inactive-link hover rule. */
 .os-app .os-sidebar .nav-section-pages .page-link:not(.active):not([aria-current="page"]):is(:hover, :focus-visible) { color: var(--os-nav-text); background: var(--os-nav-hover); }
-.os-app .os-sidebar .nav-section-pages .page-link.active { color: var(--os-nav-on-selected); background: var(--os-nav-selected); box-shadow: inset 3px 0 var(--os-nav-category); font-weight: 600; }
+.os-app .os-sidebar .nav-section-pages .page-link.active { border-radius: 0; color: var(--os-nav-on-selected); background: var(--os-nav-selected); box-shadow: inset 3px 0 var(--os-nav-category); font-weight: 600; }
 .os-app .os-sidebar .nav-section-pages .page-link.active svg { color: inherit; }
 .os-app .os-sidebar .page-link > span:last-child { flex: 1; white-space: normal; overflow-wrap: anywhere; }
 .os-app .os-sidebar .nav-section-trigger .nav-group-count { font-size: var(--os-text-caption); color: var(--os-nav-muted); }
@@ -43,7 +43,7 @@
 .os-app .os-sidebar .page-link.active .nav-step-no { background: transparent; color: inherit; }
 .os-app .os-sidebar .page-submenu { border-left-color: var(--os-nav-line); }
 .os-app .os-sidebar .page-submenu-toggle,.os-app .os-sidebar .page-sublink { color: var(--os-nav-muted); }
-.os-app .os-sidebar .page-sublink.active { color: var(--os-nav-on-selected); background: var(--os-nav-selected); }
+.os-app .os-sidebar .page-sublink.active { border-radius: 0; color: var(--os-nav-on-selected); background: var(--os-nav-selected); }
 .os-app .os-sidebar .page-submenu-toggle:hover,.os-app .os-sidebar .page-sublink:hover { background: var(--os-nav-hover); color: var(--os-nav-text); }
 .os-app .os-sidebar .sidebar-collapse,.os-app .os-sidebar .mobile-only { color: var(--os-nav-muted); background: transparent; border-color: var(--os-nav-line); }
 .os-app.unified-shell .os-sidebar .brand-mark { color: var(--os-nav-text); border-color: var(--os-nav-line); }
