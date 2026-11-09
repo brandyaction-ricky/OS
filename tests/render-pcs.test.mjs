@@ -88,7 +88,7 @@ test("claims carry the PC's name, the run keeps it, and a PC without the folder 
   assert.match(section("async function prepareAgain", "async function failed"), /delete next\.pc;/);
   assert.match(run, /run\.layout \|\| run\.resumeFinal \? "final_pending" : "prep_ready";\n  delete next\.resumeFinal;/, "a full video already asked for starts after ④ on the next PC");
   assert.match(section("export async function failMyinStage", "/**"), /input\.code === "MYIN_WORK_MISSING" && !localOwner\(run\) && run\.words\?\.voice/);
-  assert.equal((media.match(/short: z\.literal\(true\)\.optional\(\), pc \}\)\.strict\(\)/g) ?? []).length, 5, "every v13 render-PC claim takes the name");
+  assert.equal((media.match(/short: z\.literal\(true\)\.optional\(\), pc(, stills: z\.literal\(true\)\.optional\(\))? \}\)\.strict\(\)/g) ?? []).length, 5, "every v13 render-PC claim takes the name");
   assert.equal((worker.match(/\.\.\.shortClaim, \.\.\.pcField/g) ?? []).length, 5, "the worker sends its name on every v13 claim");
   assert.match(worker, /\.\.\.\(engine\(\) \? \{ engine: engine\(\) \} : \{\}\), \.\.\.pcField \}\)/, "and on its heartbeat");
   assert.match(worker, /const worked = held \? false : await/, "a held PC takes no work");

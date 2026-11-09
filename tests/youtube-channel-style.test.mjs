@@ -49,7 +49,7 @@ test("the render PC draws a styled copy; the storyboard it keeps and sends back 
 test("the OS pins the style at the voice's start and hands it to every drawing step", async () => {
   const run = await readFile(new URL("../lib/server/myin-run.ts", import.meta.url), "utf8");
   assert.match(run, /\.\.\.\(picked \? \{ style: pinStyle\(picked\) \} : \{\}\)/);
-  assert.equal(run.match(/\.\.\.styleFor\(run\)/g)?.length, 3, "prep, clips and the full video");
+  assert.equal(run.match(/\.\.\.styleFor\(run\)/g)?.length, 4, "prep, clips, scene pictures and the full video");
   const runKey = run.slice(run.indexOf("const runKey = digestVoiceValue("), run.indexOf("const id = voiceRunId(runKey)"));
   assert.doesNotMatch(runKey, /style/, "a style never makes a new voice");
   const worker = await readFile(new URL("../tools/youtube-media-worker.mjs", import.meta.url), "utf8");

@@ -3,7 +3,7 @@ import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
 import { requestSay, sayRequestSchema, sayStatus } from "@/lib/server/myin-say";
-import { cancelEditOrder, confirmFinish, confirmStart, confirmStartSchema, declineEdit, editHandoff, editLock, editNews, editorImageSaved, editorImageUpload, forceUnlock, editOrderResult, editOrderSchema, editorProject, editStatus, materialsSaved, materialsSavedSchema, materialsUpload, materialsUploadSchema, nextEditOrders, publishScreenCode, requestSave, saveDone, screenCode, screenFiles, screenPublishSchema, screenView, setEditBase, submitEditOrder } from "@/lib/server/myin-edit";
+import { cancelEditOrder, confirmFinish, confirmStart, confirmStartSchema, declineEdit, draftFinish, draftFinishSchema, editHandoff, editLock, editNews, editorImageSaved, editorImageUpload, forceUnlock, editOrderResult, editOrderSchema, editorProject, editStatus, materialsSaved, materialsSavedSchema, materialsUpload, materialsUploadSchema, nextEditOrders, publishScreenCode, requestSave, saveDone, screenCode, screenFiles, screenPublishSchema, screenView, setEditBase, submitEditOrder } from "@/lib/server/myin-edit";
 import { myinEditorView } from "@/lib/server/myin-run";
 import { listFeedback } from "@/lib/server/youtube-process-feedback";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
@@ -46,7 +46,7 @@ export async function GET(request: Request) {
 
 const pc = z.string().trim().min(1).max(80);
 const postSchema = z.object({ action: z.enum(["lock", "heartbeat", "unlock", "order", "next", "result", "decline", "confirm_start", "confirm_finish", "handoff", "say", "say_status", "force_unlock", "image_upload", "image_saved",
-  "edit_cancel", "save", "save_done", "base", "materials_upload", "materials_saved"]), projectId: z.string().uuid() }).passthrough();
+  "edit_cancel", "save", "save_done", "base", "materials_upload", "materials_saved", "draft_finish"]), projectId: z.string().uuid() }).passthrough();
 const resultSchema = z.object({ pc, orderId: z.string().uuid(), status: z.enum(["done", "failed", "queued"]), version: z.string().trim().max(80).optional(), note: z.string().trim().max(2000).optional() }).strict();
 const finishSchema = z.object({ pc, confirmId: z.string().uuid(), parts: z.array(z.object({ bytes: z.number().int().positive(), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict()).min(1).max(24) }).strict();
 const declineSchema = z.object({ orderId: z.string().uuid().optional(), feedbackId: z.string().uuid().optional(), reason: z.string().trim().min(1).max(1000) }).strict()
@@ -59,7 +59,8 @@ const declineSchema = z.object({ orderId: z.string().uuid().optional(), feedback
  * say_status ask the render PC for sentences read again in the video's own voice (doc v3 7.2-1). The editor screen (편집 화면 이식): order with
  * manual = a hand edit, edit_cancel = 되돌리기, save = 완성, base = the version the next edits start from; the editing computer answers a 완성
  * it could not confirm with save_done and puts each version's files up with materials_upload · materials_saved. screen_publish (no video) puts
- * a new editor screen up for everyone.
+ * a new editor screen up for everyone. draft_finish (장면 그림 v0, before the first final): the storyboard the editing computer made from
+ * the hand edits, in place of a rendered final — the OS makes v1 from it (④ · ⑤).
  */
 export async function POST(request: Request) {
   try {
@@ -85,6 +86,7 @@ export async function POST(request: Request) {
     if (action === "base") return NextResponse.json(await setEditBase(actor, projectId, z.object({ version: z.string().max(40).nullable() }).strict().parse(rest).version), { headers });
     if (action === "materials_upload") return NextResponse.json(await materialsUpload(actor, projectId, materialsUploadSchema.parse(rest)), { headers });
     if (action === "materials_saved") return NextResponse.json(await materialsSaved(actor, projectId, materialsSavedSchema.parse(rest)), { headers });
+    if (action === "draft_finish") return NextResponse.json(await draftFinish(actor, projectId, draftFinishSchema.parse(rest)), { headers });
     if (action === "handoff") return NextResponse.json(await editHandoff(actor, projectId, z.object({ at: z.string().datetime().optional() }).strict().parse(rest).at), { headers });
     return NextResponse.json(await declineEdit(actor, projectId, declineSchema.parse(rest)), { headers });
   } catch (error) {

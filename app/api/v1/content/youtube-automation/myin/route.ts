@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
-import { checkMyinVoice, confirmMyinClips, createMyinRun, latestMyinRun, myinVoiceCheck, myinVoiceFixPlan, myinVoiceFixSchema, myinVoiceOnRenderPc, requestMyinVoiceFix, myinDownloads, myinEarlierStyles, myinRecord, myinSubtitles, myinSubtitleChangeSchema, saveMyinSubtitles, myinOurImageUpload, myinOutputs, myinPhotos, myinPreviewSheets, myinSoundState, myinWordsReport, reopenMyinMaterials, reviewMyinStoryboard, saveMyinOurImage, saveMyinSound, separateMyinPhoto, setMyinDraftPlace, startMyinFinal, startMyinPrep } from "@/lib/server/myin-run";
+import { checkMyinVoice, confirmMyinClips, createMyinRun, latestMyinRun, myinVoiceCheck, myinVoiceFixPlan, myinVoiceFixSchema, myinVoiceOnRenderPc, requestMyinVoiceFix, myinDownloads, myinEarlierStyles, myinRecord, myinSubtitles, myinSubtitleChangeSchema, saveMyinSubtitles, myinOurImageUpload, myinOutputs, myinPhotos, myinPreviewSheets, myinSoundState, myinWordsReport, reopenMyinMaterials, reviewMyinStoryboard, saveMyinOurImage, saveMyinSound, separateMyinPhoto, setMyinDraftPlace, setMyinScreenCheck, startMyinFinal, startMyinPrep } from "@/lib/server/myin-run";
 import { findMyinPhotoCandidates, applyMyinPhotoCandidate } from "@/lib/server/myin-photo-candidates";
 import { readLocalRenderStatus } from "@/lib/server/youtube-render-pc";
 import { checkMyinScreens, myinScreenCheck } from "@/lib/server/myin-screen-check";
@@ -62,7 +62,9 @@ export async function GET(request: Request) {
 }
 
 const patchSchema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("review"), runId: z.string().uuid(), decision: z.enum(["confirmed", "revise"]), note: z.string().max(2000).default(""), place: z.enum(["pc", "local"]).default("pc") }),
+  z.object({ action: z.literal("review"), runId: z.string().uuid(), decision: z.enum(["confirmed", "revise"]), note: z.string().max(2000).default(""), place: z.enum(["pc", "local"]).default("pc"),
+    screenCheck: z.boolean().default(true) }),
+  z.object({ action: z.literal("screen_check_auto"), runId: z.string().uuid(), on: z.boolean() }),
   z.object({ action: z.literal("place"), runId: z.string().uuid(), place: z.enum(["pc", "local"]) }),
   z.object({ action: z.literal("prepare"), runId: z.string().uuid() }),
   // 우리 이미지 올리기: an upload address for one storyboard photo file, then the upload kept for it.
@@ -93,7 +95,8 @@ export async function PATCH(request: Request) {
     pilot();
     const actor = await authenticateRequest(request, { allowAgent: false });
     const input = patchSchema.parse(await parseJson(request, 60_000));
-    const result = input.action === "review" ? { run: await reviewMyinStoryboard(actor, input.runId, input.decision, input.note, input.place) }
+    const result = input.action === "review" ? { run: await reviewMyinStoryboard(actor, input.runId, input.decision, input.note, input.place, input.screenCheck) }
+      : input.action === "screen_check_auto" ? { run: await setMyinScreenCheck(actor, input.runId, input.on) }
       : input.action === "place" ? { run: await setMyinDraftPlace(actor, input.runId, input.place) }
       : input.action === "clips_ok" ? { run: await confirmMyinClips(actor, input.runId, input.note, input.place) }
       // [다시 검사]: only someone who can read the run (myinScreenCheck checks it) asks GPT again.

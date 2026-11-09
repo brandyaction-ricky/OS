@@ -4,12 +4,13 @@ import { Scissors, X } from "lucide-react";
 import { apiRequest } from "@/lib/api-client";
 import { SUPABASE_URL } from "@/lib/config";
 import { editorScreenDoc } from "@/lib/editor-screen-doc";
+import { useCostConfirm, useCostModels, voiceEstimate } from "./cost-notice";
 import { md } from "./youtube-process-frame";
 
 const ROUTE = "/api/v1/content/youtube-automation/editor";
 const STORE = "editor-screen:";
 type Lock = { name: string; pc: string; since: string } | null;
-type Screen = { versions: unknown[]; lock: Lock; saves: { pending: { label: string } | null }; edits: { status: string }[] };
+type Screen = { versions: { name: string }[]; lock: Lock; saves: { list: unknown[]; pending: { label: string } | null }; edits: { status: string }[] };
 
 /** Who is editing, a 완성 on its way, hand edits not in a final yet — the same few words on the 제작 tab and over the screen. */
 function ScreenTags({ s }: { s: Screen }) {
@@ -41,12 +42,14 @@ export function EditorScreenEntry({ token, projectId, title, onFinal }: { token:
   // Nothing to show until a computer opened the editor or put files up.
   if (!token || !screen || (!screen.versions.length && !screen.lock)) return null;
   const ready = screen.versions.length > 0;
+  // 장면 그림 v0: before the first final the screen holds each scene's picture; 완성 makes the moving video (v1) in the OS.
+  const draft = !screen.saves.list.length && screen.versions.some(v => v.name === "v0");
   return <><div className="yp-card yp-escreen-entry">
     <div className="yp-card-b yp-escreen-row">
       <Scissors size={18} aria-hidden="true" />
       <div className="yp-escreen-txt">
         <b>편집 화면</b>
-        <span className="yp-muted">{ready ? "손으로 자르고 옮긴 뒤 「완성」을 누르면 새 최종본이 돼요." : "편집하는 컴퓨터가 편집 재료를 올리면 열 수 있어요."}</span>
+        <span className="yp-muted">{draft ? "장면 그림으로 먼저 고쳐요. 「완성」을 누르면 움직이는 첫 최종본(v1)을 만들어요." : ready ? "손으로 자르고 옮긴 뒤 「완성」을 누르면 새 최종본이 돼요." : "편집하는 컴퓨터가 편집 재료를 올리면 열 수 있어요."}</span>
         <div className="yp-escreen-tags"><ScreenTags s={screen} /></div>
       </div>
       <button ref={button} type="button" className="yp-btn yp-pri" disabled={!ready} onClick={() => setOpen(true)}>편집 화면 열기</button>
@@ -54,6 +57,9 @@ export function EditorScreenEntry({ token, projectId, title, onFinal }: { token:
   </div>
   {open ? <EditorScreen token={token} projectId={projectId} title={title} first={screen} onState={setScreen} onFinal={onFinal} onClose={close} /> : null}</>;
 }
+
+/** A finished version exists (the screen's 완성 then confirms an edit on the editing computer, no paid step in the OS). */
+const hasFinal = (s: Screen) => s.saves.list.length > 0;
 
 function EditorScreen({ token, projectId, title, first, onState, onFinal, onClose }: { token: string; projectId: string; title: string; first: Screen;
   onState: (s: Screen) => void; onFinal: () => void; onClose: () => void }) {
@@ -66,6 +72,9 @@ function EditorScreen({ token, projectId, title, first, onState, onFinal, onClos
   const [screen, setScreen] = useState(first);
   // The screen asked for the whole window (its own full-screen button where the browser's is not allowed): the bar steps aside.
   const [full, setFull] = useState(false);
+  // 장면 그림 v0's 완성 starts paid steps (구독 대사 voice, the full render): asked here, over the screen, before it goes.
+  const cost = useCostConfirm(), { myinVoice } = useCostModels();
+  const beforeFinal = useRef(!hasFinal(first));
 
   useEffect(() => {
     let live = true;
@@ -91,11 +100,16 @@ function EditorScreen({ token, projectId, title, first, onState, onFinal, onClos
   const answer = useCallback(async (op: string, body: Record<string, unknown>) => {
     const get = <T,>(query: string) => apiRequest<T>(`${ROUTE}?projectId=${projectId}&${query}`, { token });
     const post = <T,>(action: string, rest: Record<string, unknown>) => apiRequest<T>(ROUTE, { token, method: "POST", body: JSON.stringify({ action, projectId, ...rest }) });
-    if (op === "state") { const s = await get<Screen>("view=screen"); lock.current = s.lock; setScreen(s); onState(s); return s; }
+    if (op === "state") { const s = await get<Screen>("view=screen"); lock.current = s.lock; beforeFinal.current = !hasFinal(s); setScreen(s); onState(s); return s; }
     if (op === "files") return get(`view=screen_files&version=${encodeURIComponent(String(body.version))}`);
     if (op === "edit") return { id: (await post<{ orderId: string }>("order", { text: String(body.text || "손 편집"), ...(body.version ? { version: body.version } : {}), manual: body.manual })).orderId };
     if (op === "cancel") return post("edit_cancel", { orderId: body.id });
-    if (op === "save") return post("save", {});
+    if (op === "save") {
+      if (beforeFinal.current && !await cost.confirm({ model: myinVoice, amount: voiceEstimate("가".repeat(600), myinVoice).krw, upTo: true,
+        detail: "구독 대사 음성(300자까지, 끊긴 문장은 한 번 더)을 만들고 1080p 60fps 전체 영상까지 이어서 만들어요", ok: "완성하기" }))
+        throw new Error("완성을 취소했어요.");
+      return post("save", {});
+    }
     if (op === "base") return post("base", { version: body.version ?? null });
     if (op === "say") return { id: (await post<{ sayId: string }>("say", { sentences: [String(body.text ?? "")], takes: 3 })).sayId };
     if (op === "say_status") return post("say_status", { sayId: body.id });
@@ -110,7 +124,7 @@ function EditorScreen({ token, projectId, title, first, onState, onFinal, onClos
       return { file: (await post<{ file: string }>("image_saved", { pc, file: slot.file, path: slot.path })).file };
     }
     throw new Error("OS 편집 화면에서는 아직 못 쓰는 기능이에요.");
-  }, [token, projectId, onState]);
+  }, [token, projectId, onState, cost, myinVoice]);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -144,5 +158,6 @@ function EditorScreen({ token, projectId, title, first, onState, onFinal, onClos
       : <div className="yp-escreen-wait" role={error ? "alert" : "status"}>
         {error ? <><span>{error}</span><button type="button" className="yp-btn" onClick={() => setTries(n => n + 1)}>다시 열기</button></> : <span>편집 화면을 여는 중이에요…</span>}
       </div>}
+    {cost.element}
   </div>;
 }
