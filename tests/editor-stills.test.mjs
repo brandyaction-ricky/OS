@@ -85,21 +85,21 @@ test("the worker lists v0's files as the editor takes them", async () => {
   assert.equal(worker.stillsReady(pkg), true);
 });
 
-test("a scene's picture is taken once its last phrase is in, and the subtitles move with the holds", { skip: !plain && "needs python3" }, () => {
+test("a scene's picture is its last moment before the next scene, and the subtitles move with the holds", { skip: !plain && "needs python3" }, () => {
   const code = `
 import sys; sys.path.insert(0, "tools")
 import myin_v0 as V
-print(V.finished_at({"t0": 10.0, "t1": 20.0, "a": {"t": 12.0, "t_b": 14.5}, "late": {"t": 25.0}}))
-print(V.finished_at({"t0": 10.0, "t1": 20.0, "cue": {"t": 19.5}}))
-print(V.finished_at({"t0": 10.0, "t1": 11.0}))
+print(V.settled_at({"t0": 10.0, "t1": 20.0, "lines": [[["첫 줄", 10.0]], [["둘째 줄", 18.4]]]}))
+print(V.settled_at({"t0": 10.0, "t1": 20.0, "points": [{"h": "a"}, {"h": "b"}]}))
+print(V.settled_at({"t0": 10.0, "t1": 10.12}))
 ass = "[Events]\\nDialogue: 0,0:00:01.00,0:00:02.50,Default,,0,0,0,,{\\\\an2}첫 줄\\\\N둘째\\nDialogue: 0,0:01:00.00,0:01:01.00,Default,,0,0,0,,끝"
 print(V.srt_from_ass(ass, lambda t: t + 4.0))`;
   const run = spawnSync(plain, ["-I", "-c", code], { encoding: "utf8" });
   assert.equal(run.status, 0, run.stderr);
   const [a, b, c, ...srt] = run.stdout.trim().split("\n");
-  assert.equal(Number(a), 15.5, "a second after its last phrase");
-  assert.equal(Number(b), 19.88, "never past the scene's end");
-  assert.equal(Number(c), 10.88, "a short scene: just before it ends");
+  assert.equal(Number(a), 19.75, "a line that comes in late (a [text, time] pair) is in the picture");
+  assert.equal(Number(b), 19.75, "rows on the scene's own clock are all in");
+  assert.equal(Number(c), 10, "a flash shorter than the margin: its start");
   assert.deepEqual(srt, ["1", "00:00:05,000 --> 00:00:06,500", "첫 줄 둘째", "", "2", "00:01:04,000 --> 00:01:05,000", "끝"]);
 });
 
@@ -130,7 +130,7 @@ test("the first 완성 from the editor screen asks for the paid steps first; a p
   assert.match(screen, /if \(beforeFinal\.current && !await cost\.confirm\(/);
   assert.match(screen, /throw new Error\("완성을 취소했어요\."\);/);
   const v0 = read("tools/myin_v0.py");
-  assert.match(v0, /for t in \(finished_at\(s\), s\["t0"\] \+ 0\.6\):/);
+  assert.match(v0, /for t in \(settled_at\(s\), s\["t0"\] \+ 0\.6\):/);
   assert.match(v0, /못 그린 장면/);
 });
 
