@@ -169,6 +169,8 @@ test("a 웹툰 starts at 8 cards and 카드 확정 waits for every picture", () 
   assert.equal(full.slides.length, 11, "웹툰형 is not held to 10 cards");
   const filled = { ...d, caption: "캡션", hashtags: [], slides: d.slides.map(slide => ({ ...slide, fields: Object.fromEntries(Object.keys(slide.fields).map(key => [key, key === "episode" ? "1화" : `QA ${key}`.slice(0, 6)])) })) };
   assert.deepEqual(formats.cardProblems(filled).blocking, [], "no picture is not a blocking problem (an AI draft has none)");
+  const middle = { ...filled, slides: filled.slides.filter(slide => slide.type !== "summary" && slide.type !== "end") };
+  assert.deepEqual(formats.cardProblems(middle).blocking, [], "a 웹툰 화 in the middle of a story closes with neither 오늘의 한 줄 nor 마무리");
   assert.ok(formats.cardProblems(filled).warnings.some(text => text === "1장 그림이 아직 없어요 — 「AI로 그리기」로 그려요"));
   const cardsRecord = (draft) => ({ drafts: [draft], picked: draft.id });
   assert.equal(cards.cardsMissing(cardsRecord(filled)), "1장 그림을 그려 주세요");

@@ -211,11 +211,12 @@ function ToonSlide({ draft, slide, index, theme, src }: { draft: CardDraft; slid
   // An oval with a tail toward whoever speaks (toonAim: where the PD tapped, or the left / right of the faces the picture keeps in its
   // middle). It left the oval's bottom and pointed at nobody until the 1화 시안 (2026-11-02). The tail starts 140 px in from the
   // oval's outer side on its top edge — the oval's height estimated from its lines, as Satori cannot measure it — and always rises at
-  // least half as steeply as it leans. Column-reverse draws the tail after the oval, so its white covers the oval's edge where they join.
+  // least half as steeply as it leans. It only points: reaching the speaker, it stabbed faces in close-ups (대표 2026-11-09, 사건 1).
+  // Column-reverse draws the tail after the oval, so its white covers the oval's edge where they join.
   const bubble = (name: "talk" | "reply", bottom: number) => {
     const left = name === "talk", lines = Math.min(3, plainCardText(slide.fields[name] ?? "").trim().split("\n").reduce((sum, line) => sum + Math.max(1, Math.ceil([...line].length / 15)), 0));
     const baseX = left ? 196 : W - 196, baseY = H - bottom - Math.round(lines * 32 * 1.45 + 86), [ax, ay] = toonAim(slide, name);
-    const dx = ax / 100 * W - baseX, dy = Math.min(ay / 100 * H - baseY, -Math.abs(dx) / 2, -40), length = Math.hypot(dx, dy), reach = Math.max(56, Math.min(140, length - 40));
+    const dx = ax / 100 * W - baseX, dy = Math.min(ay / 100 * H - baseY, -Math.abs(dx) / 2, -40), length = Math.hypot(dx, dy), reach = Math.min(72, Math.max(40, length - 200));
     const tip = `${Math.round(150 + dx / length * reach)} ${Math.round(150 + dy / length * reach)}`;
     return <div style={{ display: "flex", flexDirection: "column-reverse", alignItems: left ? "flex-start" : "flex-end" }}>
       <div style={{ display: "flex", maxWidth: 620, background: theme.white, border: `${LINE}px solid ${theme.title}`, borderRadius: "50%", padding: "40px 70px", ...centred }}>{f(name, centred)}</div>
@@ -245,8 +246,9 @@ function ToonSlide({ draft, slide, index, theme, src }: { draft: CardDraft; slid
     {has("sfx") ? <div style={{ display: "flex", position: "absolute", left: 72, top: 600, transform: "rotate(-10deg)", alignItems: "flex-start" }}>
       {[...plainCardText(slide.fields.sfx ?? "").trim()].slice(0, 8).map((letter, at) => <span key={at} style={{ display: "flex", fontSize: 112, fontWeight: 600, lineHeight: 1, color: theme.title,
         textShadow: EDGE, marginTop: at % 2 ? 46 : 0, marginLeft: at ? -6 : 0, transform: `skewX(-10deg) rotate(${at % 2 ? 6 : -4}deg)` }}>{letter}</span>)}</div> : null}
-    {has("reply") ? <div style={row({ bottom: has("talk") ? 400 : 130 }, true)}>{bubble("reply", has("talk") ? 400 : 130)}</div> : null}
-    {has("talk") ? <div style={row({ bottom: 130 })}>{bubble("talk", 130)}</div> : null}
+    {/* Read top to bottom: what is said first sits above its answer (the answer sat on top and was read first, 대표 2026-11-09). */}
+    {has("talk") ? <div style={row({ bottom: has("reply") ? 400 : 130 })}>{bubble("talk", has("reply") ? 400 : 130)}</div> : null}
+    {has("reply") ? <div style={row({ bottom: 130 }, true)}>{bubble("reply", 130)}</div> : null}
     <div style={row({ bottom: 40 }, true)}><div style={{ display: "flex", alignItems: "center", gap: 14, background: theme.white, borderRadius: 999, padding: "10px 22px", fontSize: 16, color: theme.sub }}>
       <Logo color={theme.title} height={20} /><span>{cardPage(draft, index)}</span></div></div>
   </>;

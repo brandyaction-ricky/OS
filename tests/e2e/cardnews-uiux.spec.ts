@@ -91,6 +91,11 @@ test("a 웹툰 화 starts by hand and each 칸 brings its 장면 to the drawing 
   await page.getByLabel("장면 (그릴 것)", { exact: true }).fill("밤 11시 사무실, 서윤이 모니터 앞에서 웃는다");
   await page.getByLabel("대사", { exact: true }).fill("네, 괜찮아요!");
   await expect(page.locator(".yp-card-big [data-card-field=talk]")).toHaveText("네, 괜찮아요!");
+  // 받는 대사 answers the 대사, so it sits below it: read top to bottom, the answer came first (대표 2026-11-09, 사건 1).
+  await page.getByLabel("받는 대사", { exact: true }).fill("진짜?");
+  const top = (name: string) => page.locator(`.yp-card-big [data-card-field=${name}]`).evaluate(field => field.getBoundingClientRect().top);
+  expect(await top("talk")).toBeLessThan(await top("reply"));
+  await page.getByLabel("받는 대사", { exact: true }).fill("");
   // The tilted 효과음 letters reach past their box; that must not count as 넘침 (it would block 카드 확정).
   await page.getByLabel("효과음", { exact: true }).fill("빼꼼");
   // The 해설 hexagon and the 속마음 oval are pictures behind their words; the words must paint on top in the preview (hidden till 2026-11-09).
