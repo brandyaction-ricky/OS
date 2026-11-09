@@ -7,7 +7,8 @@ drawn once, at 「완성」. Effects need no video: their times come from the en
   (the preview's environment: STORY, SRC, PYTHONPATH with the diagram folder, MYIN_FONT_DIR)
 
 Writes the editor screen's version files into <out dir>: version.json, video.mp4 (the pictures one after another, 720p, no sound),
-thumb_NN.jpg, voice · music · sfx (.m4a), wave.json, subs.srt (output times).
+thumb_NN.jpg, voice · music · sfx (.m4a), wave.json, subs.srt (output times), and story.json — the storyboard as the OS keeps it (with
+the music match, without the channel style), which an editing computer that did not make ③ starts its edits from.
 """
 import json, os, re, shutil, subprocess, sys, time
 
@@ -27,6 +28,14 @@ def finished_at(sc):
             for x in o: walk(x)
     walk(sc)
     return min(sc["t1"] - 0.12, max(max(times) + 1.0, sc["t0"] + 0.6))
+
+
+def picture(M, sc, s):
+    """The scene as it looks finished, else just after it starts; None when the engine draws neither (the frame check names it)."""
+    for t in (finished_at(s), s["t0"] + 0.6):
+        try: return M.frame(sc, M.out_time(min(t, s["t1"] - 0.12))).convert("RGB")
+        except Exception as e: print(f"장면 그림 못 그림: {s.get('type')} {round(t, 2)}초 ({type(e).__name__}: {e})", flush=True)
+    return None
 
 
 def srt_from_ass(ass, out_time):
@@ -71,9 +80,12 @@ def main():
     sc, st = E.load(os.environ.get("STORY", "myin_storyboard.json"))
     rows, music, end = E.scene_rows(sc, st)
     sfx = E.sfx_rows(sc)
-    stills = []
+    stills, broken = [], []
     for r, s in zip(rows, sc):
-        im = M.frame(sc, M.out_time(finished_at(s))).convert("RGB")
+        im = picture(M, sc, s)
+        if im is None:                                          # neither moment draws: a grey card says so; the rest goes on
+            from PIL import Image
+            im = Image.new("RGB", (1920, 1080), (205, 205, 212)); broken.append(r["i"] + 1)
         still = os.path.join(out, f"still_{r['i']:02d}.jpg")
         im.resize((1280, 720)).save(still, quality=86)
         im.resize((320, 180)).save(os.path.join(out, f"thumb_{r['i']:02d}.jpg"), quality=80)
@@ -81,7 +93,7 @@ def main():
         stills.append(still)
     slideshow(rows, stills, end, os.path.join(out, "video.mp4"))
     for still in stills: os.remove(still)                       # in the video now; the timeline keeps the small ones
-    note = "장면 그림 · 움직임은 「완성」 때 만들어요"
+    note = "장면 그림 · 움직임은 「완성」 때 만들어요" + (f" · 못 그린 장면 {', '.join(map(str, broken))}" if broken else "")
     try:
         peaks = E.stem_peaks(sc, st, VERSION)                   # the same mixing functions the render uses, each line apart
         json.dump(peaks, open(os.path.join(out, "wave.json"), "w"))
@@ -91,10 +103,11 @@ def main():
     except Exception as e:                                      # the pictures still come up; the screen says the lines are missing
         note += f" · 소리 줄 못 만듦({type(e).__name__})"
         print(f"소리 줄 못 만듦: {e}", flush=True)
+    shutil.copyfile(os.path.join(work, "voice", "os_myin", "myin_storyboard.json"), os.path.join(out, "story.json"))
     ass = os.path.join(work, "voice", "os_myin", "subs_myin.ass")
     if os.path.exists(ass):
         open(os.path.join(out, "subs.srt"), "w", encoding="utf-8").write(srt_from_ass(open(ass, encoding="utf-8-sig").read(), M.out_time))
-    version = {"name": VERSION, "video": "video.mp4", "video_ns": "video.mp4", "proxy": "video.mp4", "story": os.environ.get("STORY", "myin_storyboard.json"),
+    version = {"name": VERSION, "video": "video.mp4", "video_ns": "video.mp4", "proxy": "video.mp4", "story": "story.json",
                "scenes": rows, "music": music, "sfx": sfx, "end": end, "note": note, "changed": [], "from": None, "voice": VERSION, "stills": True}
     json.dump(version, open(os.path.join(out, "version.json"), "w", encoding="utf-8"), ensure_ascii=False)
     print(f"장면 그림 v0: 장면 {len(rows)}개 · 음악 {len(music)}구간 · 효과음 {len(sfx)}개 · {round(end, 1)}초 · {round(time.time() - t0, 1)}초 걸림", flush=True)

@@ -1234,8 +1234,9 @@ export async function claimMyinClips(service: Service = createServiceSupabase(),
   const { record, run, lease } = claimed;
   try {
     // 장면 그림 (편집기 3차 요청 11-09): a computer whose engine can draw them makes a longform's scene pictures and timeline (v0) instead
-    // of clips; an older one still cuts clips, so the change reaches each computer with its engine.
-    if (stills && !run.layout) return { runId: record.id, lease: lease.token, stills: true as const, ...(owner ? { seed: await localSeed(service, run) } : {}),
+    // of clips; an older one still cuts clips, so the change reaches each computer with its engine. Only before the video's first final:
+    // a video that has one goes on through finals and its editing computer, as before.
+    if (stills && !run.layout && !run.final && !run.finals?.length) return { runId: record.id, lease: lease.token, stills: true as const, ...(owner ? { seed: await localSeed(service, run) } : {}),
       ...await subtitlesFor(service, run), ...styleFor(run) };
     const items = clipItems(run);
     const uploads = await Promise.all(items.map((item) => uploadUrl(service, ASSET_VIDEO_BUCKET, outPath(record, run, `${item.name}-${tag(lease.token)}.mp4`))));
@@ -1269,7 +1270,7 @@ export async function completeMyinClips(input: { runId: string; lease: string; n
     return { runId: record.id, stage: prepAgain ? "prep_pending" : "clips_pending", again: true };
   }
   const next: MyinRun = { ...run, attempts: 0 };
-  if (input.stills && !run.layout) {
+  if (input.stills && !run.layout && !run.final && !run.finals?.length) {
     // 장면 그림 2/2: the files are up; they become the editor screen's v0 (hand edits waiting on an earlier v0 go away).
     const v0 = await (await import("./myin-edit")).registerDraftVersion(service, run.sourceId, record.id);
     next.stills = { at: new Date().toISOString(), files: v0.files, bytes: v0.bytes, used: materials(run), ...drewWith(run) };
@@ -1325,15 +1326,17 @@ export async function finishMyinDraft(actor: RequestActor, sourceId: string, edi
   const next: MyinRun = { ...run, attempts: 0, resumeFinal: true, clipsReview: { by: actor.id, name: actor.name, note: edited ? "편집 화면에서 고쳐 완성" : "편집 화면에서 완성", at } };
   if (run.local) next.localFinish = { ...run.local, at }; else delete next.localFinish;
   if (edited) {
-    const kept = await putStoryboard(service, record, run, edited.storyboard);
-    next.storyboard = { ...kept, ...storyboardFields(edited.storyboard), model: "편집 화면", at };
     const used = myinReferencedFiles(edited.storyboard);
     for (const image of edited.images.filter((i) => used.has(i.file)))
       next.ours = { ...next.ours, [image.file]: { path: image.path, bytes: image.bytes, by: image.by, name: image.name, at: image.at } };
+    // A photo the edits newly use that the render PC cannot fetch stops here, before anything is saved.
+    photosInUse(next, edited.storyboard as Awaited<ReturnType<typeof storyboardJson>>);
+    const kept = await putStoryboard(service, record, run, edited.storyboard);
+    next.storyboard = { ...kept, ...storyboardFields(edited.storyboard), model: "편집 화면", at };
   }
   retireFinal(next);
-  const saved = await save(service, record, "done", "clips_review", next);
-  return { making: false as const, run: presentMyinRun(await beginPrep(service, saved, parse(saved), actor.id)) };
+  // One save: the confirmation and ④'s start land together, so a stop in between never leaves 완성 half done.
+  return { making: false as const, run: presentMyinRun(await beginPrep(service, record, next, actor.id)) };
 }
 
 /**
@@ -1341,10 +1344,13 @@ export async function finishMyinDraft(actor: RequestActor, sourceId: string, edi
  * screen shows 「v1 완성 중」). Read from four fields of the newest run (the screen asks every few seconds).
  */
 export async function myinDraftState(service: Service, sourceId: string) {
-  const { data } = await service.from("os_records").select("stage,cr:metadata->clipsReview,st:metadata->stills,fin:metadata->final").eq("parent_id", sourceId).eq("record_type", "ai_job")
-    .eq("metadata->>kind", MYIN_RUN_KIND).is("archived_at", null).order("created_at", { ascending: false }).limit(1);
-  const row = data?.[0] as { stage?: string; cr?: { at?: string } | null; st?: unknown; fin?: unknown } | undefined;
-  return { ready: Boolean(row?.st && row.stage === "clips_review" && !row.cr), making: row?.st && row.cr?.at && !row.fin ? row.cr.at : null };
+  const { data } = await service.from("os_records").select("stage,status,cr:metadata->clipsReview,st:metadata->stills,fin:metadata->final,fins:metadata->finals").eq("parent_id", sourceId)
+    .eq("record_type", "ai_job").eq("metadata->>kind", MYIN_RUN_KIND).is("archived_at", null).order("created_at", { ascending: false }).limit(1);
+  const row = data?.[0] as { stage?: string; status?: string; cr?: { at?: string } | null; st?: unknown; fin?: unknown; fins?: unknown[] | null } | undefined;
+  const first = Boolean(row?.st && !row.fin && !row.fins?.length);
+  // ④ · ⑤ at work (or waiting their turn); a stop (a check that found something, a blocked step) waits on a person in the 제작 tab.
+  const moving = first && Boolean(row?.cr?.at) && ["cta_pending", "prep_pending", "final_pending"].includes(row?.stage ?? "") && row?.status !== "blocked";
+  return { ready: first && row?.stage === "clips_review" && !row?.cr, making: moving ? row!.cr!.at! : null, stopped: first && Boolean(row?.cr) && !moving };
 }
 
 /** ④ 끝: after the sound and photos check, the 1080p full video; the same button restarts a stopped one. */
@@ -1437,7 +1443,7 @@ export async function completeMyinFinal(input: { runId: string; lease: string; b
   delete next.lease; delete next.lastError; delete next.voiceChanged;
   await save(service, record, "done", "final_ready", next);
   // The first final made from the scene pictures replaces them on the editor screen: from here editing works on finals, as before.
-  if (run.stills && !run.finals?.length) await import("./myin-edit").then((edit) => edit.dropDraftVersion(service, run.sourceId, record.id)).catch(() => undefined);
+  if (!run.layout) await import("./myin-edit").then((edit) => edit.dropDraftVersion(service, run.sourceId, record.id)).catch(() => undefined);
   return { runId: record.id, stage: "final_ready" };
 }
 

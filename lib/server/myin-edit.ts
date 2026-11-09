@@ -462,11 +462,17 @@ export async function requestSave(actor: RequestActor, projectId: string) {
   const open = (data ?? []).length;
   // 첫 「완성」 (장면 그림 v0, 편집기 3차 요청 11-09): no final yet — ④ · ⑤ make v1 from the storyboard, after the editing computer applied any edits.
   if (!finals.length) {
+    // A 완성 with edits already waits for the editing computer: a second press never starts ④ without them.
+    if (meta?.save) return { ok: true, label, waiting: open };
     const draft = await myinDraftState(service, project.id);
+    if (draft.stopped) throw new ApiError(409, "EDIT_FIRST_STOPPED", "첫 완성본을 만들다 멈췄어요. 제작 탭 ④ · ⑤에서 걸린 곳을 확인해 주세요.");
     const step = firstSave({ ready: draft.ready, making: Boolean(draft.making), open, editor: Boolean(lock) });
     if (step === "not_ready") throw new ApiError(409, "EDIT_DRAFT_NOT_READY", "장면 그림이 나온 뒤에 완성할 수 있어요.");
     if (step === "need_editor") throw new ApiError(409, "EDIT_NO_EDITOR", `완성 전 편집 ${open}개를 반영할 컴퓨터가 없어요. 편집하는 컴퓨터에서 편집기를 열거나, 편집을 되돌린 뒤 완성해 주세요.`);
-    if (step === "finish" || step === "making") { await finishMyinDraft(actor, project.id); return { ok: true, label, making: true }; }
+    if (step === "making") return { ok: true, label, making: true };
+    // 구독 대사 voice and the full render are paid: a person starts them (the screen asks first), never an AI key.
+    if (actor.type !== "user") throw new ApiError(403, "EDIT_PERSON_ONLY", "첫 완성은 사람이 편집 화면이나 제작 탭에서 눌러 주세요.");
+    if (step === "finish") { await finishMyinDraft(actor, project.id); return { ok: true, label, making: true }; }
   }
   if (!lock || !meta) throw new ApiError(409, "EDIT_NO_EDITOR", "편집기를 연 컴퓨터가 없어요. 편집하는 컴퓨터에서 편집기를 열어 주세요.");
   if (meta.save) return { ok: true, label, waiting: open };
@@ -611,6 +617,8 @@ export async function registerDraftVersion(service: Service, projectId: string, 
 
 /** The first final landed: v0 leaves the screen (an editing computer puts that final up as its own version, as for any final). */
 export async function dropDraftVersion(service: Service, projectId: string, runId: string) {
+  const record = await sessionRecord(service, projectId);
+  if (!record || sessionSchema.parse(record.metadata).screen?.lockId !== runId) return;
   const row = await projectRow(service, projectId);
   await changeSession(service, projectId, row.owner_id, (m) => { const next = { ...m }; if (m.screen?.lockId === runId) delete next.screen; return next; });
   await removeDir(service, screenDir(row.owner_id, projectId, runId, DRAFT_VERSION)).catch(() => undefined);
@@ -626,13 +634,18 @@ export async function draftFinish(actor: RequestActor, projectId: string, input:
   const service = createServiceSupabase();
   const { meta } = await heldSession(service, actor, project.id, input.pc);
   if ((await myinFinalNumbers(service, project.id)).length) throw new ApiError(409, "EDIT_HAS_FINAL", "이미 완성본이 있어요. 고친 버전은 확정으로 올려 주세요.");
+  // Only once a person pressed 완성 (it starts the paid steps), as a confirm only comes after one.
+  if (!meta.save) throw new ApiError(409, "EDIT_NO_SAVE", "편집 화면에서 「완성」을 누른 뒤에 보낼 수 있어요.");
   const myin = await myinRunWords(service, project.id);
   const anchored = anchorMyinCues(input.storyboard, myin.words, myin.speech);
   const storyboard = anchored.storyboard as Record<string, unknown>;
   const checked = checkMyinStoryboard(storyboard, myin.words, diagramCatalogTypes(await readDiagramCatalog()), myin.speech);
   if (checked.issues.length || !checked.story) throw new ApiError(422, "EDIT_STORYBOARD_ISSUES", `기획표 검사에서 걸린 곳 ${checked.issues.length}개: ${checked.issues.join(" / ")}`);
   // Someone pressed 완성 meanwhile with nothing waiting: v1 is already being made from the storyboard as it was, so this one is not used.
-  if ((await finishMyinDraft(actor, project.id, { storyboard, images: meta.images ?? [] })).making) throw new ApiError(409, "EDIT_ALREADY_MAKING", "이미 첫 완성본을 만드는 중이에요. 나온 뒤 그 완성본에서 다시 고쳐 주세요.");
+  if ((await finishMyinDraft(actor, project.id, { storyboard, images: meta.images ?? [] })).making) {
+    await changeSession(service, project.id, who(actor), (m) => { const next = { ...m }; delete next.save; return next; });
+    throw new ApiError(409, "EDIT_ALREADY_MAKING", "이미 첫 완성본을 만드는 중이에요. 나온 뒤 그 완성본에서 다시 고쳐 주세요.");
+  }
   const at = new Date().toISOString();
   if (input.orders.length) {
     const { data: rows } = await service.from("os_records").select("id,version,metadata").in("id", input.orders).eq("parent_id", project.id).eq("metadata->>kind", ORDER);
