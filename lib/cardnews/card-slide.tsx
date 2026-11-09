@@ -4,7 +4,7 @@
 // The look is the MYIN 카드뉴스 디자인 정본 (2026-11-02): white body cards, a blue cover and ending, Pretendard 400 · 500 · 600 at its
 // sizes for 1080 × 1350, 96px text margins, photos and diagrams within 80% of the width, and the explanation right under what it explains.
 import type { CSSProperties, ReactNode } from "react";
-import { CARD_MARK, CARD_SIZE, cardPage, plainCardText, toonAim, type CardDraft, type CardPhoto, type CardSlide } from "./formats.ts";
+import { CARD_MARK, CARD_SIZE, cardPage, plainCardText, toonAim, toonBattery, type CardDraft, type CardPhoto, type CardSlide } from "./formats.ts";
 
 /** 디자인 정본 §2. Blue cards carry white text and gold only for the marked phrase; gold never sits on a light card. */
 export const CARD_THEME = { paper: "#FFFFFF", soft: "#EFEFF1", blue: "#212CB0", gold: "#EED467", title: "#151D2C", ink: "#1E1D1D", sub: "#43474C", white: "#FFFFFF" };
@@ -209,19 +209,39 @@ function ToonSlide({ draft, slide, index, theme, src }: { draft: CardDraft; slid
   // preview showed the shapes empty (2026-11-09, 사건 1); the words stand positioned too and, coming later, paint on top. Satori draws in order.
   const lettered: CSSProperties = { ...centred, position: "relative" };
   // An oval with a tail toward whoever speaks (toonAim: where the PD tapped, or the left / right of the faces the picture keeps in its
-  // middle). It left the oval's bottom and pointed at nobody until the 1화 시안 (2026-11-02). The tail starts 140 px in from the
-  // oval's outer side on its top edge — the oval's height estimated from its lines, as Satori cannot measure it — and always rises at
-  // least half as steeply as it leans. It only points: reaching the speaker, it stabbed faces in close-ups (대표 2026-11-09, 사건 1).
-  // Column-reverse draws the tail after the oval, so its white covers the oval's edge where they join.
+  // middle). It left the oval's bottom and pointed at nobody until the 1화 시안 (2026-11-02). The oval sits on its speaker's half of
+  // the card: fixed left for 대사, a speaker on the right had their words hang over the listener (대표 2026-11-09, 프롤로그 19장).
+  // The tail starts 140 px in from the oval's outer side on its top edge — the oval's height estimated from its lines, as Satori cannot
+  // measure it — rises straight out of the oval and bends toward the speaker, as tails are drawn (a straight wedge read as a stub,
+  // 대표 2026-11-09), always rising at least half as steeply as it leans. It stops at least 180 px short of the speaker: reaching them,
+  // it stabbed faces in close-ups (대표 2026-11-09, 사건 1). Column-reverse draws the tail after the oval, so its white covers the
+  // oval's edge where they join.
   const bubble = (name: "talk" | "reply", bottom: number) => {
-    const left = name === "talk", lines = Math.min(3, plainCardText(slide.fields[name] ?? "").trim().split("\n").reduce((sum, line) => sum + Math.max(1, Math.ceil([...line].length / 15)), 0));
-    const baseX = left ? 196 : W - 196, baseY = H - bottom - Math.round(lines * 32 * 1.45 + 86), [ax, ay] = toonAim(slide, name);
-    const dx = ax / 100 * W - baseX, dy = Math.min(ay / 100 * H - baseY, -Math.abs(dx) / 2, -40), length = Math.hypot(dx, dy), reach = Math.min(72, Math.max(40, length - 200));
-    const tip = `${Math.round(150 + dx / length * reach)} ${Math.round(150 + dy / length * reach)}`;
-    return <div style={{ display: "flex", flexDirection: "column-reverse", alignItems: left ? "flex-start" : "flex-end" }}>
+    const [ax, ay] = toonAim(slide, name), right = ax >= 50;
+    const lines = Math.min(3, plainCardText(slide.fields[name] ?? "").trim().split("\n").reduce((sum, line) => sum + Math.max(1, Math.ceil([...line].length / 15)), 0));
+    const baseX = right ? W - 196 : 196, baseY = H - bottom - Math.round(lines * 32 * 1.45 + 86);
+    const dx = ax / 100 * W - baseX, dy = Math.min(ay / 100 * H - baseY, -Math.abs(dx) / 2, -40), length = Math.hypot(dx, dy), reach = Math.min(130, Math.max(56, length - 180));
+    const tx = Math.round(170 + dx / length * reach), ty = Math.round(200 + dy / length * reach), bend = Math.round((200 + ty) / 2);
+    return <div style={{ display: "flex", flexDirection: "column-reverse", alignItems: right ? "flex-end" : "flex-start" }}>
       <div style={{ display: "flex", maxWidth: 620, background: theme.white, border: `${LINE}px solid ${theme.title}`, borderRadius: "50%", padding: "40px 70px", ...centred }}>{f(name, centred)}</div>
-      <svg width={300} height={150} viewBox="0 0 300 150" style={{ marginBottom: -LINE - 2, ...(left ? { marginLeft: -10 } : { marginRight: -10 }) }}>
-        <path d={`M132 150 L${tip} L168 150`} fill={theme.white} stroke={theme.title} strokeWidth={LINE} strokeLinejoin="round" /></svg></div>;
+      <svg width={340} height={200} viewBox="0 0 340 200" style={{ marginBottom: -LINE - 2, ...(right ? { marginRight: -30 } : { marginLeft: -30 }) }}>
+        <path d={`M148 200 Q148 ${bend} ${tx} ${ty} Q192 ${bend} 192 200`} fill={theme.white} stroke={theme.title} strokeWidth={LINE} strokeLinejoin="round" /></svg></div>;
+  };
+  // A battery reading (「2%」) is a phone battery in a white tag on the character it belongs to (sfxAt), pointing down at it. As loose
+  // tilted letters it floated apart from the character, and 「폰 배터리가…」 called up no phone (대표 2026-11-09, 프롤로그 21 · 24장).
+  // Low is red, the way a phone shows it. Without sfxAt the tag stands where the 효과음 letters stood, with no point.
+  const battery = slide.type === "panel" ? toonBattery(slide.fields.sfx) : null;
+  const batteryTag = (level: number) => {
+    const aimed = /^\d{1,3},\d{1,3}$/.test(slide.fields.sfxAt?.trim() ?? ""), [ax, ay] = toonAim(slide, "sfx"), TW = 330, TH = 120;
+    const x = Math.round(Math.min(W - TW - 40, Math.max(40, ax / 100 * W - TW / 2))), y = Math.round(Math.min(H - TH - 320, Math.max(40, ay / 100 * H - TH - 90)));
+    const point = Math.round(Math.min(TW - 50, Math.max(50, ax / 100 * W - x))), colour = level <= 20 ? "#E5484D" : theme.blue;
+    return <div style={{ display: "flex", flexDirection: "column", position: "absolute", left: x, top: y, width: TW }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: TH, background: theme.white, border: `${LINE + 1}px solid ${theme.title}`, borderRadius: 60 }}>
+        <svg width={132} height={64} viewBox="0 0 132 64" style={{ marginRight: 22 }}><rect x={4} y={4} width={112} height={56} rx={13} fill={theme.white} stroke={theme.title} strokeWidth={6} />
+          <rect x={118} y={21} width={10} height={22} rx={3} fill={theme.title} /><rect x={14} y={14} width={Math.max(8, Math.round(92 * level / 100))} height={36} rx={6} fill={colour} /></svg>
+        <span style={{ display: "flex", fontSize: 64, fontWeight: 600, lineHeight: 1, color: level <= 20 ? colour : theme.title }}>{`${level}%`}</span></div>
+      {aimed ? <svg width={TW} height={60} viewBox={`0 0 ${TW} 60`} style={{ marginTop: -LINE - 2 }}>
+        <path d={`M${point - 18} 0 L${point} 52 L${point + 18} 0`} fill={theme.white} stroke={theme.title} strokeWidth={LINE} strokeLinejoin="round" /></svg> : null}</div>;
   };
   // 외침 goes in the top band with the 해설 and 속마음, clear of the faces the picture keeps in its middle (it covered them there,
   // 2026-11-02 1화 시안); only when all three are on one panel does it drop below them.
@@ -243,12 +263,12 @@ function ToonSlide({ draft, slide, index, theme, src }: { draft: CardDraft; slid
       <svg width={500} height={280} viewBox="0 0 540 300" preserveAspectRatio="none" style={{ position: "absolute", left: 0, top: 0 }}><polygon points={BURST} fill={theme.white} stroke={theme.title} strokeWidth={LINE} strokeLinejoin="round" /></svg>
       {f("shout", { ...lettered, maxWidth: 320, transform: "skewX(-8deg)" })}</div></div> : null}
     {/* No data-card-field: the tilted, stepping letters always reach past their own box, and 6 letters never need cutting. */}
-    {has("sfx") ? <div style={{ display: "flex", position: "absolute", left: 72, top: 600, transform: "rotate(-10deg)", alignItems: "flex-start" }}>
+    {battery !== null ? batteryTag(battery) : has("sfx") ? <div style={{ display: "flex", position: "absolute", left: 72, top: 600, transform: "rotate(-10deg)", alignItems: "flex-start" }}>
       {[...plainCardText(slide.fields.sfx ?? "").trim()].slice(0, 8).map((letter, at) => <span key={at} style={{ display: "flex", fontSize: 112, fontWeight: 600, lineHeight: 1, color: theme.title,
         textShadow: EDGE, marginTop: at % 2 ? 46 : 0, marginLeft: at ? -6 : 0, transform: `skewX(-10deg) rotate(${at % 2 ? 6 : -4}deg)` }}>{letter}</span>)}</div> : null}
     {/* Read top to bottom: what is said first sits above its answer (the answer sat on top and was read first, 대표 2026-11-09). */}
-    {has("talk") ? <div style={row({ bottom: has("reply") ? 400 : 130 })}>{bubble("talk", has("reply") ? 400 : 130)}</div> : null}
-    {has("reply") ? <div style={row({ bottom: 130 }, true)}>{bubble("reply", 130)}</div> : null}
+    {has("talk") ? <div style={row({ bottom: has("reply") ? 400 : 130 }, toonAim(slide, "talk")[0] >= 50)}>{bubble("talk", has("reply") ? 400 : 130)}</div> : null}
+    {has("reply") ? <div style={row({ bottom: 130 }, toonAim(slide, "reply")[0] >= 50)}>{bubble("reply", 130)}</div> : null}
     <div style={row({ bottom: 40 }, true)}><div style={{ display: "flex", alignItems: "center", gap: 14, background: theme.white, borderRadius: 999, padding: "10px 22px", fontSize: 16, color: theme.sub }}>
       <Logo color={theme.title} height={20} /><span>{cardPage(draft, index)}</span></div></div>
   </>;
