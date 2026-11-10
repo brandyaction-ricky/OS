@@ -159,7 +159,8 @@ export function ImageCreativeView({ variant, assetUrl }: { variant: CreativeVari
       <div style={{ ...flex, ...rect(pad, ctaY, w, 84), borderRadius: card === "original" ? 42 : card === "frame" ? 0 : 8,
         background: card === "frame" ? C.white : ctaBackground, ...(card === "frame" ? { border: "4px solid #132A2B" } : {}),
         alignItems: "center", justifyContent: "space-between", padding: "0 36px" }}>
-        <Words field="cta" text={cta} size={36} lines={1} color={card === "frame" ? C.ink : ctaColor} /><Arrow color={card === "frame" ? C.ink : ctaColor} width={66} />
+        {/* next/og drops overflow-hidden text inside this rounded button, so the CTA was blank on every PNG. Validation keeps it to one line of 18 characters, which fits. */}
+        <Words field="cta" text={cta} size={36} lines={1} color={card === "frame" ? C.ink : ctaColor} style={{ overflow: "visible" }} /><Arrow color={card === "frame" ? C.ink : ctaColor} width={66} />
       </div>
     </div>
   </div>;

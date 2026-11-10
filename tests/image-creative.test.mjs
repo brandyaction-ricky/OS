@@ -320,5 +320,10 @@ test('shared view renders real PNGs at every format and size with embedded local
     assert.equal(png.toString('hex', 0, 8), '89504e470d0a1a0a', `${id}/${size} is PNG`);
     assert.equal(png.readUInt32BE(16), dimensions.width, `${id}/${size} width`);
     assert.equal(png.readUInt32BE(20), dimensions.height, `${id}/${size} height`);
+    if (size !== 'portrait') continue;
+    // The CTA must reach the PNG: another CTA text has to change the picture.
+    const variant = maximumContent(id, size);
+    const other = new ImageResponse(createElement(compiled.exports.ImageCreativeView, { variant: { ...variant, copy: { ...variant.copy, cta: '다른 버튼' }, id: 'test', at: '2026-11-06', by: 'test' }, assetUrl }), { width: dimensions.width, height: dimensions.height, fonts });
+    assert.ok(!png.equals(Buffer.from(await other.arrayBuffer())), `${id} CTA text is drawn`);
   }
 });
