@@ -1017,9 +1017,9 @@
       "purpose": "Allow private ZIP exports from image creatives without serverless response size limits",
       "requiresApproval": true,
       "developmentApprovedAt": null,
-      "productionApprovedAt": null,
-      "appliedEnvironments": [],
-      "notes": "Add application/zip to the existing private media bucket MIME list only. No table, access policy or existing content changes. Not applied to any remote environment."
+      "productionApprovedAt": "2026-11-10",
+      "appliedEnvironments": ["production"],
+      "notes": "Add application/zip to the existing private media bucket MIME list only. No table, access policy or existing content changes. Owner approved Production in chat on 2026-11-10 (\"DB 적용하고 운영 반영해\"). Read-only check first: ZIP not allowed, 22 MIME types, history 0. Applied in the SQL Editor in one transaction with 20261110140000 and both schema history rows, read back (ZIP allowed, 23 MIME types, history 2). Not applied to DEV."
     },
     {
       "file": "20261107120000_youtube_connections_per_channel.sql",
@@ -1056,9 +1056,9 @@
       "purpose": "Enforce the image creative approval workflow at the database write boundary",
       "requiresApproval": true,
       "developmentApprovedAt": null,
-      "productionApprovedAt": null,
-      "appliedEnvironments": [],
-      "notes": "Restrictive authenticated INSERT, UPDATE (old and new values) and DELETE policies only for image_creative_v1 projects and image-creative staff AI jobs. Existing reads and other record kinds keep their prior policies. Domain writes use service_role after owner/version/approval validation. No hosted DB changes made."
+      "productionApprovedAt": "2026-11-10",
+      "appliedEnvironments": ["production"],
+      "notes": "Restrictive authenticated INSERT, UPDATE (old and new values) and DELETE policies only for image_creative_v1 projects and image-creative staff AI jobs. Existing reads and other record kinds keep their prior policies. Domain writes use service_role after owner/version/approval validation. Owner approved Production in chat on 2026-11-10 (\"DB 적용하고 운영 반영해\"). Read-only check first: 0 image policies, 11 os_records policies, 0 image rows, history 0. Applied in one transaction with 20261106120000 and both schema history rows before the code (#539) was deployed, read back (3 image policies, 14 os_records policies, history 2). Not applied to DEV."
     }
   ],
   "legacyMigrations": [
