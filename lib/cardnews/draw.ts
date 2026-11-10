@@ -8,8 +8,10 @@ export const CARD_DRAW_REFS_MAX = 4;
 /** The 캐릭터 창고 holds this many pictures; one more is refused until one is taken out. */
 export const CARD_CHARACTERS_MAX = 60;
 
+// 웹툰 그림은 위아래 끝까지 꽉 채운다 (대표 2026-11-10): asking for calm room at the top and bottom drew blank white bands on 11 of
+// the prologue's 73 pictures. The card places each bubble beside its speaker and aims the tail, so the picture needs no empty space.
 export const CARD_DRAW_STYLES = {
-  webtoon: { label: "웹툰", prompt: "Modern Korean webtoon art: clean confident black line art, flat cel colours with soft shading, big expressive faces (shock, shouting, sweat drops), a detailed photo-like background. Keep faces in the middle band and leave calm room at the top and bottom edges, where speech bubbles will sit." },
+  webtoon: { label: "웹툰", prompt: "Modern Korean webtoon art: clean confident black line art, flat cel colours with soft shading, big expressive faces (shock, shouting, sweat drops), a detailed photo-like background. Fill the whole frame edge to edge with the scene and its background: no blank, white or empty bands at the top or bottom. Keep faces a little away from the very top and bottom edges." },
   simple: { label: "설명 그림", prompt: "Simple flat 2D explanatory illustration: few shapes on a plain light background, no gradients, gloss or texture, colours limited to deep blue #212CB0, gold #EED467, navy #151D2C and greys." },
 } as const;
 export type CardDrawStyle = keyof typeof CARD_DRAW_STYLES;

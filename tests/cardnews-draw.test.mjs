@@ -18,6 +18,9 @@ test("a card picture is 4:5, letter-free, and names its reference pictures in or
   const webtoon = cardDrawPrompt("한결이 웃어요", "webtoon", ["한결 앞모습", "낙서 성취"]);
   assert.match(webtoon, /webtoon/);
   assert.match(webtoon, /1\) 한결 앞모습, 2\) 낙서 성취/);
+  // 대표 2026-11-10: asking for room at the top and bottom drew white bands; the webtoon picture fills the frame.
+  assert.match(webtoon, /Fill the whole frame edge to edge/);
+  assert.doesNotMatch(webtoon, /calm room|leave .*room/i);
 });
 
 test("the server draws only for an open 카드 만들기 and keeps the picture where an uploaded photo goes", () => {
