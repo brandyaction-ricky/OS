@@ -32,7 +32,7 @@ export const MCP_TOOLS = [
   },
   {
     name: "list_youtube_ai_jobs",
-    description: "이 키 주인이 유튜브 ② 원고·③ 영상 제작·⑦ 유튜브 관리 화면에서 요청한 AI 작업(원고 작성, 화면 설계와 발음 검토, 마이인 기획표, 발행키트) 대기열을 읽습니다. knowledge.read·records.write 범위가 필요합니다. 작업이 있으면 process_youtube_ai_job으로 하나씩 처리합니다.",
+    description: "이 키 주인이 유튜브 ② 원고·③ 영상 제작·⑦ 유튜브 관리 화면에서 요청한 AI 작업(원고 작성, 화면 설계와 발음 검토, 마이인 기획표, 발행키트, 이미지 광고) 대기열을 읽습니다. knowledge.read·records.write 범위가 필요합니다. 작업이 있으면 process_youtube_ai_job으로 하나씩 처리합니다.",
     inputSchema: {type:"object",properties:{},additionalProperties:false},
     annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false},
   },
@@ -41,6 +41,12 @@ export const MCP_TOOLS = [
     description: "유튜브 AI 작업을 claim으로 가져가 받은 지시대로 결과 JSON을 만든 뒤 complete(job_id, lease, model, result, report)로 제출합니다. report는 사람이 먼저 읽는 결론 한 줄 · 한 일 · 근거 · 정본 점검입니다. OS가 형식을 검사해 틀린 곳을 돌려주면 고쳐 다시 complete 합니다. 처리할 수 없으면 fail에 reason을 적습니다. 승인·업로드·게시는 하지 않습니다.",
     inputSchema: {type:"object",properties:{action:{type:"string",enum:["claim","complete","fail"]},job_id:{type:"string",format:"uuid"},lease:{type:"string",format:"uuid"},model:{type:"string"},result:{type:"object"},report:{type:"object",properties:{conclusion:{type:"string"},did:{type:"array",items:{type:"string"}},evidence:{type:"array",items:{type:"string"}},canon:{type:"string"}},required:["conclusion"],additionalProperties:false},reason:{type:"string"}},required:["action","job_id"],additionalProperties:false},
     annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false},
+  },
+  {
+    name: "image_creative_asset",
+    description: "내 AI가 가져간 이미지 광고 작업에 구독 도구로 만든 그림을 넣습니다. prepare(job_id, lease, mime_type, file_size)로 받은 signedUrl에 해당 파일을 PUT한 다음 commit(job_id, lease, path, receipt)합니다. 실제 파일·크기·소유자를 확인한 뒤 반환된 path,w,h만 결과에 사용하세요. 새 AI API 호출·소재 승인·광고 집행은 하지 않습니다.",
+    inputSchema: { type: "object", properties: { action: { type: "string", enum: ["prepare", "commit"] }, job_id: { type: "string", format: "uuid" }, lease: { type: "string", format: "uuid" }, mime_type: { type: "string", enum: ["image/png", "image/jpeg"] }, file_size: { type: "integer", minimum: 1, maximum: 5242880 }, path: { type: "string" }, receipt: { type: "string", format: "uuid" } }, required: ["action", "job_id", "lease"], additionalProperties: false },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   },
   {
     name: "get_video_editor",
@@ -399,6 +405,10 @@ export async function callMcpTool(request: ToolRequest, organizationId: string, 
   if(request.name==="process_youtube_ai_job"){
     const input=z.object({action:z.enum(["claim","complete","fail"]),job_id:documentId,lease:documentId.optional(),model:z.string().trim().min(1).max(100).optional(),result:z.record(z.unknown()).optional(),report:z.record(z.unknown()).optional(),reason:z.string().trim().min(1).max(1000).optional()}).strict().parse(args);
     return fetchApi("/api/v1/content/youtube-automation/ai-jobs/worker",{method:"POST",body:JSON.stringify({action:input.action,jobId:input.job_id,lease:input.lease,model:input.model,result:input.result,report:input.report,reason:input.reason})});
+  }
+  if (request.name === "image_creative_asset") {
+    const input = z.object({ action: z.enum(["prepare", "commit"]), job_id: documentId, lease: documentId, mime_type: z.enum(["image/png", "image/jpeg"]).optional(), file_size: z.number().int().positive().max(5242880).optional(), path: z.string().max(200).optional(), receipt: documentId.optional() }).strict().parse(args);
+    return fetchApi("/api/v1/content/image-creatives/assets/worker", { method: "POST", body: JSON.stringify({ action: input.action, jobId: input.job_id, lease: input.lease, mimeType: input.mime_type, fileSize: input.file_size, path: input.path, receipt: input.receipt }) });
   }
   if (request.name === "get_video_editor") {
     const input = z.object({ project_id: documentId, view: z.enum(["summary", "scenes", "subtitles", "assets", "orders", "edits", "feed"]).default("summary"), since: z.string().datetime().optional() }).strict().parse(args);

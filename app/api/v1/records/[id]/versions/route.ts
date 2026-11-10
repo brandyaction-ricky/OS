@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
+import { protectedImageCreativeChange } from "@/lib/image-creative/storage";
 import { PIPELINE_PROTECTED_KEYS } from "@/lib/content-pipeline";
 import { assertOrganization } from "@/lib/server/organization";
 import { authenticateRequest } from "@/lib/server/auth";
@@ -69,6 +70,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const snapshot = (events ?? []).map((event) => event.snapshot).find((value) => Number(value?.version) === input.version);
     if (!snapshot) throw new ApiError(404, "RECORD_VERSION_NOT_FOUND", "복원할 운영 기록 버전을 찾지 못했습니다.");
     if (current.record_type === "access_rule" && actor.role !== "admin") throw new ApiError(403, "HUMAN_PERMISSION_GATE", "권한 정책 복원은 관리자가 처리해야 합니다.");
+    if (protectedImageCreativeChange(current.metadata, snapshot.metadata))
+      throw new ApiError(403, "IMAGE_API_REQUIRED", "이미지 광고의 승인·출력 이력은 이미지 광고 화면에서 확인해 주세요.");
     if (["leave_balance", "leave_request"].includes(current.record_type) && actor.role !== "admin") throw new ApiError(403, "ADMIN_REQUIRED", "연차·휴가 상태 복원은 관리자가 처리해야 합니다.");
     if (current.record_type === "content_publish" && [current.status, snapshot.status].some((status) => ["scheduled", "published"].includes(status))) throw new ApiError(409, "PUBLISH_RESTORE_BLOCKED", "예약·발행 이력은 버전 복원으로 변경할 수 없습니다. 발행 화면에서 확인해 주세요.");
     const payload = Object.fromEntries(restorable.map((field) => [field, snapshot[field]]));

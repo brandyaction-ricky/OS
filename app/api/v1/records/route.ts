@@ -1,3 +1,4 @@
+import { protectedImageCreativeChange } from "@/lib/image-creative/storage";
 import { isCommentDraftPatch } from "@/lib/content-comments";
 import { assertReviewedMeetingTask } from "@/lib/server/meeting-review";
 import { decodeHtmlEntities } from "@/lib/html-entities";
@@ -70,6 +71,8 @@ export async function GET(request: Request) {
       .order("updated_at", { ascending: false })
       .order("id", { ascending: true })
       .range(offset, offset + limit - 1);
+    builder = builder.or(`metadata->>kind.is.null,metadata->>kind.neq.image_creative_v1,owner_id.eq.${actor.id}`);
+    builder = builder.or(`metadata->>kind.is.null,metadata->>kind.neq.youtube_staff_ai_v1,metadata->>task.is.null,metadata->>task.neq.image-creative,owner_id.eq.${actor.id}`);
     if (recordType) builder = builder.eq("record_type", recordType);
     else builder = builder.neq("record_type", "development_comment").neq("record_type", "development_notification").neq("record_type", "notification");
     if (recordType && dateRange) {
@@ -124,6 +127,7 @@ export async function POST(request: Request) {
     await assertLegacyLeaveWritable(actor.supabase, input.recordType);
     await assertReviewedMeetingTask(actor,input);
     if (["meta_tester_request", "channel_audit"].includes(String(input.metadata.kind))) throw new ApiError(403, "CHANNEL_API_REQUIRED", "채널 연결 전용 화면에서 처리해 주세요.");
+    if (protectedImageCreativeChange(input.metadata)) throw new ApiError(403, "IMAGE_API_REQUIRED", "이미지 소재는 이미지 광고 화면에서 만들어 주세요.");
     if (protectedPipelineChange({}, input.metadata)) throw new ApiError(403, "PIPELINE_API_REQUIRED", "공정 승인·실행 이력은 공정 화면에서 처리해 주세요.");
     if (protectedYoutubeChange(null, input.metadata)) throw new ApiError(403, "YOUTUBE_API_REQUIRED", "유튜브 공정 프로젝트는 유튜브 공정 화면에서 만들어 주세요.");
     if (input.metadata.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청 전용 화면에서 등록해 주세요.");
@@ -184,6 +188,7 @@ export async function PATCH(request: Request) {
     if (current.record_type === "development_comment" || input.metadata?.kind === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 덮어쓰지 않습니다.");
     if ((current.record_type === "development_notification" || current.record_type === "notification") || (input.metadata?.kind === "development_notification" || input.metadata?.kind === "notification")) throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 전용 알림 API에서만 변경합니다.");
     await assertReviewedMeetingTask(actor,input,current);
+    if (protectedImageCreativeChange(current.metadata, input.metadata, { ...current.metadata, ...input.metadata })) throw new ApiError(403, "IMAGE_API_REQUIRED", "이미지 소재와 선택 기록은 이미지 광고 화면에서 고쳐 주세요.");
     if (protectedPipelineChange(current.metadata, input.metadata)) throw new ApiError(403, "PIPELINE_API_REQUIRED", "공정 승인·실행 이력은 공정 화면에서 처리해 주세요.");
     if (protectedYoutubeChange(current.metadata, input.metadata)) throw new ApiError(403, "YOUTUBE_API_REQUIRED", "유튜브 공정 프로젝트는 유튜브 공정 화면에서 고쳐 주세요.");
     if (input.recordType && input.recordType !== current.record_type) throw new ApiError(400, "RECORD_TYPE_IMMUTABLE", "기존 기록의 유형은 변경할 수 없습니다.");
@@ -230,6 +235,7 @@ export async function DELETE(request: Request) {
     if (!id) throw new ApiError(400, "RECORD_ID_REQUIRED", "기록 ID가 필요합니다.");
     const { data: current } = await actor.supabase.from("os_records").select("version,record_type,metadata").eq("id", id).is("archived_at", null).maybeSingle();
     if (!current) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
+    if (protectedImageCreativeChange(current.metadata)) throw new ApiError(403, "IMAGE_API_REQUIRED", "이미지 소재와 맡긴 일은 이미지 광고 화면에서 관리해 주세요.");
     if (current.record_type === "content_publish" && current.metadata?.space === "personal")
       throw new ApiError(403,"PERSONAL_AUTOMATION_API_REQUIRED","개인 콘텐츠는 콘텐츠 자동화 화면에서 관리해 주세요.");
     if (protectedThreadsReferenceTopic(current.record_type, current.metadata))

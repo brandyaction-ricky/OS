@@ -5,6 +5,7 @@ import { runInNewContext } from "node:vm";
 import crypto from "node:crypto";
 import ts from "typescript";
 import * as zod from "zod";
+import * as imageStorage from "../lib/image-creative/storage.ts";
 
 class ApiError extends Error {
   constructor(status, code, message, details) { super(message); Object.assign(this, { status, code, details }); }
@@ -600,6 +601,7 @@ async function genericRecordsHarness(path,currentMetadata={space:"personal",proc
   const validation=await load("lib/record-validation.ts",{zod,"./record-types":types});
   const noOp=async()=>{};
   const modules={
+    "@/lib/image-creative/storage":imageStorage,
     "@/lib/content-comments":{isCommentDraftPatch:()=>false},"@/lib/server/meeting-review":{assertReviewedMeetingTask:noOp},
     "@/lib/html-entities":{decodeHtmlEntities:value=>value},"@/lib/content-origin":{contentOrigin:()=>"own"},
     "@/lib/server/skill-source":{assertSkillSource:noOp},"next/server":{NextResponse:Response},zod,

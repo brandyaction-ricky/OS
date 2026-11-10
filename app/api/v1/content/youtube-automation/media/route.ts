@@ -1,5 +1,6 @@
 import { DIAGRAM_TYPES } from "@/lib/shortform-diagram-catalog";
 import { NextResponse } from "next/server";
+import { imageMacActions, imageMacWork, isImageMacAction } from "@/lib/server/image-mac-render";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { safeSecretMatch } from "@/lib/server/auth";
@@ -21,6 +22,7 @@ const lease = { renderId: z.string().uuid(), lease: z.string().uuid() };
 // 렌더 PC 여러 대 (2026-11-08): the PC's name, so a video stays with the PC that holds its work folder.
 const pc = z.string().regex(RENDER_PC_NAME).optional();
 const inputSchema = z.discriminatedUnion("action", [
+  ...imageMacActions,
   z.object({action:z.literal("shorts_claim"),layoutVersion:z.union([z.literal(2),z.literal(3),z.literal(4)]),renderId:z.string().uuid().optional(),diagramTypes:z.array(z.enum(DIAGRAM_TYPES)).max(70).optional()}).strict(),
   z.object({action:z.literal("shorts_voice"),...lease,index:z.number().int().min(0).max(19)}).strict(),
   z.object({action:z.literal("shorts_complete"),...lease,bytes:z.number().int().positive().max(50_000_000),
@@ -77,7 +79,8 @@ export async function POST(request: Request) {
     if (expected.length < 32 || !safeSecretMatch(received, expected)) throw new ApiError(401, "INVALID_WORKER_SECRET", "미디어 워커 인증에 실패했습니다.");
     // A 레퍼런스 받기 result carries up to ten transcripts.
     const input = inputSchema.parse(await parseJson(request, 120_000));
-    const result = input.action === "heartbeat" ? await saveRenderPcSignal(input)
+    const result = isImageMacAction(input) ? await imageMacWork({target:"render-pc"},input)
+      : input.action === "heartbeat" ? await saveRenderPcSignal(input)
       : input.action === "engine_upload" ? await engineUploadUrls(input)
       : input.action === "engine_ready" ? await saveEngineManifest(input)
       : input.action === "assets_upload" ? await assetsUploadUrls(input)

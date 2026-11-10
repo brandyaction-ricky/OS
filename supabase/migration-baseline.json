@@ -1012,6 +1012,16 @@
       "notes": "Replaces os_agent_update_document (sets os.agent_shared_edit_ok only for the approver's key on the owner's own team/review/reviewed document) and os_workspace_guard_document (lets that one update through while the status stays). No table, row or policy change; other keys, other people's documents, notes, 정본 and status changes keep their rules. Manual undo: supabase/rollback/20261104120000_approver_agent_shared_document_edit.down.sql. Owner approved Production in chat on 2026-11-04 (\"SQL 화면 내가 조작하지 않고 할 수 있게 진행해줘\"). Read-only check first: both production function bodies matched the repository originals (md5 6c84fd2b…, 910582e8…) and the guard trigger was present. The session filled the SQL Editor; auto mode blocked its Run, so the owner pressed Run once: both functions and the schema history row in one transaction, read back (bodies md5 7101bf47…, 91ec998a… = this file; history 1). End to end: the owner's AI key edited the team document 웹툰형 캐릭터 설정 in place (status team, v4 → v5). Not applied to DEV."
     },
     {
+      "file": "20261106120000_image_creative_zip_exports.sql",
+      "sha256": "0bd46ada9aa12767e3df82b6e198de56ecc9840026c16db4623b6ddd1c0fa782",
+      "purpose": "Allow private ZIP exports from image creatives without serverless response size limits",
+      "requiresApproval": true,
+      "developmentApprovedAt": null,
+      "productionApprovedAt": "2026-11-10",
+      "appliedEnvironments": ["production"],
+      "notes": "Add application/zip to the existing private media bucket MIME list only. No table, access policy or existing content changes. Owner approved Production in chat on 2026-11-10 (\"DB 적용하고 운영 반영해\"). Read-only check first: ZIP not allowed, 22 MIME types, history 0. Applied in the SQL Editor in one transaction with 20261110140000 and both schema history rows, read back (ZIP allowed, 23 MIME types, history 2). Not applied to DEV."
+    },
+    {
       "file": "20261107120000_youtube_connections_per_channel.sql",
       "sha256": "f430d56a4562c8abdcec3ec0338b2236fa8712387c908f954f7f6f8c4bfcca9f",
       "purpose": "다채널 2단계 (대표 2026-11-07): one person may connect several YouTube channels — the connection key becomes (owner_id, channel_id); channel_id stays unique across the OS",
@@ -1039,6 +1049,16 @@
         "production"
       ],
       "notes": "Owner approved Production on 2026-11-08 (\"DB 반영하고 531 반영해\"); applied in one transaction with its schema history row and read back (column default false, 0 notes on, both triggers, setter service_role only). Additive: one column (default false), guard triggers on os_documents and os_note_access_grants, one service-role setter. Rollback-only run on DEV (after the 20261029 RLS it lacks): admin cannot see, audit-open, edit or delete a 나만 보기 note; owner reads and edits; a named reader reads; turning it on removes a live audit grant; child pages follow; other notes keep the audit route. Not applied to DEV."
+    },
+    {
+      "file": "20261110140000_image_creative_approval_writes.sql",
+      "sha256": "7dfc104571148b8ba38870b6ea28faa69ce49578454e98e8221d9e937c76020e",
+      "purpose": "Enforce the image creative approval workflow at the database write boundary",
+      "requiresApproval": true,
+      "developmentApprovedAt": null,
+      "productionApprovedAt": "2026-11-10",
+      "appliedEnvironments": ["production"],
+      "notes": "Restrictive authenticated INSERT, UPDATE (old and new values) and DELETE policies only for image_creative_v1 projects and image-creative staff AI jobs. Existing reads and other record kinds keep their prior policies. Domain writes use service_role after owner/version/approval validation. Owner approved Production in chat on 2026-11-10 (\"DB 적용하고 운영 반영해\"). Read-only check first: 0 image policies, 11 os_records policies, 0 image rows, history 0. Applied in one transaction with 20261106120000 and both schema history rows before the code (#539) was deployed, read back (3 image policies, 14 os_records policies, history 2). Not applied to DEV."
     }
   ],
   "legacyMigrations": [

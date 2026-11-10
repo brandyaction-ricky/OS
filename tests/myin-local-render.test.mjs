@@ -85,7 +85,7 @@ test("the engine fingerprint follows the worker's own files, wherever the releas
   const release = (extra) => {
     const root = mkdtempSync(path.join(os.tmpdir(), "myin-release-"));
     mkdirSync(path.join(root, "tools")); mkdirSync(path.join(root, "lib"));
-    for (const name of ["youtube-media-worker.mjs", "shortform-diagrams.mjs", "shortform-renderer.mjs"]) copyFileSync(path.join("tools", name), path.join(root, "tools", name));
+    for (const name of ["youtube-media-worker.mjs", "shortform-diagrams.mjs", "shortform-renderer.mjs", "image-ad-renderer.mjs"]) copyFileSync(path.join("tools", name), path.join(root, "tools", name));
     copyFileSync(path.join("lib", "shortform-diagram-catalog.json"), path.join(root, "lib", "shortform-diagram-catalog.json"));
     if (extra) writeFileSync(path.join(root, "tools", "extra.mjs"), extra);
     return root;

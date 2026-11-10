@@ -72,6 +72,7 @@ export const NAV_STAGES: NavStage[] = [
     { label: "발행·업로드", href: "/content/publishing", icon: UploadCloud, processNumber: 6, aliases: ["유튜브 발행", "유튜브 업로드", "발행 승인"], ready: true },
     { label: "유튜브 관리", href: "/content/youtube", icon: Youtube, processNumber: 7, ready: true },
     { label: "영상 성과", href: "/content/performance", icon: BarChart3, processNumber: 8, aliases: ["콘텐츠 성과"], ready: true },
+    { label: "이미지 광고", href: "/content/images", icon: Image, ready: true },
   ] },
   { id: "automation", label: "콘텐츠 자동화", icon: Bot, href: "/automation/dashboard", pages: [
     { label: "자동화 현황", href: "/automation/dashboard", icon: LayoutDashboard, ready: true, aliases: ["대시보드"] },

@@ -16,6 +16,7 @@ export const PAGE_GUIDES: Record<string,PageGuideDefinition> = {
   "/finance/documents": {steps:["사업자·프로젝트·기타 중 서류를 둘 곳을 고릅니다","서류 추가로 파일 하나, 폴더 올리기로 폴더를 하위 폴더째 올립니다","폴더를 눌러 들어가 파일을 열거나 내려받습니다"],next:"/finance/overview"},
   "/finance/budget": {steps:["월별 고정비·변동비·인건비 예산을 확인합니다","자동 합산 항목과 직접 입력할 실적을 구분합니다","누락·초과를 검토하고 개요와 같은 월 순수익을 확인합니다"],next:"/finance/overview"},
   "/home": {steps:["위에서부터 기한이 빠른 일을 처리합니다","‘검토·승인’ 탭에서 내 검토 차례를 확인합니다","막힌 일은 링크를 눌러 해결 화면으로 갑니다"],next:"/content/topics"},
+  "/content/images": {steps:["작업 조건과 포맷을 승인한 뒤 카피 후보를 준비합니다","전체 카피를 승인하고 미리보기를 확인해 선택한 Mac에서 출력합니다","Mac의 실제 출력물을 최종 검수한 뒤 PNG 또는 ZIP을 내려받습니다"],next:"/content/images"},
   "/content/topics": {steps:["매일 보는 채널을 모읍니다 — 비어 있으면 채널 탐색 사전에서 시작","‘탐색’에서 근거 영상을 연결하고 준비도 네 칸을 채웁니다","‘틈새’에서 소구점을 선택해 승인 요청한 뒤 기획으로 넘깁니다"],next:"/content/scripts"},
   "/content/scripts": {steps:["위에서 작업 중인 영상을 고르면 그 폴더가 열립니다","단계 칩으로 지금 단계의 문서만 봅니다","다듬기가 끝나면 문서를 검토 요청합니다"],next:"/content/packages"},
   "/content/video": {steps:["위 ‘작업 중인 영상’에서 원고 승인까지 마친 영상을 고릅니다","음성·자막이 나오면 내 AI에 기획표를 보내고, 로건·유쓰가 기획표와 시안을 확인합니다","완성 영상·한 장 정리·덱 PDF·자막 파일을 확인합니다"],next:"/content/packages"},

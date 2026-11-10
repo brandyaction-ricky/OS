@@ -1,3 +1,4 @@
+import { protectedImageCreativeChange } from "@/lib/image-creative/storage";
 import { isCommentDraftPatch } from "@/lib/content-comments";
 import { assertReviewedMeetingTask } from "@/lib/server/meeting-review";
 import { NextResponse } from "next/server";
@@ -76,6 +77,7 @@ export async function GET(request: Request) {
       const { data, error } = await service.from("os_records").select("*").eq("id", recordId).maybeSingle();
       if (error || !data) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
       if (data.metadata?.space === "personal" && data.owner_id !== actor.ownerId) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
+      if (protectedImageCreativeChange(data.metadata) && data.owner_id !== actor.ownerId) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
       if (data.record_type === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 요청별 대화 API에서 확인해 주세요.");
       if ((data.record_type === "development_notification" || data.record_type === "notification")) throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 사람 계정의 알림 화면에서 확인해 주세요.");
       return NextResponse.json({ record: data });
@@ -88,6 +90,8 @@ export async function GET(request: Request) {
     const offset = Math.max(Number(url.searchParams.get("offset") ?? 0), 0);
     let query = service.from("os_records").select("*", { count: "exact" }).is("archived_at", null).order("updated_at", { ascending: false }).range(offset, offset + limit - 1);
     query = query.or(`metadata->>space.is.null,metadata->>space.neq.personal,owner_id.eq.${actor.ownerId}`);
+    query = query.or(`metadata->>kind.is.null,metadata->>kind.neq.image_creative_v1,owner_id.eq.${actor.ownerId}`);
+    query = query.or(`metadata->>kind.is.null,metadata->>kind.neq.youtube_staff_ai_v1,metadata->>task.is.null,metadata->>task.neq.image-creative,owner_id.eq.${actor.ownerId}`);
     if (type) query = query.eq("record_type", type);
     else query = query.neq("record_type", "development_comment").neq("record_type", "development_notification").neq("record_type", "notification");
     const { data, count, error } = await query;
@@ -112,6 +116,7 @@ export async function POST(request: Request) {
       throw new ApiError(403,"THREADS_REFERENCE_API_REQUIRED","레퍼런스와 레퍼런스 기반 주제는 콘텐츠 자동화 화면에서 만들어 주세요.");
     await assertReviewedMeetingTask(actor,input);
     if (["meta_tester_request", "channel_audit"].includes(String(input.metadata.kind))) throw new ApiError(403, "CHANNEL_API_REQUIRED", "채널 연결 전용 화면에서 처리해 주세요.");
+    if (protectedImageCreativeChange(input.metadata)) throw new ApiError(403, "IMAGE_API_REQUIRED", "이미지 소재는 이미지 광고 화면에서 만들어 주세요.");
     if (protectedPipelineChange({}, input.metadata)) throw new ApiError(403, "PIPELINE_API_REQUIRED", "공정 승인·실행 이력은 공정 화면에서 처리해 주세요.");
     if (input.metadata.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청은 OS 수정 요청 화면에서 등록해 주세요.");
     if (input.recordType === "content_metric" && input.metadata.channelSnapshotVersion === 1) throw new ApiError(403, "METRIC_SNAPSHOT_READ_ONLY", "자동 수집 스냅샷은 수집 작업에서만 저장합니다.");
@@ -161,6 +166,7 @@ export async function PATCH(request: Request) {
     if (current.record_type === "content_comment" && !isCommentDraftPatch(current, input)) throw new ApiError(403, "CONTENT_COMMENT_API_REQUIRED", "댓글은 초안만 변경할 수 있습니다. 전송·숨기기는 전용 사람 확인 API를 사용하세요.");
     if (current.record_type === "development_comment" || input.metadata?.kind === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 덮어쓰지 않습니다.");
     if ((current.record_type === "development_notification" || current.record_type === "notification") || (input.metadata?.kind === "development_notification" || input.metadata?.kind === "notification")) throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 에이전트 API에서 변경할 수 없습니다.");
+    if (protectedImageCreativeChange(current.metadata, input.metadata, { ...current.metadata, ...input.metadata })) throw new ApiError(403, "IMAGE_API_REQUIRED", "이미지 소재와 선택 기록은 이미지 광고 화면에서 고쳐 주세요.");
     if (protectedPipelineChange(current.metadata, input.metadata)) throw new ApiError(403, "PIPELINE_API_REQUIRED", "공정 승인·실행 이력은 공정 화면에서 처리해 주세요.");
     if (current.record_type === "content_publish" && current.metadata.channelWorkflowVersion === 1) throw new ApiError(403, "HUMAN_PUBLISH_GATE", "계정별 게시 승인·예약·발행은 사람이 게시 설정 패널에서 처리합니다.");
     if (input.recordType && input.recordType !== current.record_type) throw new ApiError(400, "RECORD_TYPE_IMMUTABLE", "기존 기록의 유형은 변경할 수 없습니다.");
@@ -196,6 +202,7 @@ export async function DELETE(request: Request) {
     const { data: current } = await service.from("os_records").select("id,title,record_type,version,metadata,owner_id").eq("id", id).is("archived_at", null).maybeSingle();
     if (!current) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
     if (current.metadata?.space === "personal" && current.owner_id !== actor.ownerId) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
+    if (protectedImageCreativeChange(current.metadata)) throw new ApiError(403, "IMAGE_API_REQUIRED", "이미지 소재와 맡긴 일은 이미지 광고 화면에서 관리해 주세요.");
     if (current.record_type === "content_publish" && current.metadata?.space === "personal")
       throw new ApiError(403,"PERSONAL_AUTOMATION_API_REQUIRED","개인 콘텐츠 발행 기록은 보존합니다.");
     if (protectedThreadsReferenceTopic(current.record_type, current.metadata))
