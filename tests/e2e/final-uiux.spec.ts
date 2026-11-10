@@ -44,7 +44,8 @@ for (const theme of ["light", "dark"]) for (const width of [1440, 390]) {
       await expect(page.getByRole("heading", { level: 1 }).first()).toHaveText(entry.href === "/home" ? /확인할 일 \d+건/ : entry.href === "/knowledge" ? "회사 문서" : entry.label);
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
       await expect(page.locator(".profile-trigger")).toBeAttached();
-      if (entry.href.startsWith("/content/") && entry.href !== "/content/comments") await expect(page.getByLabel("작업 중인 영상 선택")).toBeEnabled();
+      // Only the numbered video steps carry the video selector; 이미지 광고 is not tied to a video.
+      if (entry.href.startsWith("/content/") && entry.processNumber) await expect(page.getByLabel("작업 중인 영상 선택")).toBeEnabled();
       await expectNoHorizontalOverflow(page, entry.href, 1);
       await page.screenshot({ path: testInfo.outputPath(`${String(index).padStart(2,"0")}-${theme}-${width}.png`), fullPage: true, mask: [page.locator(".profile-trigger")] });
     }

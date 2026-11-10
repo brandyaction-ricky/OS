@@ -273,7 +273,7 @@ export function ImageCreativeWorkspace() {
   }
   const copyPrompt=()=>void run(async()=>{if(!approved || !prompt)throw new Error("먼저 현재 조건의 포맷을 승인해 주세요.");const extra=`\n선택 크기: ${size}\n사용 가능한 업로드 이미지: ${JSON.stringify(bundle?.assets.map(({path,w,h})=>({path,w,h})) || [])}\n선택한 이미지 경로: ${(["appeal","copy"].includes(mode) ? selected?.asset?.path : assetPaths.join(", ")) || "없음"}`;await navigator.clipboard.writeText(prompt+extra);setMessage("요청문을 복사했어요. 구독 중인 AI에 전달한 뒤 JSON을 가져와 주세요.");});
   return <div className="ic-page">
-    <p className="ic-muted">콘텐츠 · 제작</p><h1>이미지 광고 만들기</h1><p className="ic-muted">기준 시안을 고르고 소구점, 카피, 이미지를 차례로 비교해요.</p>
+    <p className="ic-muted">콘텐츠 · 제작</p><h1>이미지 광고</h1><p className="ic-muted">기준 시안을 고르고 소구점, 카피, 이미지를 차례로 비교해요.</p>
     {demo&&<p className="os-callout" data-tone="info">체험 모드 · 시안과 PNG를 이 브라우저에서 만듭니다. 실제 AI와 Mac 작업은 연결된 OS에서 실행됩니다.</p>}
     {error&&<p role="alert" className="os-callout" data-tone="danger">{error}</p>}{message&&<p role="status" className="os-callout" data-tone="info">{message}</p>}
     <section className="panel panel-pad-lg ic-panel"><h2>작업 선택</h2><div className="ic-row"><label className="ic-field">기존 작업<select className="field" aria-label="기존 작업" disabled={busy} value={bundle?.project.id||""} onChange={e=>{if(e.target.value)open(e.target.value);}}><option value="">작업을 선택하세요</option>{projects.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select></label><label className="ic-field">새 작업 이름<input className="field" value={title} onChange={e=>setTitle(e.target.value)} placeholder="예: 무료 진단 첫 소재" /></label><button className="primary-button" disabled={busy} onClick={create}>새 작업 만들기</button></div></section>

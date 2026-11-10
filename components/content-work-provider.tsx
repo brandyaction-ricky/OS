@@ -40,17 +40,17 @@ export function ContentWorkProvider({children,youtubeV1=false}:{children:React.R
     window.history.replaceState(null,"",workTopicHref(`${path}?${search}`,id));
   },[path,search,storageKey]);
   const reload=useCallback(()=>setRevision(value=>value+1),[]);
-  const page=findPage(path), content=NAV_STAGES.find(stage=>stage.id==="content")!;
+  const page=findPage(path), steps=NAV_STAGES.find(stage=>stage.id==="content")!.pages.filter(item=>item.processNumber);
   // With 유튜브 공정 v1 on, its progress line replaces the earlier 8-step bar.
   const showProcess=enabled && Boolean(page.processNumber) && !youtubeV1;
   const currentStep=selected?productionStep(selected,records):null;
   // Done marks follow the saved-output board, matched by page; 영상 제작 is optional and never marked done here.
   const boardHref={planning:"/content/topics",script:"/content/scripts",package:"/content/packages",short:"/content/shorts",publish:"/content/publishing"} satisfies Record<ProductionStep,string>;
-  const completedThrough=currentStep?content.pages.findIndex(item=>item.href===boardHref[currentStep]):0;
+  const completedThrough=currentStep?steps.findIndex(item=>item.href===boardHref[currentStep]):0;
   return <Context.Provider value={{topics,publications:records.filter(row=>row.record_type==="content_publish"),selected,topicId,loading,error,generationMode:defaultGenerationMode(records),select,reload}}>
     {showProcess?<section className="process-bar" data-ui="process-bar" aria-label="작업 중인 영상">
       <label><span className="process-bar-label">작업 중인 영상</span><select className="process-video" data-ui="process-video" aria-label="작업 중인 영상 선택" value={topicId} disabled={loading||Boolean(error)} onChange={event=>select(event.target.value)}><option value="">{loading?"불러오는 중…":"전체 영상"}</option>{topics.map(topic=><option key={topic.id} value={topic.id}>{topic.title}</option>)}</select></label>
-      <nav className="process-steps" aria-label="콘텐츠 공정 순서"><span className="process-bar-label">공정</span>{content.pages.map((item,index)=>{
+      <nav className="process-steps" aria-label="콘텐츠 공정 순서"><span className="process-bar-label">공정</span>{steps.map((item,index)=>{
         const current=(page.navHref??page.href)===item.href;
         const done=Boolean(selected)&&item.href!=="/content/video"&&index<completedThrough;
         return <Link key={item.href} href={workTopicHref(item.href,topicId)} data-ui={current?"process-step-current":"process-step"} aria-label={`${item.processNumber}. ${item.label}`} aria-current={current?"step":undefined} className={`process-step${current?" active current":done?" done":""}`} title={`${item.label} · ${current?"현재 화면":done?"저장된 산출물 있음 · 승인 별도 확인":"이동"}`}><span className={`process-icon ${current?"now":done?"done":"todo"}`} aria-hidden="true">{!current&&done?"✓":null}</span><span>{item.processNumber}{current?`. ${item.label}`:""}</span></Link>;
