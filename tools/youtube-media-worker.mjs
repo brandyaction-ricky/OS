@@ -20,6 +20,7 @@ import { constants as fsConstants, appendFileSync,closeSync,copyFileSync, cpSync
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { adRuntimeDigest, processAdRender } from "./image-ad-renderer.mjs";
 import { shortformDiagramCapabilities } from "./shortform-diagrams.mjs";
 import { checkShortformRuntime,renderShortform } from "./shortform-renderer.mjs";
 
@@ -37,6 +38,10 @@ let current = null; // { renderId?, step } while working, for the heartbeat
 // RENDER_PC_NAME names it on the screen; without one, the computer's own name.
 const pcName = local ? "" : ((process.env.RENDER_PC_NAME || os.hostname()).replace(/\.local$/, "").replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[^A-Za-z0-9]+/, "").slice(0, 40) || "render-pc");
 const pcField = pcName ? { pc: pcName } : {};
+const workerRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+let adEngine;
+const adFingerprint = () => adEngine ??= adRuntimeDigest(workerRoot);
+const processImageAds = () => adFingerprint() ? processAdRender(call, workerRoot, step => { current = step ? { step } : null; }) : false;
 let held = false; // the OS says this PC's engine differs from the other render PCs': it takes no work until they match
 
 const gb = (bytes) => Math.round(bytes / 1e8) / 10;
@@ -310,6 +315,7 @@ export function engine() {
   const tools = path.dirname(fileURLToPath(import.meta.url));
   h.update("#worker\n");
   for (const name of readdirSync(tools).filter((name) => /\.(mjs|py)$/.test(name)).sort()) h.update(`${name}\0${createHash("sha256").update(readFileSync(path.join(tools, name))).digest("hex")}\n`);
+  h.update("#image-renderer\n" + adFingerprint());
   const catalog = path.join(tools, "..", "lib", "shortform-diagram-catalog.json");
   if (existsSync(catalog)) h.update(`lib/shortform-diagram-catalog.json\0${createHash("sha256").update(readFileSync(catalog)).digest("hex")}\n`);
   // The packages his code imports, not pip itself (a fresh venv's pip differs and draws nothing), and the Python minor version.
@@ -1081,7 +1087,7 @@ async function runLocal() {
   void heartbeat();
   setInterval(() => void heartbeat(), 60_000).unref();
   do {
-    const worked = await processMyinPrep().then((done) => done || processMyinClips()).then((done) => done || processMyinFinal()).catch((error) => {
+    const worked = await processMyinPrep().then((done) => done || processMyinClips()).then((done) => done || processMyinFinal()).then((done) => done || processImageAds()).catch((error) => {
       // The render PC moved to another engine: exit 3 between jobs, so the runner (public/myin-local) installs it and starts again.
       if (error.code === "MYIN_ENGINE_DIFFERENT") { console.error(`${error.message} (engine ${engine()})`); process.exit(3); }
       console.error(error.message);
@@ -1148,7 +1154,7 @@ else if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).h
       .then((rendered) => rendered || processMyinClips()).then((rendered) => rendered || processMyinFinal()).then((rendered) => rendered || (current = { step: "voice" }, call(runId ? { runId } : {}, "worker")).then((step) => {
       if (step.processed) console.log(`voice step: ${JSON.stringify(step).slice(0, 300)}`);
       return step.processed;
-    }).finally(() => { current = null; })).then(rendered=>rendered||processShortform()))
+    }).finally(() => { current = null; })).then(rendered=>rendered||processShortform()).then(rendered=>rendered||processImageAds()))
       .catch((error) => { console.error(error.message); return false; });
     if (process.argv.includes("--once")) break;
     if (!worked) await new Promise((resolve) => setTimeout(resolve, 30_000));

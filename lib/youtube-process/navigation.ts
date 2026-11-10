@@ -60,7 +60,7 @@ const THREADS_FLOW: Record<string, string> = {
 /** The v1 side menu built from the shared stages: 공통 + one group per platform + 스레드 + 자동화 관리. */
 export function youtubeV1Stages(stages: NavStage[]): NavStage[] {
   return stages.flatMap(stage => {
-    if (stage.id === "content") return [{ ...stage, label: "공통", icon: Lightbulb, href: YOUTUBE_V1_COMMON_PAGES[0].href, pages: YOUTUBE_V1_COMMON_PAGES }, ...YOUTUBE_V1_PLATFORM_STAGES];
+    if (stage.id === "content") return [{ ...stage, label: "공통", icon: Lightbulb, href: YOUTUBE_V1_COMMON_PAGES[0].href, pages: YOUTUBE_V1_COMMON_PAGES }, ...YOUTUBE_V1_PLATFORM_STAGES.map(platform => { const image = stage.pages.find(page => page.href === "/content/images"); return platform.id === "yt-ad" && image ? { ...platform, pages: [...platform.pages, image] } : platform; })];
     if (stage.id !== "automation") return [stage];
     let step = 0;
     const threads = Object.keys(THREADS_FLOW).map(href => stage.pages.find(page => page.href === href)).filter((page): page is NavPage => Boolean(page))

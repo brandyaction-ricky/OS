@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
 import * as zod from "zod";
+import * as imageStorage from "../lib/image-creative/storage.ts";
 
 class ApiError extends Error {
   constructor(status, code, message) { super(message); Object.assign(this, { status, code }); }
@@ -26,9 +27,10 @@ const weakEvidence = [{ metrics: { likes: { value: 6, verified: true } } }];
 const referenceMetadata = { space: "personal", kind: contract.THREADS_REFERENCE_KIND,
   editorial_workflow: contract.THREADS_REFERENCE_WORKFLOW, reference_items: weakEvidence };
 
-async function harness(path, metadata = referenceMetadata) {
+async function harness(path, metadata = referenceMetadata, recordOwner = owner, recordType = "content_topic") {
   const writes = [];
-  const current = { id, record_type: "content_topic", title: "Collected source", owner_id: owner,
+  const filters = [];
+  const current = { id, record_type: recordType, title: "Collected source", owner_id: recordOwner,
     status: "draft", stage: "candidate", version: 1, metadata };
   const db = { from(table) {
     let payload = null;
@@ -37,13 +39,14 @@ async function harness(path, metadata = referenceMetadata) {
       if (key === "then") return resolve => resolve(result());
       if (key === "maybeSingle" || key === "single") return async () => result();
       return (...args) => {
+        if (key === "or") filters.push(args[0]);
         if (key === "insert" || key === "update") { payload = args[0]; writes.push({ table, kind: key, payload }); }
         return builder;
       };
     } });
     return builder;
   } };
-  const types = { RECORD_TYPES: ["content_topic", "content_publish", "ai_job", "task", "skill"] };
+  const types = { RECORD_TYPES: ["content_topic", "content_package", "content_publish", "ai_job", "task", "skill"] };
   const validation = await load("lib/record-validation.ts", { zod, "./record-types": types });
   const noOp = async () => {};
   const api = await load(path, {
@@ -53,19 +56,22 @@ async function harness(path, metadata = referenceMetadata) {
     "@/lib/supabase/server": { createServiceSupabase: () => db }, "@/lib/server/organization": { assertOrganization: noOp },
     "@/lib/record-types": types, "@/lib/record-validation": validation,
     "@/lib/threads-reference": contract, "@/lib/threads-editorial": editorial, "@/lib/threads-reference-record-guard": guard,
+    "@/lib/image-creative/storage": imageStorage,
     "@/lib/content-comments": { isCommentDraftPatch: () => false }, "@/lib/server/meeting-review": { assertReviewedMeetingTask: noOp },
     "@/lib/html-entities": { decodeHtmlEntities: value => value }, "@/lib/content-origin": { contentOrigin: () => "own" },
     "@/lib/server/skill-source": { assertSkillSource: noOp }, "@/lib/content-pipeline": { protectedPipelineChange: () => false },
     "@/lib/youtube-process/project": { protectedYoutubeChange: () => false },
     "@/lib/appeal-decision-guard": { changesAppealDecision: () => false, isAppealCandidatePackage: () => false },
     "@/lib/development-requests": { isDevelopmentRequest: () => false }, "@/lib/development-links": { assertDevelopmentRequestLink: noOp },
-    "@/lib/server/hr-legacy-menus": { assertLegacyLeaveWritable: noOp }, "@/lib/team/dates": {},
+    "@/lib/server/hr-legacy-menus": { assertLegacyLeaveWritable: noOp }, "@/lib/team/dates": { recordDateRange: () => null },
   });
   const send = (method, body) => api[method](new Request("https://os.test", {
     method, body: JSON.stringify({ organizationId: organization, ...body }),
   }));
   const archive = () => api.DELETE(new Request(`https://os.test?id=${id}&recordId=${id}&organizationId=${organization}&confirm=true`, { method: "DELETE" }));
-  return { send, archive, writes };
+  const get = () => api.GET(new Request(`https://os.test?recordId=${id}&organizationId=${organization}`));
+  const list = () => api.GET(new Request(`https://os.test?type=ai_job&organizationId=${organization}`));
+  return { send, archive, get, list, writes, filters };
 }
 
 for (const path of ["app/api/v1/records/route.ts", "app/api/v1/agent-records/route.ts"]) {
@@ -117,5 +123,54 @@ for (const path of ["app/api/v1/records/route.ts", "app/api/v1/agent-records/rou
     assert.equal((await api.send("PATCH", { id, expectedVersion: 1, title: "Edited direct insight" })).status, 200);
     assert.equal((await api.archive()).status, 200);
     assert.equal(api.writes.filter(write => write.table === "os_records").length, 3);
+  });
+}
+
+for (const path of ["app/api/v1/records/route.ts", "app/api/v1/agent-records/route.ts"]) {
+  test(`${path}: generic archive rejects image projects and their staff jobs for own and other owners`, async () => {
+    for (const recordOwner of [owner, organization]) for (const [recordType, metadata] of [
+      ["content_package", { kind: "image_creative_v1", space: "personal" }],
+      ["content_package", { kind: "image_creative_v1" }],
+      ["ai_job", { kind: "youtube_staff_ai_v1", task: "image-creative" }],
+    ]) {
+      const api = await harness(path, metadata, recordOwner, recordType);
+      const response = await api.archive();
+      assert.ok([403,404].includes(response.status), `${path} ${recordType} owner=${recordOwner} status=${response.status}`);
+      assert.equal(api.writes.length, 0);
+    }
+  });
+}
+
+for (const path of ["app/api/v1/records/route.ts", "app/api/v1/agent-records/route.ts"]) {
+  test(`${path}: generic writes reject image projects, image jobs and partial job-marker injection`, async () => {
+    const protectedValues=[
+      ["content_package",{kind:"image_creative_v1",space:"personal"}],
+      ["ai_job",{kind:"youtube_staff_ai_v1",task:"image-creative"}],
+    ];
+    for (const recordOwner of [owner, organization]) for (const [recordType, metadata] of protectedValues) {
+      const api=await harness(path,metadata,recordOwner,recordType);
+      const response=await api.send("PATCH",{id,expectedVersion:1,title:"tamper"});
+      assert.ok([403,404].includes(response.status));assert.equal(api.writes.length,0);
+    }
+    const ordinary=await harness(path,{kind:"youtube_staff_ai_v1",task:"card"},owner,"ai_job");
+    assert.equal((await ordinary.send("PATCH",{id,expectedVersion:1,metadata:{task:"image-creative"}})).status,403);
+    assert.equal((await ordinary.send("POST",{recordType:"ai_job",title:"injected",metadata:{kind:"youtube_staff_ai_v1",task:"image-creative"}})).status,403);
+    assert.equal(ordinary.writes.length,0);
+  });
+}
+
+test("agent generic detail hides other owners image job even for older metadata without space", async () => {
+  const api=await harness("app/api/v1/agent-records/route.ts",{kind:"youtube_staff_ai_v1",task:"image-creative",lease:{token:"secret"}},organization,"ai_job");
+  const response=await api.get();
+  assert.equal(response.status,404);
+  assert.doesNotMatch(await response.text(),/secret/);
+});
+
+for (const path of ["app/api/v1/records/route.ts", "app/api/v1/agent-records/route.ts"]) {
+  test(`${path}: image owner predicates run in database query before list pagination`, async () => {
+    const api=await harness(path,{kind:"youtube_staff_ai_v1",task:"image-creative"},organization,"ai_job");
+    const response=await api.list();assert.equal(response.status,200);
+    assert.ok(api.filters.some(value=>value.includes("kind.neq.image_creative_v1") && value.includes(`owner_id.eq.${owner}`)));
+    assert.ok(api.filters.some(value=>value.includes("kind.neq.youtube_staff_ai_v1") && value.includes("task.neq.image-creative") && value.includes(`owner_id.eq.${owner}`)));
   });
 }

@@ -63,6 +63,7 @@ const FILE_LAYER = {
   "components/youtube-process.css": "os.screen",
   "components/youtube-process-card.css": "os.screen",
   "components/youtube-production-steps.css": "os.screen",
+  "components/image-creative-workspace.css": "os.screen",
   "components/vendor/mdxeditor.layered.css": "os.legacy", // 지금 겹침 순서 그대로. os.vendor 로 옮기면 편집기 도구 글자색 19곳이 바뀜 [확인] — 결정 D2
 };
 // 화면 파일 → 메뉴 접두어 (공통 가이드 7장 등록표)
@@ -74,6 +75,7 @@ const SCREEN_PREFIX = {
   "components/finance/finance.css": ["fin-", "finance-"],
   "components/knowledge-vault.css": ["vault-"],
   "components/knowledge/workspace.css": ["kw-"],
+  "components/image-creative-workspace.css": ["ic-"],
 };
 
 test("모든 CSS 파일이 표에 있고, 첫 줄은 같은 레이어 순서 문장이다", () => {

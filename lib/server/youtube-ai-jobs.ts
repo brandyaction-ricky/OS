@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { canUseYoutubeStaffScript } from "@/lib/youtube-automation-gate";
+import { imageRecord, imageMeta, imageInputKey, imageJobInstructions, imageRequestSchema, renderTarget, imageError, importImageResults, prepareImageAsset, commitImageAsset } from "./image-creatives";
 import { pastAdsForAi } from "@/lib/youtube-process/ad-results";
 import { adHistory } from "./youtube-ad-results";
 import { z } from "zod";
@@ -47,10 +49,10 @@ const jobTitle = (state: Awaited<ReturnType<typeof readPipeline>>) => isYoutubeV
 // MCP with a personal agent key, takes a job, does the text work on its own plan and submits; the OS only checks and stores.
 export const STAFF_AI_JOB_KIND = "youtube_staff_ai_v1";
 // ③ 화면 설계 is one pass; ② 원고 runs 축 → 설계 → 초안 → 검수 with separate reviews, so it holds the job longer.
-const LEASE_MINUTES = { "scene-plan": 30, script: 120, storyboard: 90, kit: 30, plan: 45, shorts: 30, short: 30, niche: 30, column: 90, "short-copy": 20, retitle: 30, "short-topics": 30, "short-formula": 45, "short-script": 45, "topic-formula": 45, card: 30 } as const;
+const LEASE_MINUTES = { "scene-plan": 30, script: 120, storyboard: 90, kit: 30, plan: 45, shorts: 30, short: 30, niche: 30, column: 90, "short-copy": 20, retitle: 30, "short-topics": 30, "short-formula": 45, "short-script": 45, "topic-formula": 45, card: 30, "image-creative": 30 } as const;
 const TASK_NAME = { "scene-plan": "화면 설계와 발음 검토", script: "원고(축 · 설계 · 초안 · 검수)", storyboard: "마이인 기획표(장면 · 비유 · 자료 후보)",
   kit: "유튜브 발행키트(제목 · 설명 · 태그 · 챕터 · 고정 댓글)", plan: "기획안(제목 · 썸네일 문구 · 영상 흐름)", shorts: "쇼츠 구간 제안", column: "SEO 칼럼(HTML)", short: "숏폼 장면(구매 이유 · 자막 · 내레이션 · 필요한 이미지)", "short-copy": "숏폼 제목 · 설명", niche: "틈새 묶기(같은 제목 공식)", retitle: "최종 썸네일 제목 · 문구 다시 뽑기",
-  "short-topics": "숏폼 주제 후보(롱폼 원고에서)", "short-formula": "숏폼 공식 · 주제 후보(참고 영상에서)", "topic-formula": "롱폼 제목 공식 · 주제 후보(참고 영상에서)", "short-script": "숏폼 대본(확정한 주제 · 공식으로)", card: "카드뉴스 초안(포맷별 카드 글 · 캡션)" } as const;
+  "short-topics": "숏폼 주제 후보(롱폼 원고에서)", "short-formula": "숏폼 공식 · 주제 후보(참고 영상에서)", "topic-formula": "롱폼 제목 공식 · 주제 후보(참고 영상에서)", "short-script": "숏폼 대본(확정한 주제 · 공식으로)", card: "카드뉴스 초안(포맷별 카드 글 · 캡션)", "image-creative": "이미지 광고(포맷 · 소구 · 카피 · 이미지 시험)" } as const;
 const versionRef = z.object({ id: z.string(), version: z.number() });
 // 리키 관제실 시안 P2 「결론 먼저」: the staff AI tops its result with one line, what it did, its sources and the 정본 check, so
 // 한눈에 보기 shows the conclusion before the screen is opened. Optional: an AI whose tool list predates it still completes.
@@ -68,7 +70,7 @@ complete 할 때 result 옆에 report도 보내 주세요. 사람은 「한눈�
 // 원고 공정 정본 §2 '역할'. ① 기획 has no such field yet, so the staff member picks it when sending ② to their AI.
 export const SCRIPT_ROLES = ["유입형", "전환형", "판매형"] as const;
 const jobMetaSchema = z.object({
-  kind: z.literal(STAFF_AI_JOB_KIND), task: z.enum(["scene-plan", "script", "storyboard", "kit", "plan", "shorts", "short", "niche", "column", "short-copy", "retitle", "short-topics", "short-formula", "short-script", "topic-formula", "card"]), sourceId: z.string().uuid(), inputKey: z.string().length(64),
+  kind: z.literal(STAFF_AI_JOB_KIND), task: z.enum(["scene-plan", "script", "storyboard", "kit", "plan", "shorts", "short", "niche", "column", "short-copy", "retitle", "short-topics", "short-formula", "short-script", "topic-formula", "card", "image-creative"]), sourceId: z.string().uuid(), inputKey: z.string().length(64),
   // ruleVersions only on jobs made before 2026-10-18; a design no longer depends on script rule versions.
   templateVersion: z.string().optional(), ruleVersions: z.array(versionRef).optional(), targetMinutes: z.number().optional(), role: z.enum(SCRIPT_ROLES).optional(), attachments: z.string().optional(), slot: z.enum(SLOTS).optional(), myinRunId: z.string().uuid().optional(), requestedAt: z.string(),
   lease: z.object({ token: z.string().uuid(), expiresAt: z.string() }).optional(), claimedAt: z.string().optional(),
@@ -76,13 +78,14 @@ const jobMetaSchema = z.object({
   // 기획안 · 다시 뽑기: the market search behind the formulas, frozen when the job was asked for (like a 틈새 job's pool).
   market: z.custom<PackagingMarket>(value => Boolean(value && typeof value === "object")).optional(),
   // GPT 초안 (2026-10-29): the OS itself does the card with the company's GPT credit; no staff AI may take it.
-  executor: z.literal("gpt").optional(), tier: z.enum(["precise", "saving"]).optional(),
+  target: renderTarget.optional(), executor: z.literal("gpt").optional(), tier: z.enum(["precise", "saving"]).optional(),
   // 한눈에 보기: the AI's 결론 먼저 report, and who took the result (채택) so it leaves the list.
   report: jobReportSchema.optional(), adoptedAt: z.string().optional(), adoptedBy: z.string().optional(),
 }).passthrough();
 type JobMeta = z.infer<typeof jobMetaSchema>;
 
 export const staffJobRequestSchema = z.discriminatedUnion("task", [
+  z.object({ task: z.literal("image-creative"), sourceId: z.string().uuid(), target: renderTarget.optional(), request: imageRequestSchema }).strict(),
   z.object({ task: z.literal("scene-plan"), sourceId: z.string().uuid(), inputKey: z.string().length(64) }).strict(),
   // attachments = 원고 공정 정본 §2 "카드 첨부": what the staff member hands the AI with the job (댓글 원문, 직접 고른 재료).
   z.object({ task: z.literal("script"), sourceId: z.string().uuid(), targetMinutes: z.number().int().min(1).max(60).default(10),
@@ -167,7 +170,12 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
   let note = "";
   let pool: NicheVideo[] | undefined;
   let marketFor: { query: string; short: boolean; topic?: string } | undefined;
-  if (input.task === "niche") {
+  if (input.task === "image-creative") {
+    if (gpt) throw new ApiError(403, "IMAGE_SUBSCRIPTION_ONLY", "이미지 소재는 연결된 내 AI로만 만들어요.");
+    if (!canUseYoutubeStaffScript(process.env)) throw new ApiError(409, "IMAGE_WORKER_UNAVAILABLE", "내 AI 작업 연결이 아직 꺼져 있어요. 프롬프트 복사와 결과 가져오기를 사용할 수 있어요.");
+    source = await imageRecord(actor.supabase, actor.ownerId, input.sourceId); title = source.title;
+    try { inputKey = imageInputKey(source, input.request); } catch (error) { throw imageError(error); }
+  } else if (input.task === "niche") {
     if (input.sourceId !== NICHE_BOARD_ID) throw new ApiError(404, "NICHE_BOARD_NOT_FOUND", "틈새 판을 찾지 못했어요.");
     pool = await nichePool(service());
     if (pool.length < 3) throw new ApiError(409, "NICHE_POOL_TOO_SMALL", "터진 영상이 3개 이상 모이면 묶을 수 있어요. 먼저 터진 영상을 찾아 주세요.");
@@ -269,14 +277,16 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
   const attachments = input.task === "script" ? input.attachments || undefined : input.task === "retitle" ? input.reason || undefined : undefined;
   const slot = input.task === "retitle" ? input.slot : undefined;
   const role = input.task === "script" ? input.role : undefined;
+  const jobOwner = input.task === "image-creative" ? actor.ownerId : actor.id;
   // 다채널 3단계: a channel without its 목적 정본 is told now, not when its AI takes the job.
-  await channelContext(input.task === "niche" ? null : input.sourceId);
-  for (const job of await openJobs(actor.id, input.sourceId, input.task)) {
+  if (input.task !== "image-creative") await channelContext(input.task === "niche" ? null : input.sourceId);
+  for (const job of await openJobs(jobOwner, input.sourceId, input.task)) {
     const m = meta(job);
     const sameDoer = Boolean(m.executor) === Boolean(gpt);
     if (!sameDoer && job.status === "active" && leaseLive(m.lease))
       throw new ApiError(409, "STAFF_AI_JOB_BUSY", m.executor ? "GPT가 만드는 중이에요. 끝난 뒤에 다시 해 주세요." : "내 AI가 쓰는 중이에요. 끝난 뒤에 다시 해 주세요.");
-    if (sameDoer && m.inputKey === inputKey && m.targetMinutes === targetMinutes && m.role === role && m.attachments === attachments && m.slot === slot && m.market?.query === marketFor?.query) return publicStaffJob(job);
+    if (sameDoer && (input.task !== "image-creative" || m.target === input.target) && m.inputKey === inputKey && m.targetMinutes === targetMinutes && m.role === role && m.attachments === attachments && m.slot === slot && m.market?.query === marketFor?.query) return publicStaffJob(job);
+    if (input.task === "image-creative" && job.status === "active" && leaseLive(m.lease)) throw new ApiError(409, "IMAGE_JOB_BUSY", "내 AI가 이 작업을 만드는 중이에요. 완료한 뒤 다음 요청을 보내 주세요.");
     await saveJob(job, { status: "cancelled", metadata: { ...meta(job), failReason: "입력이 바뀌어 새 요청으로 바꿨어요." } });
   }
   const now = new Date().toISOString();
@@ -290,11 +300,13 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
     ...(input.task === "scene-plan" ? { templateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION } : input.task === "storyboard" ? { myinRunId }
       : { targetMinutes, role, ...(attachments ? { attachments } : {}), ...(slot ? { slot } : {}) }), ...(pool ? { pool } : {}),
     ...(input.task === "card" ? { formats: input.formats } : {}),
+    ...(input.task === "image-creative" ? { space: "personal", imageRequest: input.request, ...(input.target ? {target:input.target} : {}) } : {}),
     ...(gpt ? { executor: "gpt" as const, tier: gpt.tier } : {}) };
-  const { data, error } = await actor.supabase.from("os_records").insert({
+  const writer = input.task === "image-creative" ? service() : actor.supabase;
+  const { data, error } = await writer.from("os_records").insert({
     id: randomUUID(), record_type: "ai_job", title: `${title} · ${taskName}`.slice(0, 240),
     description: gpt ? "OS가 회사 GPT 크레딧으로 바로 처리하는 작업입니다." : "요청한 직원의 AI가 OS 연결로 가져가 처리하는 작업입니다.", status: "backlog", stage: "queued", priority: "normal",
-    brand: source.brand, team: source.team, owner_id: actor.id, parent_id: input.sourceId, created_by: actor.id, updated_by: actor.id,
+    brand: source.brand, team: source.team, owner_id: jobOwner, parent_id: input.sourceId, created_by: jobOwner, updated_by: jobOwner,
     tags: ["유튜브", gpt ? "GPT" : "직원AI"], metadata,
   }).select("*").maybeSingle();
   if (error || !data) throw new ApiError(400, "STAFF_AI_JOB_CREATE_FAILED", "AI 작업을 만들지 못했습니다.");
@@ -373,7 +385,7 @@ async function ownJob(agent: RequestActor, jobId: string) {
 }
 
 async function closeStale(job: OsRecord, m: JobMeta): Promise<never> {
-  const where = m.task === "card" ? "카드뉴스 › 카드 만들기" : m.task === "script" ? "② 원고" : m.task === "kit" ? "⑦ 유튜브 관리" : m.task === "plan" ? "기획안" : m.task === "shorts" ? "쇼츠" : m.task === "column" ? "쇼츠 · 칼럼 › SEO 칼럼" : m.task === "short" ? "숏폼 제작" : m.task === "short-copy" ? "숏폼 내보내기" : m.task === "retitle" ? "제작 › 최종 썸네일" : m.task === "short-topics" ? "쇼츠 · 칼럼 › 숏폼 주제" : m.task === "short-formula" ? "숏폼 주제" : m.task === "short-script" ? "숏폼 대본" : m.task === "topic-formula" ? "주제" : "③ 영상 제작";
+  const where = m.task === "image-creative" ? "이미지 광고" : m.task === "card" ? "카드뉴스 › 카드 만들기" : m.task === "script" ? "② 원고" : m.task === "kit" ? "⑦ 유튜브 관리" : m.task === "plan" ? "기획안" : m.task === "shorts" ? "쇼츠" : m.task === "column" ? "쇼츠 · 칼럼 › SEO 칼럼" : m.task === "short" ? "숏폼 제작" : m.task === "short-copy" ? "숏폼 내보내기" : m.task === "retitle" ? "제작 › 최종 썸네일" : m.task === "short-topics" ? "쇼츠 · 칼럼 › 숏폼 주제" : m.task === "short-formula" ? "숏폼 주제" : m.task === "short-script" ? "숏폼 대본" : m.task === "topic-formula" ? "주제" : "③ 영상 제작";
   await saveJob(job, { status: "blocked", metadata: { ...m, lease: undefined, failReason: `기획·제목·원고·영상 기준이 바뀌어 이 요청은 닫았어요. ${where} 화면에서 다시 보내 주세요.` } });
   throw new ApiError(409, "STAFF_AI_JOB_STALE", "입력이 바뀌어 이 작업은 닫혔습니다. 다른 작업을 확인하세요.");
 }
@@ -441,6 +453,19 @@ async function currentShortScriptInput(job: OsRecord) {
   try { assertShortScriptInputs(state); } catch { await closeStale(job, m); }
   if (shortScriptInputKey(state) !== m.inputKey) await closeStale(job, m);
   return state;
+}
+
+async function currentImageInput(job: OsRecord, allowSaved = false) {
+  const m = meta(job), request = imageRequestSchema.safeParse(m.imageRequest);
+  if (!request.success) return closeStale(job, m);
+  const record = await imageRecord(service(), job.owner_id!, m.sourceId).catch(error => {
+    if (error instanceof ApiError && error.status === 404) return closeStale(job, m);
+    throw error; // A temporary read failure does not mean the user changed the source.
+  });
+  if (allowSaved && imageMeta(record).appliedJobs[job.id]) return { record, request: request.data };
+  try { if (imageInputKey(record, request.data) !== m.inputKey) return closeStale(job, m); }
+  catch (error) { if (error instanceof ApiError && error.code === "STAFF_AI_JOB_STALE") throw error; return closeStale(job, m); }
+  return { record, request: request.data };
 }
 
 /** A 카드뉴스 초안 job: closed when the cards were confirmed or what they are made from (source, focus, topic, formats, 정본) moved on. */
@@ -522,7 +547,8 @@ async function myinCardDocIds(docs = MYIN_CARD_DOCS) {
 export async function claimStaffJob(agent: RequestActor, jobId: string, byGpt = false) {
   // 다채널 3단계: every card of a project on another channel starts with that channel and its 목적 정본 (GPT gets the 정본 pasted in by
   // its doc_id, like any document a card names). Read before the job is taken, so a missing 정본 leaves it waiting.
-  const channel = await channelContext((await ownJob(agent, jobId)).parent_id);
+  const job = await ownJob(agent, jobId);
+  const channel = meta(job).task === "image-creative" ? null : await channelContext(job.parent_id);
   const claimed = await claimJob(agent, jobId, byGpt);
   const instructions = channel ? `${channel.text}\n\n${claimed.instructions}` : claimed.instructions;
   // GPT answers one strict JSON schema, so only a staff AI gets the report note.
@@ -582,6 +608,10 @@ async function claimJob(agent: RequestActor, jobId: string, byGpt: boolean) {
     const { project } = v1Stages(state);
     const brief = project.yp.topic.purpose === "ad" ? (await shortJobInputs(service(), project)).brief : undefined;
     return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: await shortScriptCard(service(), state, minutes, m.market, brief) };
+  }
+  if (m.task === "image-creative") {
+    const { record, request } = await currentImageInput(job), lease = await take();
+    return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: imageJobInstructions(record, request) };
   }
   if (m.task === "card") {
     const { project, cards, canon, formats } = await currentCardInput(job);
@@ -662,6 +692,13 @@ export async function completeStaffJob(agent: RequestActor, input: Extract<z.inf
   // Every done save below spreads m, so the report rides along with whichever task this is.
   const m = { ...liveLease(job, input.lease), ...(input.report ? { report: input.report } : {}) };
   if (m.task === "script") return completeScriptJob(agent, job, m, input);
+  if (m.task === "image-creative") {
+    if (!leaseLive(m.lease)) throw new ApiError(409, "STAFF_AI_JOB_LEASE", "작업 시간이 지났어요. 목록에서 다시 가져와 주세요.");
+    const { record, request } = await currentImageInput(job, true);
+    const saved = await keepIssues(job, m, () => importImageResults(service(), record, request, input.result, agent.name, job.id));
+    await saveJob(job, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });
+    return { done: true, batchId: saved.batchId, next: "이미지 광고 화면에서 실제 후보를 비교하고 고릅니다. 광고는 집행하지 않았습니다." };
+  }
   if (m.task === "niche") {
     const clusters = await keepIssues(job, m, () => checkNicheResult(input.result, jobPool(m)));
     const saved = await saveNicheBoard(service(), clusters, { ownerId: agent.ownerId, name: await displayName(service(), agent.ownerId, agent.name), model: input.model });
@@ -793,6 +830,20 @@ async function completeScriptJob(agent: RequestActor, job: OsRecord, m: JobMeta,
 export async function failStaffJob(agent: RequestActor, input: Extract<z.infer<typeof staffJobWorkerSchema>, { action: "fail" }>) {
   const job = await ownJob(agent, input.jobId);
   const m = liveLease(job, input.lease);
+  if (m.task === "image-creative" && !leaseLive(m.lease)) throw new ApiError(409, "STAFF_AI_JOB_LEASE", "작업 시간이 지났어요. 목록에서 다시 가져와 주세요.");
   await saveJob(job, { status: "blocked", stage: "failed", metadata: { ...m, lease: undefined, failReason: input.reason } });
   return { closed: true };
+}
+
+/** Upload only to the current personal image job; the existing agent scope and lease apply to every operation. */
+export const imageAssetWorkerSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("prepare"), jobId: z.string().uuid(), lease: z.string().uuid(), mimeType: z.enum(["image/png", "image/jpeg"]), fileSize: z.number().int().positive().max(5 * 1024 * 1024) }).strict(),
+  z.object({ action: z.literal("commit"), jobId: z.string().uuid(), lease: z.string().uuid(), path: z.string().max(200), receipt: z.string().uuid() }).strict(),
+]);
+export async function imageAssetForJob(agent: RequestActor, input: z.infer<typeof imageAssetWorkerSchema>) {
+  const job = await ownJob(agent, input.jobId), m = liveLease(job, input.lease);
+  if (m.task !== "image-creative" || !leaseLive(m.lease)) throw new ApiError(409, "IMAGE_JOB_LEASE", "진행 중인 내 이미지 작업에서만 파일을 넣을 수 있어요.");
+  const { record } = await currentImageInput(job);
+  return input.action === "prepare" ? prepareImageAsset(record, input.mimeType, input.fileSize, input.lease)
+    : commitImageAsset(record, input.path, input.receipt, input.lease);
 }

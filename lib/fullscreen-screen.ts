@@ -21,6 +21,7 @@ export const FULLSCREEN_ROUTES = {
   "/content/scripts": "scripts",
   "/content/video": "video",
   "/content/packages": "packages",
+  "/content/images": "image-creatives",
   "/content/shorts": "shorts",
   "/content/publishing": "publish",
   "/content/review": "publish",

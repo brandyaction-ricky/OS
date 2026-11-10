@@ -31,11 +31,12 @@ test("new routes resolve to their names inside the YouTube group; shorts keeps t
   assert.ok(!YOUTUBE_V1_HREFS.some(href => NAV_STAGES.some(stage => stage.pages.some(page => page.href === href))), "no new route shadows an existing one");
 });
 
-test("existing YouTube menu is untouched while the switch is off", () => {
+test("existing YouTube steps are preserved alongside the new image-ad entry while the switch is off", () => {
   const content = NAV_STAGES.find(stage => stage.id === "content");
-  assert.deepEqual(content.pages.map(page => page.href), ["/content/topics", "/content/scripts", "/content/video", "/content/packages", "/content/shorts", "/content/publishing", "/content/youtube", "/content/performance"]);
+  assert.deepEqual(content.pages.map(page => page.href), ["/content/topics", "/content/scripts", "/content/video", "/content/packages", "/content/shorts", "/content/publishing", "/content/youtube", "/content/performance", "/content/images"]);
   assert.equal(findPage("/content/shorts").label, "숏폼 편집");
   assert.equal(findPage("/content/video").label, "영상 제작");
+  assert.equal(findPage("/content/images").label, "이미지 광고");
 });
 
 test("each v1 screen has a three-step guide whose next page exists", () => {

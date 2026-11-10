@@ -51,7 +51,7 @@ export function DraftPlacePicker({ value, onChange, status, ready, token, onConn
  * The one-time setup: a 「내 컴퓨터 렌더」 key (shown once) inside a single install command for this PC's system. The command installs
  * what is missing, downloads the render PC's engine from the OS, starts, and leaves a 「내 컴퓨터 렌더」 launcher on the desktop.
  */
-function LocalConnect({ token, onDone }: { token: string | null; onDone: () => void }) {
+export function LocalConnect({ token, onDone }: { token: string | null; onDone: () => void }) {
   const [key, setKey] = useState("");
   const [system, setSystem] = useState<"mac" | "windows">(() => typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent) ? "windows" : "mac");
   const [busy, setBusy] = useState(false);

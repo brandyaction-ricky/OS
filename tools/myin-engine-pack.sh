@@ -52,6 +52,13 @@ rsync -a --exclude __pycache__ --exclude .DS_Store --exclude /assets --exclude /
 [[ -d "$MYIN_LIBRARY" ]] && rsync -a --exclude .DS_Store "$MYIN_LIBRARY/" "$STAGE/engine/library/"
 TOOLS="$(dirname "$WORKER")"
 cp "$TOOLS"/*.mjs "$TOOLS"/*.py "$STAGE/tools/" 2>/dev/null || true
+# The ad renderer contains only the OS's pinned layout modules, fonts and runtime libraries.
+WORKER_PATH="$WORKER" STAGE="$STAGE" node --input-type=module -e '
+import path from "node:path"; import {pathToFileURL} from "node:url";
+const tools=path.dirname(process.env.WORKER_PATH), root=path.dirname(tools);
+const {buildAdRuntime,adRuntimeDigest}=await import(pathToFileURL(path.join(tools,"image-ad-renderer.mjs")));
+if (adRuntimeDigest(root)) buildAdRuntime(root,path.join(process.env.STAGE,"image-renderer"));'
+
 # The worker reads the shortform diagram list from ../lib when it loads.
 mkdir -p "$STAGE/lib" && cp "$TOOLS/../lib/shortform-diagram-catalog.json" "$STAGE/lib/"
 "$MYIN_PYTHON" -s -m pip freeze > "$STAGE/requirements.lock"

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { imageMacActions, imageMacWork, isImageMacAction } from "@/lib/server/image-mac-render";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
@@ -15,6 +16,7 @@ export const maxDuration = 800;
 const lease = { runId: z.string().uuid(), lease: z.string().uuid() };
 const engine = z.string().regex(/^[a-f0-9]{16,64}$/);
 const inputSchema = z.discriminatedUnion("action", [
+  ...imageMacActions,
   renderPcSignalSchema,
   // The installer asks which engine the render PC runs and where its bundle is.
   z.object({ action: z.literal("engine"), split: z.literal(true).optional() }).strict(),
@@ -43,7 +45,8 @@ export async function POST(request: Request) {
     if (actor.type !== "agent") throw new ApiError(403, "LOCAL_RENDER_KEY_REQUIRED", "「내 컴퓨터 연결」 키로만 쓸 수 있어요.");
     const input = inputSchema.parse(await parseJson(request, 32_000));
     if (input.action === "myin_prep_claim" || input.action === "myin_clips_claim" || input.action === "myin_final_claim") await assertLocalEngine(input.engine);
-    const result = input.action === "heartbeat" ? await saveLocalRenderSignal(actor.ownerId, input)
+    const result = isImageMacAction(input) ? await imageMacWork({target:"local",ownerId:actor.ownerId},input)
+      : input.action === "heartbeat" ? await saveLocalRenderSignal(actor.ownerId, input)
       : input.action === "engine" ? await currentEngineDownload(await renderPcEngine(), Boolean(input.split))
       : input.action === "myin_prep_claim" ? await claimMyinPrep(undefined, actor.ownerId)
       : input.action === "myin_prep_complete" ? await completeMyinPrep(input)

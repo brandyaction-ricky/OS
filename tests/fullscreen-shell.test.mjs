@@ -13,10 +13,11 @@ test("content automation is implemented as internal OS routes", () => {
 });
 
 test("all full-screen routes have explicit styling without changing their URLs", () => {
-  // 스타일 점검 P2: 내 노트 · 회사 정본 · 휴지통 · 회의록 joined the screen kit (53 → 57); 11-02 재무 서류함 · 부가세 (57 → 59).
-  assert.equal(Object.keys(FULLSCREEN_ROUTES).filter(path=>!path.startsWith("/hr")).length, 59);
+  // 스타일 점검 P2: 내 노트 · 회사 정본 · 휴지통 · 회의록 (53 → 57); 재무 서류함 · 부가세 (57 → 59); 이미지 광고 (59 → 60).
+  assert.equal(Object.keys(FULLSCREEN_ROUTES).filter(path=>!path.startsWith("/hr")).length, 60);
   assert.equal(fullscreenScreen("/knowledge/notes"), "notes");
   assert.equal(fullscreenScreen("/content/video"), "video");
+  assert.equal(fullscreenScreen("/content/images"), "image-creatives");
   assert.equal(fullscreenScreen("/organization/people"), "people");
   assert.equal(fullscreenScreen("/knowledge/vault"), "vault");
   for (const name of ["overview", "sales", "settlements", "bank", "cards", "recurring", "budget", "vat", "documents"]) {
