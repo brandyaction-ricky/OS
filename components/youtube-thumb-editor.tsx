@@ -122,7 +122,7 @@ export function ThumbEditor({ page, slot, start, onSave, onClose }: {
         </div> : null}
         {tab === "extras" ? <div className="yp-te-fields">
           {(draft.extras ?? []).map((x) => <div key={x.id} className="yp-te-extra"><span>「{x.text}」 · {THUMB_EXTRA_COLORS[x.color]} · {x.size}px</span>
-            <button type="button" className="yp-ib" aria-label={`「${x.text}」 지우기`} onClick={() => change({ ...draft, extras: (draft.extras ?? []).filter((row) => row.id !== x.id) })}><X size={13} /></button></div>)}
+            <button type="button" className="yp-ib" aria-label={`「${x.text}」 지우기`} onClick={() => { change({ ...draft, extras: (draft.extras ?? []).filter((row) => row.id !== x.id) }); if (target === x.id) setTarget("photo"); }}><X size={13} /></button></div>)}
           {(draft.extras?.length ?? 0) < 4 ? <>
             <label className="yp-lbl">문구 추가<input className="yp-in" maxLength={20} value={newLine.text} placeholder="예) 직장인 70%" onChange={(event) => setNewLine({ ...newLine, text: event.target.value })} /></label>
             <div className="yp-row-btns"><select className="yp-in yp-sel1" aria-label="색" value={newLine.color} onChange={(event) => setNewLine({ ...newLine, color: event.target.value as ThumbExtraColor })}>
