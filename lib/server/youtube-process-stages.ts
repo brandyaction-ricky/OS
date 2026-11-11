@@ -97,7 +97,8 @@ const text = (max: number) => z.string().max(max);
 const refSchema = z.object({ url: z.string().url().max(300), videoId: z.string().max(20).optional(), title: z.string().max(200).optional() }).strict();
 const statSchema = z.object({ fact: text(200), value: text(40), unit: text(20), period: text(20), table: text(120), organization: text(60),
   sourceUrl: z.string().max(300).regex(/^https:\/\/kosis\.kr\//) }).strict();
-const thumbSchema = z.object({ id: text(40), mode: z.enum(["img", "text"]), path: text(300).optional(), screen: text(500).optional(), copy: text(120).optional() }).strict();
+const thumbSchema = z.object({ id: text(40), mode: z.enum(["img", "text"]), path: text(300).optional(), screen: text(500).optional(), copy: text(120).optional(),
+  pick: z.object({ candidate: z.string().uuid(), accent: text(20).optional(), diff: z.enum(["카피", "그림", "배치"]).optional() }).strict().optional() }).strict();
 export const stagePatchSchemas = {
   plan: z.object({ titles: z.array(z.object({ id: text(40), text: text(200) }).strict()).min(1).max(12), thumbs: z.array(thumbSchema).min(1).max(8),
     opening: text(2000), body: text(6000), closing: text(2000), note: text(2000), extraRefs: z.array(refSchema).max(50), stats: z.array(statSchema).max(3), aiDraft: z.null() }).partial().strict(),
@@ -396,7 +397,7 @@ export async function moveYoutubeStage(actor: RequestActor, id: string, input: z
 async function gateMissing(actor: RequestActor, project: YpProject, gate: YpGate) {
   const stages = await readStages(actor.supabase, project);
   if (project.yp.topic.type === "card") return gate === "draft" ? (await cardsModule()).cardsMissing(stages.cards.data) : "";
-  if (gate === "draft") return project.yp.topic.type === "short" ? shortScriptMissing(stages.shortScript.data, await (await shortRefsModule()).doneShortRefs(createServiceSupabase(), project.id, 60)) : draftMissing(stages.plan.data);
+  if (gate === "draft") return project.yp.topic.type === "short" ? shortScriptMissing(stages.shortScript.data, await (await shortRefsModule()).doneShortRefs(createServiceSupabase(), project.id, 60)) : draftMissing(stages.plan.data, project.yp.topic.type);
   if (gate === "review") return (await readFinals(actor.supabase, project.id, stages.make.data, project.yp.topic.type)).length ? "" : "최종본을 올려 주세요";
   return "";
 }
@@ -420,8 +421,27 @@ const draftFixer = async (project: YpProject) => project.yp.topic.type === "shor
 async function fixConfirmedPlan(actor: RequestActor, project: YpProject) {
   const service = createServiceSupabase();
   const stages = await readStages(service, project);
-  const plan = { ...stages.plan.data, confirmed: confirmPlan(stages.plan.data, new Date().toISOString()) };
+  const now = new Date().toISOString();
+  const plan = { ...stages.plan.data, confirmed: confirmPlan(stages.plan.data, now) };
   await writeStage(service, actor.id, actor.team, project, "plan", stages.plan, plan);
+  if (project.yp.topic.type === "anim") await pickedThumbsToMake(service, actor, project, stages.make, plan, now);
+}
+/**
+ * 롱폼 애니메이션: the A · B · C picked in the 기획안 arrive in 제작 「최종 썸네일」 as they are (썸네일 자동 제작 2026-11-09). Each PNG is
+ * copied to the 제작 folder (YouTube takes it from there); a slot 제작 already filled keeps its file.
+ */
+async function pickedThumbsToMake(service: Supabase, actor: RequestActor, project: YpProject, make: Awaited<ReturnType<typeof readStages>>["make"], plan: YpPlan, now: string) {
+  const thumbs = { ...make.data.thumbs };
+  for (const [index, slot] of SLOTS.entries()) {
+    const picked = plan.thumbs[index];
+    if (thumbs[slot] || picked?.mode !== "img" || !picked.path || !assetPath(project.id, "plan_thumb").test(picked.path)) continue;
+    if (picked.path.endsWith(".webp") || picked.path.endsWith(".gif")) continue;   // YouTube takes JPEG and PNG only: those wait for 제작
+    const path = `youtube/${project.id}/thumb/${randomUUID()}.${picked.path.split(".").pop()}`;
+    const { error } = await service.storage.from(MEDIA_BUCKET).copy(picked.path, path);
+    if (!error) thumbs[slot] = { path, name: `기획안 ${slot}`, at: now };
+  }
+  if (Object.keys(thumbs).length !== Object.keys(make.data.thumbs).length)
+    await writeStage(service, actor.id, actor.team, project, "make", make, { ...make.data, thumbs }).catch(() => undefined);
 }
 
 /** The approver's decision; an OK on the 기획안 also fixes the A · B · (C) pairs later steps compare with (4-4). */

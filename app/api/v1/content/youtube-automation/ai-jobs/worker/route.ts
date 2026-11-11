@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest, requireAgentScope } from "@/lib/server/auth";
-import { claimStaffJob, completeStaffJob, failStaffJob, listStaffJobs, staffJobWorkerSchema } from "@/lib/server/youtube-ai-jobs";
+import { claimStaffJob, completeStaffJob, failStaffJob, listStaffJobs, staffJobWorkerSchema, thumbJobStep } from "@/lib/server/youtube-ai-jobs";
 import { canUseYoutubeStaffScript } from "@/lib/youtube-automation-gate";
 
 export const runtime = "nodejs";
@@ -35,6 +35,7 @@ export async function POST(request: Request) {
     const input = staffJobWorkerSchema.parse(await parseJson(request, 400_000));
     const result = input.action === "claim" ? await claimStaffJob(actor, input.jobId)
       : input.action === "complete" ? await completeStaffJob(actor, input)
+      : input.action === "upload" || input.action === "add" ? await thumbJobStep(actor, input)
       : await failStaffJob(actor, input);
     return NextResponse.json(result, { headers });
   } catch (error) {

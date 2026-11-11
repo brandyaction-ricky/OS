@@ -228,7 +228,7 @@ export type PackagingMarket = { query: string; at: string; refs: PackagingRef[];
 export const marketInput = (market?: PackagingMarket) => market ? { query: market.query, ...(market.error ? { error: market.error } : {}),
   rows: market.refs.slice(0, 20).map((ref, index) => ({ title: ref.title, channel: ref.channel, views: ref.views, ratio: ref.ratio, url: ref.url, ...(index < 8 ? { thumbnail: ref.thumbnail } : {}) })) } : null;
 /** Reference videos with the thumbnail address the copy formula is read from. */
-const refsWithThumbs = (refs: ReturnType<typeof v1Stages>["project"]["yp"]["topic"]["refs"]) =>
+export const refsWithThumbs = (refs: ReturnType<typeof v1Stages>["project"]["yp"]["topic"]["refs"]) =>
   refs.map(ref => ({ title: ref.title ?? "", url: ref.url, thumbnail: ref.videoId ? `https://i.ytimg.com/vi/${ref.videoId}/hqdefault.jpg` : null }));
 /** The 패키징 정본 first: ten 기획 documents used to push it out of the eight a card lists. */
 export async function packagingRefs(supabase: RequestActor["supabase"], also: ("appeal_candidates" | "topic_plan")[] = []) {

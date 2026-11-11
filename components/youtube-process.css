@@ -1480,4 +1480,31 @@
 .linear-shell .ui-v2.yp .yp-escreen-wait{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;color:var(--text-2);font-size:14px;text-align:center}
 @media (max-width:520px){.linear-shell .ui-v2.yp .yp-escreen-row{flex-wrap:wrap}.linear-shell .ui-v2.yp .yp-escreen-row .yp-btn{width:100%}.linear-shell .ui-v2.yp .yp-escreen-made{display:none}}
 
+/* 롱폼 애니메이션 썸네일 고르기 (2026-11-09): a YouTube home feed with our candidate among the market videos. */
+.linear-shell .ui-v2.yp .yp-tp{display:grid;gap:10px}
+.linear-shell .ui-v2.yp .yp-tp-make{display:flex;flex-wrap:wrap;align-items:center;gap:10px;font-size:13px}
+.linear-shell .ui-v2.yp .yp-tp-make label{display:inline-flex;align-items:center;gap:6px}
+.linear-shell .ui-v2.yp .yp-tp-make .yp-in[type=number]{width:64px}
+.linear-shell .ui-v2.yp .yp-tp-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:13px}
+.linear-shell .ui-v2.yp .yp-tp-turn{display:inline-flex;align-items:center;gap:2px;font-variant-numeric:tabular-nums}
+.linear-shell .ui-v2.yp .yp-tp-feed{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px 10px}
+.linear-shell .ui-v2.yp .yp-tp-card{display:grid;gap:6px;min-width:0;color:inherit;text-decoration:none}
+.linear-shell .ui-v2.yp .yp-tp-frame{position:relative;width:100%;aspect-ratio:16 / 9;overflow:hidden;border-radius:10px;background:var(--panel-2)}
+.linear-shell .ui-v2.yp .yp-tp-frame>img{width:100%;height:100%;object-fit:cover;display:block}
+.linear-shell .ui-v2.yp .yp-tp-stage{width:1280px;height:720px;transform-origin:0 0;transform:scale(.25)}
+.linear-shell .ui-v2.yp .yp-tp-empty{display:grid;place-items:center;font-size:12px;color:var(--muted)}
+.linear-shell .ui-v2.yp .yp-tp-ours .yp-tp-frame{outline:2px solid var(--accent);outline-offset:2px}
+.linear-shell .ui-v2.yp .yp-tp-meta{display:grid;gap:2px;font-size:12px;line-height:1.35}
+.linear-shell .ui-v2.yp .yp-tp-meta b{font-size:13px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.linear-shell .ui-v2.yp .yp-tp-meta span{color:var(--muted)}
+.linear-shell .ui-v2.yp .yp-tp-large{max-width:760px}
+.linear-shell .ui-v2.yp .yp-tp-phonewrap{width:320px;max-width:100%}
+.linear-shell .ui-v2.yp .yp-tp-copy,.linear-shell .ui-v2.yp .yp-tp-pick{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:13px}
+.linear-shell .ui-v2.yp .yp-tp-why{font-size:12px;line-height:1.5;color:var(--text-2)}
+.linear-shell .ui-v2.yp .yp-tp-refs{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:4px}
+.linear-shell .ui-v2.yp .yp-tp-refs img{width:96px;aspect-ratio:16 / 9;object-fit:cover;border-radius:6px;display:block}
+.linear-shell .ui-v2.yp .yp-tp-diff{display:inline-flex;gap:8px;align-items:center;margin-top:8px}
+.linear-shell .ui-v2.yp .yp-tp-repick{padding:14px;margin-top:8px}
+@media (max-width:820px){.linear-shell .ui-v2.yp .yp-tp-feed{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:520px){.linear-shell .ui-v2.yp .yp-tp-feed{grid-template-columns:minmax(0,1fr)}}
 }

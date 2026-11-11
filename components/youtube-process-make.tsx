@@ -14,6 +14,7 @@ import { EditorScreenEntry } from "./editor-screen";
 import { FormulaNote, JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
 import { GateBanner, gateSub, md, stepAction, Subject, useYpBundle, YpFrame, YpSection, LockedStep, type YpPage } from "./youtube-process-frame";
 import { ThumbView } from "./youtube-process-media";
+import { ThumbPicker } from "./youtube-thumb-picker";
 import { ShortMake } from "./youtube-process-short";
 import { scriptLines } from "@/lib/youtube-process/short-script";
 
@@ -45,6 +46,8 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
   const [redoAsk, setRedoAsk] = useState<{ slot: YpSlot; reason: string } | null>(null);
   // The slot whose 고치기 · 후보 panel is open under the three cards (a card is too narrow to read candidates in).
   const [fixing, setFixing] = useState<YpSlot | null>(null);
+  // 롱폼 애니메이션: 「기획안에서 다시 고르기」 opens the 기획안's candidates here; a pick replaces only that slot's image.
+  const [repick, setRepick] = useState(false);
   const bundle = page.bundle;
   const project = bundle?.project;
   const make = bundle?.stages.make;
@@ -177,8 +180,15 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
           onUpload={file => void uploadThumb(slot, file)} onFix={() => setFixing(slot)} onReset={() => void save({ pair: { slot, title: "", copy: "", reason: "" } }, "pair")} />)}</div>
         {fixing && canThumb && !late ? <PairPanel key={fixing} page={page} slot={fixing} make={data} job={redoJob} saving={busy === "pair"} onClose={() => setFixing(null)}
           onSave={(title, copy, reasonText) => save({ pair: { slot: fixing, title, copy, reason: reasonText } }, "pair").then(ok => { if (ok) setFixing(null); })}
-          onRedo={reasonText => setRedoAsk({ slot: fixing, reason: reasonText })} /> : null}
-        <p className="yp-hint">jpg · png로 올려요. 마음에 안 들면 [고치기]에서 직접 고치거나 [공식대로 다시 뽑기]로 후보를 받아요. 바꾼 칸은 최종 검토에서 대표가 확인해요.</p>
+          onRedo={project.yp.topic.type === "anim" ? undefined : reasonText => setRedoAsk({ slot: fixing, reason: reasonText })} /> : null}
+        {project.yp.topic.type === "anim" ? <>
+          <p className="yp-hint">기획안에서 고른 썸네일이 들어와 있어요. 완성본을 직접 넣으려면 [다시 올리기], 다른 후보로 바꾸려면 <button type="button" className="yp-lnk" disabled={!canThumb} onClick={() => setRepick(open => !open)}>기획안에서 다시 고르기</button>. 바꾼 칸은 최종 검토에서 대표가 확인해요.</p>
+          {repick && canThumb ? <div className="yp-card yp-tp-repick">
+            <ThumbPicker page={page} title={finalPair(page.bundle!.stages.plan.data, data, "A")?.title ?? ""} can busyJob={false}
+              planCopies={SLOTS.flatMap(slot => { const thumb = page.bundle!.stages.plan.data.confirmed?.[slot]?.thumb; return thumb?.copy ? [{ text: thumb.copy, ...(thumb.pick?.accent ? { accent: thumb.pick.accent } : {}) }] : []; })}
+              picked={{}} onPick={async (slot, value) => { if (await save({ thumb: { slot, path: value.path, name: value.name } }, `thumb-${slot}`)) setRepick(false); }} />
+          </div> : null}
+        </> : <p className="yp-hint">jpg · png로 올려요. 마음에 안 들면 [고치기]에서 직접 고치거나 [공식대로 다시 뽑기]로 후보를 받아요. 바꾼 칸은 최종 검토에서 대표가 확인해요.</p>}
         <SendDialog page={page} task="retitle" open={Boolean(redoAsk)} onClose={() => setRedoAsk(null)} job={redoJob} extra={redoAsk ?? undefined} queryDefault={topicKeywords(projectName(project), project.yp.topic.target)} />
       </YpSection>}</>}
     </> : null}
@@ -212,7 +222,9 @@ function FinalThumb({ page, slot, make, can, fix, busy, job, open, onUpload, onF
 
 /** 고치기 under the cards, full width: the fields, then the AI's title and copy candidates side by side (owner request 2026-10-25: readable). */
 function PairPanel({ page, slot, make, job, saving, onClose, onSave, onRedo }: { page: YpPage; slot: YpSlot; make: YpMake; job: ReturnType<typeof useStaffJob>; saving: boolean;
-  onClose: () => void; onSave: (title: string, copy: string, reason: string) => void; onRedo: (reason: string) => void }) {
+  onClose: () => void; onSave: (title: string, copy: string, reason: string) => void;
+  /** 롱폼 애니메이션 has no [공식대로 다시 뽑기]: its thumbnails are picked again from the 기획안's candidates. */
+  onRedo?: (reason: string) => void }) {
   const pair = finalPair(page.bundle!.stages.plan.data, make, slot)!;
   const redo = make.redo?.[slot];
   const [title, setTitle] = useState(pair.title);
@@ -232,9 +244,9 @@ function PairPanel({ page, slot, make, job, saving, onClose, onSave, onRedo }: {
     <input className="yp-in yp-rev" style={{ marginTop: 8 }} value={reason} maxLength={200} onChange={event => setReason(event.target.value)} placeholder="바꾸는 이유 한 줄 (저장할 때 필수)" aria-label="바꾸는 이유" />
     <div className="yp-row-btns" style={{ marginTop: 8 }}>
       <button type="button" className="yp-btn yp-pri" disabled={saving || same || !title.trim() || !reason.trim()} onClick={() => onSave(title.trim(), copy.trim(), reason.trim())}>{saving ? "저장 중…" : "저장"}</button>
-      <button type="button" className="yp-btn" onClick={() => onRedo(reason.trim())}><Sparkles size={14} /> 공식대로 다시 뽑기 <CostTag kind="ai" /></button>
+      {onRedo ? <button type="button" className="yp-btn" onClick={() => onRedo(reason.trim())}><Sparkles size={14} /> 공식대로 다시 뽑기 <CostTag kind="ai" /></button> : null}
       <button type="button" className="yp-btn" onClick={onClose}>닫기</button></div>
-    {job.status?.job?.slot === slot ? <div style={{ marginTop: 8 }}><JobLine job={job} onRetry={() => onRedo(reason.trim())} /></div> : null}
+    {job.status?.job?.slot === slot && onRedo ? <div style={{ marginTop: 8 }}><JobLine job={job} onRetry={() => onRedo(reason.trim())} /></div> : null}
     {redo ? <>
       <div className="yp-muted" style={{ fontSize: 13, margin: "16px 0 8px" }}><Sparkles size={13} aria-hidden="true" /> {redo.by}의 Claude가 공식대로 뽑은 후보{redo.market ? ` · 참고 영상: 「${redo.market.query}」 시장 영상 ${redo.market.count}편 (조회수 5만+ · 구독자 대비 조회수 순)` : ""} · 하나씩 눌러 위 칸에 넣어요{redo.market?.off ? <b className="yp-warn-t"> · 찾은 영상이 주제와 동떨어져 보여요. 검색어를 바꿔 다시 맡겨 보세요.</b> : null}</div>
       <div className="yp-g2" style={{ gap: 16, alignItems: "start" }}>
