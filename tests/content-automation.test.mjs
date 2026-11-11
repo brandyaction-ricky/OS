@@ -44,7 +44,7 @@ test("live publishing requires a service-only approval checkpoint and separate r
 test("YouTube reconnect requests Analytics read scope and collector stores API snapshots", async () => {
   const [oauth, metrics] = await Promise.all([
     read("lib/server/youtube-oauth.ts"),
-    read("lib/server/channel-metrics.ts"),
+    read("lib/server/youtube-channel-analytics.ts"),
   ]);
   assert.match(oauth, /yt-analytics\.readonly/);
   assert.match(metrics, /youtubeanalytics\.googleapis\.com\/v2\/reports/);
