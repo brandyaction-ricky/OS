@@ -169,7 +169,7 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
   const openCount = (target: "video" | "thumb") => items.filter(item => (target === "video" ? item.target === "video" : item.target !== "video") && !closed(item) && !item.reaction && !feedbackNotice(item)).length;
 
   const seek = (seconds: number) => { if (video.current) { video.current.currentTime = seconds; setTime(seconds); } };
-  // ← → move 5 s (Shift: 1 s) wherever the page is, unless someone is typing.
+  // ← → move 1 s (Shift: 5 s) wherever the page is, unless someone is typing (유쓰 요청 2026-11-10: finding the spot to comment on).
   const nudge = (step: number) => { const el = video.current; if (el) seek(Math.max(0, Math.min(el.duration || Infinity, el.currentTime + step))); };
   const nudgeRef = useRef(nudge);
   nudgeRef.current = nudge;
@@ -180,7 +180,7 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
       if (event.altKey || event.ctrlKey || event.metaKey || el?.closest("input, textarea, select, [contenteditable='true']")) return;
       if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
       event.preventDefault();
-      nudgeRef.current((event.key === "ArrowLeft" ? -1 : 1) * (event.shiftKey ? 1 : 5));
+      nudgeRef.current((event.key === "ArrowLeft" ? -1 : 1) * (event.shiftKey ? 5 : 1));
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -267,9 +267,9 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
               {srcB ? <video ref={videoB} src={`${srcB}#t=0.1`} preload="metadata" muted onLoadedData={() => setDrawn(map => ({ ...map, [srcB]: true }))} onLoadedMetadata={event => { event.currentTarget.playbackRate = rate; event.currentTarget.currentTime = compareTime(time, offset, event.currentTarget.duration); }} />
                 : <div className="yp-muted" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", color: "var(--media-muted)" }}>영상을 불러오는 중이에요…</div>}</div> : null}
             </div>
-            <div className="yp-ctrl"><button type="button" className="yp-cb" aria-label="5초 뒤로" title="5초 뒤로 (←, Shift+← 1초)" onClick={() => nudge(-5)}>−5</button>
+            <div className="yp-ctrl"><button type="button" className="yp-cb" aria-label="5초 뒤로" title="5초 뒤로 (Shift+←, ← 1초)" onClick={() => nudge(-5)}>−5</button>
               <button type="button" className="yp-cb" aria-label={playing ? "멈춤" : "재생"} onClick={toggle}>{playing ? <Pause size={16} /> : <Play size={16} />}</button>
-              <button type="button" className="yp-cb" aria-label="5초 앞으로" title="5초 앞으로 (→, Shift+→ 1초)" onClick={() => nudge(5)}>+5</button>
+              <button type="button" className="yp-cb" aria-label="5초 앞으로" title="5초 앞으로 (Shift+→, → 1초)" onClick={() => nudge(5)}>+5</button>
               <div className="yp-pb" ref={bar} role="slider" aria-label="재생 위치" aria-valuemin={0} aria-valuemax={Math.round(duration)} aria-valuenow={Math.round(time)} tabIndex={0}
                 onMouseMove={event => { if (duration) setHover(at(event.clientX)); }} onMouseLeave={() => setHover(null)}
                 onMouseDown={event => { drag.current = at(event.clientX); }}
@@ -313,7 +313,7 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
               <div className="yp-abc-h"><span className={`yp-ltag${slot === "C" ? " yp-c" : ""}`}>{slot}</span>{finalPair(plan, make, slot)?.changed ? <span className="yp-tag yp-warn">컨펌본과 다름</span> : null}</div>
               <YtCard page={page} thumb={finalPair(plan, make, slot)?.thumb} path={make.thumbs[slot]?.path} title={finalPair(plan, make, slot)?.title ?? ""} /></button>)}</div>}
         </div>
-        <p className="yp-hint">{view === "video" ? "영상을 누르면 멈추고 그 시간에 써요. 재생 바를 끌면 구간을 골라요. ← →로 5초씩 옮기고, 시각을 누르면 그 시각으로 바로 가요." : "썸네일을 누르면 그 썸네일에 남겨요. 「전체」를 고르면 모든 썸네일에 한 번에 남겨요."}</p>
+        <p className="yp-hint">{view === "video" ? "영상을 누르면 멈추고 그 시간에 써요. 재생 바를 끌면 구간을 골라요. ← →로 1초씩, Shift를 누르고 5초씩 옮기고, 시각을 누르면 그 시각으로 바로 가요." : "썸네일을 누르면 그 썸네일에 남겨요. 「전체」를 고르면 모든 썸네일에 한 번에 남겨요."}</p>
       </div>
       <aside className="yp-fbp"><div className="yp-fbp-h"><b>남은 피드백{short ? "" : view === "video" ? " · 영상" : " · 썸네일"} {openCount(view === "video" ? "video" : "thumb")}</b><span className="yp-muted" style={{ fontSize: 12 }}>{view === "video" ? `v${ver} · 러닝타임 순서` : "A → B → C"}</span></div>
         {short ? null : <div className="yp-ftabs yp-two"><button type="button" className={view === "video" ? "yp-on" : ""} onClick={() => setView("video")}>영상 <b>{openCount("video")}</b></button><button type="button" className={view === "thumb" ? "yp-on" : ""} onClick={() => setView("thumb")}>썸네일 <b>{openCount("thumb")}</b></button></div>}
