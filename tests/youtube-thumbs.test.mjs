@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { draftMissing } from "../lib/youtube-process/stages.ts";
-import { THUMB_STYLES, thumbAccentParts, thumbLayout, thumbLines, thumbStyleFor } from "../lib/youtube-process/thumb-style.ts";
+import { THUMB_STYLES, cleanThumbEdit, thumbAccentParts, thumbLayout, thumbLines, thumbStyleFor } from "../lib/youtube-process/thumb-style.ts";
+import { thumbSavedEditSchema } from "../lib/youtube-process/thumb-edit.ts";
 
 // 롱폼 애니메이션 썸네일 자동 제작 1단계 (요청 2026-11-09).
 const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
@@ -50,7 +51,7 @@ test("the AI hands each picture in while it holds the job, and a confirm carries
   assert.match(read("app/api/v1/content/youtube-automation/ai-jobs/worker/route.ts"), /input\.action === "upload" \|\| input\.action === "add" \? await thumbJobStep\(actor, input\)/);
   const thumbs = read("lib/server/youtube-thumbs.ts");
   assert.match(thumbs, /THUMB_NOT_UPLOADED/);
-  assert.match(thumbs, /new ImageResponse\(createElement\(ThumbFrame, \{ style, image, copy \}\)/);
+  assert.match(thumbs, /new ImageResponse\(createElement\(ThumbFrame, \{ style, image, copy, edit: input\.edit, subject \}\)/);
   const stages = read("lib/server/youtube-process-stages.ts");
   assert.match(stages, /if \(project\.yp\.topic\.type === "anim"\) await pickedThumbsToMake\(service, actor, project, stages\.make, plan, now\);/);
   assert.match(stages, /draftMissing\(stages\.plan\.data, project\.yp\.topic\.type\)/);
@@ -64,4 +65,61 @@ test("the picker keeps a picture's first link, and 제작 picks again from the �
   const make = read("components/youtube-process-make.tsx");
   assert.match(make, /onRedo=\{project\.yp\.topic\.type === "anim" \? undefined :/);
   assert.match(make, /기획안에서 다시 고르기/);
+});
+
+// 2단계: 제작 「최종 썸네일」 다듬기 + 후보 보관함.
+test("an edit stays inside the style: size 120–170, photo limits, at most four added lines that must sit inside the frame", () => {
+  const clean = cleanThumbEdit({ size: 400, photo: { scale: 9, x: 5000, y: -5000, brightness: 0 },
+    extras: Array.from({ length: 6 }, (_, i) => ({ id: `${i}`, text: "실화", color: "red", size: 300, x: 10, y: 10 })) }, style);
+  assert.equal(clean.size, 170);
+  assert.deepEqual(clean.photo, { scale: 1.6, x: 640, y: -360, brightness: 0.6 });
+  assert.equal(clean.extras.length, 4);
+  assert.ok(clean.extras.every((x) => x.size === 140));
+  assert.deepEqual(cleanThumbEdit(undefined, style), {});
+  const copy = { text: "점심 메뉴도\n못 고르겠다면", accent: "고르겠다면" };
+  assert.equal(thumbLayout(copy, style, { size: 130 }).size, 130, "a size the PD set is used");
+  assert.ok(thumbLayout(copy, style, { size: 400 }).size <= 170, "and never above the style's top");
+  const inside = thumbLayout(copy, style, { extras: [{ id: "a", text: "직장인 70%", color: "red", size: 64, x: 60, y: 40 }] });
+  assert.ok(inside.checks.find((c) => c.id === "extras").ok);
+  const out = thumbLayout(copy, style, { extras: [{ id: "a", text: "직장인 70%", color: "red", size: 64, x: 1200, y: 640 }] });
+  assert.equal(out.checks.find((c) => c.id === "extras").ok, false);
+  assert.ok(thumbSavedEditSchema.safeParse({ candidate: "6f1c3c1e-8a7b-4b8e-9a51-2f3c4d5e6f70", copy, size: 140, extras: [] }).success);
+  assert.equal(thumbSavedEditSchema.safeParse({ copy, accentStyle: "marker" }).success, false, "형광펜 · 밑줄 were dropped: the accent is a 글자색 only");
+});
+
+test("제작 keeps the frame edit with each slot: a hand-put finished thumbnail marks it full, and the editor saves through the same frame", () => {
+  const stages = read("lib/server/youtube-process-stages.ts");
+  assert.match(stages, /thumb: z\.object\(\{ slot: z\.enum\(SLOTS\), path: text\(300\), name: text\(240\), edit: thumbSavedEditSchema\.optional\(\) \}\)/);
+  assert.match(stages, /const edit = patch\.thumb\.edit \? \{ \.\.\.patch\.thumb\.edit, full: undefined \} : before \? \{ \.\.\.before, full: true \} : undefined;/);
+  assert.match(stages, /edit: \{ candidate: picked\.pick\.candidate, copy: \{ text: picked\.copy, accent: picked\.pick\.accent \?\? "" \} \}/);
+  const thumbs = read("lib/server/youtube-thumbs.ts");
+  assert.match(thumbs, /plan_thumb\/\[0-9a-f-\]\{36\}\\\\\.\(png\|jpg\)\$/);
+  const make = read("components/youtube-process-make.tsx");
+  assert.match(make, />다듬기<\/button>/);
+  assert.match(make, /우리 틀로 돌아가기/);
+  assert.match(read("components/youtube-thumb-editor.tsx"), /kind: "thumb"/);
+  assert.match(read("components/youtube-thumb-picker.tsx"), /고른 것만/);
+});
+
+// 피사체 자리: the frame put the whole picture in the room above the title, so a subject on a wide white picture came out small.
+test("the AI's subject box puts the subject as tall as the room above the title, centred and sitting on the title", () => {
+  const copy = { text: "일요일 밤 11시..", accent: "11시.." };
+  const subject = { box: [576, 87, 840, 675], size: [1210, 675] };
+  const layout = thumbLayout(copy, style, undefined, subject);
+  const k = layout.photoBox.width / 1210;
+  const top = layout.photoBox.top + 87 * k, bottom = layout.photoBox.top + 675 * k, middle = layout.photoBox.left + (576 + 840) / 2 * k;
+  assert.ok(Math.abs(bottom - layout.clipBottom) <= 1, "it sits on the title");
+  assert.ok(Math.abs(top - style.subject.topPx) <= 1, "and fills the room up to the top margin");
+  assert.ok(Math.abs(middle - 640) <= 1, "centred");
+  const old = thumbLayout(copy, style);
+  assert.ok(bottom - top > old.subjectBox.height * 0.6 * 1.2, "much bigger than the whole picture fitted into the room");
+  const atTop = thumbLayout(copy, style, undefined, { box: [400, 0, 900, 500], size: [1280, 720] });
+  assert.equal(Math.round(atTop.photoBox.top), 0, "a subject cut by the picture's top edge stays on the frame's top edge");
+  const zoomed = thumbLayout(copy, style, { photo: { scale: 1.5, x: 0, y: 0, brightness: 1 } }, subject);
+  const zk = zoomed.photoBox.width / 1210;
+  assert.ok(Math.abs(zoomed.photoBox.left + (576 + 840) / 2 * zk - 640) <= 1, "사진 크기 grows around the subject");
+  const server = read("lib/server/youtube-thumbs.ts");
+  assert.match(server, /subject: z\.object\(\{ box: z\.tuple\(\[px, px, px, px\]\), size: z\.tuple\(\[px, px\]\) \}\)\.strict\(\)/);
+  assert.match(server, /createElement\(ThumbFrame, \{ style, image, copy, edit: input\.edit, subject \}\)/);
+  assert.match(read("components/youtube-thumb-picker.tsx"), /subject=\{current\.subject\}/);
 });

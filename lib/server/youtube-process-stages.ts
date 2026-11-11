@@ -12,6 +12,7 @@ import { oneArrow,
 } from "@/lib/youtube-process/stages";
 import { checkColumnHtml, cleanColumnHtml, columnForMyin, type ColumnFill } from "@/lib/seo-column";
 import { shortsAction } from "@/lib/youtube-process/short";
+import { thumbSavedEditSchema } from "@/lib/youtube-process/thumb-edit";
 import { GateError } from "@/lib/youtube-process/confirm";
 import { markReviewed, MAX_REVIEWERS, reviewerInput, setReviewers, type YpReviewer } from "@/lib/youtube-process/reviewers";
 import type { RequestActor } from "./auth";
@@ -105,7 +106,7 @@ export const stagePatchSchemas = {
   outline: z.object({ spec: z.object({ runtimeMin: z.number().int().min(1).max(120).nullable(), res: text(60), fps: text(60), ratio: text(60) }).strict(),
     script: text(120_000), saveVersion: z.literal(true), restore: z.number().int().positive() }).partial().strict(),
   make: z.object({ editDue: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/), editDueWhy: text(200), status: z.enum(["prep", "shoot", "edit", "done"]),
-    thumb: z.object({ slot: z.enum(SLOTS), path: text(300), name: text(240) }).strict(), addFinal: z.object({ path: text(300), name: text(240), bytes: z.number().int().positive() }).strict(),
+    thumb: z.object({ slot: z.enum(SLOTS), path: text(300), name: text(240), edit: thumbSavedEditSchema.optional() }).strict(), addFinal: z.object({ path: text(300), name: text(240), bytes: z.number().int().positive() }).strict(),
     aTitle: text(100), aReason: text(200),
     // 최종 썸네일 [고치기]: one slot's title and thumbnail copy (both empty = back to the confirmed pair).
     pair: z.object({ slot: z.enum(SLOTS), title: text(100), copy: text(80), reason: text(200) }).strict() }).partial().strict(),
@@ -166,7 +167,10 @@ function nextMake(current: YpMake, patch: Patch<"make">, actor: RequestActor, no
   if (patch.status) { make.status = patch.status; make.statusAt = { ...current.statusAt, [patch.status]: now }; }
   if (patch.thumb) {
     if (!assetPath(projectId, "thumb").test(patch.thumb.path)) throw new ApiError(400, "ASSET_PATH_INVALID", "썸네일 파일을 다시 올려 주세요.");
-    make.thumbs = { ...current.thumbs, [patch.thumb.slot]: { path: patch.thumb.path, name: patch.thumb.name, at: now } };
+    // A finished thumbnail put in by hand keeps the slot's frame edit (full), so 「우리 틀로 돌아가기」 can render it again.
+    const before = current.thumbs[patch.thumb.slot]?.edit;
+    const edit = patch.thumb.edit ? { ...patch.thumb.edit, full: undefined } : before ? { ...before, full: true } : undefined;
+    make.thumbs = { ...current.thumbs, [patch.thumb.slot]: { path: patch.thumb.path, name: patch.thumb.name, at: now, ...(edit ? { edit } : {}) } };
   }
   if (patch.addFinal) {
     if (!assetPath(projectId, "final").test(patch.addFinal.path)) throw new ApiError(400, "ASSET_PATH_INVALID", "최종본 파일을 다시 올려 주세요.");
@@ -438,7 +442,8 @@ async function pickedThumbsToMake(service: Supabase, actor: RequestActor, projec
     if (picked.path.endsWith(".webp") || picked.path.endsWith(".gif")) continue;   // YouTube takes JPEG and PNG only: those wait for 제작
     const path = `youtube/${project.id}/thumb/${randomUUID()}.${picked.path.split(".").pop()}`;
     const { error } = await service.storage.from(MEDIA_BUCKET).copy(picked.path, path);
-    if (!error) thumbs[slot] = { path, name: `기획안 ${slot}`, at: now };
+    if (!error) thumbs[slot] = { path, name: `기획안 ${slot}`, at: now,
+      ...(picked.pick && picked.copy ? { edit: { candidate: picked.pick.candidate, copy: { text: picked.copy, accent: picked.pick.accent ?? "" } } } : {}) };
   }
   if (Object.keys(thumbs).length !== Object.keys(make.data.thumbs).length)
     await writeStage(service, actor.id, actor.team, project, "make", make, { ...make.data, thumbs }).catch(() => undefined);
