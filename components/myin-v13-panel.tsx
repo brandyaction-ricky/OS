@@ -35,7 +35,7 @@ interface MyinRun { id: string; status: string; stage: string; layout?: "short" 
   clipsStale?: string[] | null; photoCredits?: Record<string, { source: string; license: string; url: string | null }>;
   voiceFixes?: MyinVoiceFixView[]; voiceCheck?: MyinVoiceCheckView | null; voiceFixable?: boolean; voiceChanged?: { at: string; count: number } | null;
   style?: { id: string; name: string; version: number; channel: string } | null }
-interface Outputs { clips: { label: string; url: string | null }[]; video: string | null; summary: string | null; deck: string | null; srt: string | null }
+interface Outputs { clips: { label: string; url: string | null }[]; stills?: string | null; video: string | null; summary: string | null; deck: string | null; srt: string | null }
 
 const PHASE: Record<string, string> = { breath_pending: "영상 만드는 컴퓨터가 숨 자리 고르는 중", voice_pending: "음성 만드는 중", words_pending: "영상 만드는 컴퓨터가 받아쓰기·자막 만드는 중", words_ready: "받아쓰기·자막 완료",
   storyboard_review: "기획표 확인 대기 (로건, 유쓰)", storyboard_confirmed: "기획표 확인 완료", cta_pending: "구독 대사 음성 만드는 중",
@@ -154,7 +154,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       // A final that appears while the screen is open tells the page (제작 counts it as a new version).
       if (next?.stage === "final_ready" && lastStage.current && lastStage.current !== "final_ready") onFinal?.();
       lastStage.current = next?.stage ?? null;
-      const key = next?.clips || next?.final ? `${next.id}:${(next.clips ?? []).map((clip) => clip.name).join(",")}:${next.final?.at ?? ""}` : "";
+      const key = next?.clips || next?.stills || next?.final ? `${next.id}:${(next.clips ?? []).map((clip) => clip.name).join(",")}:${next.stills?.at ?? ""}:${next.final?.at ?? ""}` : "";
       if (key && (key !== outputsFor.current.key || Date.now() - outputsFor.current.at > 20 * 60_000)) {
         setOutputs(await apiRequest<Outputs>(`/api/v1/content/youtube-automation/myin?outputs=${next!.id}`, { token: accessToken }));
         outputsFor.current = { key, at: Date.now() };
@@ -376,6 +376,9 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       {run?.stage === "clips_review" && !materials && run.stills ? <div className="yt-note">
         <strong>장면 그림 · 편집 화면에서 고치기</strong>
         <p>장면마다 다 나온 모습을 그림 한 장씩으로 만들어 아래 [편집 화면]의 타임라인에 깔았어요(v0). 끌어서 자르거나 AI 채팅으로 고치고, 다 됐으면 편집 화면의 「완성」이나 아래 버튼을 눌러요. 그때 {maker(run)}가 사진 · 구독 대사를 준비하고 움직이는 첫 최종본(v1)까지 이어서 만들어요.</p>
+        {/* 덱 배치 v2 P1-3: the 정지 그림 영상 — the pictures with the voice and subtitles, to check the cuts before any moving video. */}
+        {outputs?.stills ? <details className="yt-details" open><summary>정지 그림 영상 · 목소리와 자막</summary>
+          <video src={outputs.stills} controls preload="metadata" style={{ width: "100%", aspectRatio: "16 / 9", borderRadius: 8, background: "#000" }} /></details> : null}
         {run.clipsStale?.length ? <div className="yt-actions"><p className="yt-note yt-warn">장면 그림을 만든 뒤 {run.clipsStale.join(" · ")}이(가) 바뀌었어요. 다시 만든 뒤 완성해 주세요.</p>
           <button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => void act("prep", () => post("/myin", "PATCH", { action: "prepare", runId: run.id }))}>{busy === "prep" ? "시작하는 중…" : "장면 그림 다시 만들기"}</button></div> : null}
         <div className="yt-actions"><button type="button" className="primary-button" disabled={Boolean(busy) || Boolean(run.clipsStale?.length)} onClick={() => void (async () => {

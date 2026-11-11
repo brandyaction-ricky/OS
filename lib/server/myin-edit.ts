@@ -569,6 +569,8 @@ export async function screenView(actor: RequestActor, projectId: string) {
 
 /** v0's folder: the project's editor folder, named by the run that drew it. */
 const draftDir = async (service: Service, projectId: string, runId: string) => screenDir((await projectRow(service, projectId)).owner_id, projectId, runId, DRAFT_VERSION);
+/** 덱 배치 v2 P1-3: where ③'s 정지 그림 영상 (scene pictures with the engine's subtitles and the voice) lies, for the ③ player. */
+export const draftPreview = async (service: Service, projectId: string, runId: string) => ({ bucket: SCREEN_BUCKET, path: `${await draftDir(service, projectId, runId)}/video.mp4` });
 
 /** 장면 그림 1/2: upload addresses for v0's files (an earlier v0 of this run goes first: a new storyboard drew new pictures). */
 export async function draftMaterialsUpload(service: Service, projectId: string, runId: string, files: { name: string; bytes: number }[]) {

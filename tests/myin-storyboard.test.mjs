@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { anchorMyinCues, applyMyinSoundPlan, checkMyinStoryboard, matchingBlocks, myinCueMisses, myinCreditsBlock, myinDriftPairs, myinOnlySoundChanged, myinPhotoFetchUrl, myinPhotoFolders, myinPrepPhotos, myinSoundIssues, myinSoundPlan, myinVisualShare, seqRatio } from "../lib/myin-storyboard.ts";
+import { anchorMyinCues, applyMyinSoundPlan, checkMyinStoryboard, matchingBlocks, myinCueMisses, myinCreditsBlock, myinDriftPairs, myinOnlySoundChanged, myinPhotoFetchUrl, myinPhotoFolders, myinPrepPhotos, myinSoundIssues, myinSoundPlan, myinDeckIssues, seqRatio } from "../lib/myin-storyboard.ts";
 
 // The OS check must say what Logan's resolve() says: exact phrase within its window, else a window with difflib ratio ≥ 0.62.
 test("seqRatio equals Python difflib.SequenceMatcher.ratio()", () => {
@@ -41,20 +41,34 @@ test("myinCreditsBlock drops file names and angle brackets, and is empty without
     '\n\n사진·음악 출처\n- Unsplash · Kim · Unsplash License · https://unsplash.com/photos/x\n- "Intro" by alex. https://pixabay.com/music/y/');
 });
 
-// 로건 운영 시험 (2026-10-23) 기본값: 본문 장면 절반 이상이 도식 · 이미지, 같은 무대는 2번까지 · 연달아 금지.
-test("half the body scenes must be diagrams or images, and a stage is used at most twice and never back to back", () => {
-  const body = (types) => story([{ type: "opening", at: "오늘은 성격" }, ...types.map((type) => ({ type, at: "같은 성격인데" })),
+// 덱 배치 기준 v2 (2026-11-10): no share of diagrams and images any more; a stage at most twice and never back to back, except a
+// 나열형 기준 판 brought back for its next item (the same rooms, the same ids), which is one board.
+test("there is no diagram share; a stage is used at most twice and never back to back, but a 기준 판 brought back counts once", () => {
+  const body = (scenes) => story([{ type: "opening", at: "오늘은 성격" }, ...scenes.map((sc) => typeof sc === "string" ? { type: sc, at: "같은 성격인데" } : { at: "같은 성격인데", ...sc }),
     { type: "outro", at: "마지막으로 정리해" }, { type: "summary", at_time: 25, title: "정리", points: [{ head: "자리", desc: "바꾸기" }] }, { type: "endscreen", at_time: 28 }]);
-  const wordy = checkMyinStoryboard(body(["statement", "hero", "steps", "lib_stage_road"]), words);
-  assert.ok(wordy.issues.some((issue) => /본문 4개 중 1개\(25%\)/.test(issue)));
-  // (Cue placement and the catalog are checked elsewhere; only the share and reuse rules matter here.)
   const rule = (issue) => /도식 · 이미지|무대/.test(issue);
-  assert.deepEqual(checkMyinStoryboard(body(["statement", "lib_stage_road", "iceberg", "hero"]), words, ["lib_stage_road"]).issues.filter(rule), []);
+  assert.deepEqual(checkMyinStoryboard(body(["statement", "hero", "steps", "statement"]), words).issues.filter(rule), []);
   const reuse = checkMyinStoryboard(body(["lib_stage_road", "lib_stage_road", "hero", "lib_stage_road", "lib_stage_fork"]), words, ["lib_stage_road", "lib_stage_fork"]).issues;
   assert.ok(reuse.some((issue) => /연달아/.test(issue)));
   assert.ok(reuse.some((issue) => /3번 썼어요/.test(issue)));
-  // The approved 퇴사 전 순서 storyboard (2026-10-25): 32 body scenes, 20 stage diagrams.
-  assert.deepEqual(myinVisualShare([{ type: "opening" }, ...Array.from({ length: 20 }, () => ({ type: "lib_stage_x" })), ...Array.from({ length: 12 }, () => ({ type: "statement" })), { type: "outro" }]), { body: 32, visual: 20 });
+  const room = (text) => ({ type: "lib_stage_rooms", beats: ["r1", "r2", "r3", "r4"].map((id, k) => ({ do: "add", id, text: k < text ? "칸" : "" })) });
+  const board = checkMyinStoryboard(body([room(0), room(1), "situation", "lib_row_contrast", room(2), "situation", room(3), room(4)]), words, ["lib_stage_rooms", "lib_row_contrast"]).issues;
+  assert.deepEqual(board.filter(rule), []);
+});
+
+// 덱 배치 기준 v2: every body scene says its beat and why; beats never go back; an arrow diagram is no plain contrast; a diagram's
+// default caption is filled; a screen does not come back one scene later.
+test("a new storyboard has a beat and a why on every scene and keeps Logan's deck rules", () => {
+  const ok = [{ type: "opening" }, { type: "situation", beat: 1, why: "순간 → 사진", photo: { file: "ours_a.jpg" } },
+    { type: "lib_row_contrast", beat: 2, why: "교정 → 행대비 → 속생각을 처방으로", a_cap: "속으로는", b_cap: "하지만" }, { type: "statement", beat: 2, why: "결론 → 큰 글자" }, { type: "outro" }];
+  assert.deepEqual(myinDeckIssues(ok), []);
+  const bad = myinDeckIssues([{ type: "opening" }, { type: "statement", beat: 2, why: "결론" }, { type: "lib_two_cards", beat: 1, why: "대조 → 2칸카드" },
+    { type: "lib_row_contrast", beat: 3 }, { type: "lib_venn2", beat: 3, why: "겹침", label: "A" }, { type: "statement", beat: 3, why: "x" }, { type: "lib_venn2", beat: 3, why: "겹침", label: "A" }]);
+  assert.ok(bad.some((i) => /\[장면 3\] beat 1가 앞 장면\(2\)보다 작아요/.test(i)));
+  assert.ok(bad.some((i) => /\[장면 3\] why가 「대조」인데 lib_two_cards/.test(i)));
+  assert.ok(bad.some((i) => /\[장면 4\] "why"/.test(i)));
+  assert.ok(bad.some((i) => /a_cap가 비어 있어 원고에 없는 「흔한 생각」/.test(i)));
+  assert.ok(bad.some((i) => /\[장면 5 → 6 → 7\] 같은 화면/.test(i)));
 });
 
 // 로건 피드백 A-10: the v13 puzzle's word must be set (empty shows 「조건」), and pieces and word stay within 4 letters.

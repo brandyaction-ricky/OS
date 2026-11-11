@@ -25,15 +25,24 @@ export const MYIN_STORYBOARD_RESULT_SHAPE = `{ "storyboard": { title, end, scene
 export const myinStoryboardInputKey = (runId: string, wordsAt: string, note: string) => createHash("sha256").update(JSON.stringify(["myin-storyboard-v1", runId, wordsAt, note])).digest("hex");
 
 // Exact OS titles; the server looks their doc_ids up when it hands out the card (Logan 2026-10-23: search missed them).
+// 덱 배치 로직 v2 (2026-11-10 request): Logan's deck rules come first and outrank the manual's 「이미지는 아껴서」 paragraph and the old
+// 「본문 절반 이상 도식 · 사진」 default; his v2 example (beat · why on every scene) replaces the 남들보다 v11 one.
 export const MYIN_CARD_DOCS: [string, string][] = [
+  ["마이인 덱 배치 기준 v2 (로건 원문)", " — 가장 먼저 읽습니다. 아래 문서와 부딪히면 이 문서가 앞섭니다."],
+  ["도식 뜻 관계표 — 요약·역표 (로건 원문)", " — 원고 관계 → 고를 도식, 대조에 쓰면 안 되는 도식, 기본 글자"],
   ["마이인 영상 제작 — 공정과 실행 프롬프트 (컨셉3 · v13)", " — A-2, B-5~B-14, D, E절"],
   ["마이인 v13 기획표 작성 절차 (로건 SKILL 원문)", ""],
   ["마이인 v13 기획표 — 장면 유형과 필드 (로건 원문)", ""],
   ["마이인 v13 기획표 — 영상 구조 v2 (로건 원문)", ""],
-  ["마이인 v13 예시 기획표 — 남들보다 v11 (로건 원문)", " — 형식만 참고합니다. 그 영상의 문구·사진·음악을 가져오지 않습니다."],
+  ["마이인 예시 기획표 v2 — 낮은 자존감 (로건 원문)", " — 형식(beat · why · 기준 판 되부르기)만 참고합니다. 그 영상의 문구·사진·음악을 가져오지 않습니다."],
   ["마이인 모션 스타일가이드 (로건 원문)", ""],
   ["마이인 음악 창고 — 영상 배경음악 목록", ""],
   ["마이인 도식 창고 — 목록과 쓰는 법", " — 도식마다 칸 · 글자 수 한도"],
+];
+/** Opened only when a scene needs it (the full relation table is long), so not on the must-read list above. */
+export const MYIN_CARD_REFERENCE_DOCS: [string, string][] = [
+  ["도식 뜻 관계표 — 전체 193종 1부 (로건 원문)", " — 도식마다 관계 · 화살표 · 켜는 쪽 · 고정 글자"],
+  ["도식 뜻 관계표 — 전체 193종 2부 (로건 원문)", ""],
 ];
 
 export function myinStoryboardCard(input: { title: string; markdown: string; words: [number, number, string][]; durationSeconds: number; note?: string; leaseMinutes: number;
@@ -41,16 +50,22 @@ export function myinStoryboardCard(input: { title: string; markdown: string; wor
   return `이 작업 하나만 처리합니다. 승인 · 업로드 · 게시 · 삭제는 하지 않습니다. 화면은 렌더 PC가 그리고, 이 작업은 기획표(myin_storyboard.json)만 씁니다.
 
 ## 할 일 — ③ 마이인 기획표
-로건님 문서대로 아래 원고와 받아쓰기로 기획표 하나를 만들어 제출합니다. 순서는 매뉴얼 A-2의 4단계(비트 나누기 → 템플릿 → 비유 포인트 → 바탕색 → 감정 지도 → 오프닝 막 → 쇼릴 → 마이인·진단 언급 장면 site_ad → 구독 1~3곳 → 한 장 정리 → outro·endscreen)를 따릅니다.
+로건님 문서대로 아래 원고와 받아쓰기로 기획표 하나를 만들어 제출합니다. 순서는 「마이인 덱 배치 기준 v2」 1절(원고 유형 → 비트 표 → 비트마다 화면 고르기 → 장면마다 beat · why → 자체 점검)이 먼저이고, 오프닝 막 · 마이인·진단 언급 장면 site_ad · 구독 1~3곳 · 한 장 정리 · outro·endscreen은 매뉴얼 A-2를 따릅니다.
 
 ## 먼저 끝까지 열 문서 (doc_id가 붙은 문서는 get_document에 doc_id로 엽니다 — 검색으로는 잘 안 잡힙니다)
 ${MYIN_CARD_DOCS.map(([title, note]) => `- ${title}${input.docIds?.[title] ? ` (doc_id: ${input.docIds[title]})` : ""}${note}`).join("\n")}
 하나라도 열지 못하면 쓰지 말고 fail로 끝냅니다.
+필요할 때만 여는 참고 문서(도식 하나의 자세한 뜻):
+${MYIN_CARD_REFERENCE_DOCS.map(([title, note]) => `- ${title}${input.docIds?.[title] ? ` (doc_id: ${input.docIds[title]})` : ""}${note}`).join("\n")}
 
-## 제작 기본값 (로건 운영 시험 2026-10-23 · 대표 확인)
-- 본문 장면의 절반 이상을 도식 · 이미지로 씁니다(창고 lib_ 도식, v13 비유 도식, photo가 붙은 장면). 글자만 있는 장면이 이어지면 이해하기 어렵습니다. OS가 세어서 50% 아래면 돌려보냅니다.
-- 무대형 도식(lib_stage_)을 먼저 고릅니다. 문단 하나에 무대 하나를 깔고 문장마다 beats로 움직입니다. 같은 무대는 영상당 2번까지, 연달아 쓰지 않습니다(OS가 검사합니다).
-- 사진은 오프닝만이 아니라 본론 · 엔딩에도 씁니다. 연구 · 실험 같은 실제 사례가 나오면 그 장소 · 대상 사진을 넣습니다(예: 미국 로체스터대 실험 → 캠퍼스 · 강의실). Unsplash · 위키미디어만, assets에 출처를 적습니다.
+## 덱 배치 기준 v2 (로건 2026-11-10 · 대표 확인 — 옛 「본문 절반 이상 도식 · 사진」 기본값을 대신합니다)
+- 화면은 문장이 아니라 비트(생각 한 덩어리, 문장 3~8개, 보통 10~40초)마다 바꾸고, 비트 안에서는 같은 화면 위에 하나씩 더합니다.
+- 장면마다 "beat"(비트 번호, 1부터, 줄지 않게)와 "why"("원고 관계 → 고른 화면 → 이유")를 적습니다. opening · site_ad · outro · summary · endscreen은 빼도 됩니다. 엔진은 why를 화면에 쓰지 않습니다. OS가 검사합니다.
+- 화면 고르기: 누가 · 어디서 · 무엇을 하는 순간 = 사진, 관계 · 구조 · 비교 · 순서 = 도식(「도식 뜻 관계표」에서 그 관계를 뜻하는 것), 결론 · 정의 한 문장 = 큰 글자. 비율 목표는 없습니다. 같은 종류(사진 · 도식 · 글자)를 3장면 연달아 쓰지 않습니다(같은 판을 되부르는 건 한 화면으로 봅니다).
+- 화살표 · A→B 곡선이 있는 도식은 「바뀜 · 이어짐 · 원인」입니다. 방향 없는 대조에 쓰지 않습니다. 도식의 기본 글자(예: lib_row_contrast의 a_cap · b_cap 「흔한 생각 · 진짜 답」)는 원고 말로 채웁니다 — 비우면 OS가 돌려보냅니다.
+- 비트 첫 요소는 비트 첫 말에 뜨게 합니다(엔진이 장면 시작을 첫 요소 0.8초 전으로 옮겨, 늦으면 앞 화면이 남습니다). 글자 장면도 첫 줄 cue = 장면 첫 말.
+- 같은 무대(lib_stage_)는 영상당 2번까지, 연달아 쓰지 않습니다(OS 검사). 나열형의 기준 판을 항목마다 되부르는 것(같은 칸 id로 다시 깔기)과, 앞에서 쓴 무대를 결론에서 되불러 상태만 바꾸는 건 한 번으로 셉니다.
+- 렌더 전 관문: 영상 만드는 컴퓨터가 엔진 시각으로 말보다 1.5초 넘게 늦게 바뀌는 곳, 장면 시작 뒤 1초 넘게 빈 화면(첫 장면 0.3초), 3초 미만 장면(장 표시는 2.5초), 같은 화면이 한 장면 건너 되돌아오는 곳을 재서, 걸리면 기획표를 돌려보냅니다.
 
 ## 마이인 기획표 QA 기준 (로건 2026-10-27 · 전문: 「마이인 기획표 QA 기준 v1 (로건, 2026-10-27)」 — 열 수 있으면 끝까지 읽습니다)
 - 오프닝: 쇼릴 전에는 자막이 없습니다. 말하는 문장마다 화면 글자 줄을 붙입니다(cue = 그 문장 첫 말). 글자 없는 화면이 1초 넘게 이어지지 않게, 사진 위 글씨는 크고 대비 높게.
@@ -67,7 +82,7 @@ ${MYIN_CARD_DOCS.map(([title, note]) => `- ${title}${input.docIds?.[title] ? ` (
 
 ## OS가 검사하는 것 (걸리면 돌려받아 고칩니다)
 - 문구(장면 at, cue와 cue_로 시작하는 키, 제목 조각 ["텍스트", "등장 문구"]의 두 번째 값, cta[].after)는 아래 words의 철자 그대로 씁니다. 받아쓰기가 원고와 다른 철자여도 받아쓰기를 따릅니다. 장면 시작 문구는 앞 장면 시작 뒤 2,500자 안, 나머지 문구는 그 장면 시작 뒤 1,400자 안에 있어야 합니다(글자 수는 한글·영문·숫자만 셉니다).
-- 첫 장면은 opening, 끝은 outro → summary(at_time) → endscreen(at_time). end는 마지막 말이 끝난 뒤 여유를 둔 초입니다(낭독 ${input.durationSeconds.toFixed(1)}초 기준).
+- 첫 장면은 opening, 끝은 outro → summary(at_time) → endscreen(at_time). end는 마지막 말이 끝난 뒤 여유를 둔 초입니다(낭독 ${input.durationSeconds.toFixed(1)}초 기준, 마지막 말보다 짧으면 OS가 마지막 말 + 1.5초로 늘립니다).
 - 구독 대사 cta는 1~3개(after, line, clicks, head).
 - 장면 종류는 문서에 있는 것${input.catalog ? "과 아래 「도식 창고」 목록에 있는 것" : ""}만 씁니다: ${MYIN_SCENE_TYPES.join(", ")}. 새 비유 도식이 꼭 필요하면 쓰지 말고 suggestions에 적습니다(로건님 코드에 그리는 방법이 먼저 있어야 합니다).
 - 음악(music_cues의 file)은 「마이인 음악 창고」 목록에 있는 파일 이름만 씁니다. 새로 찾아 내려받지 않습니다. 비트의 분위기에 맞는 곡이 창고에 없으면 가장 가까운 곡을 쓰고 suggestions에 "창고에 추가할 곡"을 적습니다.
@@ -98,9 +113,15 @@ export function checkMyinStoryboardResult(value: unknown, words: [number, number
   if (!parsed.success) throw new ApiError(422, "MYIN_STORYBOARD_INVALID", `제출 형식을 확인해 주세요: ${parsed.error.issues.slice(0, 8).map((issue) => `${issue.path.join(".")} ${issue.message}`).join(" / ")}`);
   // v3 7.2-4: cues the transcript hears otherwise are first written as it heard them (원고 ↔ 받아쓰기 정렬표).
   const anchored = anchorMyinCues(parsed.data.storyboard, words, speech);
-  const checked = checkMyinStoryboard(anchored.storyboard, words, catalogTypes, speech);
+  // 덱 배치 v2 (시험 3): an end before the last word cut its line off — it follows the voice instead of failing.
+  const story = anchored.storyboard as Record<string, unknown>, last = words.at(-1)?.[1];
+  if (last !== undefined && typeof story.end === "number" && story.end < last + 0.5) {
+    anchored.changed.push(`end ${story.end}초 → ${Math.round((last + 1.5) * 10) / 10}초(마지막 말 + 1.5초)`);
+    story.end = Math.round((last + 1.5) * 10) / 10;
+  }
+  const checked = checkMyinStoryboard(story, words, catalogTypes, speech, { deck: true });
   if (checked.issues.length || !checked.story) throw new ApiError(422, "MYIN_STORYBOARD_ISSUES", `기획표 검사에서 걸린 곳 ${checked.issues.length}개: ${checked.issues.join(" / ")}`);
-  return { ...parsed.data, storyboard: anchored.storyboard as Record<string, unknown>, fuzzy: checked.fuzzy,
+  return { ...parsed.data, storyboard: story, fuzzy: checked.fuzzy,
     notes: [...checked.notes, ...(anchored.changed.length ? [`받아쓰기에 맞춘 문구 ${anchored.changed.length}개: ${anchored.changed.slice(0, 8).join(" · ")}`] : []), ...(parsed.data.suggestions ?? []).map((s) => `제안: ${s}`)] };
 }
 
