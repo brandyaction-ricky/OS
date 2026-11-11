@@ -39,6 +39,7 @@ import { assertTopicFormulaInputs, saveTopicFormula, topicFormulaCard, topicForm
 import type { NicheVideo } from "@/lib/youtube-process/discover";
 import type { GptTier } from "@/lib/youtube-process/gpt-draft";
 import { readStages } from "./youtube-process-stages";
+import { addThumbCandidate, assertV1ThumbsInputs, keepThumbFeed, THUMB_TOOLS, thumbsByJob, thumbsMadeCount, thumbUploadUrl, v1ThumbsCard, v1ThumbsInputKey } from "./youtube-thumbs";
 import { channelContext } from "./channel-canon";
 import { assertCardJobOpen, cardCanon, cardFormatsSchema, cardInputKey, cardJobCard, cardJobSource, checkCardResult, saveCardDrafts, VOICE_CANON_TITLE, WEBTOON_CAST_TITLE } from "./youtube-process-card-job";
 
@@ -49,8 +50,8 @@ const jobTitle = (state: Awaited<ReturnType<typeof readPipeline>>) => isYoutubeV
 // MCP with a personal agent key, takes a job, does the text work on its own plan and submits; the OS only checks and stores.
 export const STAFF_AI_JOB_KIND = "youtube_staff_ai_v1";
 // ③ 화면 설계 is one pass; ② 원고 runs 축 → 설계 → 초안 → 검수 with separate reviews, so it holds the job longer.
-const LEASE_MINUTES = { "scene-plan": 30, script: 120, storyboard: 90, kit: 30, plan: 45, shorts: 30, short: 30, niche: 30, column: 90, "short-copy": 20, retitle: 30, "short-topics": 30, "short-formula": 45, "short-script": 45, "topic-formula": 45, card: 30, "image-creative": 30 } as const;
-const TASK_NAME = { "scene-plan": "화면 설계와 발음 검토", script: "원고(축 · 설계 · 초안 · 검수)", storyboard: "마이인 기획표(장면 · 비유 · 자료 후보)",
+const LEASE_MINUTES = { thumbs: 60, "scene-plan": 30, script: 120, storyboard: 90, kit: 30, plan: 45, shorts: 30, short: 30, niche: 30, column: 90, "short-copy": 20, retitle: 30, "short-topics": 30, "short-formula": 45, "short-script": 45, "topic-formula": 45, card: 30, "image-creative": 30 } as const;
+const TASK_NAME = { thumbs: "썸네일 후보(그림 · 문구)", "scene-plan": "화면 설계와 발음 검토", script: "원고(축 · 설계 · 초안 · 검수)", storyboard: "마이인 기획표(장면 · 비유 · 자료 후보)",
   kit: "유튜브 발행키트(제목 · 설명 · 태그 · 챕터 · 고정 댓글)", plan: "기획안(제목 · 썸네일 문구 · 영상 흐름)", shorts: "쇼츠 구간 제안", column: "SEO 칼럼(HTML)", short: "숏폼 장면(구매 이유 · 자막 · 내레이션 · 필요한 이미지)", "short-copy": "숏폼 제목 · 설명", niche: "틈새 묶기(같은 제목 공식)", retitle: "최종 썸네일 제목 · 문구 다시 뽑기",
   "short-topics": "숏폼 주제 후보(롱폼 원고에서)", "short-formula": "숏폼 공식 · 주제 후보(참고 영상에서)", "topic-formula": "롱폼 제목 공식 · 주제 후보(참고 영상에서)", "short-script": "숏폼 대본(확정한 주제 · 공식으로)", card: "카드뉴스 초안(포맷별 카드 글 · 캡션)", "image-creative": "이미지 광고(포맷 · 소구 · 카피 · 이미지 시험)" } as const;
 const versionRef = z.object({ id: z.string(), version: z.number() });
@@ -70,7 +71,7 @@ complete 할 때 result 옆에 report도 보내 주세요. 사람은 「한눈�
 // 원고 공정 정본 §2 '역할'. ① 기획 has no such field yet, so the staff member picks it when sending ② to their AI.
 export const SCRIPT_ROLES = ["유입형", "전환형", "판매형"] as const;
 const jobMetaSchema = z.object({
-  kind: z.literal(STAFF_AI_JOB_KIND), task: z.enum(["scene-plan", "script", "storyboard", "kit", "plan", "shorts", "short", "niche", "column", "short-copy", "retitle", "short-topics", "short-formula", "short-script", "topic-formula", "card", "image-creative"]), sourceId: z.string().uuid(), inputKey: z.string().length(64),
+  kind: z.literal(STAFF_AI_JOB_KIND), task: z.enum(["thumbs", "scene-plan", "script", "storyboard", "kit", "plan", "shorts", "short", "niche", "column", "short-copy", "retitle", "short-topics", "short-formula", "short-script", "topic-formula", "card", "image-creative"]), sourceId: z.string().uuid(), inputKey: z.string().length(64),
   // ruleVersions only on jobs made before 2026-10-18; a design no longer depends on script rule versions.
   templateVersion: z.string().optional(), ruleVersions: z.array(versionRef).optional(), targetMinutes: z.number().optional(), role: z.enum(SCRIPT_ROLES).optional(), attachments: z.string().optional(), slot: z.enum(SLOTS).optional(), myinRunId: z.string().uuid().optional(), requestedAt: z.string(),
   lease: z.object({ token: z.string().uuid(), expiresAt: z.string() }).optional(), claimedAt: z.string().optional(),
@@ -117,12 +118,18 @@ export const staffJobRequestSchema = z.discriminatedUnion("task", [
   z.object({ task: z.literal("card"), sourceId: z.string().uuid(), formats: cardFormatsSchema }).strict(),
   // 롱폼 주제 (owner 2026-10-30): the same before a longform's topic is fixed; query = the 참고 영상 검색어 (default: the 주제 칸).
   z.object({ task: z.literal("topic-formula"), sourceId: z.string().uuid(), query: z.string().trim().max(60).optional() }).strict(),
+  // 롱폼 애니메이션 썸네일 (2026-11-09): pictures made with the PD's own image tool from the 기획안's words; query = the 참고 영상 검색어.
+  z.object({ task: z.literal("thumbs"), sourceId: z.string().uuid(), tool: z.enum(THUMB_TOOLS).default("flow"), count: z.number().int().min(1).max(12).default(6),
+    query: z.string().trim().max(60).optional() }).strict(),
 ]);
 export const staffJobWorkerSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("claim"), jobId: z.string().uuid() }).strict(),
   z.object({ action: z.literal("complete"), jobId: z.string().uuid(), lease: z.string().uuid(), model: z.string().trim().min(1).max(100),
     result: z.record(z.unknown()), report: jobReportSchema.optional() }).strict(),
   z.object({ action: z.literal("fail"), jobId: z.string().uuid(), lease: z.string().uuid(), reason: z.string().trim().min(1).max(1000) }).strict(),
+  // 썸네일 후보: while the job is held, each picture goes up (upload → PUT) and in (add) one by one, so the PD sees it at once.
+  z.object({ action: z.literal("upload"), jobId: z.string().uuid(), lease: z.string().uuid(), mimeType: z.enum(["image/png", "image/jpeg"]), fileSize: z.number().int().positive() }).strict(),
+  z.object({ action: z.literal("add"), jobId: z.string().uuid(), lease: z.string().uuid(), candidate: z.record(z.unknown()) }).strict(),
 ]);
 
 const service = () => createServiceSupabase();
@@ -206,6 +213,15 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
     if (!isYoutubeV1(state.source)) throw new ApiError(409, "NOT_YOUTUBE_PROJECT", "유튜브 공정 프로젝트에서만 보낼 수 있어요.");
     assertV1ColumnInputs(state);
     source = state.source; title = jobTitle(state); inputKey = v1ColumnInputKey(state);
+  } else if (input.task === "thumbs") {
+    const state = await readPipeline(actor, input.sourceId);
+    if (!isYoutubeV1(state.source)) throw new ApiError(409, "NOT_YOUTUBE_PROJECT", "유튜브 공정 프로젝트에서만 보낼 수 있어요.");
+    assertV1ThumbsInputs(state);
+    // One at a time: a second request while candidates are being made would cut the first off (the loop below cancels a changed job).
+    for (const job of await openJobs(actor.id, input.sourceId, "thumbs"))
+      if (job.status === "backlog" || leaseLive(meta(job).lease)) throw new ApiError(409, "THUMB_JOB_OPEN", "후보를 만드는 중이에요. 끝나면 더 만들 수 있어요.");
+    source = state.source; title = jobTitle(state); inputKey = v1ThumbsInputKey(state, input.tool, input.count, await thumbsMadeCount(input.sourceId));
+    const { project } = v1Stages(state); const topic = topicKeywords(projectName(project), project.yp.topic.target); marketFor = { query: input.query || topic, short: false, topic };
   } else if (input.task === "retitle") {
     const state = await readPipeline(actor, input.sourceId);
     if (!isYoutubeV1(state.source)) throw new ApiError(409, "NOT_YOUTUBE_PROJECT", "유튜브 공정 프로젝트에서만 보낼 수 있어요.");
@@ -273,7 +289,7 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
     source = state.source; title = jobTitle(state); inputKey = scriptInputKey(state);
   }
   // targetMinutes also carries how many 쇼츠 대본 or 칼럼 the PD asked for.
-  const targetMinutes = input.task === "script" ? input.targetMinutes : input.task === "shorts" || input.task === "column" || input.task === "short-topics" ? input.count : undefined;
+  const targetMinutes = input.task === "script" ? input.targetMinutes : input.task === "shorts" || input.task === "column" || input.task === "short-topics" || input.task === "thumbs" ? input.count : undefined;
   const attachments = input.task === "script" ? input.attachments || undefined : input.task === "retitle" ? input.reason || undefined : undefined;
   const slot = input.task === "retitle" ? input.slot : undefined;
   const role = input.task === "script" ? input.role : undefined;
@@ -299,7 +315,7 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
   const metadata: JobMeta = { kind: STAFF_AI_JOB_KIND, task: input.task, sourceId: input.sourceId, inputKey, requestedAt: now, ...(market ? { market } : {}),
     ...(input.task === "scene-plan" ? { templateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION } : input.task === "storyboard" ? { myinRunId }
       : { targetMinutes, role, ...(attachments ? { attachments } : {}), ...(slot ? { slot } : {}) }), ...(pool ? { pool } : {}),
-    ...(input.task === "card" ? { formats: input.formats } : {}),
+    ...(input.task === "card" ? { formats: input.formats } : {}), ...(input.task === "thumbs" ? { thumbTool: input.tool } : {}),
     ...(input.task === "image-creative" ? { space: "personal", imageRequest: input.request, ...(input.target ? {target:input.target} : {}) } : {}),
     ...(gpt ? { executor: "gpt" as const, tier: gpt.tier } : {}) };
   const writer = input.task === "image-creative" ? service() : actor.supabase;
@@ -310,6 +326,8 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
     tags: ["유튜브", gpt ? "GPT" : "직원AI"], metadata,
   }).select("*").maybeSingle();
   if (error || !data) throw new ApiError(400, "STAFF_AI_JOB_CREATE_FAILED", "AI 작업을 만들지 못했습니다.");
+  // The picker shows the PD's candidate among the same market videos the AI reads.
+  if (input.task === "thumbs") await keepThumbFeed({ id: source.id, team: source.team, ownerId: source.owner_id ?? actor.id }, market).catch(() => undefined);
   return publicStaffJob(data as OsRecord);
 }
 
@@ -641,6 +659,12 @@ async function claimJob(agent: RequestActor, jobId: string, byGpt: boolean) {
     const pastAds = brief.purpose === "ad" ? pastAdsForAi(await adHistory(service()).catch(() => [])) : null;
     return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: shortJobCard(project, brief, docs, minutes, script, pastAds) };
   }
+  if (m.task === "thumbs") {
+    const state = await readPipeline({ supabase: service() }, m.sourceId);
+    try { assertV1ThumbsInputs(state); } catch { await closeStale(job, m); }
+    const lease = await take();
+    return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: await v1ThumbsCard(state, minutes, thumbTool(m), m.targetMinutes ?? 6, m.market) };
+  }
   if (m.task === "retitle") {
     const state = await currentRetitleInput(job);
     const lease = await take();
@@ -685,6 +709,17 @@ async function keepIssues<T>(job: OsRecord, m: JobMeta, check: () => Promise<T> 
     if (error instanceof ApiError && error.status === 422) await saveJob(job, { metadata: { ...m, issues: [error.message] } }).catch(() => undefined);
     throw error;
   }
+}
+
+const thumbTool = (m: JobMeta) => { const tool = (m as { thumbTool?: unknown }).thumbTool; return tool === "chatgpt" ? "chatgpt" as const : "flow" as const; };
+/** 썸네일 후보 올리기 · 등록, only while this AI holds the job. */
+export async function thumbJobStep(agent: RequestActor, input: Extract<z.infer<typeof staffJobWorkerSchema>, { action: "upload" | "add" }>) {
+  const job = await ownJob(agent, input.jobId);
+  const m = liveLease(job, input.lease);
+  if (!leaseLive(m.lease)) throw new ApiError(409, "STAFF_AI_JOB_LEASE", "작업 시간이 지났어요. 목록에서 다시 가져와 주세요.");
+  if (m.task !== "thumbs") throw new ApiError(400, "STAFF_AI_JOB_ACTION", "upload · add는 썸네일 후보 작업에서만 써요.");
+  if (input.action === "upload") return thumbUploadUrl(job.parent_id!, input.mimeType, input.fileSize);
+  return addThumbCandidate(job, thumbTool(m), await displayName(service(), agent.ownerId, agent.name), input.candidate);
 }
 
 export async function completeStaffJob(agent: RequestActor, input: Extract<z.infer<typeof staffJobWorkerSchema>, { action: "complete" }>) {
@@ -766,6 +801,12 @@ export async function completeStaffJob(agent: RequestActor, input: Extract<z.inf
     const saved = await saveShortJob(service(), project, checked, { by: await displayName(service(), agent.ownerId, agent.name), model: input.model, at: new Date().toISOString() });
     await saveJob(job, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });
     return { done: true, ...saved, next: "담당자가 유튜브 공정 › 제작에서 장면마다 이미지를 넣고 MP4를 만듭니다." };
+  }
+  if (m.task === "thumbs") {
+    const made = await thumbsByJob(job);
+    if (!made) await keepIssues(job, m, () => { throw new ApiError(422, "THUMB_NONE_ADDED", "후보를 하나도 등록하지 않았어요. upload → PUT → add로 하나 이상 올린 뒤 complete 해 주세요."); });
+    await saveJob(job, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });
+    return { done: true, made, next: "담당 PD가 기획안 › 제목 · 썸네일에서 그림과 문구를 넘기며 A · B · C를 고릅니다." };
   }
   if (m.task === "retitle") {
     const state = await currentRetitleInput(job);

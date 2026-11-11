@@ -25,7 +25,10 @@ export type YpSlot = (typeof SLOTS)[number];
 /** Row i of the title or thumbnail list: A · B · C, then 예비. */
 export const slotOf = (index: number): YpSlot | "예비" => index < SLOTS.length ? SLOTS[index] : "예비";
 
-export interface YpThumb { id: string; mode: "img" | "text"; path?: string; screen?: string; copy?: string }
+/** pick: a 롱폼 애니메이션 썸네일 picked from the AI's candidates — which picture, the copy and its blue word set on it, and what A and B
+ *  differ in (카피 · 그림 · 배치) — so 제작 can set it again. path is then the composite PNG. */
+export interface YpThumbPick { candidate: string; accent?: string; diff?: "카피" | "그림" | "배치" }
+export interface YpThumb { id: string; mode: "img" | "text"; path?: string; screen?: string; copy?: string; pick?: YpThumbPick }
 export interface YpPick { title: string; thumb: YpThumb | null }
 /** One national figure the staff AI read from KOSIS for the 기획안 (owner decision 2026-11-01): the PD keeps or removes it,
  *  and the 원고 and the 설명란 [인용 및 출처] use it as written. */
@@ -275,9 +278,12 @@ export const lateMakeOk = (stage: string, uploaded: boolean, patch: object) =>
 // shows the words while it has no image).
 export const thumbFilled = (thumb?: YpThumb | null) => Boolean(thumb && ((thumb.mode === "img" && thumb.path) || thumb.copy?.trim() || thumb.screen?.trim()));
 /** The one-line reason the 기획안 컨펌 request is not ready, or "" (시안 draftMissing). */
-export function draftMissing(plan: YpPlan) {
+export function draftMissing(plan: YpPlan, kind?: YpKind | null) {
   for (const [index, name] of [[0, "첫째"], [1, "둘째"]] as const) if (!plan.titles[index]?.text.trim()) return `${name} 줄 제목(${slotOf(index)})을 써 주세요`;
-  for (const [index, name] of [[0, "첫 번째"], [1, "두 번째"]] as const) if (!thumbFilled(plan.thumbs[index])) return `${name} 썸네일 후보(${slotOf(index)})를 넣어 주세요`;
+  // 롱폼 애니메이션 (썸네일 자동 제작 2026-11-09): the 기획안 confirm fixes the thumbnails themselves, so A and B are pictures —
+  // picked from the candidates or put in by hand.
+  if (kind === "anim") { if (!plan.thumbs[0]?.path || !plan.thumbs[1]?.path || plan.thumbs[0].mode !== "img" || plan.thumbs[1].mode !== "img") return "썸네일 A · B 필요"; }
+  else for (const [index, name] of [[0, "첫 번째"], [1, "두 번째"]] as const) if (!thumbFilled(plan.thumbs[index])) return `${name} 썸네일 후보(${slotOf(index)})를 넣어 주세요`;
   if (!plan.opening.trim()) return "오프닝을 써 주세요";
   if (!plan.body.trim()) return "본론을 써 주세요";
   if (!plan.closing.trim()) return "클로징 · 다음 행동을 써 주세요";

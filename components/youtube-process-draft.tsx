@@ -3,7 +3,9 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { ArrowDown, ArrowUp, ImagePlus, Plus, Sparkles, X } from "lucide-react";
 import { editableFields } from "@/lib/youtube-process/confirm";
 import { parseYoutubeRef, projectName, sameRef, topicKeywords } from "@/lib/youtube-process/project";
-import { draftMissing, PLAN_FIELD_KEY, slotOf, thumbFilled, type YpPlan, type YpThumb } from "@/lib/youtube-process/stages";
+import { draftMissing, PLAN_FIELD_KEY, SLOTS, slotOf, thumbFilled, type YpPlan, type YpSlot, type YpThumb } from "@/lib/youtube-process/stages";
+import { ThumbPicker, type ThumbPicked } from "./youtube-thumb-picker";
+import type { ThumbTool } from "@/lib/youtube-process/thumb-style";
 import { GateBanner, gateAction, gateSub, hhmm, LockedStep, ReplyForm, Subject, useGate, useLeaveGuard, useYpBundle, YpFrame, YpSection } from "./youtube-process-frame";
 import type { YpProject } from "@/lib/youtube-process/project";
 import { ThumbView } from "./youtube-process-media";
@@ -39,6 +41,9 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
   const reload = page.reload;
   const onJobDone = useCallback(() => { setDirty(false); void reload(); }, [reload]);
   const job = useStaffJob(page, "plan", onJobDone);
+  // 롱폼 애니메이션 썸네일 후보: its own job, sent from the picker with the image tool and how many.
+  const thumbsJob = useStaffJob(page, "thumbs", useCallback(() => undefined, []));
+  const [thumbAsk, setThumbAsk] = useState<{ tool: ThumbTool; count: number } | null>(null);
 
   const project = page.bundle?.project;
   const fields = project ? editableFields(project, "draft") : [];
@@ -89,11 +94,21 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
     } catch (reason) { page.fail(reason); } finally { setUploading(""); }
   };
 
+  /** 고르기 → the slot's row becomes the picked PNG with its copy; the A · B difference the PD marked stays. */
+  const pickThumb = (slot: YpSlot, value: ThumbPicked) => {
+    if (!form) return;
+    const index = SLOTS.indexOf(slot);
+    const rows = [...form.thumbs];
+    while (rows.length <= index) rows.push({ id: id(), mode: "text" });
+    rows[index] = { ...rows[index], mode: "img", path: value.path, copy: value.copy.text, pick: { ...value.pick, ...(rows[index].pick?.diff ? { diff: rows[index].pick!.diff } : {}) } };
+    edit({ thumbs: rows }, true);
+  };
+
   // A 숏폼's 기획안 place is its 대본 (숏폼 대본 정본, 2026-10-28).
   if (project?.yp.topic.type === "short") return <ShortScriptScreen page={page} header={header} />;
   // A 카드뉴스's 기획안 place is 카드 만들기 (설계서 2026-10-30).
   if (project?.yp.topic.type === "card") return <CardMakeScreen key={project.id} page={page} header={header} />;
-  const missing = form ? draftMissing(form) : "";
+  const missing = form ? draftMissing(form, project?.yp.topic.type) : "";
   const action = page.bundle ? gateAction(page, "draft", 1, control, missing) : null;
   return <YpFrame page={page} view={1} action={action} header={header} title="기획안" sub={gateSub(project, "draft", "제목 A · B와 썸네일 A · B, 영상 흐름을 채우고 컨펌해요.", "기획안 컨펌이 끝났어요. 구성안으로 넘어가요.")} savedAt={savedAt}
     todo={form && project?.yp.stage === "draft" ? [{ label: "제목 A", done: Boolean(form.titles[0]?.text.trim()) }, { label: "제목 B", done: Boolean(form.titles[1]?.text.trim()) }, { label: "썸네일 A", done: thumbFilled(form.thumbs[0]) }, { label: "썸네일 B", done: thumbFilled(form.thumbs[1]) }, { label: "오프닝", done: Boolean(form.opening.trim()) }, { label: "본론", done: Boolean(form.body.trim()) }, { label: "클로징", done: Boolean(form.closing.trim()) }] : undefined}
@@ -142,6 +157,16 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
               {can("thumbs") ? <button type="button" className="yp-th-add" onClick={() => edit({ thumbs: [...form.thumbs, { id: id(), mode: "text" }] })}><Plus size={16} /> 후보 추가</button> : null}
             </div>
             </div>
+          {project.yp.topic.type === "anim" ? <div className="yp-field"><div className="yp-fld-h"><b>썸네일 고르기</b><span className="yp-gq">그림과 문구를 따로 넘겨 A · B · C에 넣어요</span></div>
+            {thumbsJob.open || thumbsJob.status?.job?.status === "blocked" ? <JobLine job={thumbsJob} onRetry={() => setThumbAsk(ask => ask ?? { tool: "flow", count: 6 })} /> : null}
+            <ThumbPicker page={page} title={form.titles[0]?.text ?? ""} can={can("thumbs")} busyJob={thumbsJob.open}
+              planCopies={form.thumbs.slice(0, 3).filter(t => t.copy?.trim()).map(t => ({ text: t.copy!, ...(t.pick?.accent ? { accent: t.pick.accent } : {}) }))}
+              picked={Object.fromEntries(SLOTS.flatMap((slot, i) => form.thumbs[i]?.pick ? [[slot, form.thumbs[i].pick!.candidate]] : []))}
+              onPick={pickThumb} onMake={(tool, count) => setThumbAsk({ tool, count })} />
+            {form.thumbs[0]?.pick && form.thumbs[1]?.pick ? <label className="yp-lbl yp-tp-diff">A · B는 무엇이 다른가요
+              <select className="yp-in yp-sel1" value={form.thumbs[1].pick.diff ?? ""} disabled={!can("thumbs")} onChange={event => edit({ thumbs: form.thumbs.map((row, i) => i === 1 && row.pick ? { ...row, pick: { ...row.pick, ...(event.target.value ? { diff: event.target.value as "카피" | "그림" | "배치" } : { diff: undefined }) } } : row) }, true)}>
+                <option value="">고르기</option><option>카피</option><option>그림</option><option>배치</option></select></label> : null}
+          </div> : null}
         </YpSection>
         <YpSection n={2} title="영상 흐름 (뼈대)" gq="어떤 순서로 보여 주나요?" need>
           <div className={`yp-field${rev("draft.opening") ? " yp-rev" : ""}`}><div className="yp-fld-h"><b>오프닝 (첫 30초)</b><span className="yp-gq">처음 30초에 뭘 보여 주나요?</span>{rev("draft.opening") ? <span className="yp-revtag">대표가 짚은 칸</span> : null}</div>
@@ -175,6 +200,8 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
           {can("stats") ? <button type="button" className="yp-ib" aria-label="통계 빼기" onClick={() => edit({ stats: form.stats!.filter((_, at) => at !== index) }, true)}><X size={14} /></button> : null}</li>)}</ul>
       </div></section> : null}</aside></div>
       <SendDialog page={page} task="plan" open={send} onClose={() => setSend(false)} job={job} queryDefault={project ? topicKeywords(projectName(project), project.yp.topic.target) : undefined} />
+      {project.yp.topic.type === "anim" ? <SendDialog page={page} task="thumbs" open={Boolean(thumbAsk)} onClose={() => setThumbAsk(null)} job={thumbsJob} extra={thumbAsk ?? undefined}
+        queryDefault={topicKeywords(projectName(project), project.yp.topic.target)} /> : null}
     </div> : null}
   </YpFrame>;
 }

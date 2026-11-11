@@ -18,7 +18,7 @@ test("staff AI tools are listed and read-only listing is marked so", () => {
   const list = MCP_TOOLS.find((tool) => tool.name === "list_youtube_ai_jobs");
   const process = MCP_TOOLS.find((tool) => tool.name === "process_youtube_ai_job");
   assert.equal(list.annotations.readOnlyHint, true);
-  assert.deepEqual([...process.inputSchema.properties.action.enum], ["claim", "complete", "fail"]);
+  assert.deepEqual([...process.inputSchema.properties.action.enum], ["claim", "complete", "fail", "upload", "add"]);
 });
 
 test("tool calls go to the staff AI worker route with the key owner's identity", async () => {
