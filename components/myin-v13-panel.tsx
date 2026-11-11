@@ -52,7 +52,8 @@ const finalWhere = (run: MyinRun) => run.localFinish ? `${run.localFinish.name}�
 const finalMinutes = (run: MyinRun) => Math.ceil((run.words?.durationSeconds ?? 780) / 60 * 5);   // 60fps, 5-second pieces: a 13-minute video ≈ 1 hour on the Mac mini (2026-10-29 test)
 // ponytail: a 숏폼's minutes are guesses from the A1 pilot (40 s, one draft of the whole short); measure after the first ones.
 const SHORT_MIN: Record<string, number> = { words_pending: 6, prep_pending: 3, clips_pending: 5, final_pending: 8 };
-const typicalMinutes = (run: MyinRun) => run.voiceOnPc && run.stage === "words_pending" ? (run.layout === "short" ? 8 : 10 + Math.ceil(run.paragraphs / 4))
+// 롱폼 음성은 문장마다 4번 만들어 받아쓰기로 고른다(음성 고르기 v2, 2026-11-11 맥미니 시험: 한 문장 약 27초).
+const typicalMinutes = (run: MyinRun) => run.voiceOnPc && run.stage === "words_pending" ? (run.layout === "short" ? 8 : 10 + Math.ceil(run.paragraphs * 1.75))
   : run.layout === "short" ? SHORT_MIN[run.stage] : run.stage === "clips_pending" ? Math.ceil(((run.storyboard?.metaphors.length ?? 0) + 1) * 1.5)
   : run.stage === "final_pending" ? finalMinutes(run) : TYPICAL_MIN[run.stage];
 // What a stop means and what 다시 하기 redoes, so a staff member knows whether pressing again can help (2026-10-26: three presses hit
@@ -111,8 +112,10 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
   const askVoice = async (text: string, again: string, takes = false) => {
     if (!text.trim()) return true;
     const estimate = voiceEstimate(text, myinVoice);
-    // 영상 만드는 컴퓨터가 음성을 만들면 끊긴 문장을 한 번 더 만들어 고른다(로건 2026-10-29): 많게는 두 배.
-    return cost.confirm({ model: myinVoice, amount: estimate.krw, detail: `${estimate.chars.toLocaleString("ko-KR")}자 · ${takes ? "끊긴 문장은 한 번 더 만들어 많게는 2배 · " : ""}${again}`, ok: "확인하고 만들기" });
+    // 영상 만드는 컴퓨터가 음성을 만들면: 숏폼은 끊긴 문장만 한 번 더(로건 2026-10-29, 많게는 두 배), 롱폼은 문장마다 4번 만들어
+    // 가장 자연스러운 것을 고른다(음성 고르기 v2, 로건 2026-11-11) — 네 배.
+    const takesNote = !takes ? "" : short ? "끊긴 문장은 한 번 더 만들어 많게는 2배 · " : "문장마다 4번 만들어 가장 자연스러운 것을 골라요 · ";
+    return cost.confirm({ model: myinVoice, amount: takes && !short ? estimate.krw * 4 : estimate.krw, detail: `${estimate.chars.toLocaleString("ko-KR")}자 · ${takesNote}${again}`, ok: "확인하고 만들기" });
   };
   const { accessToken } = useSession();
   const [run, setRun] = useState<MyinRun | null>(null);
@@ -281,7 +284,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
         <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void (async () => {
           const pick = styleId ?? run?.style?.id ?? channelOf(styles, channel)?.id ?? "";
           if (run && !run.scriptChanged || await askVoice(voiceText ?? "", "같은 원고로 다시 누르면 들지 않아요", voiceOnPc)) await act("start", () => post("/myin", "POST", { sourceId, ...(pick ? { styleId: pick } : {}) })); })()}>{busy === "start" ? "시작하는 중…" : run?.scriptChanged ? short ? "바뀐 대본으로 음성 다시 만들기" : "바뀐 원고로 v13 음성 다시 만들기" : run ? short ? "음성 다시 시작" : "v13 음성 다시 시작" : short ? "음성 만들기" : "v13 음성 만들기"}</button>
-        <small><CostTag kind="paid" amount={voiceText ? voiceEstimate(voiceText, myinVoice).krw : null} /> 같은 {short ? "대본" : "원고"}으로 다시 누르면 만든 음성을 이어 써요.</small>
+        <small><CostTag kind="paid" amount={voiceText ? voiceEstimate(voiceText, myinVoice).krw * (voiceOnPc && !short ? 4 : 1) : null} /> 같은 {short ? "대본" : "원고"}으로 다시 누르면 만든 음성을 이어 써요.</small>
       </div> : null}
       {run ? <div className="yt-run">
         <div className="yt-run-head"><span className="status-pill" data-status={run.status === "blocked" && !run.words ? "failed" : run.words && !run.voiceFixes?.length ? "approved" : "scheduled"}>{run.voiceFixes?.length && run.stage === "words_pending" ? "고친 곳 다시 만드는 중" : run.words ? "받아쓰기·자막 완료" : phase}</span>

@@ -35,6 +35,11 @@ import { dictionaryFiles, type VoiceDictionaryFiles } from "@/lib/youtube-proces
 export const MYIN_RUN_KIND = "youtube_myin_v13";
 export const MYIN_VOICE_MODEL = "drama-3"; // pinned like Logan: Fish serves an unknown model name as 2.1 without an error
 const WORDS_LEASE_MS = 30 * 60_000;
+// 음성 고르기 v2 (2026-11-11): the render PC makes every longform sentence four times and transcribes each take — about 27 s a sentence
+// on the Mac mini — and a result after the lease is refused (leased), so a longform voice lease grows with the script.
+// ponytail: 3 minutes a paragraph assumes ~4–6 sentences each; measure on the first real runs.
+export const wordsLeaseMs = (run: { voiceOn?: unknown; layout?: string | null; paragraphs: unknown[] }) =>
+  run.voiceOn && !run.layout ? WORDS_LEASE_MS + run.paragraphs.length * 3 * 60_000 : WORDS_LEASE_MS;
 // One clip per metaphor scene takes about two minutes on the render PC; a stage-diagram video has 20+ (2026-10-25: 21 clips, 38 minutes).
 // ponytail: fixed two hours covers ~50 clips; scale with the clip count if storyboards grow past that.
 const CLIPS_LEASE_MS = 120 * 60_000;
@@ -398,7 +403,7 @@ async function scriptChanged(supabase: RequestActor["supabase"], run: MyinRun) {
 /** A render PC's claim (`pc`, its name; none from a worker that sends no name). A member's own computer passes none. */
 interface PcClaim { name?: string }
 
-async function claim(service: Service, stage: string, leaseMs: number, accept: (run: MyinRun) => boolean = () => true, input?: (run: MyinRun) => string,
+async function claim(service: Service, stage: string, leaseMs: number | ((run: MyinRun) => number), accept: (run: MyinRun) => boolean = () => true, input?: (run: MyinRun) => string,
   engineOf?: (run: MyinRun) => Promise<string | undefined>, pc?: PcClaim) {
   const { data } = await service.from("os_records").select("*").eq("record_type", "ai_job").eq("metadata->>kind", MYIN_RUN_KIND)
     .eq("stage", stage).in("status", ["backlog", "in_progress"]).is("archived_at", null).order("created_at").limit(10);
@@ -417,7 +422,7 @@ async function claim(service: Service, stage: string, leaseMs: number, accept: (
       if (move !== "take") continue;
     }
     const engine = await engineOf?.(run);
-    const lease = { token: randomUUID(), expiresAt: new Date(Date.now() + leaseMs).toISOString(), startedAt: new Date().toISOString(), stage, ...(input ? { input: input(run) } : {}), ...(engine ? { engine } : {}) };
+    const lease = { token: randomUUID(), expiresAt: new Date(Date.now() + (typeof leaseMs === "function" ? leaseMs(run) : leaseMs)).toISOString(), startedAt: new Date().toISOString(), stage, ...(input ? { input: input(run) } : {}), ...(engine ? { engine } : {}) };
     const next: MyinRun = { ...run, lease, attempts: run.attempts + 1 };
     if (pc) { if (pc.name) next.pc = pc.name; else delete next.pc; }
     const claimed = await save(service, candidate, "in_progress", stage, next).catch(() => null);
@@ -522,7 +527,7 @@ export const fishVoice = (run?: { voiceReference?: string }) => ({ referenceId: 
 const fits = (short: boolean) => (run: MyinRun) => short || !run.layout;
 
 export async function claimMyinWords(service: Service = createServiceSupabase(), short = false, pc?: string) {
-  const claimed = await claim(service, "words_pending", WORDS_LEASE_MS, fits(short), undefined, undefined, { name: pc });
+  const claimed = await claim(service, "words_pending", wordsLeaseMs, fits(short), undefined, undefined, { name: pc });
   if (!claimed) return { idle: true as const };
   const { record, run, lease } = claimed;
   try {
