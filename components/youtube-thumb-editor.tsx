@@ -13,7 +13,7 @@ import { Scaled } from "./youtube-thumb-picker";
 // undo, a phone-size view and the frame's checks. 저장 renders the PNG with the same frame and puts it in the slot.
 type Target = "photo" | string;
 const style = THUMB_STYLES.anim;
-const EDIT_KEYS = ["accentStyle", "size", "photo", "extras"] as const;
+const EDIT_KEYS = ["size", "photo", "extras"] as const;
 const editOf = (draft: ThumbSavedEdit): ThumbEdit => Object.fromEntries(EDIT_KEYS.filter((key) => draft[key] !== undefined).map((key) => [key, draft[key]]));
 const newId = () => crypto.randomUUID().slice(0, 8);
 
@@ -106,8 +106,6 @@ export function ThumbEditor({ page, slot, start, onSave, onClose }: {
             <textarea className="yp-in" rows={2} maxLength={40} value={draft.copy.text} onChange={(event) => change({ ...draft, copy: { ...draft.copy, text: event.target.value } })} /></label>
           <label className="yp-lbl">파랑 강조 <span className="yp-gq">문구 안의 말 그대로</span>
             <input className="yp-in" maxLength={20} value={draft.copy.accent ?? ""} onChange={(event) => change({ ...draft, copy: { ...draft.copy, accent: event.target.value } })} /></label>
-          <label className="yp-lbl">강조 방식<select className="yp-in" value={draft.accentStyle ?? "color"} onChange={(event) => change({ ...draft, accentStyle: event.target.value as ThumbEdit["accentStyle"] })}>
-            <option value="color">글자색</option><option value="marker">형광펜</option><option value="underline">밑줄</option></select></label>
           <label className="yp-lbl">크기 {draft.size ? `${draft.size}px` : "자동"}
             <input type="range" min={style.title.minPx} max={style.title.maxPx} value={draft.size ?? thumbLayout(draft.copy, style).size} onChange={(event) => change({ ...draft, size: Number(event.target.value) })} /></label>
           {draft.size ? <button type="button" className="yp-lnk" onClick={() => change({ ...draft, size: undefined })}>크기 자동으로</button> : null}

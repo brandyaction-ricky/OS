@@ -83,8 +83,8 @@ test("an edit stays inside the style: size 120–170, photo limits, at most four
   assert.ok(inside.checks.find((c) => c.id === "extras").ok);
   const out = thumbLayout(copy, style, { extras: [{ id: "a", text: "직장인 70%", color: "red", size: 64, x: 1200, y: 640 }] });
   assert.equal(out.checks.find((c) => c.id === "extras").ok, false);
-  assert.ok(thumbSavedEditSchema.safeParse({ candidate: "6f1c3c1e-8a7b-4b8e-9a51-2f3c4d5e6f70", copy, accentStyle: "marker", extras: [] }).success);
-  assert.equal(thumbSavedEditSchema.safeParse({ copy, accentStyle: "glow" }).success, false);
+  assert.ok(thumbSavedEditSchema.safeParse({ candidate: "6f1c3c1e-8a7b-4b8e-9a51-2f3c4d5e6f70", copy, size: 140, extras: [] }).success);
+  assert.equal(thumbSavedEditSchema.safeParse({ copy, accentStyle: "marker" }).success, false, "형광펜 · 밑줄 were dropped: the accent is a 글자색 only");
 });
 
 test("제작 keeps the frame edit with each slot: a hand-put finished thumbnail marks it full, and the editor saves through the same frame", () => {

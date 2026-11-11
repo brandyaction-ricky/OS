@@ -43,11 +43,10 @@ export const thumbStyleFor = (kind?: YpKind | null) => Object.values(THUMB_STYLE
 export interface ThumbCopy { text: string; accent?: string }
 /**
  * 제작 「최종 썸네일」 상세 수정 (요청 P2): what the PD changed on a picked thumbnail. The frame draws it the same on screen and in the PNG.
- * accentStyle: the blue word as 글자색 (default), 형광펜 (ink on a light blue band) or 밑줄. size: the title size within the style's range.
+ * size: the title size within the style's range (the blue accent stays a 글자색 only — 형광펜 · 밑줄 dropped by the owner 2026-11-11).
  * photo: the picture moved (px on the 1280×720 frame), scaled and brightened. extras: lines added anywhere on the frame.
  */
 export interface ThumbEdit {
-  accentStyle?: "color" | "marker" | "underline";
   size?: number;
   photo?: { scale: number; x: number; y: number; brightness: number };
   extras?: ThumbExtra[];
@@ -108,7 +107,6 @@ export function cleanThumbEdit(edit: ThumbEdit | undefined, style: ThumbStyle): 
   if (!edit) return {};
   const L = THUMB_PHOTO_LIMITS;
   return {
-    ...(edit.accentStyle ? { accentStyle: edit.accentStyle } : {}),
     ...(edit.size ? { size: clamp(Math.round(edit.size), [style.title.minPx, style.title.maxPx]) } : {}),
     ...(edit.photo ? { photo: { scale: clamp(edit.photo.scale, L.scale), x: Math.round(clamp(edit.photo.x, L.x)), y: Math.round(clamp(edit.photo.y, L.y)), brightness: clamp(edit.photo.brightness, L.brightness) } } : {}),
     ...(edit.extras?.length ? { extras: edit.extras.slice(0, 4).map((x) => ({ ...x, size: clamp(Math.round(x.size), [36, 140]), x: Math.round(x.x), y: Math.round(x.y) })) } : {}),

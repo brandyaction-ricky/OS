@@ -3,7 +3,6 @@ import { z } from "zod";
 
 export const thumbCopySchema = z.object({ text: z.string().trim().min(1).max(40), accent: z.string().trim().max(20).default("") }).strict();
 export const thumbEditSchema = z.object({
-  accentStyle: z.enum(["color", "marker", "underline"]).optional(),
   size: z.number().min(60).max(220).optional(),
   photo: z.object({ scale: z.number(), x: z.number(), y: z.number(), brightness: z.number() }).strict().optional(),
   extras: z.array(z.object({ id: z.string().max(40), text: z.string().trim().min(1).max(20), color: z.enum(["ink", "accent", "red", "white"]),
