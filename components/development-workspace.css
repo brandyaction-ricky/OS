@@ -151,6 +151,8 @@
 .dev-comment-form label { display: flex; flex-direction: column; gap: 7px; color: var(--text-2); font-size: 11px; }
 .dev-comment-form textarea { width: 100%; min-width: 0; resize: vertical; padding: 9px 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--text); font-size: 11px; line-height: 1.7; }
 .dev-comment-form>.dev-button { margin-top: 8px; }
+/* 수정 요청 댓글 (로건 요청 2026-11-09): a taller box that grows with what is written, up to half the screen; a browser without field-sizing keeps the drag handle. */
+.dev-comment-form textarea, .dev-comment-edit textarea { min-height: 120px; max-height: 50vh; field-sizing: content; }
 .dev-reply-target { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; padding: 7px 9px; border-radius: 5px; background: var(--panel-2); color: var(--muted); font-size: 11px; }
 .dev-reply-target>span { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
 .dev-reply-target>button { flex-shrink: 0; padding: 0; border: 0; background: transparent; color: var(--accent-2); font-size: 11px; }

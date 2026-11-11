@@ -405,7 +405,7 @@ function ProjectHubContent() {
   };
   const commentHeader = (comment: OsRecord) => <header><strong>{commentName(comment)}</strong>{meta(comment, "authorType") === "agent" && <span>AI가 대신 작성</span>}<time dateTime={comment.created_at}>{dateTime(comment.created_at)}{meta(comment, "editedAt") && !meta(comment, "deletedAt") ? ` · 고침 ${dateTime(meta(comment, "editedAt"))}` : ""}</time></header>;
   const commentBody = (comment: OsRecord) => meta(comment, "deletedAt") ? <p className="dev-comment-deleted">지운 댓글이에요</p>
-    : editing?.id === comment.id ? <div className="dev-comment-edit"><textarea aria-label="댓글 고치기" rows={3} maxLength={5000} value={editing.text} onChange={event => setEditing({ id: comment.id, text: event.target.value })} />
+    : editing?.id === comment.id ? <div className="dev-comment-edit"><textarea aria-label="댓글 고치기" rows={5} maxLength={5000} value={editing.text} onChange={event => setEditing({ id: comment.id, text: event.target.value })} />
       <div><button type="button" className="dev-button primary-button" disabled={commentSaving || !editing.text.trim()} onClick={() => void changeComment(comment, false)}>{commentSaving ? "저장 중…" : "저장"}</button><button type="button" className="dev-text-button" disabled={commentSaving} onClick={() => setEditing(null)}>취소</button></div></div>
     : <p>{comment.description}</p>;
   const commentTools = (comment: OsRecord) => !demo && comment.created_by === profile?.id && !meta(comment, "deletedAt") && editing?.id !== comment.id ? <>
@@ -511,7 +511,7 @@ function ProjectHubContent() {
             })}{members.filter(member => member.id !== profile?.id).length === 0 && <p>멘션할 수 있는 활성 구성원이 없습니다.</p>}</div>
           </details>
           {mentionIds.length > 0 && <div className="dev-selected-mentions">{mentionIds.map(id => <button type="button" key={id} onClick={() => setMentionIds(previous => previous.filter(value => value !== id))}>@{assigneeName(id)} <X size={11} /></button>)}</div>}
-          <label>{replyTo ? "답글" : "댓글"}<textarea name="comment" required rows={3} maxLength={5000} placeholder={replyTo ? "답글을 입력하세요." : "진행 상황, 질문, 확인할 내용을 남겨 주세요."} /></label>
+          <label>{replyTo ? "답글" : "댓글"}<textarea name="comment" required rows={5} maxLength={5000} placeholder={replyTo ? "답글을 입력하세요." : "진행 상황, 질문, 확인할 내용을 남겨 주세요."} /></label>
           <button className="dev-button primary-button" disabled={commentSaving}>{commentSaving ? <><Loader2 className="dev-spin" size={14} /> 저장 중…</> : <><Send size={13} /> {replyTo ? "답글 남기기" : "댓글 남기기"}</>}</button>
         </form>
       </section>
