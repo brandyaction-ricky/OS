@@ -1,25 +1,25 @@
 // 썸네일 합성 틀: one component draws the thumbnail both on screen (the 기획안 picker, the 제작 editor) and as the final PNG (next/og on the
 // server), so what the PD picks and edits is what goes up. Only styles next/og understands (flex, absolute positions, px sizes,
-// transform, filter brightness, overflow hidden — checked on its renderer 2026-11-11).
-import { cleanThumbEdit, thumbAccentParts, thumbLayout, type ThumbCopy, type ThumbEdit, type ThumbExtraColor, type ThumbStyle } from "./thumb-style.ts";
+// filter brightness, overflow hidden — checked on its renderer 2026-11-11). The picture's place is worked out in thumbLayout.
+import { cleanThumbEdit, thumbAccentParts, thumbLayout, type ThumbCopy, type ThumbEdit, type ThumbExtraColor, type ThumbStyle, type ThumbSubject } from "./thumb-style.ts";
 
 const EXTRA_COLOR = (style: ThumbStyle): Record<ThumbExtraColor, { color: string; band?: string }> => ({
   ink: { color: style.title.ink }, accent: { color: style.title.accent }, red: { color: "#D92B2B" }, white: { color: "#FFFFFF", band: style.title.ink },
 });
 
-export function ThumbFrame({ style, image, copy, edit: raw }: { style: ThumbStyle; image?: string | null; copy: ThumbCopy; edit?: ThumbEdit }) {
+export function ThumbFrame({ style, image, copy, edit: raw, subject }: { style: ThumbStyle; image?: string | null; copy: ThumbCopy; edit?: ThumbEdit; subject?: ThumbSubject | null }) {
   const edit = cleanThumbEdit(raw, style);
-  const layout = thumbLayout(copy, style, edit), t = style.title;
-  const photo = edit.photo, extraColor = EXTRA_COLOR(style);
+  const layout = thumbLayout(copy, style, edit, subject), t = style.title;
+  const box = layout.photoBox, extraColor = EXTRA_COLOR(style);
   return (
     <div style={{ width: style.width, height: style.height, display: "flex", position: "relative", overflow: "hidden", background: style.background }}>
       {image ? (
-        // The picture never runs behind the title: moved or enlarged, it is cut at the title's top line.
-        <div style={{ position: "absolute", left: 0, top: 0, width: style.width, height: layout.titleTop, display: "flex", overflow: "hidden" }}>
+        // The picture never runs behind the title: moved or enlarged, it is cut just above the title's letters.
+        <div style={{ position: "absolute", left: 0, top: 0, width: style.width, height: layout.clipBottom, display: "flex", overflow: "hidden" }}>
           {/* eslint-disable-next-line @next/next/no-img-element -- the same element is drawn by next/og, which takes no Image component */}
-          <img src={image} alt="" width={style.width} height={layout.subjectBox.height}
-            style={{ position: "absolute", left: 0, top: layout.subjectBox.top, width: style.width, height: layout.subjectBox.height, objectFit: "contain",
-              ...(photo ? { transform: `translate(${photo.x}px, ${photo.y}px) scale(${photo.scale})`, filter: `brightness(${photo.brightness})` } : {}) }} />
+          <img src={image} alt="" width={box.width} height={box.height}
+            style={{ position: "absolute", left: box.left, top: box.top, width: box.width, height: box.height, objectFit: "contain",
+              ...(edit.photo ? { filter: `brightness(${edit.photo.brightness})` } : {}) }} />
         </div>
       ) : null}
       <div style={{ position: "absolute", left: t.sidePx, right: t.sidePx, top: layout.titleTop, display: "flex", flexDirection: "column", alignItems: "center" }}>

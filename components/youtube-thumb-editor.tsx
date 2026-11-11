@@ -5,7 +5,7 @@ import { apiRequest } from "@/lib/api-client";
 import type { YpSlot } from "@/lib/youtube-process/stages";
 import type { ThumbSavedEdit } from "@/lib/youtube-process/thumb-edit";
 import { ThumbFrame } from "@/lib/youtube-process/thumb-frame";
-import { THUMB_EXTRA_COLORS, THUMB_STYLES, thumbLayout, type ThumbEdit, type ThumbExtraColor } from "@/lib/youtube-process/thumb-style";
+import { THUMB_EXTRA_COLORS, THUMB_STYLES, thumbLayout, type ThumbEdit, type ThumbExtraColor, type ThumbSubject } from "@/lib/youtube-process/thumb-style";
 import type { YpPage } from "./youtube-process-frame";
 import { Scaled } from "./youtube-thumb-picker";
 
@@ -26,7 +26,7 @@ export function ThumbEditor({ page, slot, start, onSave, onClose }: {
   const [history, setHistory] = useState<ThumbSavedEdit[]>([]);
   const [tab, setTab] = useState<"text" | "photo" | "extras">("text");
   const [target, setTarget] = useState<Target>("photo");
-  const [candidateUrl, setCandidateUrl] = useState<string | null>(null);
+  const [candidate, setCandidate] = useState<{ url: string | null; subject?: ThumbSubject } | null>(null);
   const [ownUrl, setOwnUrl] = useState<string | null>(null);
   const [newLine, setNewLine] = useState({ text: "", color: "accent" as ThumbExtraColor, size: 72 });
   const [busy, setBusy] = useState("");
@@ -37,8 +37,8 @@ export function ThumbEditor({ page, slot, start, onSave, onClose }: {
   useEffect(() => {
     if (!projectId || !page.accessToken || !draft.candidate) return;
     let live = true;
-    apiRequest<{ candidates: { id: string; url: string | null }[] }>(`/api/v1/content/youtube/projects/${projectId}/thumbs`, { token: page.accessToken })
-      .then((view) => { if (live) setCandidateUrl(view.candidates.find((c) => c.id === draft.candidate)?.url ?? null); }, () => undefined);
+    apiRequest<{ candidates: { id: string; url: string | null; subject?: ThumbSubject }[] }>(`/api/v1/content/youtube/projects/${projectId}/thumbs`, { token: page.accessToken })
+      .then((view) => { if (live) setCandidate(view.candidates.find((c) => c.id === draft.candidate) ?? null); }, () => undefined);
     return () => { live = false; };
   }, [projectId, page.accessToken, draft.candidate]);
   useEffect(() => {
@@ -47,13 +47,14 @@ export function ThumbEditor({ page, slot, start, onSave, onClose }: {
     page.client.assetUrl(projectId, draft.image).then((url) => { if (live) setOwnUrl(url); }, () => undefined);
     return () => { live = false; };
   }, [projectId, page.client, draft.image]);
-  const image = draft.image ? ownUrl : candidateUrl;
+  // The PD's own photo has no measured subject: the whole photo fits the room above the title.
+  const image = draft.image ? ownUrl : candidate?.url ?? null, subject = draft.image ? null : candidate?.subject;
 
   /** Every change goes through here, so 되돌리기 can take it back. */
   const change = (next: ThumbSavedEdit) => { setHistory((list) => [...list.slice(-40), draft]); setDraft(next); };
   const undo = () => { const last = history.at(-1); if (!last) return; setHistory(history.slice(0, -1)); setDraft(last); };
   const photo = draft.photo ?? { scale: 1, x: 0, y: 0, brightness: 1 };
-  const checks = thumbLayout(draft.copy, style, editOf(draft)).checks;
+  const checks = thumbLayout(draft.copy, style, editOf(draft), subject).checks;
 
   const onDown = (event: PointerEvent<HTMLDivElement>) => {
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -84,7 +85,7 @@ export function ThumbEditor({ page, slot, start, onSave, onClose }: {
     } catch (reason) { setError(reason instanceof Error ? reason.message : "저장하지 못했어요."); } finally { setBusy(""); }
   };
 
-  const frame = <ThumbFrame style={style} image={image} copy={draft.copy} edit={editOf(draft)} />;
+  const frame = <ThumbFrame style={style} image={image} copy={draft.copy} edit={editOf(draft)} subject={subject} />;
   return <div ref={panel} className="yp-card yp-te">
     <div className="yp-te-h"><span className={`yp-ltag${slot === "C" ? " yp-c" : ""}`}>{slot}</span><b>{slot} 썸네일 다듬기</b><span className="yp-sp" />
       <button type="button" className="yp-btn yp-sm" disabled={!history.length} onClick={undo}><Undo2 size={13} /> 되돌리기</button>

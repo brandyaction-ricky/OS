@@ -4,12 +4,12 @@ import { ChevronLeft, ChevronRight, Pin, Sparkles } from "lucide-react";
 import { apiRequest } from "@/lib/api-client";
 import { SLOTS, type YpSlot, type YpThumbPick } from "@/lib/youtube-process/stages";
 import { ThumbFrame } from "@/lib/youtube-process/thumb-frame";
-import { THUMB_STYLES, thumbLayout, type ThumbCopy, type ThumbTool } from "@/lib/youtube-process/thumb-style";
+import { THUMB_STYLES, thumbLayout, type ThumbCopy, type ThumbSubject, type ThumbTool } from "@/lib/youtube-process/thumb-style";
 import type { useYpBundle } from "./youtube-process-frame";
 
 // 롱폼 애니메이션 썸네일 고르기 (요청 2026-11-09): a YouTube home feed with the PD's candidate among the market videos the AI read.
 // Picture ‹ › and copy ‹ › turn apart; 고정 keeps the copy while the pictures turn. 고르기 makes the PNG with the same frame.
-type Candidate = { id: string; n: number; at: string; by: string; path: string; url: string | null; scene: string; why: string; refs: string[]; copies: ThumbCopy[]; tool: ThumbTool };
+type Candidate = { id: string; n: number; at: string; by: string; path: string; url: string | null; scene: string; why: string; refs: string[]; copies: ThumbCopy[]; tool: ThumbTool; subject?: ThumbSubject };
 type Feed = { id: string; title: string; channel: string; views: number; thumbnail: string };
 type View = { style: string | null; feed: Feed[]; candidates: Candidate[] };
 export type ThumbPicked = { path: string; name: string; copy: ThumbCopy; pick: YpThumbPick };
@@ -90,7 +90,7 @@ export function ThumbPicker({ page, title, planCopies, picked, can, busyJob, onP
   };
   if (!style) return null;
   const ours = <div className={`yp-tp-card yp-tp-ours${mode === "phone" ? " yp-tp-phone" : ""}`}>
-    {current?.url ? <Scaled><ThumbFrame style={style} image={current.url} copy={copy} /></Scaled> : <div className="yp-tp-frame yp-tp-empty">{list.length ? "그림을 불러오는 중…" : "아직 후보가 없어요"}</div>}
+    {current?.url ? <Scaled><ThumbFrame style={style} image={current.url} copy={copy} subject={current.subject} /></Scaled> : <div className="yp-tp-frame yp-tp-empty">{list.length ? "그림을 불러오는 중…" : "아직 후보가 없어요"}</div>}
     <div className="yp-tp-meta"><b>{title || "제목 A"}</b><span>우리 채널 · 후보 {current ? `${current.n}번` : "-"}</span></div>
   </div>;
   const feed = data?.feed ?? [];

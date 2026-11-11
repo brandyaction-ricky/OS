@@ -51,7 +51,7 @@ test("the AI hands each picture in while it holds the job, and a confirm carries
   assert.match(read("app/api/v1/content/youtube-automation/ai-jobs/worker/route.ts"), /input\.action === "upload" \|\| input\.action === "add" \? await thumbJobStep\(actor, input\)/);
   const thumbs = read("lib/server/youtube-thumbs.ts");
   assert.match(thumbs, /THUMB_NOT_UPLOADED/);
-  assert.match(thumbs, /new ImageResponse\(createElement\(ThumbFrame, \{ style, image, copy, edit: input\.edit \}\)/);
+  assert.match(thumbs, /new ImageResponse\(createElement\(ThumbFrame, \{ style, image, copy, edit: input\.edit, subject \}\)/);
   const stages = read("lib/server/youtube-process-stages.ts");
   assert.match(stages, /if \(project\.yp\.topic\.type === "anim"\) await pickedThumbsToMake\(service, actor, project, stages\.make, plan, now\);/);
   assert.match(stages, /draftMissing\(stages\.plan\.data, project\.yp\.topic\.type\)/);
@@ -99,4 +99,27 @@ test("제작 keeps the frame edit with each slot: a hand-put finished thumbnail 
   assert.match(make, /우리 틀로 돌아가기/);
   assert.match(read("components/youtube-thumb-editor.tsx"), /kind: "thumb"/);
   assert.match(read("components/youtube-thumb-picker.tsx"), /고른 것만/);
+});
+
+// 피사체 자리: the frame put the whole picture in the room above the title, so a subject on a wide white picture came out small.
+test("the AI's subject box puts the subject as tall as the room above the title, centred and sitting on the title", () => {
+  const copy = { text: "일요일 밤 11시..", accent: "11시.." };
+  const subject = { box: [576, 87, 840, 675], size: [1210, 675] };
+  const layout = thumbLayout(copy, style, undefined, subject);
+  const k = layout.photoBox.width / 1210;
+  const top = layout.photoBox.top + 87 * k, bottom = layout.photoBox.top + 675 * k, middle = layout.photoBox.left + (576 + 840) / 2 * k;
+  assert.ok(Math.abs(bottom - layout.clipBottom) <= 1, "it sits on the title");
+  assert.ok(Math.abs(top - style.subject.topPx) <= 1, "and fills the room up to the top margin");
+  assert.ok(Math.abs(middle - 640) <= 1, "centred");
+  const old = thumbLayout(copy, style);
+  assert.ok(bottom - top > old.subjectBox.height * 0.6 * 1.2, "much bigger than the whole picture fitted into the room");
+  const atTop = thumbLayout(copy, style, undefined, { box: [400, 0, 900, 500], size: [1280, 720] });
+  assert.equal(Math.round(atTop.photoBox.top), 0, "a subject cut by the picture's top edge stays on the frame's top edge");
+  const zoomed = thumbLayout(copy, style, { photo: { scale: 1.5, x: 0, y: 0, brightness: 1 } }, subject);
+  const zk = zoomed.photoBox.width / 1210;
+  assert.ok(Math.abs(zoomed.photoBox.left + (576 + 840) / 2 * zk - 640) <= 1, "사진 크기 grows around the subject");
+  const server = read("lib/server/youtube-thumbs.ts");
+  assert.match(server, /subject: z\.object\(\{ box: z\.tuple\(\[px, px, px, px\]\), size: z\.tuple\(\[px, px\]\) \}\)\.strict\(\)/);
+  assert.match(server, /createElement\(ThumbFrame, \{ style, image, copy, edit: input\.edit, subject \}\)/);
+  assert.match(read("components/youtube-thumb-picker.tsx"), /subject=\{current\.subject\}/);
 });

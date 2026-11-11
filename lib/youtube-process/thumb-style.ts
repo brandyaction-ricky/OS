@@ -55,7 +55,14 @@ export interface ThumbExtra { id: string; text: string; color: ThumbExtraColor; 
 export const THUMB_EXTRA_COLORS = { ink: "잉크", accent: "파랑", red: "빨강", white: "흰 글자" } as const;
 export type ThumbExtraColor = keyof typeof THUMB_EXTRA_COLORS;
 export const THUMB_PHOTO_LIMITS = { scale: [0.5, 1.6], x: [-640, 640], y: [-360, 360], brightness: [0.6, 1.4] } as const;
-export interface ThumbLayout { lines: string[]; size: number; titleTop: number; subjectBox: { top: number; height: number }; checks: ThumbCheck[] }
+/**
+ * Where the subject is in the picture (px): the box around everything that is not the white background, and the picture's size.
+ * The AI measures it when it hands the picture in; the frame then puts the subject big above the title, as the local tool did.
+ */
+export interface ThumbSubject { box: [number, number, number, number]; size: [number, number] }
+export interface ThumbBox { left: number; top: number; width: number; height: number }
+/** photoBox: where the picture goes (objectFit contain inside it); clipBottom: the picture is cut there, just above the title's letters. */
+export interface ThumbLayout { lines: string[]; size: number; titleTop: number; subjectBox: { top: number; height: number }; photoBox: ThumbBox; clipBottom: number; checks: ThumbCheck[] }
 export interface ThumbCheck { id: "bottom" | "phone" | "lines" | "chars" | "extras"; ok: boolean; text: string }
 
 /** Glyph width in em (Pretendard Black): Hangul and wide symbols ≈ 1, Latin and digits narrower, spaces a third. */
@@ -74,7 +81,7 @@ export function thumbLines(text: string, style: ThumbStyle) {
 }
 
 /** Where everything goes on the 1280×720 frame, and the checks that follow from it (the 50 px bottom, the phone text size, the line rules). */
-export function thumbLayout(copy: ThumbCopy, style: ThumbStyle, edit?: ThumbEdit): ThumbLayout {
+export function thumbLayout(copy: ThumbCopy, style: ThumbStyle, edit?: ThumbEdit, subject?: ThumbSubject | null): ThumbLayout {
   const t = style.title, lines = thumbLines(copy.text, style);
   const widest = Math.max(1, ...lines.map((line) => thumbLineEm(line, t.tracking)));
   const fit = Math.floor((style.width - 2 * t.sidePx) / widest);
@@ -84,6 +91,9 @@ export function thumbLayout(copy: ThumbCopy, style: ThumbStyle, edit?: ThumbEdit
   const titleTop = Math.round(style.height - t.bottomPx - block);
   const room = titleTop - style.subject.topPx;
   const subjectBox = { top: style.subject.topPx, height: Math.round(room * style.subject.maxShare) };
+  // The letters start about a tenth of the size below the line's top, so the subject may come down to there (it then sits on the title).
+  const clipBottom = titleTop + Math.round(size * 0.1);
+  const photoBox = scalePhoto(placeSubject(style, subject, clipBottom) ?? { left: 0, top: subjectBox.top, width: style.width, height: subjectBox.height }, edit?.photo, subject);
   const phonePx = size * style.phone.widthPx / style.width;
   const longest = Math.max(0, ...lines.map((line) => [...line.replace(/\s/g, "")].length));
   const checks: ThumbCheck[] = [
@@ -93,7 +103,28 @@ export function thumbLayout(copy: ThumbCopy, style: ThumbStyle, edit?: ThumbEdit
     { id: "chars", ok: longest <= t.maxChars && fit >= t.minPx, text: fit >= t.minPx ? `한 줄 ${longest}자 (최대 ${t.maxChars}자)` : `글자가 길어 ${t.minPx}px로 한 줄에 다 안 들어가요` },
     ...(edit?.extras?.length ? [extrasCheck(edit.extras, style)] : []),
   ];
-  return { lines, size, titleTop, subjectBox, checks };
+  return { lines, size, titleTop, subjectBox, photoBox, clipBottom, checks };
+}
+
+/**
+ * The subject as big as the room above the title allows (the style's 100 %), centred, sitting on the title; a subject the picture cuts
+ * at its top edge stays on the frame's top edge. No subject box (older candidates, the PD's own photo): the whole picture fits the room.
+ */
+function placeSubject(style: ThumbStyle, subject: ThumbSubject | null | undefined, bottom: number): ThumbBox | null {
+  if (!subject) return null;
+  const [x0, y0, x1, y1] = subject.box, [w, h] = subject.size;
+  const top = y0 <= 2 ? 0 : style.subject.topPx;
+  const k = Math.min((bottom - top) / (y1 - y0), (style.width - 2 * style.title.sidePx) / (x1 - x0));
+  return { left: Math.round(style.width / 2 - (x0 + x1) / 2 * k), top: Math.round(bottom - y1 * k), width: Math.round(w * k), height: Math.round(h * k) };
+}
+/** The PD's 사진 edit: scaled around the subject (or the picture's middle), then moved. */
+function scalePhoto(box: ThumbBox, photo: ThumbEdit["photo"], subject?: ThumbSubject | null): ThumbBox {
+  if (!photo) return box;
+  const k = box.width / (subject?.size[0] ?? box.width);
+  const cx = subject ? box.left + (subject.box[0] + subject.box[2]) / 2 * k : box.left + box.width / 2;
+  const cy = subject ? box.top + (subject.box[1] + subject.box[3]) / 2 * k : box.top + box.height / 2;
+  return { left: Math.round(cx + (box.left - cx) * photo.scale + photo.x), top: Math.round(cy + (box.top - cy) * photo.scale + photo.y),
+    width: Math.round(box.width * photo.scale), height: Math.round(box.height * photo.scale) };
 }
 
 /** Added lines stay inside the frame and above the 50 px bottom (their width is read like the title's). */
