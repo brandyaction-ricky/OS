@@ -42,7 +42,7 @@ test("the render PC adds blank scenes to the preview's misses, and never stops a
 test("at ③ a phrase the engine cannot place or a blank scene sends the storyboard back with the list; ④ still stops for a person", () => {
   const run = readFileSync(new URL("../lib/server/myin-run.ts", import.meta.url), "utf8");
   const prep = run.slice(run.indexOf("export async function completeMyinPrep"), run.indexOf("export async function failMyinPrep"));
-  assert.match(prep, /const gate = draft \? bundle\.misses\.filter\(\(line\) => line\.includes\("못 찾음"\) \|\| line\.includes\("빈 화면"\) \|\| line\.includes\("그리기 오류"\)\) : \[\];/);
+  assert.match(prep, /const gate = draft \? bundle\.misses\.filter\(\(line\) => \/못 찾음\|빈 화면\|그리기 오류\|늦게 바뀜\|초 미만 장면\/\.test\(line\)\) : \[\];/);
   assert.match(prep, /review: \{ decision: "revise",.*name: MYIN_GATE_NAME/s);
   assert.match(prep, /await save\(service, record, "backlog", "words_ready", back\)/);
   assert.ok(prep.indexOf("const gate") < prep.indexOf("scheduleScreenCheck"), "no GPT screen check for a storyboard going back");

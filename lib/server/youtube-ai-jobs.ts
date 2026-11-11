@@ -16,7 +16,7 @@ import { checkScenePlan, SCENE_PLAN_JSON_SCHEMA, scenePlanPrompt, youtubeSceneRu
 import { checkPronunciation, pronunciationPrompt, PRONUNCIATION_JSON_SCHEMA } from "./youtube-voice-worker";
 import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
 import { myinRunWithWords, saveMyinStoryboard } from "./myin-run";
-import { checkMyinStoryboardResult, checkShortStoryboardResult, MYIN_CARD_DOCS, myinStoryboardCard, myinStoryboardInputKey, SHORT_CARD_DOCS, shortStoryboardCard } from "./myin-storyboard-job";
+import { checkMyinStoryboardResult, checkShortStoryboardResult, MYIN_CARD_DOCS, MYIN_CARD_REFERENCE_DOCS, myinStoryboardCard, myinStoryboardInputKey, SHORT_CARD_DOCS, shortStoryboardCard } from "./myin-storyboard-job";
 import { DIAGRAM_CATALOG } from "@/lib/shortform-diagram-catalog";
 import { diagramCatalogTypes } from "@/lib/diagram-catalog";
 import { readDiagramCatalog } from "./diagram-catalog";
@@ -575,7 +575,7 @@ async function claimJob(agent: RequestActor, jobId: string, byGpt: boolean) {
         durationSeconds: myin.run.words!.durationSeconds, note, leaseMinutes: minutes, diagrams: DIAGRAM_CATALOG, docIds: await myinCardDocIds(SHORT_CARD_DOCS) }) };
     return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt,
       instructions: myinStoryboardCard({ title: myin.title, markdown: myin.markdown, words: myin.words, durationSeconds: myin.run.words!.durationSeconds,
-        note: myin.run.review?.decision === "revise" ? myin.run.review.note : undefined, leaseMinutes: minutes, catalog: await readDiagramCatalog(), docIds: await myinCardDocIds() }) };
+        note: myin.run.review?.decision === "revise" ? myin.run.review.note : undefined, leaseMinutes: minutes, catalog: await readDiagramCatalog(), docIds: await myinCardDocIds([...MYIN_CARD_DOCS, ...MYIN_CARD_REFERENCE_DOCS]) }) };
   }
   if (m.task === "niche") {
     const lease = await take();

@@ -206,14 +206,49 @@ export function myinSceneStarts(scenes: { at?: unknown; at_time?: unknown }[], w
 
 /** Shape and cue problems as a list the staff AI can fix (empty = passes), plus notes for Logan that do not block.
  *  catalogTypes: the lib_ diagrams the render PC reported (도식 창고); they count as known types. */
-// 로건 운영 시험 (2026-10-23) 제작 기본값: 본문 장면의 절반 이상이 도식 · 이미지(창고 lib_ 도식, v13 비유 도식, 사진이 붙은 장면),
-// 같은 무대(lib_stage_)는 영상당 2번까지 · 연달아 쓰지 않기. The first storyboard at ~15% read as too wordy; the approved 퇴사 전 순서 is 62%.
 const FRAME_TYPES = new Set(["opening", "outro", "summary", "endscreen", "site_ad"]);
-export const MYIN_MIN_VISUAL_SHARE = 0.5;
-export function myinVisualShare(scenes: { type: string; photo?: unknown }[]) {
-  const body = scenes.filter((sc) => !FRAME_TYPES.has(sc.type));
-  const visual = body.filter((sc) => sc.type.startsWith("lib_") || MYIN_METAPHOR_TYPES.includes(sc.type) || Boolean(sc.photo));
-  return { body: body.length, visual: visual.length };
+// ── 덱 배치 기준 v2 (2026-11-10 request; replaces the 10-23 「본문 절반 이상 도식 · 이미지」 share, which split scenes per sentence to fill it).
+// Checked on a new storyboard from the staff AI or GPT only: storyboards made before it (editor saves of older runs) have no beat or why. ──
+/** Text a diagram prints when its field is left empty (도식 뜻 관계표 「고정 글자 … 기본」), which the script never says. */
+const DEFAULT_TEXT: Record<string, [string, string][]> = {
+  lib_row_contrast: [["a_cap", "흔한 생각"], ["b_cap", "진짜 답"]], lib_col_contrast: [["a_cap", "겉"], ["b_cap", "속"]],
+  lib_question_typing: [["button", "검색"]], lib_receipt: [["title", "RECEIPT"], ["total_label", "TOTAL"]], lib_gauge: [["left", "E"], ["right", "F"]],
+  lib_scale_compare: [["ratio", "×365"]], lib_apple_fall: [["sky_label", "재능?"]], lib_apple: [["sky_label", "재능?"], ["root_label", "결핍"], ["fruit_label", "강점"]],
+  lib_toggle_switch: [["on_word", "ON"], ["off_word", "OFF"]], lib_decision_tree: [["yes_word", "예"], ["no_word", "아니오"]],
+  lib_big_number: [["tag", "예시"]], lib_donut_ratio: [["tag", "예시"]], lib_stage_split: [["names", "지현 · 도윤"]],
+  lib_stage_calendar: [["month", "11월"]], lib_desk_calendar: [["month", "11월"]], lib_seed_grow: [["now_word", "지금"]],
+};
+/** Drawn with an arrow, an A→B curve or a struck-out side (도식 뜻 관계표): they read as change or correction, never as a plain contrast. */
+const ARROWED = new Set(["lib_two_cards", "lib_fusion", "lib_apple_fall", "lib_apple", "lib_cross_out", "lib_swap_places", "lib_dominoes", "lib_loop_break",
+  "lib_route_map", "lib_row_contrast", "lib_col_contrast", "lib_button_press", "lib_connect", "lib_before_after", "lib_strike_list", "lib_text_reveal", "lib_one_letter"]);
+const filled = (value: unknown) => typeof value === "string" ? value.trim() !== "" : Array.isArray(value) ? value.length > 0 : value !== undefined && value !== null;
+/** One screen, for 「같은 화면이 되돌아옴」: the same photo, or the same diagram with the same label. */
+const screenKey = (sc: Record<string, unknown>) => {
+  const photo = sc.photo as { file?: unknown } | undefined;
+  if (photo?.file) return `photo:${String(photo.file)}`;
+  const type = String(sc.type);
+  return type.startsWith("lib_") || MYIN_METAPHOR_TYPES.includes(type) ? `${type}:${String(sc.label ?? "")}` : null;
+};
+export function myinDeckIssues(scenes: Record<string, unknown>[]) {
+  const issues: string[] = [];
+  const body = scenes.map((sc, n) => ({ sc, n })).filter(({ sc }) => !FRAME_TYPES.has(String(sc.type)));
+  let beat = 0;
+  for (const { sc, n } of body) {
+    const where = `[장면 ${n + 1}]`;
+    if (!(Number.isInteger(sc.beat) && (sc.beat as number) >= 1)) issues.push(`${where} "beat"(비트 번호, 1부터)를 적어 주세요.`);
+    else if ((sc.beat as number) < beat) issues.push(`${where} beat ${sc.beat}가 앞 장면(${beat})보다 작아요 — 비트 번호는 줄지 않게 적어요.`);
+    else beat = sc.beat as number;
+    if (typeof sc.why !== "string" || !sc.why.trim()) issues.push(`${where} "why"(원고 관계 → 고른 화면 → 이유)를 적어 주세요.`);
+    else if (ARROWED.has(String(sc.type)) && /대조/.test(sc.why.split("→")[0]) && !/교정|바뀜/.test(sc.why.split("→")[0]))
+      issues.push(`${where} why가 「대조」인데 ${sc.type}는 화살표 · 지움이 그려지는 도식이에요 — 방향 없는 대조는 lib_vs_pick · lib_stage_split 등으로(도식 뜻 관계표).`);
+    for (const [field, text] of DEFAULT_TEXT[String(sc.type)] ?? [])
+      if (!filled(sc[field])) issues.push(`${where} ${sc.type}의 ${field}가 비어 있어 원고에 없는 「${text}」가 떠요 — 원고 말로 채우거나 다른 도식으로 바꿔 주세요.`);
+  }
+  for (let i = 2; i < scenes.length; i++) {
+    const a = screenKey(scenes[i - 2]), b = screenKey(scenes[i - 1]);
+    if (a && a === screenKey(scenes[i]) && b !== a) issues.push(`[장면 ${i - 1} → ${i} → ${i + 1}] 같은 화면이 한 장면 건너 되돌아와요 — 가운데 장면을 그 화면 위에 더하거나 순서를 바꿔 주세요.`);
+  }
+  return issues;
 }
 /**
  * Logan's puzzle (v13 기본 도식): pieces of ≤ 4 letters and a word under them of ≤ 4 letters that must be set — left empty,
@@ -342,19 +377,30 @@ function photoFocusIssues(story: MyinStoryboard) {
 /** QA 5: the subscribe line says 「눌러 주세요」, not 「눌러 두고 들어 주세요」. */
 const ctaWordingIssues = (story: MyinStoryboard) => story.cta.flatMap((cta, k) => /눌러\s*두/.test(cta.line) ? [`[구독 ${k + 1}] 「눌러 두…」 대신 「눌러 주세요」로 써요`] : []);
 
-function stageReuseIssues(types: string[]) {
+/**
+ * A stage (lib_stage_) at most twice a video, never twice in a row — but a 나열형 기준 판 brought back for its next item (덱 배치 기준 v2 §4:
+ * the same board, its rooms re-added with the same ids) is that one board again, not another use of the stage.
+ */
+function stageReuseIssues(scenes: Record<string, unknown>[]) {
   const issues: string[] = [];
-  const counts = new Map<string, number>();
-  types.forEach((type, index) => {
+  const boards = new Map<string, Set<string>>();
+  const board = (sc: Record<string, unknown>, index: number) => {
+    const ids = [...new Set((Array.isArray(sc.beats) ? sc.beats as { id?: unknown }[] : []).map((beat) => beat?.id).filter((id): id is string => typeof id === "string"))].sort();
+    return ids.length ? ids.join(",") : `#${index}`;
+  };
+  scenes.forEach((sc, index) => {
+    const type = String(sc.type);
     if (!type.startsWith("lib_stage_")) return;
-    counts.set(type, (counts.get(type) ?? 0) + 1);
-    if (types[index - 1] === type) issues.push(`"${type}" 무대가 ${index}번째와 ${index + 1}번째 장면에 연달아 나와요. 사이에 다른 장면을 넣어 주세요.`);
+    const key = board(sc, index);
+    boards.set(type, (boards.get(type) ?? new Set()).add(key));
+    const prev = scenes[index - 1];
+    if (prev && prev.type === type && board(prev, index - 1) !== key) issues.push(`"${type}" 무대가 ${index}번째와 ${index + 1}번째 장면에 연달아 나와요. 사이에 다른 장면을 넣어 주세요.`);
   });
-  for (const [type, count] of counts) if (count > 2) issues.push(`"${type}" 무대를 ${count}번 썼어요. 같은 무대는 영상당 2번까지예요.`);
+  for (const [type, keys] of boards) if (keys.size > 2) issues.push(`"${type}" 무대를 ${keys.size}번 썼어요. 같은 무대는 영상당 2번까지예요(같은 기준 판을 되부르는 건 한 번으로 세요).`);
   return issues;
 }
 
-export function checkMyinStoryboard(value: unknown, words: [number, number, string][], catalogTypes: readonly string[] = [], speech = "") {
+export function checkMyinStoryboard(value: unknown, words: [number, number, string][], catalogTypes: readonly string[] = [], speech = "", options: { deck?: boolean } = {}) {
   const parsed = myinStoryboardSchema.safeParse(value);
   if (!parsed.success) return { issues: parsed.error.issues.slice(0, 20).map((issue) => `${issue.path.join(".") || "기획표"}: ${issue.message}`), notes: [] as string[], fuzzy: [] as string[], story: null };
   const story = parsed.data;
@@ -368,10 +414,8 @@ export function checkMyinStoryboard(value: unknown, words: [number, number, stri
   const unknown = [...new Set(types.filter((type) => !known.has(type)))];
   // A lib_ type outside the render PC's list would fail the render, so the staff AI must swap it; other new types stay notes for Logan.
   issues.push(...unknown.filter((type) => type.startsWith("lib_")).map((type) => `"${type}"는 영상 만드는 컴퓨터가 그릴 수 없는 도식입니다. 도식 창고 목록에 있는 것으로 바꿔 주세요.`));
-  const share = myinVisualShare(story.scenes as { type: string; photo?: unknown }[]);
-  if (share.body && share.visual / share.body < MYIN_MIN_VISUAL_SHARE)
-    issues.push(`도식 · 이미지 장면이 본문 ${share.body}개 중 ${share.visual}개(${Math.round(share.visual / share.body * 100)}%)예요. 절반 이상이 되게 글자 장면을 무대형 도식 · 창고 도식 · 사진 장면으로 바꿔 주세요.`);
-  issues.push(...stageReuseIssues(types), ...puzzleIssues(story.scenes as { type: string; pieces?: unknown; word?: unknown }[]), ...sceneFieldIssues(story.scenes));
+  if (options.deck) issues.push(...myinDeckIssues(story.scenes as Record<string, unknown>[]));
+  issues.push(...stageReuseIssues(story.scenes as Record<string, unknown>[]), ...puzzleIssues(story.scenes as { type: string; pieces?: unknown; word?: unknown }[]), ...sceneFieldIssues(story.scenes));
   issues.push(...screenOrderIssues(story, words), ...openingTextIssues(story, words, speech), ...statListIssues(story), ...ctaWordingIssues(story), ...photoFocusIssues(story));
   const notes = unknown.filter((type) => !type.startsWith("lib_"))
     .map((type) => `새 장면 종류 "${type}": 로건님 코드에 그리는 방법을 먼저 추가해야 합니다.`);

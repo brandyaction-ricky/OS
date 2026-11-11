@@ -1075,7 +1075,8 @@ export async function completeMyinPrep(input: { runId: string; lease: string }, 
   if (!next.sound) delete next.sound;
   // 렌더 전 관문 (로건 개발 문서 v3 7.2-3): at ③ a phrase the engine cannot place or a blank scene goes straight back to the storyboard
   // as its 수정 요청 (the next staff-AI pass gets the list); ④ still stops for a person, who sees the same list.
-  const gate = draft ? bundle.misses.filter((line) => line.includes("못 찾음") || line.includes("빈 화면") || line.includes("그리기 오류")) : [];
+  // 덱 배치 v2 (2026-11-10): the render PC also times each cut against the voice with the engine's scene times (늦게 바뀜 · 빈 화면 · N초 미만 장면).
+  const gate = draft ? bundle.misses.filter((line) => /못 찾음|빈 화면|그리기 오류|늦게 바뀜|초 미만 장면/.test(line)) : [];
   if (gate.length) {
     const back: MyinRun = { ...next, review: { decision: "revise", by: record.owner_id ?? run.review?.by ?? record.created_by ?? "", name: MYIN_GATE_NAME,
       note: `렌더 전 관문에서 걸린 곳 ${gate.length}개를 고쳐 주세요: ${gate.slice(0, 12).join(" / ")}`.slice(0, 2000), at: new Date().toISOString() } };
@@ -1513,13 +1514,14 @@ export async function myinEarlierStyles(actor: RequestActor, sourceId: string) {
 
 /** Short-lived addresses of the clips and the finished files for the ③ panel. */
 export async function myinOutputs(actor: RequestActor, runId: string, at?: string) {
-  const { run } = await visibleRun(actor, runId);
+  const { record, run } = await visibleRun(actor, runId);
   const service = createServiceSupabase();
   const read = (bucket: string, path?: string) => path ? sign(service, bucket, path) : Promise.resolve(null);
   // An earlier version of this run's finished video (최종 검토 버전 비교), found by when it was made.
   const final = at ? [...(run.finals ?? []), ...(run.final ? [run.final] : [])].find((item) => item.at === at) : run.final;
   return {
     clips: await Promise.all((run.clips?.items ?? []).map(async (item) => ({ label: item.label, url: await read(ASSET_VIDEO_BUCKET, item.path) }))),
+    stills: run.stills && record.parent_id ? await import("./myin-edit").then(async ({ draftPreview }) => { const file = await draftPreview(service, record.parent_id!, runId); return read(file.bucket, file.path); }) : null,
     video: await read(ASSET_VIDEO_BUCKET, final?.video), summary: await read(OUTPUT_BUCKET, final?.summary),
     deck: await read(OUTPUT_BUCKET, final?.deck), srt: await read(OUTPUT_BUCKET, final?.srt),
   };
