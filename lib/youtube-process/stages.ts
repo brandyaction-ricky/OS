@@ -2,6 +2,7 @@
 // Rules here are shared by the API, the screens and the demo store.
 import type { YpReviewer } from "./reviewers";
 import type { YpKind, YpRef } from "./project";
+import type { ThumbSavedEdit } from "./thumb-edit.ts";
 import type { AdResult } from "./ad-results";
 import type { CardDraft, CardFormatId } from "../cardnews/formats.ts";
 import { narrationFromMarkdown } from "../youtube-narration-document.ts";
@@ -58,7 +59,8 @@ export interface YpMake {
   log: { at: string; by: string; from: string; to: string; why: string; field?: "editDue" | "uploadPlan" }[];
   /** Finals uploaded by hand (실사). The OS-made 마이인 finals come from their run records. */
   finals: YpFinalUpload[];
-  thumbs: Partial<Record<YpSlot, { path: string; at: string; name: string }>>;
+  /** edit: 롱폼 애니메이션 썸네일 made with the frame — its picture, copy and 다듬기 edits, so 제작 can open and render it again. */
+  thumbs: Partial<Record<YpSlot, { path: string; at: string; name: string; edit?: ThumbSavedEdit }>>;
   /** 'A 제목 바꿔 보기' (S5) before 2026-10-25: a title different from the confirmed A, with the reason. Read through finalPair. */
   aTitle: string; aReason: string;
   /** 최종 썸네일 [고치기] (owner request 2026-10-25): a slot's title or thumbnail copy changed on purpose, with why. */

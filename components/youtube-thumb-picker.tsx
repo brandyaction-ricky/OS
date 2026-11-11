@@ -9,7 +9,7 @@ import type { useYpBundle } from "./youtube-process-frame";
 
 // 롱폼 애니메이션 썸네일 고르기 (요청 2026-11-09): a YouTube home feed with the PD's candidate among the market videos the AI read.
 // Picture ‹ › and copy ‹ › turn apart; 고정 keeps the copy while the pictures turn. 고르기 makes the PNG with the same frame.
-type Candidate = { id: string; n: number; path: string; url: string | null; scene: string; why: string; refs: string[]; copies: ThumbCopy[]; tool: ThumbTool };
+type Candidate = { id: string; n: number; at: string; by: string; path: string; url: string | null; scene: string; why: string; refs: string[]; copies: ThumbCopy[]; tool: ThumbTool };
 type Feed = { id: string; title: string; channel: string; views: number; thumbnail: string };
 type View = { style: string | null; feed: Feed[]; candidates: Candidate[] };
 export type ThumbPicked = { path: string; name: string; copy: ThumbCopy; pick: YpThumbPick };
@@ -17,7 +17,7 @@ export type ThumbPicked = { path: string; name: string; copy: ThumbCopy; pick: Y
 const views = (n: number) => n >= 10_000 ? `조회수 ${Math.round(n / 1000) / 10}만회` : `조회수 ${n.toLocaleString("ko-KR")}회`;
 
 /** The 1280×720 frame shrunk to its box, so the screen shows exactly what the PNG will be. */
-function Scaled({ children }: { children: React.ReactNode }) {
+export function Scaled({ children }: { children: React.ReactNode }) {
   const box = useRef<HTMLDivElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -44,7 +44,8 @@ export function ThumbPicker({ page, title, planCopies, picked, can, busyJob, onP
   const [img, setImg] = useState(0);
   const [cpy, setCpy] = useState(0);
   const [pinned, setPinned] = useState<ThumbCopy | null>(null);
-  const [mode, setMode] = useState<"feed" | "large" | "phone">("feed");
+  const [mode, setMode] = useState<"feed" | "large" | "phone" | "archive">("feed");
+  const [onlyPicked, setOnlyPicked] = useState(false);
   const [tool, setTool] = useState<ThumbTool>(() => { try { return localStorage.getItem("yp-thumb-tool") === "chatgpt" ? "chatgpt" : "flow"; } catch { return "flow"; } });
   const [count, setCount] = useState(6);
   const [busy, setBusy] = useState<YpSlot | "">("");
@@ -107,9 +108,10 @@ export function ThumbPicker({ page, title, planCopies, picked, can, busyJob, onP
         <span className="yp-tp-turn">문구<button type="button" className="yp-ib" aria-label="이전 문구" disabled={Boolean(pinned)} onClick={() => turnCopy(-1)}><ChevronLeft size={16} /></button>{pinned ? "고정" : `${Math.min(cpy, copies.length - 1) + 1}/${copies.length}`}<button type="button" className="yp-ib" aria-label="다음 문구" disabled={Boolean(pinned)} onClick={() => turnCopy(1)}><ChevronRight size={16} /></button></span>
         <button type="button" className={`yp-btn yp-sm${pinned ? " yp-on" : ""}`} aria-pressed={Boolean(pinned)} onClick={() => setPinned(pinned ? null : copy)}><Pin size={13} /> 문구 고정</button>
         <span className="yp-sp" />
-        <div className="yp-seg2 yp-sm" role="group" aria-label="보기">{([["feed", "피드"], ["large", "크게"], ["phone", "휴대폰"]] as const).map(([key, label]) => <button key={key} type="button" className={mode === key ? "yp-on" : ""} onClick={() => setMode(key)}>{label}</button>)}</div>
+        <div className="yp-seg2 yp-sm" role="group" aria-label="보기">{([["feed", "피드"], ["large", "크게"], ["phone", "휴대폰"], ["archive", "보관함"]] as const).map(([key, label]) => <button key={key} type="button" className={mode === key ? "yp-on" : ""} onClick={() => setMode(key)}>{label}</button>)}</div>
       </div>
-      {mode === "feed" ? <div className="yp-tp-feed">
+      {mode === "archive" ? <Archive list={list} picked={picked} only={onlyPicked} onOnly={setOnlyPicked} onOpen={index => { setImg(index); if (!pinned) setCpy(0); setMode("feed"); }} />
+        : mode === "feed" ? <div className="yp-tp-feed">
         {feed[0] ? <FeedCard item={feed[0]} /> : null}{ours}{feed.slice(1, 5).map(item => <FeedCard key={item.id} item={item} />)}
       </div> : <div className={mode === "phone" ? "yp-tp-phonewrap" : "yp-tp-large"}>{ours}</div>}
       <div className="yp-tp-copy">「{copy.text.replace(/\n/g, " / ")}」{copy.accent ? <span className="yp-muted"> · 파랑 「{copy.accent}」</span> : null}
@@ -122,6 +124,20 @@ export function ThumbPicker({ page, title, planCopies, picked, can, busyJob, onP
           : <a key={ref} href={`https://www.youtube.com/watch?v=${ref}`} target="_blank" rel="noreferrer">{ref}</a>; })}</div> : null}</div> : null}
     </> : <p className="yp-pempty">{onMake ? "아직 후보가 없어요. [썸네일 후보 만들기]를 누르면 내 AI가 그림을 만들어 하나씩 올려요." : "기획안에서 만든 후보가 없어요."}</p>}
     {error ? <p className="yp-err" role="alert">{error}</p> : null}
+  </div>;
+}
+
+/** 보관함: every picture made for this video, newest first, with the tool, who and when; 고른 것만 keeps the ones in A · B · C. */
+function Archive({ list, picked, only, onOnly, onOpen }: { list: Candidate[]; picked: Partial<Record<YpSlot, string>>; only: boolean; onOnly: (on: boolean) => void; onOpen: (index: number) => void }) {
+  const slotOf = (id: string) => SLOTS.filter(slot => picked[slot] === id).join(" · ");
+  const rows = list.map((c, index) => ({ c, index })).filter(({ c }) => !only || slotOf(c.id)).reverse();
+  return <div className="yp-tp-archive">
+    <label className="yp-tp-only"><input type="checkbox" checked={only} onChange={event => onOnly(event.target.checked)} /> 고른 것만</label>
+    {rows.length ? <div className="yp-tp-feed">{rows.map(({ c, index }) => <button key={c.id} type="button" className="yp-tp-card yp-tp-arc" onClick={() => onOpen(index)}>
+      {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed link from private storage */}
+      <div className="yp-tp-frame">{c.url ? <img src={c.url} alt={`후보 ${c.n}`} /> : null}</div>
+      <div className="yp-tp-meta"><b>{c.n}번{slotOf(c.id) ? ` · ${slotOf(c.id)}에 고름` : ""}</b><span>{c.tool === "flow" ? "Flow" : "ChatGPT"} · {c.by} · {c.at.slice(5, 16).replace("T", " ")}</span><span>{c.scene}</span></div>
+    </button>)}</div> : <p className="yp-pempty">{only ? "아직 고른 후보가 없어요." : "아직 후보가 없어요."}</p>}
   </div>;
 }
 

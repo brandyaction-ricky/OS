@@ -8,13 +8,15 @@ import { editableFields } from "@/lib/youtube-process/confirm";
 import { myinCleanScript, myinScriptMarkdown } from "@/lib/myin-script";
 import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
 import { personName, projectName, topicKeywords, stepHref } from "@/lib/youtube-process/project";
-import { finalPair, MAKE_STEPS, SLOTS, thumbsMissing, type YpMake, type YpSlot } from "@/lib/youtube-process/stages";
+import { finalPair, MAKE_STEPS, SLOTS, thumbsMissing, type YpMake, type YpPlan, type YpSlot } from "@/lib/youtube-process/stages";
 import { MyinV13Panel } from "./myin-v13-panel";
 import { EditorScreenEntry } from "./editor-screen";
 import { FormulaNote, JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
 import { GateBanner, gateSub, md, stepAction, Subject, useYpBundle, YpFrame, YpSection, LockedStep, type YpPage } from "./youtube-process-frame";
 import { ThumbView } from "./youtube-process-media";
 import { ThumbPicker } from "./youtube-thumb-picker";
+import { ThumbEditor } from "./youtube-thumb-editor";
+import type { ThumbSavedEdit } from "@/lib/youtube-process/thumb-edit";
 import { ShortMake } from "./youtube-process-short";
 import { scriptLines } from "@/lib/youtube-process/short-script";
 
@@ -48,6 +50,8 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
   const [fixing, setFixing] = useState<YpSlot | null>(null);
   // 롱폼 애니메이션: 「기획안에서 다시 고르기」 opens the 기획안's candidates here; a pick replaces only that slot's image.
   const [repick, setRepick] = useState(false);
+  // 다듬기: the slot opened in the frame editor under the cards.
+  const [editing, setEditing] = useState<YpSlot | null>(null);
   const bundle = page.bundle;
   const project = bundle?.project;
   const make = bundle?.stages.make;
@@ -176,8 +180,11 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
         <input ref={finalInput} type="file" hidden accept="video/mp4,video/quicktime,video/x-m4v,video/webm" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void uploadFinal(file); }} />
       </YpSection>
       {short ? null : <YpSection n={++n} title="최종 썸네일" gq="A · B 필수, C 선택" need>
-        <div className="yp-g3">{SLOTS.map(slot => <FinalThumb key={slot} page={page} slot={slot} make={data} can={canThumb} fix={canThumb && !late} busy={busy === `thumb-${slot}`} job={redoJob} open={fixing === slot}
-          onUpload={file => void uploadThumb(slot, file)} onFix={() => setFixing(slot)} onReset={() => void save({ pair: { slot, title: "", copy: "", reason: "" } }, "pair")} />)}</div>
+        <div className="yp-g3">{SLOTS.map(slot => <FinalThumb key={slot} page={page} slot={slot} make={data} can={canThumb} fix={canThumb && !late} busy={busy === `thumb-${slot}`} job={redoJob} open={fixing === slot || editing === slot}
+          onUpload={file => void uploadThumb(slot, file)} onFix={() => setFixing(slot)} onReset={() => void save({ pair: { slot, title: "", copy: "", reason: "" } }, "pair")}
+          onEdit={project.yp.topic.type === "anim" && canThumb && frameEdit(page.bundle!.stages.plan.data, data, slot) ? () => { setFixing(null); setEditing(slot); } : undefined} />)}</div>
+        {editing && canThumb && frameEdit(page.bundle!.stages.plan.data, data, editing) ? <ThumbEditor key={editing} page={page} slot={editing} start={frameEdit(page.bundle!.stages.plan.data, data, editing)!}
+          onClose={() => setEditing(null)} onSave={value => save({ thumb: { slot: editing, path: value.path, name: value.name, edit: value.edit } }, `thumb-${editing}`)} /> : null}
         {fixing && canThumb && !late ? <PairPanel key={fixing} page={page} slot={fixing} make={data} job={redoJob} saving={busy === "pair"} onClose={() => setFixing(null)}
           onSave={(title, copy, reasonText) => save({ pair: { slot: fixing, title, copy, reason: reasonText } }, "pair").then(ok => { if (ok) setFixing(null); })}
           onRedo={project.yp.topic.type === "anim" ? undefined : reasonText => setRedoAsk({ slot: fixing, reason: reasonText })} /> : null}
@@ -186,7 +193,7 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
           {repick && canThumb ? <div className="yp-card yp-tp-repick">
             <ThumbPicker page={page} title={finalPair(page.bundle!.stages.plan.data, data, "A")?.title ?? ""} can busyJob={false}
               planCopies={SLOTS.flatMap(slot => { const thumb = page.bundle!.stages.plan.data.confirmed?.[slot]?.thumb; return thumb?.copy ? [{ text: thumb.copy, ...(thumb.pick?.accent ? { accent: thumb.pick.accent } : {}) }] : []; })}
-              picked={{}} onPick={async (slot, value) => { if (await save({ thumb: { slot, path: value.path, name: value.name } }, `thumb-${slot}`)) setRepick(false); }} />
+              picked={{}} onPick={async (slot, value) => { if (await save({ thumb: { slot, path: value.path, name: value.name, edit: { candidate: value.pick.candidate, copy: { text: value.copy.text, accent: value.copy.accent ?? "" } } } }, `thumb-${slot}`)) setRepick(false); }} />
           </div> : null}
         </> : <p className="yp-hint">jpg · png로 올려요. 마음에 안 들면 [고치기]에서 직접 고치거나 [공식대로 다시 뽑기]로 후보를 받아요. 바꾼 칸은 최종 검토에서 대표가 확인해요.</p>}
         <SendDialog page={page} task="retitle" open={Boolean(redoAsk)} onClose={() => setRedoAsk(null)} job={redoJob} extra={redoAsk ?? undefined} queryDefault={topicKeywords(projectName(project), project.yp.topic.target)} />
@@ -195,8 +202,18 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
   </YpFrame>;
 }
 
-function FinalThumb({ page, slot, make, can, fix, busy, job, open, onUpload, onFix, onReset }: { page: YpPage; slot: YpSlot; make: YpMake; can: boolean; fix: boolean; busy: boolean; job: ReturnType<typeof useStaffJob>;
-  open: boolean; onUpload: (file: File) => void; onFix: () => void; onReset: () => void }) {
+/** The frame edit a 롱폼 애니메이션 slot opens with: the one 제작 saved, else the 기획안's pick (picture and copy), else none (a hand-made image). */
+function frameEdit(plan: YpPlan, make: YpMake, slot: YpSlot): ThumbSavedEdit | null {
+  const saved = make.thumbs[slot]?.edit;
+  if (saved) return saved;
+  const thumb = plan.confirmed?.[slot]?.thumb;
+  return thumb?.pick && thumb.copy ? { candidate: thumb.pick.candidate, copy: { text: thumb.copy, accent: thumb.pick.accent ?? "" } } : null;
+}
+
+function FinalThumb({ page, slot, make, can, fix, busy, job, open, onUpload, onFix, onReset, onEdit }: { page: YpPage; slot: YpSlot; make: YpMake; can: boolean; fix: boolean; busy: boolean; job: ReturnType<typeof useStaffJob>;
+  open: boolean; onUpload: (file: File) => void; onFix: () => void; onReset: () => void;
+  /** 롱폼 애니메이션: 다듬기 in the frame (and 「우리 틀로 돌아가기」 after a finished thumbnail was put in by hand). */
+  onEdit?: () => void }) {
   const input = useRef<HTMLInputElement>(null);
   const plan = page.bundle!.stages.plan.data;
   const confirmed = plan.confirmed?.[slot];
@@ -212,8 +229,10 @@ function FinalThumb({ page, slot, make, can, fix, busy, job, open, onUpload, onF
     {pair.changed ? <p className="yp-hint" style={{ margin: 0 }}>컨펌본: {confirmed.title}{confirmed.thumb?.copy && confirmed.thumb.copy !== pair.copy ? ` · 「${confirmed.thumb.copy}」` : ""}{pair.reason ? <><br />바꾼 이유: {pair.reason}</> : null}</p> : null}
     {job.status?.job?.slot === slot ? <JobLine job={job} onRetry={onFix} /> : null}
     {redo && fix && !open ? <button type="button" className="yp-btn yp-sm" onClick={onFix}><Sparkles size={14} /> 공식대로 뽑은 후보 {redo.titles.length + redo.copies.length}개 보기</button> : null}
-    {can ? <div className="yp-row-btns"><button type="button" className="yp-btn yp-sm" disabled={busy} onClick={() => input.current?.click()}>{busy ? "올리는 중…" : final ? "다시 올리기" : "이미지 올리기"}</button>
-      {fix && !open ? <button type="button" className="yp-lnk" onClick={onFix}>고치기</button> : null}
+    {final?.edit?.full && onEdit ? <p className="yp-hint">완성본을 직접 넣었어요. <button type="button" className="yp-lnk" onClick={onEdit}>우리 틀로 돌아가기</button></p> : null}
+    {can ? <div className="yp-row-btns">{onEdit && !open ? <button type="button" className="yp-btn yp-sm yp-pri" onClick={onEdit}>다듬기</button> : null}
+      <button type="button" className="yp-btn yp-sm" disabled={busy} onClick={() => input.current?.click()}>{busy ? "올리는 중…" : onEdit ? "완성본 넣기" : final ? "다시 올리기" : "이미지 올리기"}</button>
+      {fix && !open ? <button type="button" className="yp-lnk" onClick={onFix}>{onEdit ? "제목 고치기" : "고치기"}</button> : null}
       {fix && pair.changed ? <button type="button" className="yp-lnk" disabled={busy} onClick={onReset}>컨펌본으로 되돌리기</button> : null}
       {final ? <a className="yp-ib" aria-label="내려받기" href="#" onClick={async event => { event.preventDefault(); const url = await page.client?.assetUrl(page.bundle!.project.id, final.path); if (url) window.open(url, "_blank", "noopener"); }}><Download size={14} /></a> : null}</div> : null}
     <input ref={input} type="file" hidden accept="image/jpeg,image/png" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) onUpload(file); }} />

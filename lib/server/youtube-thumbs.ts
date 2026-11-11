@@ -11,6 +11,7 @@ import { projectName, type YpProject } from "@/lib/youtube-process/project";
 import { SLOTS } from "@/lib/youtube-process/stages";
 import { ThumbFrame } from "@/lib/youtube-process/thumb-frame";
 import { thumbLayout, thumbStyleFor, type ThumbCopy, type ThumbTool } from "@/lib/youtube-process/thumb-style";
+import { thumbCopySchema, thumbEditSchema } from "@/lib/youtube-process/thumb-edit";
 import type { RequestActor } from "./auth";
 import type { readPipeline } from "./content-pipeline";
 import { getYoutubeProject } from "./youtube-process";
@@ -28,7 +29,7 @@ export const THUMB_TOOLS = ["flow", "chatgpt"] as const satisfies readonly Thumb
 const TOOL_NAME: Record<ThumbTool, string> = { flow: "Flow(영어 프롬프트 · 16:9)", chatgpt: "ChatGPT(한국어 프롬프트 · 3:2)" };
 const MAX_CANDIDATES = 120;
 
-const copySchema = z.object({ text: z.string().trim().min(1).max(40), accent: z.string().trim().max(20).default("") }).strict();
+const copySchema = thumbCopySchema;
 export const thumbCandidateSchema = z.object({
   path: z.string().max(200), scene: z.string().trim().min(1).max(400), prompt: z.string().trim().min(1).max(2000),
   copies: z.array(copySchema).min(1).max(3), refs: z.array(z.string().trim().max(40)).max(8).default([]), why: z.string().trim().max(300).default(""),
@@ -192,24 +193,29 @@ async function frameFonts() {
   }
   return fonts;
 }
-export const thumbRenderSchema = z.object({ candidate: z.string().uuid(), copy: copySchema, kind: z.enum(["plan_thumb", "thumb"]) }).strict();
+// 고르기 sends a candidate and a copy; 제작's 다듬기 also sends its edits, and 사진만 바꾸기 a photo of the PD's own (image) instead.
+export const thumbRenderSchema = z.object({ candidate: z.string().uuid().optional(), image: z.string().max(200).optional(), copy: copySchema,
+  kind: z.enum(["plan_thumb", "thumb"]), edit: thumbEditSchema.optional() }).strict().refine(value => Boolean(value.candidate || value.image), "candidate 또는 image가 필요해요.");
 /** 고르기: the picked picture and copy as the final PNG — the same frame the picker drew — stored where the 기획안 (or 제작) slot reads it. */
 export async function renderThumbPick(actor: RequestActor, projectId: string, input: z.infer<typeof thumbRenderSchema>) {
   const project: YpProject = await getYoutubeProject(actor, projectId);
   const style = thumbStyleFor(project.yp.topic.type);
   if (!style) throw new ApiError(409, "THUMB_FORMAT", "썸네일 자동 제작은 롱폼 애니메이션 영상에서만 써요.");
   const service = createServiceSupabase();
-  const candidate = (await readLab(service, project.id)).lab.candidates.find(c => c.id === input.candidate);
-  if (!candidate) throw new ApiError(404, "THUMB_CANDIDATE_NOT_FOUND", "그 후보를 찾지 못했어요.");
+  const candidate = input.candidate ? (await readLab(service, project.id)).lab.candidates.find(c => c.id === input.candidate) : undefined;
+  if (input.candidate && !candidate) throw new ApiError(404, "THUMB_CANDIDATE_NOT_FOUND", "그 후보를 찾지 못했어요.");
+  // 사진만 바꾸기: the PD's own photo, uploaded like a 시안 image (JPEG or PNG — what the renderer reads).
+  if (input.image && !new RegExp(`^youtube/${project.id}/plan_thumb/[0-9a-f-]{36}\\.(png|jpg)$`).test(input.image)) throw new ApiError(400, "THUMB_IMAGE_PATH", "사진을 다시 올려 주세요(JPEG · PNG).");
+  const source = input.image ?? candidate!.path;
   const copy = { text: input.copy.text, ...(input.copy.accent ? { accent: input.copy.accent } : {}) };
-  const broken = thumbLayout(copy, style).checks.filter(check => !check.ok);
-  if (broken.length) throw new ApiError(422, "THUMB_COPY", `문구를 고쳐 주세요: ${broken.map(check => check.text).join(" / ")}`);
-  const { data: file } = await service.storage.from(BUCKET).download(candidate.path);
-  if (!file) throw new ApiError(404, "THUMB_IMAGE_MISSING", "후보 그림을 찾지 못했어요.");
-  const image = `data:${candidate.path.endsWith(".png") ? "image/png" : "image/jpeg"};base64,${Buffer.from(await file.arrayBuffer()).toString("base64")}`;
-  const png = Buffer.from(await new ImageResponse(createElement(ThumbFrame, { style, image, copy }), { width: style.width, height: style.height, fonts: await frameFonts() }).arrayBuffer());
+  const broken = thumbLayout(copy, style, input.edit).checks.filter(check => !check.ok);
+  if (broken.length) throw new ApiError(422, "THUMB_COPY", `고쳐 주세요: ${broken.map(check => check.text).join(" / ")}`);
+  const { data: file } = await service.storage.from(BUCKET).download(source);
+  if (!file) throw new ApiError(404, "THUMB_IMAGE_MISSING", "그림을 찾지 못했어요.");
+  const image = `data:${source.endsWith(".png") ? "image/png" : "image/jpeg"};base64,${Buffer.from(await file.arrayBuffer()).toString("base64")}`;
+  const png = Buffer.from(await new ImageResponse(createElement(ThumbFrame, { style, image, copy, edit: input.edit }), { width: style.width, height: style.height, fonts: await frameFonts() }).arrayBuffer());
   const path = `youtube/${project.id}/${input.kind}/${randomUUID()}.png`;
   const { error } = await service.storage.from(BUCKET).upload(path, png, { contentType: "image/png" });
   if (error) throw new ApiError(502, "THUMB_SAVE_FAILED", "썸네일을 저장하지 못했어요.");
-  return { path, name: `썸네일 후보 ${candidate.n}.png` };
+  return { path, name: candidate ? `썸네일 후보 ${candidate.n}.png` : "썸네일(내 사진).png" };
 }

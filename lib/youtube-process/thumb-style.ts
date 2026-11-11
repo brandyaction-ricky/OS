@@ -41,8 +41,23 @@ export const THUMB_STYLES: Record<string, ThumbStyle> = {
 export const thumbStyleFor = (kind?: YpKind | null) => Object.values(THUMB_STYLES).find((style) => kind && style.kinds.includes(kind)) ?? null;
 
 export interface ThumbCopy { text: string; accent?: string }
+/**
+ * 제작 「최종 썸네일」 상세 수정 (요청 P2): what the PD changed on a picked thumbnail. The frame draws it the same on screen and in the PNG.
+ * accentStyle: the blue word as 글자색 (default), 형광펜 (ink on a light blue band) or 밑줄. size: the title size within the style's range.
+ * photo: the picture moved (px on the 1280×720 frame), scaled and brightened. extras: lines added anywhere on the frame.
+ */
+export interface ThumbEdit {
+  accentStyle?: "color" | "marker" | "underline";
+  size?: number;
+  photo?: { scale: number; x: number; y: number; brightness: number };
+  extras?: ThumbExtra[];
+}
+export interface ThumbExtra { id: string; text: string; color: ThumbExtraColor; size: number; x: number; y: number }
+export const THUMB_EXTRA_COLORS = { ink: "잉크", accent: "파랑", red: "빨강", white: "흰 글자" } as const;
+export type ThumbExtraColor = keyof typeof THUMB_EXTRA_COLORS;
+export const THUMB_PHOTO_LIMITS = { scale: [0.5, 1.6], x: [-640, 640], y: [-360, 360], brightness: [0.6, 1.4] } as const;
 export interface ThumbLayout { lines: string[]; size: number; titleTop: number; subjectBox: { top: number; height: number }; checks: ThumbCheck[] }
-export interface ThumbCheck { id: "bottom" | "phone" | "lines" | "chars"; ok: boolean; text: string }
+export interface ThumbCheck { id: "bottom" | "phone" | "lines" | "chars" | "extras"; ok: boolean; text: string }
 
 /** Glyph width in em (Pretendard Black): Hangul and wide symbols ≈ 1, Latin and digits narrower, spaces a third. */
 const glyph = (ch: string) => /\s/.test(ch) ? 0.3 : /[가-힣ㄱ-ㅎㅏ-ㅣ一-龥]/.test(ch) ? 1 : /[A-Z0-9%?!]/.test(ch) ? 0.66 : 0.56;
@@ -60,11 +75,12 @@ export function thumbLines(text: string, style: ThumbStyle) {
 }
 
 /** Where everything goes on the 1280×720 frame, and the checks that follow from it (the 50 px bottom, the phone text size, the line rules). */
-export function thumbLayout(copy: ThumbCopy, style: ThumbStyle): ThumbLayout {
+export function thumbLayout(copy: ThumbCopy, style: ThumbStyle, edit?: ThumbEdit): ThumbLayout {
   const t = style.title, lines = thumbLines(copy.text, style);
   const widest = Math.max(1, ...lines.map((line) => thumbLineEm(line, t.tracking)));
   const fit = Math.floor((style.width - 2 * t.sidePx) / widest);
-  const size = Math.max(t.minPx, Math.min(t.maxPx, fit));
+  // A size the PD set stays within the style's range and never wider than the frame.
+  const size = Math.max(t.minPx, Math.min(t.maxPx, fit, edit?.size ?? fit));
   const block = lines.length * size * t.lineHeight;
   const titleTop = Math.round(style.height - t.bottomPx - block);
   const room = titleTop - style.subject.topPx;
@@ -76,8 +92,27 @@ export function thumbLayout(copy: ThumbCopy, style: ThumbStyle): ThumbLayout {
     { id: "phone", ok: phonePx >= style.phone.minTextPx, text: `휴대폰 피드 글자 ${Math.round(phonePx)}px (기준 ${style.phone.minTextPx}px 이상)` },
     { id: "lines", ok: lines.length >= 1 && lines.length <= t.maxLines && thumbLines(copy.text, { ...style, title: { ...t, maxLines: 9 } }).length <= t.maxLines, text: `${lines.length}줄 (최대 ${t.maxLines}줄)` },
     { id: "chars", ok: longest <= t.maxChars && fit >= t.minPx, text: fit >= t.minPx ? `한 줄 ${longest}자 (최대 ${t.maxChars}자)` : `글자가 길어 ${t.minPx}px로 한 줄에 다 안 들어가요` },
+    ...(edit?.extras?.length ? [extrasCheck(edit.extras, style)] : []),
   ];
   return { lines, size, titleTop, subjectBox, checks };
+}
+
+/** Added lines stay inside the frame and above the 50 px bottom (their width is read like the title's). */
+function extrasCheck(extras: ThumbExtra[], style: ThumbStyle): ThumbCheck {
+  const out = extras.filter((x) => x.x < 0 || x.y < 0 || x.x + thumbLineEm(x.text, style.title.tracking) * x.size > style.width || x.y + x.size * style.title.lineHeight > style.height - style.title.bottomPx);
+  return { id: "extras", ok: !out.length, text: out.length ? `더한 문구 ${out.map((x) => `「${x.text}」`).join(" ")}가 화면 밖이나 하단 공백에 걸려요` : `더한 문구 ${extras.length}개 화면 안` };
+}
+const clamp = (value: number, [low, high]: readonly [number, number]) => Math.min(high, Math.max(low, value));
+/** An edit as the frame may use it: numbers inside their ranges, at most 4 added lines. */
+export function cleanThumbEdit(edit: ThumbEdit | undefined, style: ThumbStyle): ThumbEdit {
+  if (!edit) return {};
+  const L = THUMB_PHOTO_LIMITS;
+  return {
+    ...(edit.accentStyle ? { accentStyle: edit.accentStyle } : {}),
+    ...(edit.size ? { size: clamp(Math.round(edit.size), [style.title.minPx, style.title.maxPx]) } : {}),
+    ...(edit.photo ? { photo: { scale: clamp(edit.photo.scale, L.scale), x: Math.round(clamp(edit.photo.x, L.x)), y: Math.round(clamp(edit.photo.y, L.y)), brightness: clamp(edit.photo.brightness, L.brightness) } } : {}),
+    ...(edit.extras?.length ? { extras: edit.extras.slice(0, 4).map((x) => ({ ...x, size: clamp(Math.round(x.size), [36, 140]), x: Math.round(x.x), y: Math.round(x.y) })) } : {}),
+  };
 }
 
 /** The accent's place in a line, so the composite can colour that part. */
