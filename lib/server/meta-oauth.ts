@@ -58,10 +58,23 @@ export function metaAuthorizationUrl(platform: MetaPlatform, state: string) {
   const config = CONFIG[platform];
   return `${config.authorization}?${new URLSearchParams({ client_id: required(`${config.prefix}_APP_ID`), redirect_uri: metaRedirectUri(), response_type: "code", scope: config.scopes.join(","), state })}`;
 }
-async function metaJson(url: string, options: RequestInit, stage?: MetaOAuthStage) {
+// Next's global fetch puts the full URL in its tracing span. Meta requires both
+// credentials in this GET's query, so send it directly over TLS without redirects.
+async function getThreadsToken(url: string, options: RequestInit): Promise<Response> {
+  const { get } = await import("node:https");
+  const { text } = await import("node:stream/consumers");
+  return new Promise((resolve, reject) => {
+    get(url, { signal: options.signal ?? undefined }, reply => {
+      text(reply)
+        .then(body => new Response(body || null, { status: reply.statusCode }))
+        .then(resolve, reject);
+    }).once("error", reject);
+  });
+}
+async function metaJson(url: string, options: RequestInit, stage?: MetaOAuthStage, request: (url: string, init: RequestInit) => Promise<Response> = fetch) {
   let response: Response;
   try {
-    response = await fetch(url, { ...options, cache: "no-store", signal: AbortSignal.timeout(20_000) });
+    response = await request(url, { ...options, cache: "no-store", signal: AbortSignal.timeout(20_000) });
   } catch {
     // Fetch errors may embed credential-bearing URLs. Keep only the stage.
     throw new ApiError(502, "META_CONNECTION_FAILED", "Meta에 연결하지 못했습니다.", stage ? { stage } : undefined);
@@ -119,7 +132,7 @@ export async function saveMetaConnection(ownerId: string, platform: MetaPlatform
     const long = platform === "threads"
       ? await metaJson(`https://graph.threads.com/access_token?${new URLSearchParams({
           grant_type: "th_exchange_token", client_secret: secret, access_token: short.access_token,
-        })}`, { redirect: "error" }, "long_token")
+        })}`, {}, "long_token", getThreadsToken)
       : await metaJson(`${config.host}/access_token?${new URLSearchParams({
           grant_type: "ig_exchange_token", client_secret: secret,
         })}`, { headers: { authorization: `Bearer ${short.access_token}` } }, "long_token");
