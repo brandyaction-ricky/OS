@@ -4,9 +4,12 @@ import {transcribeMeeting} from "@/lib/api-client";
 import "./meeting-recorder.css";
 
 // A meeting is recorded in back-to-back segments so it can run as long as it needs: the
-// transcription endpoint takes one request under 4MB (about 16 minutes at 32kbps). Each segment
-// is transcribed in order while recording continues and handed to onTranscript.
-const SEGMENT_MS=10*60_000,SEGMENT_MAX_BYTES=3_600_000;
+// transcription endpoint takes one request under 4MB, and gpt-4o-mini-transcribe writes at most
+// 2,000 tokens per request, which ten minutes of Korean speech can exceed (the rest is cut off).
+// Five-minute segments stay well inside both. Each is transcribed in order and handed to onTranscript.
+const SEGMENT_MS=5*60_000,SEGMENT_MAX_BYTES=3_600_000;
+// A failed segment is tried again on its own (a token refresh or a network blip) before it asks the person.
+const RETRY_DELAYS_MS=[5_000,30_000];
 export type RecorderSegment={no:number;blob:Blob;seconds:number;state:"waiting"|"working"|"done"|"failed"};
 
 export function useSegmentedRecorder({token,onTranscript}:{token:string|null;onTranscript:(text:string)=>void}){
@@ -28,8 +31,13 @@ export function useSegmentedRecorder({token,onTranscript}:{token:string|null;onT
     setSegments(list=>[...list.filter(s=>s.no!==segment.no),{...segment,state:"waiting" as const}].sort((a,b)=>a.no-b.no));
     queue.current=queue.current.then(async()=>{
       mark(segment.no,"working");
-      try{const result=await transcribeMeeting(tokenRef.current,segment.blob);deliver.current(result.transcript);mark(segment.no,"done");}
-      catch(e){mark(segment.no,"failed");setError(`${segment.no}구간 전사 실패: ${(e as Error).message} · 다시 시도할 수 있습니다.`);}
+      for(let attempt=0;;attempt++){
+        try{const result=await transcribeMeeting(tokenRef.current,segment.blob);deliver.current(result.transcript);mark(segment.no,"done");return;}
+        catch(e){
+          if(attempt<RETRY_DELAYS_MS.length){await new Promise(resolve=>window.setTimeout(resolve,RETRY_DELAYS_MS[attempt]));continue;}
+          mark(segment.no,"failed");setError(`${segment.no}구간 받아쓰기 실패: ${(e as Error).message} · 「다시 시도」를 눌러 주세요.`);return;
+        }
+      }
     });
   },[]);
   // Plain functions: everything they touch lives in refs, so a closure from any render works.
@@ -60,7 +68,7 @@ export function useSegmentedRecorder({token,onTranscript}:{token:string|null;onT
     minutes:Math.floor(Math.max(0,now-startedAt)/60_000)};
 }
 
-// What the person sees during and after a recording: elapsed time, and for every 10-minute
+// What the person sees during and after a recording: elapsed time, and for every 5-minute
 // segment whether it is transcribed, being transcribed, waiting or failed, with a progress bar.
 export function RecorderProgress({recorder}:{recorder:ReturnType<typeof useSegmentedRecorder>}){
   const {recording,segments,minutes}=recorder;
@@ -75,6 +83,6 @@ export function RecorderProgress({recorder}:{recorder:ReturnType<typeof useSegme
     <ol>{segments.map(s=><li key={s.no} data-state={s.state}><span>{s.no}구간 · {clock(s.seconds)}</span><span>{label[s.state]}</span>
       {s.state==="failed"?<button type="button" onClick={()=>recorder.retry(s)}>다시 시도</button>:null}</li>)}
       {recording?<li data-state="recording"><span>{segments.length+1}구간</span><span>녹음 중</span></li>:null}</ol>
-    {!finished?<small>다른 메뉴로 옮겨도 녹음은 이어져요. 브라우저 탭을 닫거나 새로고침하면 멈춰요. 10분마다 한 구간씩 받아써요.</small>:null}
+    {!finished?<small>다른 메뉴로 옮겨도 녹음은 이어져요. 브라우저 탭을 닫거나 새로고침하면 멈춰요. 5분마다 한 구간씩 받아써요.</small>:null}
   </div>;
 }

@@ -148,3 +148,16 @@ test("prepareMeetingBrief picks the newest meeting with content, reading the bus
   assert.equal((await prepareMeetingBrief(supabase, { brand: "마이인" })).latestMeeting.id, "oct");
   assert.equal((await prepareMeetingBrief(supabase, { brand: "브랜디에듀" })).latestMeeting.id, "edu");
 });
+
+test("prepareMeetingBrief takes the newest held meeting even before its AI summary, and skips planned ones", async () => {
+  const prepareMeetingBrief = await loadPrepareMeetingBrief();
+  const meetings = [
+    { id: "planned", status: "planned", title: "마이인 회의", brand: "마이인", starts_at: "2026-11-12T01:00:00Z", description: "", metadata: { agenda: "- 확인할 안건: 옛 안건" } },
+    { id: "nov11", status: "active", title: "마이인 회의", brand: "마이인", starts_at: "2026-11-11T01:00:00Z", description: "11일 회의 메모", metadata: { items: [{ kind: "open", text: "11일 미결", state: "pending" }] } },
+    { id: "oct30", status: "done", title: "마이인 회의", brand: "마이인", starts_at: "2026-10-30T01:00:00Z", description: "", metadata: { summary: "10-30 요약", items: [{ kind: "open", text: "10-30 미결", state: "pending" }] } },
+  ];
+  const result = await prepareMeetingBrief(fakeSupabase({ meetings }), { brand: "마이인" });
+  assert.equal(result.latestMeeting?.id, "nov11");
+  assert.equal(JSON.stringify(result.pending), JSON.stringify(["11일 미결"]));
+  assert.equal(result.latestMeeting?.summary, "11일 회의 메모");
+});

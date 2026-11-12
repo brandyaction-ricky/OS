@@ -51,13 +51,16 @@ export async function prepareMeetingBrief(
   const brandedMeetings = (meetings.data ?? []).filter(item => !wantedBusiness || meetingBrand(item) === wantedBusiness);
   const matchingMeetings = (brandedMeetings.length ? brandedMeetings : (meetings.data ?? []).filter(item => !meetingBrand(item)))
     .sort((a,b) => (b.starts_at ?? "").localeCompare(a.starts_at ?? ""));
-  // The newest meeting with a summary or a transcript, finished or not: meetings left unclosed still count.
-  const latest = matchingMeetings.find(item => item.status !== "cancelled" && (item.metadata?.summary || item.metadata?.transcript)) ?? null;
+  // The newest meeting that was held and has anything in it, finished or not: meetings left unclosed still count.
+  // Requiring an AI summary made every new prep reuse the last summarised meeting (2026-11: 10-30's agenda came back on 11-02, 11-06 and 11-11).
+  const held = (item: { status?: string; description?: string | null; metadata?: Record<string, unknown> | null }) => item.status !== "cancelled" && item.status !== "planned"
+    && Boolean(item.metadata?.summary || item.metadata?.transcript || String(item.description ?? "").trim() || (Array.isArray(item.metadata?.items) && item.metadata.items.length));
+  const latest = matchingMeetings.find(held) ?? null;
   let pending = Array.isArray(latest?.metadata?.pending) ? latest.metadata.pending.map(String) : [];
   if (Array.isArray(latest?.metadata?.items)) pending = [...pending, ...latest.metadata.items.filter((item: {kind?:string;state?:string}) => item.kind === "open" && item.state !== "discarded").map((item: {text?:string}) => String(item.text ?? "")).filter(Boolean)];
   pending = [...new Set([...pending, ...matchingMeetings.filter(item => item.status === "review").flatMap(item => Array.isArray(item.metadata?.items) ? item.metadata.items.filter((candidate: {kind?:string;state?:string}) => candidate.kind === "decision" && candidate.state !== "discarded").map((candidate: {text?:string}) => String(candidate.text ?? "")).filter(Boolean) : [])])];
   let latestSummary = typeof latest?.metadata?.summary === "string" && latest.metadata.summary ? latest.metadata.summary
-    : typeof latest?.metadata?.transcript === "string" ? latest.metadata.transcript.slice(0, 800) : "";
+    : typeof latest?.metadata?.transcript === "string" ? latest.metadata.transcript.slice(0, 800) : String(latest?.description ?? "").slice(0, 800);
   let latestTitle = latest?.title ?? "";
   let latestDate = latest?.starts_at ?? null;
 

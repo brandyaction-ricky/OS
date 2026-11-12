@@ -110,7 +110,11 @@ export function TeamWorkspaceV1({ section }: { section: Section }) {
   // Selection, tabs and client-side filters reuse the loaded workspace.
   const scheduleWeek = section === "schedule" ? params.get("week") : null;
   const scheduleMonth = section === "schedule" && params.get("view") === "month";
-  const loadKey = JSON.stringify([accessToken, demo, sessionLoading, profile?.id, profile?.role, profile?.memberKind, profile?.isActive, profile?.team, profile?.personKind, profile?.isSharedAccount, section, scheduleWeek, scheduleMonth]);
+  // A token refresh (about hourly) is not a new scope: reloading on it emptied the screen and dropped a meeting's
+  // unsaved notes and transcripts mid-recording. Requests read the latest token from a ref instead.
+  const tokenRef = useRef(accessToken); tokenRef.current = accessToken;
+  const signedIn = Boolean(accessToken);
+  const loadKey = JSON.stringify([signedIn, demo, sessionLoading, profile?.id, profile?.role, profile?.memberKind, profile?.isActive, profile?.team, profile?.personKind, profile?.isSharedAccount, section, scheduleWeek, scheduleMonth]);
   const currentLoadKey = useRef(loadKey); currentLoadKey.current = loadKey;
   const generation = useRef(0);
   const absenceGeneration = useRef(0);
@@ -119,7 +123,8 @@ export function TeamWorkspaceV1({ section }: { section: Section }) {
   const [absenceState, setAbsenceState] = useState<{ key: string; rows: TeamAbsence[]; loading: boolean; error: string }>({ key: loadKey, rows: [], loading: !demo, error: "" });
   // Never render a prior account, permission scope or schedule range while its replacement loads.
   const data = snapshot?.key === loadKey ? snapshot.data : EMPTY_DATA;
-  const loading = loadStatus.key === loadKey ? loadStatus.loading : !demo;
+  // Only the first read of a scope shows the skeleton; later reloads (after a save, a refresh) keep the screen mounted.
+  const loading = (loadStatus.key === loadKey ? loadStatus.loading : !demo) && snapshot?.key !== loadKey;
   const error = loadStatus.key === loadKey ? loadStatus.error : "";
   const absences = absenceState.key === loadKey ? absenceState.rows : [];
   const absenceError = absenceState.key === loadKey ? absenceState.error : "";
@@ -129,6 +134,7 @@ export function TeamWorkspaceV1({ section }: { section: Section }) {
     if (loadKey !== currentLoadKey.current) return;
     const request = ++absenceGeneration.current;
     const current = () => request === absenceGeneration.current && loadKey === currentLoadKey.current;
+    const accessToken = tokenRef.current;
     if (demo || sessionLoading || !accessToken || !profile?.id || profile.isActive === false || (section !== "people" && section !== "schedule")) {
       setAbsenceState({ key: loadKey, rows: [], loading: false, error: "" });
       return;
@@ -141,12 +147,13 @@ export function TeamWorkspaceV1({ section }: { section: Section }) {
     } catch {
       if (current()) setAbsenceState({ key: loadKey, rows: [], loading: false, error: "부재 일정을 확인하지 못했습니다." });
     }
-  }, [accessToken, demo, sessionLoading, profile?.id, profile?.isActive, section, scheduleWeek, scheduleMonth, loadKey]);
+  }, [demo, sessionLoading, profile?.id, profile?.isActive, section, scheduleWeek, scheduleMonth, loadKey]);
   const load = useCallback(async () => {
     if (loadKey !== currentLoadKey.current) return;
     const request = ++generation.current;
     const current = () => request === generation.current && loadKey === currentLoadKey.current;
     void loadAbsences();
+    const accessToken = tokenRef.current;
     if (demo || sessionLoading || !accessToken || !profile?.id || profile.isActive === false) {
       setSnapshot({ key: loadKey, data: EMPTY_DATA });
       setLoadStatus({ key: loadKey, loading: !demo && sessionLoading, error: "" });
@@ -179,7 +186,7 @@ export function TeamWorkspaceV1({ section }: { section: Section }) {
       setSnapshot({ key: loadKey, data: EMPTY_DATA });
       setLoadStatus({ key: loadKey, loading: false, error: cause instanceof Error ? cause.message : "팀 화면을 불러오지 못했습니다." });
     }
-  }, [accessToken, demo, sessionLoading, profile?.id, profile?.isActive, section, scheduleWeek, scheduleMonth, loadKey, loadAbsences]);
+  }, [demo, sessionLoading, profile?.id, profile?.isActive, section, scheduleWeek, scheduleMonth, loadKey, loadAbsences]);
   useEffect(() => { void load(); const requests = generation, absenceRequests = absenceGeneration; return () => { requests.current++; absenceRequests.current++; }; }, [load]);
 
   const activeTab = params.get("tab") ?? "records";
