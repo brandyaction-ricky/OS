@@ -383,7 +383,7 @@ export async function summarizeMeeting(token: string | null, transcript: string,
 
 export async function prepareMeeting(token: string | null, brand = "", team = "") {
   const query = new URLSearchParams(); if (brand) query.set("brand", brand); if (team) query.set("team", team);
-  return apiRequest<{ latestMeeting: { id: string; title: string; date: string | null; pending: string[]; summary: string } | null; pending: string[]; todos: OsRecord[]; completed: OsRecord[]; kpis: { id: string; title: string; current: number; previous: number; unit: string; signal: string }[]; unreviewed?: Array<{ id: string; title: string; date: string | null }> }>(`/api/v1/meeting-prep?${query}`, { token });
+  return apiRequest<{ latestMeeting: { id: string; title: string; date: string | null; pending: string[]; summary: string } | null; pending: string[]; followUps?: OsRecord[]; todos: OsRecord[]; completed: OsRecord[]; kpis: { id: string; title: string; current: number; previous: number; unit: string; signal: string }[]; unreviewed?: Array<{ id: string; title: string; date: string | null }> }>(`/api/v1/meeting-prep?${query}`, { token });
 }
 
 export async function getConnectionChecks(token: string | null) {

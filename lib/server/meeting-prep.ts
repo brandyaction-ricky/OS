@@ -25,6 +25,8 @@ export interface MeetingPrepKpi { id: string; title: string; current: number; pr
 export interface MeetingPrepResult {
   latestMeeting: { id: string; title: string; date: string | null; pending: string[]; summary: string } | null;
   pending: string[];
+  /** Unfinished tasks that came out of this business's meetings of the last 60 days, newest meeting first. */
+  followUps: Array<Record<string, unknown>>;
   todos: Array<Record<string, unknown>>;
   completed: Array<Record<string, unknown>>;
   kpis: MeetingPrepKpi[];
@@ -58,7 +60,17 @@ export async function prepareMeetingBrief(
   const latest = matchingMeetings.find(held) ?? null;
   let pending = Array.isArray(latest?.metadata?.pending) ? latest.metadata.pending.map(String) : [];
   if (Array.isArray(latest?.metadata?.items)) pending = [...pending, ...latest.metadata.items.filter((item: {kind?:string;state?:string}) => item.kind === "open" && item.state !== "discarded").map((item: {text?:string}) => String(item.text ?? "")).filter(Boolean)];
-  pending = [...new Set([...pending, ...matchingMeetings.filter(item => item.status === "review").flatMap(item => Array.isArray(item.metadata?.items) ? item.metadata.items.filter((candidate: {kind?:string;state?:string}) => candidate.kind === "decision" && candidate.state !== "discarded").map((candidate: {text?:string}) => String(candidate.text ?? "")).filter(Boolean) : [])])];
+  // Only the last meeting's open questions. Decision candidates of unreviewed meetings are not open questions
+  // (they read "~하기로 했다"); they stay listed under unreviewed for review instead (대표 2026-11-12).
+  pending = [...new Set(pending)];
+  // 체크할 할 일: tasks created from this business's recent meetings that are not finished yet.
+  const since = new Date(Date.now() - 60 * 86_400_000).toISOString();
+  const recentIds = matchingMeetings.filter(item => item.status !== "cancelled" && (item.starts_at ?? item.updated_at ?? "") >= since).map(item => item.id);
+  const followUpRead = recentIds.length ? await supabase.from("os_records").select("*").eq("record_type", "task").in("parent_id", recentIds).is("archived_at", null) : { data: [], error: null };
+  if (followUpRead.error) throw new ApiError(400, "MEETING_PREP_FAILED", "회의 준비 자료를 불러오지 못했습니다.", followUpRead.error.message);
+  const order = new Map(recentIds.map((id, index) => [id, index]));
+  const followUps = (followUpRead.data ?? []).filter(item => recentIds.includes(item.parent_id) && !["done", "cancelled"].includes(item.status))
+    .sort((a, b) => (order.get(a.parent_id) ?? 0) - (order.get(b.parent_id) ?? 0)).slice(0, 30);
   let latestSummary = typeof latest?.metadata?.summary === "string" && latest.metadata.summary ? latest.metadata.summary
     : typeof latest?.metadata?.transcript === "string" ? latest.metadata.transcript.slice(0, 800) : String(latest?.description ?? "").slice(0, 800);
   let latestTitle = latest?.title ?? "";
@@ -112,5 +124,5 @@ export async function prepareMeetingBrief(
     return { id: item.id, title: item.title, current, previous, unit: item.metric_unit, signal: `${formatKpiValue(current, item.metric_unit)} · ${signal.label}` };
   });
   const unreviewed = matchingMeetings.filter(item => item.status === "review").map(item => ({ id: item.id, title: item.title, date: item.starts_at ?? null }));
-  return { latestMeeting: (latest || latestSummary) ? { id: latest?.id ?? "", title: latestTitle, date: latestDate, pending, summary: latestSummary } : null, pending, todos: openTodos, completed, kpis: latestKpis, unreviewed };
+  return { latestMeeting: (latest || latestSummary) ? { id: latest?.id ?? "", title: latestTitle, date: latestDate, pending, summary: latestSummary } : null, pending, followUps, todos: openTodos, completed, kpis: latestKpis, unreviewed };
 }
