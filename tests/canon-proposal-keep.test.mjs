@@ -25,9 +25,31 @@ test("a line the editor rewrote and the person edited takes the edited text", ()
 
 test("the proposal editor keeps the original wording and the form survives a reload", () => {
   const canon = readFileSync("components/knowledge/canon.tsx", "utf8");
-  assert.match(canon, /onNormalize=\{value=>\{normalized\.current=value;\}\} onChange=\{value=>setContent\(keepOriginalLines\(opened,normalized\.current,value\)\)\}/);
+  assert.match(canon, /onNormalize=\{value=>\{normalized\.current=value;\}\} onChange=\{value=>setContent\(keepOriginalLines\(opened\.current,normalized\.current,value\)\)\}/);
   assert.match(canon, /localStorage\.setItem\(formKey,JSON\.stringify\(\{reason,approver,due,folder,tags,ai\}\)\)/);
   assert.match(canon, /localStorage\.removeItem\(formKey\)/, "cleared once sent");
   const editor = readFileSync("components/knowledge-rich-editor-initialized.tsx", "utf8");
   assert.match(editor, /if \(initialNormalize\) onNormalize\?\.\(preserveKnowledgeWikiLinks\(value\)\);\s*else onChange\(preserveKnowledgeWikiLinks\(value\)\);/);
+});
+
+// 2026-11-12 df1b5d54: what the rich editor writes for a table after one cell changed — every row re-padded, `~` escaped,
+// a blank line before the table.
+const table = ["## 제품 라인업", "| 상품 | 가격 | 역할 |", "|---|---|---|", "| 자체 진단 보고서 | 59,000원 | BM 진입 깔때기 (월 ~1,300만 검증) |", "| 해설 영상 | 39,000원 | 업셀 |", "", "끝"].join("\n");
+const tableNormalized = ["## 제품 라인업", "", "| 상품        | 가격      | 역할                      |", "| --------- | ------- | ----------------------- |", "| 자체 진단 보고서 | 59,000원 | BM 진입 깔때기 (월 \\~1,300만 검증) |", "| 해설 영상     | 39,000원 | 업셀                      |", "", "끝"].join("\n");
+const tableEdited = ["## 제품 라인업", "", "| 상품        | 가격      | 역할                        |", "| --------- | ------- | ------------------------- |", "| 자체 진단 보고서 | 68,000원 | BM 진입 깔때기 (월 \\~1,300만 검증)   |", "| 해설 영상     | 39,000원 | 진단 후 업셀                   |", "", "끝"].join("\n");
+
+test("editing table cells changes only those cells; spacing, escapes and blank lines stay as written", () => {
+  assert.equal(keepOriginalLines(table, tableNormalized, tableEdited),
+    table.replace("59,000원", "68,000원").replace("| 업셀 |", "| 진단 후 업셀 |"));
+  const added = keepOriginalLines(table, tableNormalized, tableNormalized.replace("| 해설 영상     | 39,000원 | 업셀                      |", "$&\n| 핵심 보고서 | 19,800원 | 새 상품 |"));
+  assert.equal(added, table.replace("| 해설 영상 | 39,000원 | 업셀 |", "$&\n| 핵심 보고서 | 19,800원 | 새 상품 |"), "a new row, no padding");
+});
+
+test("a workspace refresh does not reopen the proposal editor; the draft can be discarded; Markdown can be edited as written", () => {
+  const canon = readFileSync("components/knowledge/canon.tsx", "utf8");
+  assert.match(canon, /setDoc\(current=>current\?\.id===id\?current:null\)/, "autosave and window focus refresh the workspace: keep the loaded page");
+  assert.doesNotMatch(canon, /let live=true;setDoc\(null\)/);
+  assert.match(canon, /command\(\{action:"document\.discard",id:doc\.id\}\);lastSaved\.current="";setTitle\(doc\.title\);setContent\(doc\.content_md\);restart\(doc\.content_md\)/);
+  assert.match(canon, />초안 버리기</);
+  assert.match(canon, /aria-label="제안 본문 마크다운"[^>]*value=\{content\} onChange=\{e=>setContent\(e\.target\.value\)\}/);
 });
