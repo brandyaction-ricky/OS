@@ -8,16 +8,16 @@ import { vatLines, vatPeriod, vatRows, type VatCancel, type VatExternal, type Va
 // 재무 요청 a5310134: 세금계산서 목록·같은 매출 짝·입금 확인, 그리고 부가세 참고 자료. Every read and write goes through the
 // caller's own client, so the os_fin_* finance-access policies decide what is visible.
 
-const BIZ = z.enum(["ba", "edu", "myin", "hm"]);
+export const BIZ = z.enum(["ba", "edu", "myin", "hm"]);
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const PAGE = 1000;
 const shift = (date: string, days: number) => new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
 
-async function all<T>(read: (from: number, to: number) => PromiseLike<{ data: unknown[] | null; error: { code?: string; message?: string } | null }>): Promise<T[]> {
+export async function all<T>(read: (from: number, to: number) => PromiseLike<{ data: unknown[] | null; error: { code?: string; message?: string } | null }>, fail: (error: { code?: string; message?: string }) => never = financeDbError): Promise<T[]> {
   const rows: T[] = [];
   for (let offset = 0; ; offset += PAGE) {
     const { data, error } = await read(offset, offset + PAGE - 1);
-    if (error) financeDbError(error);
+    if (error) fail(error);
     rows.push(...(data ?? []) as T[]);
     if ((data?.length ?? 0) < PAGE) return rows;
   }
@@ -62,7 +62,7 @@ export async function listTaxInvoices(actor: RequestActor, input: z.infer<typeof
 }
 
 const won = z.number().int().refine(Number.isSafeInteger);
-const invoiceSchema = z.object({
+export const invoiceSchema = z.object({
   approval_no: z.string().trim().min(1).max(40), invoice_class: z.enum(["tax", "exempt"]), is_modified: z.boolean(), kind_label: z.string().max(40),
   written_date: day, issued_date: day.nullable(), sent_date: day.nullable(),
   supplier_reg_no: z.string().regex(/^\d{0,10}$/), supplier_name: z.string().max(120), buyer_reg_no: z.string().regex(/^\d{0,13}$/), buyer_name: z.string().max(120), buyer_email: z.string().max(200),

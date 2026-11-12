@@ -50,7 +50,7 @@ export function asideHometaxInstruction(from: string, to: string) {
 }
 
 /** 홈택스 .xls downloads are usually an HTML table; read those, and every .csv/.xlsx through the shared reader. */
-async function readRows(file: File): Promise<string[][]> {
+export async function readRows(file: File): Promise<string[][]> {
   if (/\.xls$/i.test(file.name)) {
     const text = await file.text();
     if (!/<table/i.test(text)) throw new Error("이 .xls 파일은 읽지 못해요. 엑셀에서 열어 .xlsx로 저장한 뒤 올려 주세요.");

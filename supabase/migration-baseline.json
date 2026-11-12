@@ -1068,6 +1068,15 @@
       "productionApprovedAt": null,
       "appliedEnvironments": [],
       "notes": "Additive: one new security-invoker function with the same grants as v1; v1, rows and policies unchanged. The route falls back to v1 (PGRST202) until v2 is in, so deploy order does not matter. Checked on temp tables (window 2 rows without snapshots, 1 snapshot published in the window, latest cumulative kept). Manual undo: supabase/rollback/20261112220000_content_metric_window_v2.down.sql. Production only with the owner's approval through the owner-run script (auto mode blocks production database access). Not applied to DEV."
+    },
+    {
+      "file": "20261113100000_finance_purchase_invoices.sql",
+      "sha256": "44f17c92543b55d4710e4e920b5905a3730e26f2cd6a3ad0428e953ca58a665b",
+      "purpose": "재무 2026-11-13: os_fin_purchase_invoices (홈택스 전자(세금)계산서 매입) for the 매입세액 and 예상 납부세액 (매출세액 − 매입세액) reference on 부가세 신고 참고 자료",
+      "requiresApproval": true,
+      "productionApprovedAt": null,
+      "appliedEnvironments": [],
+      "notes": "REVIEW ONLY, not applied anywhere and not run against any database. Additive: one new table with the same columns, checks, index, grants (select/insert/update, no delete) and finance_read/finance_insert/finance_update policies as os_fin_tax_invoices (tests/finance-purchase-vat.test.mjs compares the two definitions); no existing table, row, policy or function changes, os_fin_log_action untouched. Deploy order does not matter: until the table exists GET /api/v1/finance/vat answers purchase.available=false with the sales fields unchanged and /api/v1/finance/purchase-invoices answers 503 FINANCE_PURCHASE_NOT_READY. Manual undo: supabase/rollback/20261113100000_finance_purchase_invoices.down.sql (drops the table; saved 매입 rows can be uploaded again). DEV and Production each need the owner's approval."
     }
   ],
   "legacyMigrations": [

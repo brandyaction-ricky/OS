@@ -1,14 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiRequest } from "@/lib/api-client";
 import { TAX_BIZ, type Biz } from "@/lib/finance/tax-invoices";
 import { EVIDENCE_LABEL, vatCsv, type VatLine, type VatPeriod, type VatRow } from "@/lib/finance/vat";
+import { payableLabel, type VatPurchase } from "@/lib/finance/vat-payable";
+import { PurchaseInvoicePanel, PurchaseNotReady } from "./purchase-invoice-panel";
 
 // 부가세 신고 참고 자료 (재무 요청 a5310134): 월·신고기간별로 결제·취소를 증빙별로 묶어 보고 내려받는다. 신고서가 아니다.
+// 2026-11-13: 매입 세금계산서와 공제 예상 카드로 매입세액을 더해 예상 납부세액 (매출세액 − 매입세액)을 보여 준다.
 
-type Result = { period: VatPeriod; lines: VatLine[]; rows: VatRow[]; review: number };
+type Purchase = { available: false } | ({ available: true } & VatPurchase);
+type Result = { period: VatPeriod; lines: VatLine[]; rows: VatRow[]; review: number; salesTax: number; purchase: Purchase; payable: number | null };
 const won = (value: number) => value.toLocaleString("ko-KR");
 const BIZ_KEYS = Object.keys(TAX_BIZ) as Biz[];
 
@@ -27,6 +31,37 @@ const labelOf = (key: string) => {
   return `${year}년 ${Number(part)}월`;
 };
 
+/** 예상 납부세액 = 매출 합계 세액 (A) − 매입 합계 세액 (B), with the evidence behind (B). */
+export function VatPayableSummary({ salesTax, purchase, payable }: { salesTax: number; purchase: VatPurchase; payable: number }) {
+  return <div className="fin-card fin-gap fin-payable">
+    <div className="fin-payable-top"><span className="fin-l">예상 납부세액</span><span className="fin-payable-v">{won(payable)}원</span><span className="status-pill" data-tone={payable < 0 ? "ok" : "progress"}>{payableLabel(payable)}</span></div>
+    <div className="fin-tbl-wrap fin-payable-tbl"><table className="fin-tbl">
+      <thead><tr><th>항목</th><th className="fin-r">세액</th></tr></thead>
+      <tbody>
+        <tr><td>매출 합계 세액 (A)</td><td className="fin-r">{won(salesTax)}</td></tr>
+        <tr><td>매입 합계 세액 (B)</td><td className="fin-r">{won(purchase.inputTax)}</td></tr>
+        <tr className="fin-payable-sub"><td>전자세금계산서 (매입) · {won(purchase.invoice.count)}건</td><td className="fin-r">{won(purchase.invoice.tax)}</td></tr>
+        <tr className="fin-payable-sub"><td>신용카드 (공제 예상) · {won(purchase.card.count)}건</td><td className="fin-r">{won(purchase.card.tax)}</td></tr>
+      </tbody>
+      <tfoot><tr><td>예상 납부세액 (A) − (B)</td><td className="fin-r">{won(payable)}</td></tr></tfoot>
+    </table></div>
+    <p className="fin-note">참고용 추정이에요 · 세액 공제와 예정고지 세액은 반영하지 않았어요 · 매입 계산서는 모두 공제된다고 보았어요 · 카드는 「공제 예상」으로 분류한 사용액 합계의 1/11을 세액으로 추정했어요.
+      {purchase.unassigned.count ? ` 사업 구분이 공통이거나 없는 「공제 예상」 카드 ${won(purchase.unassigned.count)}건 (${won(purchase.unassigned.amount)}원)은 어느 사업자 몫인지 알 수 없어 넣지 않았어요.` : ""}</p>
+    {purchase.invoice.count ? null : <p className="fin-callout fin-info" role="status">이 기간에 올린 매입 세금계산서가 없어요. 아래 「매입 세금계산서 (홈택스)」에 올리면 매입세액에 반영돼요.</p>}
+    {purchase.undecided.count ? <div className="fin-callout fin-warn"><b>확인 필요</b><span className="fin-grow">공제 여부를 아직 정하지 않은 「판단 필요」 카드가 {won(purchase.undecided.count)}건 ({won(purchase.undecided.amount)}원) 있어요. 공제로 정하면 매입세액이 늘어 예상 납부세액이 줄 수 있어요.</span><Link href="/finance/cards" className="secondary-button compact">카드지출에서 정하기</Link></div> : null}
+  </div>;
+}
+
+// 연습용 화면: 예시 숫자로 요약 모양만 보여 준다. 서버를 부르지 않는다.
+const DEMO_PURCHASE: VatPurchase = { invoice: { count: 12, tax: 1_840_000 }, card: { count: 31, amount: 4_620_000, tax: 420_000 }, inputTax: 2_260_000, undecided: { count: 4, amount: 386_000 }, unassigned: { count: 2, amount: 154_000 } };
+export function VatReferenceDemo() {
+  return <section className="finance-workspace finance-react" aria-label="부가세 신고 참고 자료">
+    <div className="fin-ph"><div className="fin-ph-t"><h1>부가세 신고 참고 자료</h1>
+      <p className="fin-ph-s">연습용 화면이에요. 실제 결제·계산서가 없어서, 아래 숫자는 화면 모양을 보여 주는 예시예요.</p></div></div>
+    <VatPayableSummary salesTax={5_730_000} purchase={DEMO_PURCHASE} payable={5_730_000 - DEMO_PURCHASE.inputTax} />
+  </section>;
+}
+
 export function VatReference({ token }: { token: string | null }) {
   const options = periodOptions();
   const [period, setPeriod] = useState(options.quarters[0]);
@@ -34,13 +69,17 @@ export function VatReference({ token }: { token: string | null }) {
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const shown = useRef("");
   useEffect(() => {
-    const controller = new AbortController();
-    setResult(null); setError("");
-    apiRequest<Result>(`/api/v1/finance/vat?${new URLSearchParams({ period, biz })}`, { token, signal: controller.signal }).then(setResult)
+    const controller = new AbortController(), key = `${period}:${biz}`;
+    // A refresh after a 매입 upload keeps the screen (and the panel's note) while the numbers reload.
+    if (shown.current !== key) setResult(null);
+    setError("");
+    apiRequest<Result>(`/api/v1/finance/vat?${new URLSearchParams({ period, biz })}`, { token, signal: controller.signal }).then(next => { shown.current = key; setResult(next); })
       .catch(reason => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "자료를 불러오지 못했어요."); });
     return () => controller.abort();
-  }, [period, biz, token]);
+  }, [period, biz, token, revision]);
 
   const fileName = `부가세참고_${TAX_BIZ[biz]}_${period}`;
   const log = () => void apiRequest("/api/v1/finance/events", { token, method: "POST", body: JSON.stringify({ kind: "csv_export", view: "vat", ids: [] }) }).catch(() => undefined);
@@ -90,6 +129,7 @@ export function VatReference({ token }: { token: string | null }) {
     {error ? <p className="fin-callout fin-bad" role="alert">{error}</p> : null}
     {!result && !error ? <p className="fin-small fin-muted" role="status">자료를 모으는 중이에요…</p> : null}
     {result ? <>
+      {result.purchase.available && result.payable !== null ? <VatPayableSummary salesTax={result.salesTax} purchase={result.purchase} payable={result.payable} /> : null}
       {result.review ? <div className="fin-callout fin-warn"><b>확인 필요</b><span className="fin-grow">같은 매출인지 확인하지 않은 계산서가 {result.review}건 있어요. 확인 전에는 결제·외부 매출 줄과 계산서 줄에 둘 다 들어갈 수 있어요.</span><Link href="/finance/sales" className="secondary-button compact">매출내역에서 확인</Link></div> : null}
       <div className="fin-tiles fin-t4 fin-gap">
         <div className="fin-tile"><span className="fin-l">공급가액</span><span className="fin-v">{won(sum("supply"))}원</span></div>
@@ -113,6 +153,7 @@ export function VatReference({ token }: { token: string | null }) {
         <thead><tr><th>날짜</th><th>증빙</th><th>구분</th><th>거래처 · 상품</th><th className="fin-r">공급가액</th><th className="fin-r">세액</th><th className="fin-r">합계</th><th>메모</th></tr></thead>
         <tbody>{result.rows.map((row, index) => <tr key={`${row.ref}:${row.kind}:${index}`}><td className="fin-num">{row.date}<span className="fin-sub2">{row.basis}</span></td><td>{split(EVIDENCE_LABEL[row.evidence]).name}</td><td>{row.kind}</td><td><span className="fin-ell">{row.title}</span></td><td className="fin-r">{won(row.supply)}</td><td className="fin-r">{won(row.tax)}</td><td className="fin-r">{won(row.total)}</td><td className="fin-small fin-muted">{row.note}</td></tr>)}</tbody>
       </table></div></details>
+      {result.purchase.available ? <PurchaseInvoicePanel token={token} from={result.period.from} to={result.period.to} biz={biz} onSaved={() => setRevision(value => value + 1)} /> : <PurchaseNotReady />}
     </> : null}
   </section>;
 }
