@@ -148,7 +148,7 @@ test("a YouTube connection is (person, channel): the key, every token, status an
   const [migration, rollback, oauth, routeFile, testRoute, uploadServer, cta, metrics] = await Promise.all([
     "../supabase/migrations/20261107120000_youtube_connections_per_channel.sql", "../supabase/rollback/20261107120000_youtube_connections_per_channel.down.sql",
     "../lib/server/youtube-oauth.ts", "../app/api/v1/youtube/oauth/route.ts", "../app/api/v1/youtube/oauth/test/route.ts", "../lib/server/youtube-process-upload.ts",
-    "../lib/server/youtube-cta.ts", "../lib/server/channel-metrics.ts"].map((file) => readFile(new URL(file, import.meta.url), "utf8")));
+    "../lib/server/youtube-cta.ts", "../lib/server/youtube-channel-analytics.ts"].map((file) => readFile(new URL(file, import.meta.url), "utf8")));
   assert.match(migration, /add constraint os_youtube_connections_pkey primary key \(owner_id, channel_id\);/);
   assert.match(rollback, /add constraint os_youtube_connections_pkey primary key \(owner_id\);/);
   assert.match(oauth, /channelId \? query\.eq\("channel_id", channelId\) : query\.order\("connected_at", \{ ascending: true \}\)\.limit\(1\)/, "no channel named = the person's first, as before");
@@ -162,7 +162,7 @@ test("a YouTube connection is (person, channel): the key, every token, status an
   assert.equal(uploadServer.match(/authorizeYoutubeConnection\(actor, ownerId, input\.connectionChannelId\)/g)?.length, 5, "longform, its check, processing and both Shorts steps");
   assert.doesNotMatch(uploadServer, /getYoutubeAccessToken\(ownerId\)|youtubeConnectionStatus\(ownerId\)/);
   assert.match(cta, /const ownerId = change\.connectionOwnerId \?\? input\.ownerId \?\? actor\.id;/, "an undo uses the connection the change went through");
-  assert.match(metrics, /getYoutubeAccessToken\(connection\.owner_id,connection\.channel_id\)/, "metrics read each channel with its own token");
+  assert.match(metrics, /getYoutubeAccessToken\(connection\.owner_id, connection\.channel_id\)/, "metrics read each channel with its own token");
 });
 
 // 다채널 3단계: another channel's AI work reads its card and its 목적 정본 first; the 기본 채널 reads what it always read.
