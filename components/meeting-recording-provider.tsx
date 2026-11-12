@@ -46,6 +46,15 @@ export function MeetingRecordingProvider({ children }: { children: React.ReactNo
     if (meetingRef.current?.id === meetingId) setWaiting(left);
     return () => { if (sink.current?.id === meetingId) { sink.current = null; setAttached(null); } };
   }, []);
+  // Closing, reloading or leaving the OS while recording (or before the last segments are transcribed) would end the
+  // recording and lose the part not yet transcribed: the browser asks first (dev request 544986b9).
+  const busy = recorder.recording || recorder.segments.some(segment => segment.state === "waiting" || segment.state === "working");
+  useEffect(() => {
+    if (!busy) return;
+    const ask = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", ask);
+    return () => window.removeEventListener("beforeunload", ask);
+  }, [busy]);
   const away = meeting && attached !== meeting.id && (recorder.recording || waiting > 0);
   return <Context.Provider value={{ recorder, meeting, start, attach }}>
     {children}
