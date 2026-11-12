@@ -17,6 +17,7 @@ import { useSession } from "./session-provider";
 import { ShortformProductionFields,ShortformCutEditor } from "./shortform-production-fields";
 import { ShortformRenderPanel } from "./shortform-render-panel";
 import { CostTag } from "./cost-notice";
+import { ContentAutomationSettings } from "./content-automation-hub";
 import { ReferenceEvidencePanel, ThreadsReferenceWorkspace, type ReferenceCollectionContext } from "./threads-reference-workspace";
 import { EditorialEvidencePanel, ThreadsEditorialWorkspace, editorialRouteLabel } from "./threads-editorial-workspace";
 import { ThreadsAsideHandoff } from "./threads-aside-handoff";
@@ -1055,7 +1056,7 @@ function TemplateEditor({record,mutate,onClose}:{record:OsRecord;mutate:ViewProp
 }
 
 function SettingsView({data,mutate}:ViewProps){
-  const search=useSearchParams(),tab=["run","skills","templates","defaults"].includes(search.get("tab")??"")?search.get("tab")!:"run";
+  const search=useSearchParams(),tab=["run","skills","templates","defaults","company"].includes(search.get("tab")??"")?search.get("tab")!:"run";
   const [rules,setRules]=useState<RunRules>({...DEFAULT_RUN_RULES}),[error,setError]=useState("");
   const [title,setTitle]=useState(""),[description,setDescription]=useState(""),[kind,setKind]=useState("templates");
   const [file,setFile]=useState<File|null>(null),[licenseSource,setLicenseSource]=useState("unknown"),[licenseNo,setLicenseNo]=useState("");
@@ -1103,7 +1104,7 @@ function SettingsView({data,mutate}:ViewProps){
   };
   const values=kind==="templates"?data.templates:data.assets;
   const openTemplate=data.templates.find(row=>row.id===openTemplateId);
-  return <><Tabs base="/automation/settings" active={tab} tabs={[{id:"run",label:"실행 규칙"},{id:"skills",label:"스킬"},{id:"templates",label:"양식·이미지"},{id:"defaults",label:"기본값"}]}/>
+  return <><Tabs base="/automation/settings" active={tab} tabs={[{id:"run",label:"실행 규칙"},{id:"skills",label:"스킬"},{id:"templates",label:"양식·이미지"},{id:"defaults",label:"기본값"},{id:"company",label:"회사 설정"}]}/>
     {tab==="run"?<section className="ca-v07-card ca-v07-form"><h2>내 Chrome 실행 규칙</h2><label className="ca-v07-check"><input type="checkbox" checked={rules.enabled} onChange={event=>setRules({...rules,enabled:event.target.checked})}/>예약 실행 사용</label>
       <label>실행 요일<select value={rules.days} onChange={event=>setRules({...rules,days:event.target.value})}><option value="daily">매일</option><option value="weekdays">평일</option><option value="monday">월요일</option></select></label>
       <label>실행 시각(쉼표로 구분)<input value={rules.times.join(", ")} onChange={event=>setRules({...rules,times:event.target.value.split(",").map(value=>value.trim())})}/></label>
@@ -1117,6 +1118,7 @@ function SettingsView({data,mutate}:ViewProps){
       <label>이미지 최소 짧은 변(px)<input type="number" min="1" max="10000" value={Number(rules.defaults?.minImageShortSide??1080)} onChange={event=>setRules({...rules,defaults:{...rules.defaults,minImageShortSide:Number(event.target.value)}})}/></label>
       <button className="primary-button" onClick={()=>void saveRules()}>기본값 저장</button></section>
     :tab==="skills"?<SkillSettings data={data} mutate={mutate}/>
+    :tab==="company"?<ContentAutomationSettings embedded/>
     :<>{demo&&kind==="templates"?<section className="ca-v07-card ca-v07-form"><h2>카드 문구 미리보기 · 저장 없음</h2><label>미리보기 제목<input value={previewTitle} onChange={event=>setPreviewTitle(event.target.value)}/></label><label>미리보기 본문<textarea value={previewBody} onChange={event=>setPreviewBody(event.target.value)}/></label><div className="automation-template-preview"><h2>{previewTitle||"카드 제목"}</h2><p>{previewBody||"카드 본문"}</p></div></section>:null}<div className="ca-v07-toolbar"><select value={kind} onChange={event=>setKind(event.target.value)} aria-label="자료 종류"><option value="templates">양식</option><option value="assets">이미지</option></select></div>
       <section className="ca-v07-card ca-v07-form"><h2>내 양식·이미지</h2><label>이름<input value={title} onChange={event=>setTitle(event.target.value)}/></label>
         <label>{kind==="assets"?"이미지 파일":"양식 배경 파일"}<input type="file" accept={kind==="assets"?"image/png,image/jpeg,image/webp":"image/png,image/jpeg"} onChange={event=>setFile(event.target.files?.[0]??null)}/></label>
