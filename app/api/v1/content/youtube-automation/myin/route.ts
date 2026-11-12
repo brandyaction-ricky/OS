@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
-import { checkMyinVoice, confirmMyinClips, createMyinRun, latestMyinRun, myinVoiceCheck, myinVoiceFixPlan, myinVoiceFixSchema, myinVoiceOnRenderPc, requestMyinVoiceFix, myinDownloads, myinEarlierStyles, myinRecord, myinSubtitles, myinSubtitleChangeSchema, saveMyinSubtitles, myinOurImageUpload, myinOutputs, myinPhotos, myinPreviewSheets, myinSoundState, myinWordsReport, reopenMyinMaterials, reviewMyinStoryboard, saveMyinOurImage, saveMyinSound, separateMyinPhoto, setMyinDraftPlace, setMyinScreenCheck, startMyinFinal, startMyinPrep } from "@/lib/server/myin-run";
+import { checkMyinVoice, confirmMyinClips, createMyinRun, latestMyinRun, myinVoiceCheck, myinVoiceFixPlan, myinVoiceFixSchema, myinVoiceOnRenderPc, requestMyinVoiceFix, myinDownloads, myinEarlierStyles, myinRecord, myinSubtitles, myinSubtitleChangeSchema, saveMyinSubtitles, myinOurImageUpload, myinOutputs, myinPhotos, myinPreviewSheets, myinSoundState, myinWordsReport, reopenMyinMaterials, reviewMyinStoryboard, saveMyinOurImage, saveMyinSound, separateMyinPhoto, setMyinDraftPlace, setMyinSettings, setMyinScreenCheck, startMyinFinal, startMyinPrep } from "@/lib/server/myin-run";
 import { findMyinPhotoCandidates, applyMyinPhotoCandidate } from "@/lib/server/myin-photo-candidates";
 import { readLocalRenderStatus } from "@/lib/server/youtube-render-pc";
 import { checkMyinScreens, myinScreenCheck } from "@/lib/server/myin-screen-check";
@@ -62,8 +62,10 @@ export async function GET(request: Request) {
 }
 
 const patchSchema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("review"), runId: z.string().uuid(), decision: z.enum(["confirmed", "revise"]), note: z.string().max(2000).default(""), place: z.enum(["pc", "local"]).default("pc"),
-    screenCheck: z.boolean().default(true) }),
+  // place / screenCheck left out: the video's 제작 설정 decides.
+  z.object({ action: z.literal("review"), runId: z.string().uuid(), decision: z.enum(["confirmed", "revise"]), note: z.string().max(2000).default(""), place: z.enum(["pc", "local"]).optional(),
+    screenCheck: z.boolean().optional() }),
+  z.object({ action: z.literal("settings"), runId: z.string().uuid(), place: z.enum(["pc", "local"]), screenCheck: z.boolean() }),
   z.object({ action: z.literal("screen_check_auto"), runId: z.string().uuid(), on: z.boolean() }),
   z.object({ action: z.literal("place"), runId: z.string().uuid(), place: z.enum(["pc", "local"]) }),
   z.object({ action: z.literal("prepare"), runId: z.string().uuid() }),
@@ -72,7 +74,7 @@ const patchSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("our_image"), runId: z.string().uuid(), file: z.string().min(1).max(200), path: z.string().min(1).max(400) }),
   z.object({ action: z.literal("photo_scene"), runId: z.string().uuid(), file: z.string().min(1).max(200), scene: z.number().int().min(1).max(400) }),
   z.object({ action: z.literal("photo_candidate"), runId: z.string().uuid(), file: z.string().min(1).max(200), provider: z.enum(["unsplash", "wikimedia"]), id: z.string().min(1).max(300) }),
-  z.object({ action: z.literal("clips_ok"), runId: z.string().uuid(), note: z.string().max(2000).default(""), place: z.enum(["pc", "local"]).default("pc") }),
+  z.object({ action: z.literal("clips_ok"), runId: z.string().uuid(), note: z.string().max(2000).default(""), place: z.enum(["pc", "local"]).optional() }),
   z.object({ action: z.literal("screen_check"), runId: z.string().uuid(), tier: z.enum(["precise", "saving"]).default("precise") }),
   // ④ 자료 준비 (2026-10-27): the full video after the sound check, ⑤ → ④ for another sound pass, and the sound plan itself.
   z.object({ action: z.literal("final"), runId: z.string().uuid() }),
@@ -98,6 +100,7 @@ export async function PATCH(request: Request) {
     const result = input.action === "review" ? { run: await reviewMyinStoryboard(actor, input.runId, input.decision, input.note, input.place, input.screenCheck) }
       : input.action === "screen_check_auto" ? { run: await setMyinScreenCheck(actor, input.runId, input.on) }
       : input.action === "place" ? { run: await setMyinDraftPlace(actor, input.runId, input.place) }
+      : input.action === "settings" ? { run: await setMyinSettings(actor, input.runId, { place: input.place, screenCheck: input.screenCheck }) }
       : input.action === "clips_ok" ? { run: await confirmMyinClips(actor, input.runId, input.note, input.place) }
       // [다시 검사]: only someone who can read the run (myinScreenCheck checks it) asks GPT again.
       : input.action === "screen_check" ? await myinScreenCheck(actor, input.runId).then(() => checkMyinScreens(input.runId, input.tier)).then((stage) => ({ check: stage?.data ?? null }))
@@ -125,8 +128,9 @@ export async function POST(request: Request) {
   try {
     pilot();
     const actor = await authenticateRequest(request, { allowAgent: false });
-    const input = z.object({ sourceId: z.string().uuid(), styleId: z.string().uuid().optional() }).passthrough().parse(await parseJson(request, 1_000));
-    return NextResponse.json({ run: await createMyinRun(actor, input.sourceId, input.styleId) }, { status: 202, headers });
+    const input = z.object({ sourceId: z.string().uuid(), styleId: z.string().uuid().optional(), settings: z.object({ place: z.enum(["pc", "local"]), screenCheck: z.boolean() }).strict().optional() })
+      .passthrough().parse(await parseJson(request, 1_000));
+    return NextResponse.json({ run: await createMyinRun(actor, input.sourceId, input.styleId, input.settings) }, { status: 202, headers });
   } catch (error) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "INVALID_MYIN_INPUT", "콘텐츠를 확인해 주세요."));
     return apiErrorResponse(error);

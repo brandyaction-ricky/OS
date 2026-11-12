@@ -13,10 +13,11 @@ import { MyinSoundEditor } from "./myin-sound-editor";
 import { MyinOurImages } from "./myin-our-images";
 import { MyinScreenCheck } from "./myin-screen-check";
 import { MyinVoiceCheck, type MyinVoiceCheckView, type MyinVoiceFixView } from "./myin-voice-check";
-import { DraftPlacePicker, localBlocker, useLocalRender, type DraftPlace } from "./myin-local-render";
+import { localBlocker, useLocalRender, type DraftPlace } from "./myin-local-render";
+import { lastSettings, MyinMakeSettings, placeName, rememberSettings, SettingsLine, type MakeSettings, type RunSettings } from "./myin-make-settings";
 import { assToSrt } from "@/lib/subtitle-files";
 import { myinRetryScope, myinStop } from "@/lib/myin-stop";
-import { EarlierStylePick, MyinRunRecord } from "./myin-run-record";
+import { MyinRunRecord } from "./myin-run-record";
 import { MyinSubtitleEdit } from "./myin-subtitle-edit";
 
 interface Storyboard { scenes: number; model: string; at: string; metaphors: { scene: number; type: string; at: string }[]; cta: { after: string; line: string }[];
@@ -34,7 +35,7 @@ interface MyinRun { id: string; status: string; stage: string; layout?: "short" 
   sound: { report: string; at: string; edited?: { name: string; at: string } } | null; local: { by: string; name: string } | null; localFinish?: { by: string; name: string } | null; localReady: boolean;
   clipsStale?: string[] | null; photoCredits?: Record<string, { source: string; license: string; url: string | null }>;
   voiceFixes?: MyinVoiceFixView[]; voiceCheck?: MyinVoiceCheckView | null; voiceFixable?: boolean; voiceChanged?: { at: string; count: number } | null;
-  style?: { id: string; name: string; version: number; channel: string } | null }
+  style?: { id: string; name: string; version: number; channel: string } | null; settings?: RunSettings | null }
 interface Outputs { clips: { label: string; url: string | null }[]; stills?: string | null; video: string | null; summary: string | null; deck: string | null; srt: string | null }
 
 const PHASE: Record<string, string> = { breath_pending: "영상 만드는 컴퓨터가 숨 자리 고르는 중", voice_pending: "음성 만드는 중", words_pending: "영상 만드는 컴퓨터가 받아쓰기·자막 만드는 중", words_ready: "받아쓰기·자막 완료",
@@ -134,9 +135,10 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
   // The clips' and video's signed addresses are asked for again only when they change or near their 30 minutes: a new address on every
   // 20-second poll made the browser download every clip again (2026-10-29: about 970 times a clip a day, most of the OS's egress).
   const outputsFor = useRef({ key: "", at: 0 });
-  const [place, setPlace] = useState<DraftPlace>("pc");
-  // GPT 화면 검사 (편집기 3차 요청 11-09: 급할 땐 끄고 바로 편집으로): on unless turned off when the storyboard is confirmed.
-  const [screenCheck, setScreenCheck] = useState(true);
+  // 제작 설정 (직원 요청 2026-11-05): 만드는 곳 and GPT 화면 검사 (편집기 3차 요청 11-09: 급할 땐 끄고 바로 편집으로) are chosen once in the card
+  // at the top; the confirms no longer ask.
+  const [settings, setSettings] = useState<MakeSettings>(lastSettings);
+  const [editingSettings, setEditingSettings] = useState(false);
   // 채널 모양 (유쓰 요청 5/8): picked when the voice starts and pinned to the video with its version.
   const [styles, setStyles] = useState<{ id: string; name: string; version: number }[]>([]);
   const [styleId, setStyleId] = useState<string | null>(null);
@@ -147,7 +149,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
   }, [accessToken]);
   const draftWaiting = Boolean(run && !run.clipsReview && ["prep_pending", "clips_pending"].includes(run.stage));
   const finishWaiting = Boolean(run?.clipsReview && !short && ["cta_pending", "prep_pending", "prep_ready", "final_pending"].includes(run.stage));
-  const { status: localPc, reload: reloadLocal } = useLocalRender(accessToken, ["storyboard_review", "clips_review"].includes(run?.stage ?? "") || draftWaiting || finishWaiting);
+  const { status: localPc, reload: reloadLocal } = useLocalRender(accessToken, !run || Boolean(run.scriptChanged) || editingSettings || draftWaiting || finishWaiting);
   const load = useCallback(async () => {
     if (!accessToken) return;
     try {
@@ -256,6 +258,11 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       : !localBlocker(localPc, target.localReady) && !target.workingSince ? <button type="button" className="secondary-button compact" disabled={Boolean(busy)}
         onClick={() => move(target, "local")}>내 컴퓨터로 만들기</button> : null}
   </div>;
+  const openSettings = () => {
+    if (run?.settings) setSettings({ place: run.settings.place, screenCheck: run.settings.screenCheck });
+    setEditingSettings(true);
+    window.setTimeout(() => document.getElementById("myin-settings")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  };
   const phase = run ? run.status === "blocked" ? `멈춤 · 오류 코드 ${run.lastErrorCode ?? "없음"}` : phaseLabel(run) : null;
   const board = run?.storyboard;
 
@@ -274,16 +281,19 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
         <p>승인된 원고로 대표 목소리를 만들고, 영상 만드는 컴퓨터가 받아쓰기·자막을 만듭니다. 내 AI가 장면 기획표를 쓰고 담당자가 기획표와 미리보기를 확인하면, 구독 대사 · 사운드를 준비한 뒤 영상 만드는 컴퓨터가 완성 영상과 한 장 정리·덱 PDF·자막 파일을 만들어 올립니다.</p></div></header>
     </section>}
 
+    <MyinMakeSettings sourceId={sourceId} token={accessToken} short={short} run={run} fresh={!run || Boolean(run.scriptChanged)} editing={editingSettings}
+      onEditing={(open) => open ? openSettings() : setEditingSettings(false)} styles={styles} styleId={styleId ?? run?.style?.id ?? channelOf(styles, channel)?.id ?? ""} onStyle={setStyleId}
+      value={settings} onChange={setSettings} localPc={localPc} onLocalConnected={() => void reloadLocal()} onSaved={() => void load()} />
+
     <Step index={0} state={step1} title="음성과 받아쓰기·자막" idBase="myin-step">
       <p>{short ? "확정한 대본을 대표 목소리로 읽고, 영상 만드는 컴퓨터가 받아쓰기와 자막을 만들어요." : "승인된 원고를 대표 목소리(drama-3)로 만들고, 영상 만드는 컴퓨터가 다듬어 받아쓰기와 방송 자막을 만듭니다."}</p>
       {run?.scriptChanged ? <p className="yt-note yt-warn">{short ? "확정한 대본이 바뀌었어요. 아래 작업은 옛 대본으로 만든 것이라 더 진행되지 않아요. 새로 만들면 기획표와 미리보기 확인도 다시 거쳐요." : "구성안 원고가 바뀌었어요. 아래 작업은 옛 원고로 만든 것이라 더 진행되지 않아요. 새로 만들면 기획표와 미리보기 확인도 다시 거쳐요."}</p> : null}
       {!run || (run.status === "blocked" && !run.words) || run.scriptChanged ? <div className="yt-actions">
-        {styles.length && (!run || run.scriptChanged) ? <label className="yt-style-pick">채널 모양<select value={styleId ?? run?.style?.id ?? channelOf(styles, channel)!.id} onChange={(event) => setStyleId(event.target.value)}>
-          <option value="">기본 (고르지 않음)</option>{styles.map((style) => <option key={style.id} value={style.id}>{style.name} · v{style.version}</option>)}</select></label> : null}
-        {styles.length && (!run || run.scriptChanged) ? <EarlierStylePick sourceId={sourceId} token={accessToken} styles={styles} onPick={setStyleId} /> : null}
         <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void (async () => {
           const pick = styleId ?? run?.style?.id ?? channelOf(styles, channel)?.id ?? "";
-          if (run && !run.scriptChanged || await askVoice(voiceText ?? "", "같은 원고로 다시 누르면 들지 않아요", voiceOnPc)) await act("start", () => post("/myin", "POST", { sourceId, ...(pick ? { styleId: pick } : {}) })); })()}>{busy === "start" ? "시작하는 중…" : run?.scriptChanged ? short ? "바뀐 대본으로 음성 다시 만들기" : "바뀐 원고로 v13 음성 다시 만들기" : run ? short ? "음성 다시 시작" : "v13 음성 다시 시작" : short ? "음성 만들기" : "v13 음성 만들기"}</button>
+          if (!(run && !run.scriptChanged) && !await askVoice(voiceText ?? "", "같은 원고로 다시 누르면 들지 않아요", voiceOnPc)) return;
+          rememberSettings(settings);
+          await act("start", () => post("/myin", "POST", { sourceId, ...(pick ? { styleId: pick } : {}), settings: short ? { ...settings, place: "pc" } : settings })); })()}>{busy === "start" ? "시작하는 중…" : run?.scriptChanged ? short ? "바뀐 대본으로 음성 다시 만들기" : "바뀐 원고로 v13 음성 다시 만들기" : run ? short ? "음성 다시 시작" : "v13 음성 다시 시작" : short ? "음성 만들기" : "v13 음성 만들기"}</button>
         <small><CostTag kind="paid" amount={voiceText ? voiceEstimate(voiceText, myinVoice).krw * (voiceOnPc && !short ? 4 : 1) : null} /> 같은 {short ? "대본" : "원고"}으로 다시 누르면 만든 음성을 이어 써요.</small>
       </div> : null}
       {run ? <div className="yt-run">
@@ -341,11 +351,9 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
           <strong>{run.stage === "storyboard_review" ? "로건, 유쓰 확인" : "기획표 다시 고치기"}</strong>
           {run.stage === "storyboard_review" ? <p>{short ? "확인 완료를 누르면 숏폼 미리보기가 바로 시작돼요." : "확인 완료를 누르면 3단계 미리보기가 바로 시작됩니다. 기획표의 사진 · 도식 · 글자 · 음악으로 미리보기 영상을 만들고, 구독 대사 음성(유료)과 사운드 편집은 미리보기 확인 뒤 4단계에서 합니다."}</p> : null}
           <label>메모 (수정 요청할 때는 필수)<textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder={short ? "예) 3번 장면은 큰 글자로, 도식 칸 글자를 줄여서" : "예) 7번 비유는 빼고, 구독은 두 번째 섹션 끝으로"} /></label>
-          {run.stage === "storyboard_review" && !short ? <DraftPlacePicker value={place} onChange={setPlace} status={localPc} ready={run.localReady} token={accessToken} onConnected={() => void reloadLocal()} /> : null}
-          {run.stage === "storyboard_review" ? <label className="yt-check"><input type="checkbox" checked={screenCheck} onChange={(event) => setScreenCheck(event.target.checked)} />
-            점검 시트가 나오면 GPT가 바로 화면을 검사해요 <CostTag kind="paid" /> <small>급하면 끄고 바로 편집으로 넘어가요. 빈 화면 · 그리기 오류 검사는 언제나 해요(무료).</small></label> : null}
+          {run.stage === "storyboard_review" ? <SettingsLine text={`미리보기는 ${placeName(run.settings, run)}에서 만들어요 · GPT 화면 검사 ${run.settings?.screenCheck ?? true ? "켬" : "끔"}`} onChange={openSettings} /> : null}
           <div className="yt-actions">
-            {run.stage === "storyboard_review" ? <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void act("confirm", () => post("/myin", "PATCH", { action: "review", runId: run.id, decision: "confirmed", note, place, screenCheck }))}>{busy === "confirm" ? "저장 중…" : "기획표 확인 완료 · 미리보기 만들기"}</button> : null}
+            {run.stage === "storyboard_review" ? <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void act("confirm", () => post("/myin", "PATCH", { action: "review", runId: run.id, decision: "confirmed", note }))}>{busy === "confirm" ? "저장 중…" : "기획표 확인 완료 · 미리보기 만들기"}</button> : null}
             <button type="button" className="secondary-button" disabled={Boolean(busy) || !note.trim()} onClick={() => void act("revise", () => post("/myin", "PATCH", { action: "review", runId: run.id, decision: "revise", note }))}>수정 요청</button>
           </div>
           {run.review?.decision === "confirmed" ? <small>{personName(run.review.name)} 확인 · {when(run.review.at)}{run.review.note ? ` · ${run.review.note}` : ""}</small> : null}
@@ -397,12 +405,12 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
         <label>메모 (수정 요청할 때는 필수)<textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="예) 오프닝 좋음 · 7번 빙산 장면 글자가 넘쳐요" /></label>
         {run.clipsStale?.length ? <div className="yt-actions"><p className="yt-note yt-warn">미리보기를 만든 뒤 {run.clipsStale.join(" · ")}이(가) 바뀌었어요. 지금 미리보기는 옛 재료라서 확인할 수 없어요.</p>
           <button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => void act("prep", () => post("/myin", "PATCH", { action: "prepare", runId: run.id }))}>{busy === "prep" ? "시작하는 중…" : "미리보기 다시 만들기"}</button></div> : null}
-        {short ? null : <DraftPlacePicker label="자료 준비 · 전체 영상을 만들 곳" value={place} onChange={setPlace} status={localPc} ready={run.localReady} token={accessToken} onConnected={() => void reloadLocal()} />}
+        {short ? null : <SettingsLine text={`자료 준비 · 전체 영상은 ${placeName(run.settings, run)}에서 만들어요`} onChange={openSettings} />}
         {/* 시안 확인 = 사진 허락: the photos and the 구독 대사 voice (paid) start at once, so ask once and offer 수정 요청 beside it. */}
         <div className="yt-actions"><button type="button" className="primary-button" disabled={Boolean(busy) || Boolean(run.clipsStale?.length)} onClick={() => void (async () => {
           if (!window.confirm(short ? "이 미리보기로 확정하고 숏폼 전체 영상을 만들어요. 시작할까요?" : "이 미리보기로 확정하고 4단계 자료 준비를 시작해요. 미리보기의 사진을 확정하고 구독 대사 음성을 만들어요. 시작할까요?")) return;
           if (board && !await askVoice(board.cta.map((c) => c.line).join("\n"), "이미 만든 문장은 다시 들지 않아요", Boolean(run.voiceOnPc))) return;
-          await act("clips", () => post("/myin", "PATCH", { action: "clips_ok", runId: run.id, note, place: short ? "pc" : place }));
+          await act("clips", () => post("/myin", "PATCH", { action: "clips_ok", runId: run.id, note }));
         })()}>{busy === "clips" ? "저장 중…" : short ? "미리보기 확인 완료 · 전체 영상 만들기" : "미리보기 확인 완료 · 자료 준비 시작"}</button>
           {board?.cta.length ? <CostTag kind="paid" /> : null}
           <button type="button" className="secondary-button" disabled={Boolean(busy) || !note.trim()} onClick={() => void act("revise", () => post("/myin", "PATCH", { action: "review", runId: run.id, decision: "revise", note }))}>수정 요청</button></div>

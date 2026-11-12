@@ -37,8 +37,8 @@ function runPhase(run: VoiceRun): { label: string; tone: "progress" | "ready" | 
   return { label: "영상 제작 대기", tone: "progress", detail: run.render?.lastErrorCode ? `한 번 실패해 다시 시도합니다(오류 코드 ${run.render.lastErrorCode}).` : "영상 만드는 컴퓨터가 차례대로 가져가 만듭니다." };
 }
 const PHASE_PILL = { progress: "scheduled", ready: "approved", problem: "failed" } as const;
-const ago = (seconds: number) => seconds < 90 ? `${seconds}초` : seconds < 5400 ? `${Math.round(seconds / 60)}분` : `${Math.round(seconds / 3600)}시간`;
-const sinceIso = (iso: string | null) => iso ? Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000)) : null;
+export const ago = (seconds: number) => seconds < 90 ? `${seconds}초` : seconds < 5400 ? `${Math.round(seconds / 60)}분` : `${Math.round(seconds / 3600)}시간`;
+export const sinceIso = (iso: string | null) => iso ? Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000)) : null;
 const RENDER_STEP: Record<string, string> = { voice: "목소리 만드는 중", download: "음성 받는 중", narration: "음성 잇는 중", drawing: "영상 그리는 중", upload: "영상 올리는 중" };
 // What staff paste into their own Claude or Codex once (the OS connection is set up with a personal agent key).
 export const MY_AI_PROMPT = "브랜디 OS 연결 도구로 list_youtube_ai_jobs를 실행해 내 작업을 확인하고, 작업이 있으면 process_youtube_ai_job으로 하나씩 claim → 받은 지시대로 처리 → complete 하세요. 작업이 없으면 끝내세요.";

@@ -137,8 +137,10 @@ test("the first 완성 from the editor screen asks for the paid steps first; a p
 test("GPT's screen check can be turned off; the free blank and error checks always run", () => {
   const run = read("lib/server/myin-run.ts");
   assert.match(run, /if \(bundle\.sheets && !run\.screenCheckOff\) await import\("\.\/myin-screen-check"\)/);
-  assert.match(run, /if \(screenCheck\) delete next\.screenCheckOff; else next\.screenCheckOff = true;/);
-  assert.match(read("components/myin-v13-panel.tsx"), /action: "review", runId: run\.id, decision: "confirmed", note, place, screenCheck/);
+  assert.match(run, /if \(screenCheck \?\? run\.settings\?\.screenCheck \?\? true\) delete next\.screenCheckOff; else next\.screenCheckOff = true;/);
+  // 제작 설정: the switch is in the card chosen once at the start; the confirm sends neither place nor screenCheck.
+  assert.match(read("components/myin-make-settings.tsx"), /checked=\{value\.screenCheck\}/);
+  assert.match(read("components/myin-v13-panel.tsx"), /action: "review", runId: run\.id, decision: "confirmed", note \}/);
   assert.match(read("components/myin-screen-check.tsx"), /auto && !current && Date\.parse\(preparedAt\)/, "an off check is not shown as running");
 });
 
