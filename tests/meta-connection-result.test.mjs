@@ -41,6 +41,7 @@ test("user guidance avoids blaming tester invitations for token and storage fail
   assert.match(results.metaConnectionResultMessage("connection_save_failed"),/저장하지 못/);
   assert.match(results.metaConnectionResultMessage("token_exchange_failed"),/인증 정보를 받는 단계/);
   assert.doesNotMatch(results.metaConnectionResultMessage("unexpected-secret"),/unexpected-secret/);
+  for (const value of ["__proto__", "constructor", "toString"]) assert.equal(typeof results.metaConnectionResultMessage(value), "string");
 });
 
 for (const stage of ["short_token","long_token","profile"]) {

@@ -35,5 +35,5 @@ export function metaConnectionResultMessage(result: string) {
     account_unavailable: "Meta에서 연결할 계정 정보를 확인하지 못했습니다. 계정 종류와 프로필을 확인해 주세요.",
     tester_or_permission_required: "연결을 완료하지 못했습니다. 이 안내만으로는 실패 원인을 알 수 없습니다. 관리자에게 확인을 요청해 주세요.",
   };
-  return messages[result] ?? "계정 연결을 완료하지 못했습니다. 관리자에게 알려 주세요.";
+  return Object.hasOwn(messages, result) ? messages[result] : "계정 연결을 완료하지 못했습니다. 관리자에게 알려 주세요.";
 }
