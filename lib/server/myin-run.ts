@@ -114,7 +114,9 @@ const runSchema = z.object({
     reasons: z.object({ metaphors: z.string(), cta: z.string(), summary: z.string() }).strict(),
     assets: z.array(z.object({ kind: z.enum(["people", "situations", "bgm"]), file: z.string(), url: z.string(), source: z.string(), license: z.string(), use: z.string() }).strict()),
     fuzzy: z.array(z.string()), notes: z.array(z.string()), reading: z.array(z.string()).optional() }).strict().optional(),
-  review: z.object({ decision: z.enum(["confirmed", "revise"]), by: z.string().uuid(), name: z.string(), note: z.string(), at: z.string().datetime() }).strict().optional(),
+  // scenes: 점검 시트 장면 의견 (직원 요청 11-12) — the scenes the note names, so the staff AI changes only those in the storyboard it is given.
+  review: z.object({ decision: z.enum(["confirmed", "revise"]), by: z.string().uuid(), name: z.string(), note: z.string(), at: z.string().datetime(),
+    scenes: z.array(z.object({ n: z.number().int().positive(), at: z.string(), type: z.string(), who: z.string(), text: z.string() }).strict()).max(20).optional() }).strict().optional(),
   // Stage 3: the photos approved with the storyboard (by file name), the CTA lines' voice, and the render PC's preparation
   // with Logan's preview check. Music comes from the 음악 창고 on the render PC (owner decision 2026-10-19).
   assets: z.record(z.string(), z.object({ decision: z.enum(["approved", "excluded"]), by: z.string().uuid(), at: z.string().datetime(),
@@ -276,7 +278,8 @@ function storyboardFields(storyboard: Record<string, unknown>) {
 }
 
 /** Logan (연출자) confirms the storyboard, or sends it back with a note for the staff AI's next pass. */
-export async function reviewMyinStoryboard(actor: RequestActor, runId: string, decision: "confirmed" | "revise", note: string, place?: "pc" | "local", screenCheck?: boolean) {
+export async function reviewMyinStoryboard(actor: RequestActor, runId: string, decision: "confirmed" | "revise", note: string, place?: "pc" | "local", screenCheck?: boolean,
+  scenes?: NonNullable<MyinRun["review"]>["scenes"]) {
   const service = createServiceSupabase();
   const { record, run } = await visibleRun(actor, runId);
   // Confirm from review; a change of mind (revise) is still possible after confirming, until the preview clips start.
@@ -284,7 +287,7 @@ export async function reviewMyinStoryboard(actor: RequestActor, runId: string, d
   if (!open.includes(record.stage ?? "") || !run.storyboard) throw new ApiError(409, "MYIN_NOT_IN_REVIEW", "확인을 기다리는 기획표가 없습니다.");
   if (decision === "revise" && !note.trim()) throw new ApiError(400, "MYIN_REVIEW_NOTE_REQUIRED", "무엇을 고칠지 한 줄 적어 주세요.");
   if (decision === "confirmed") await assertCurrent(service, run);
-  const next: MyinRun = { ...run, review: { decision, by: actor.id, name: actor.name, note: note.trim().slice(0, 2000), at: new Date().toISOString() } };
+  const next: MyinRun = { ...run, review: { decision, by: actor.id, name: actor.name, note: note.trim().slice(0, 2000), at: new Date().toISOString(), ...(decision === "revise" && scenes?.length ? { scenes } : {}) } };
   if (decision === "confirmed") { placeStep(next, actor, place); if (screenCheck ?? run.settings?.screenCheck ?? true) delete next.screenCheckOff; else next.screenCheckOff = true; }
   if (decision === "revise") { delete next.prepared; delete next.clips; delete next.stills; delete next.clipsReview; delete next.sound; delete next.lease; return presentMyinRun(await save(service, record, "backlog", "words_ready", next)); }
   // 2026-10-27 대표: 시안(도식·글자)을 먼저 본다. 사진 허락과 구독 대사 음성은 시안 확인 뒤 ④ 자료 준비에서(2026-10-19의 「확인 = 사진 허락」을 옮김).
@@ -732,12 +735,12 @@ async function runRecord(service: Service, runId: string) {
   return { record, run: parse(record) };
 }
 /** A run the member can read (RLS); the writes that follow use the service client. */
-async function visibleRun(actor: RequestActor, runId: string) {
+export async function visibleRun(actor: RequestActor, runId: string) {
   const { data } = await actor.supabase.from("os_records").select("id").eq("id", runId).eq("record_type", "ai_job").is("archived_at", null).maybeSingle();
   if (!data) throw new ApiError(404, "MYIN_RUN_NOT_FOUND", "v13 작업을 찾지 못했습니다.");
   return runRecord(createServiceSupabase(), runId);
 }
-async function storyboardJson(service: Service, run: MyinRun) {
+export async function storyboardJson(service: Service, run: MyinRun) {
   const { data } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).download(run.storyboard?.path ?? "");
   if (!data) throw new ApiError(409, "MYIN_STORYBOARD_MISSING", "기획표 파일을 찾지 못했습니다.");
   return JSON.parse(await data.text()) as Record<string, unknown> & { scenes: Record<string, unknown>[]; cta: { line: string }[] };
@@ -1141,7 +1144,10 @@ export async function myinSheetSources(service: Service, runId: string) {
 export async function myinPreviewSheets(actor: RequestActor, runId: string) {
   const { run } = await visibleRun(actor, runId);
   const service = createServiceSupabase();
-  return { sheets: await Promise.all((run.prepared?.sheets ?? []).map((path) => sign(service, SHEET_BUCKET, path))) };
+  // 점검 시트 장면 의견: each cell's scene (its 시작 문구 and kind) and the storyboard the sheets were drawn from.
+  const story = run.prepared?.sheets.length && run.storyboard ? await storyboardJson(service, run).catch(() => null) : null;
+  return { sheets: await Promise.all((run.prepared?.sheets ?? []).map((path) => sign(service, SHEET_BUCKET, path))),
+    scenes: (story?.scenes ?? []).map((scene) => ({ type: String(scene.type ?? ""), at: String(scene.at ?? "") })), storyboardAt: run.storyboard?.at ?? "" };
 }
 
 // ── 우리 이미지 올리기 (2026-10-28 대표 · 로건): our own photo for a file name the storyboard uses, until the full video starts ──

@@ -92,7 +92,31 @@
 /* A refusal stays on screen while the steps are: 음성 만들기 sits at the top of four steps, its refusal came below all of them (staff test 11-06). */
 .linear-shell .ui-v2 .yt-steps > .inline-alert { position: sticky; bottom: 12px; z-index: 3; margin: 0; box-shadow: var(--shadow); }
 
+/* 점검 시트 장면 의견 (직원 요청 11-12): one sheet image (3 × 4 equal cells, the engine's preview()) cut into its scenes by CSS. */
+.linear-shell .ui-v2 .yt-scene-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: start; margin-bottom: 10px; }
+.linear-shell .ui-v2 .yt-scene { display: grid; gap: 4px; margin: 0; }
+.linear-shell .ui-v2 .yt-scene-cell { position: relative; overflow: hidden; aspect-ratio: 16 / 9; border-radius: 6px; background: var(--panel-2); }
+.linear-shell .ui-v2 .yt-scene-cell.yt-tall { aspect-ratio: 9 / 16; }
+.linear-shell .ui-v2 .yt-scene-cell img { position: absolute; top: 0; left: 0; width: 300%; height: 400%; max-width: none; }
+.linear-shell .ui-v2 .yt-scene-cell[data-col="1"] img { left: -100%; }
+.linear-shell .ui-v2 .yt-scene-cell[data-col="2"] img { left: -200%; }
+.linear-shell .ui-v2 .yt-scene-cell[data-row="1"] img { top: -100%; }
+.linear-shell .ui-v2 .yt-scene-cell[data-row="2"] img { top: -200%; }
+.linear-shell .ui-v2 .yt-scene-cell[data-row="3"] img { top: -300%; }
+.linear-shell .ui-v2 .yt-scene-btn { justify-self: start; padding: 2px 8px; border: 1px solid var(--line-soft); border-radius: 4px; background: var(--panel-2); color: var(--muted); font-size: 12px; cursor: pointer; }
+.linear-shell .ui-v2 .yt-scene-btn.yt-has { border-color: var(--accent-2); background: var(--accent-soft); color: var(--accent-2); font-weight: 700; }
+.linear-shell .ui-v2 .yt-scene-notes, .linear-shell .ui-v2 .yt-scene-notes form { display: grid; gap: 6px; }
+.linear-shell .ui-v2 .yt-scene-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
+.linear-shell .ui-v2 .yt-scene-list > li { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+.linear-shell .ui-v2 .yt-scene-list input { width: auto; padding: 0; }
+.linear-shell .ui-v2 .yt-scene-text { flex: 1 1 200px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.linear-shell .ui-v2 .yt-scene-note { padding: 6px 8px; border: 1px solid var(--line-soft); border-radius: 6px; }
+.linear-shell .ui-v2 .yt-scene-acts { display: flex; flex-wrap: wrap; gap: 4px; }
+.linear-shell .ui-v2 .yt-scene-jump { padding: 0 6px; border: 0; background: none; color: var(--accent-2); font-weight: 700; cursor: pointer; }
+.linear-shell .ui-v2 .yt-scene-summary > strong { color: var(--text); }
+
 @media (max-width: 820px) {
+  .linear-shell .ui-v2 .yt-scene-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .linear-shell .ui-v2 .yt-stepbar-item { min-height: 40px; }
   .linear-shell .ui-v2 .yt-refresh { margin-left: 0; }
   .linear-shell .ui-v2 .yt-step .panel-pad-lg { padding: 12px; }

@@ -6,6 +6,7 @@ import { checkMyinVoice, confirmMyinClips, createMyinRun, latestMyinRun, myinVoi
 import { findMyinPhotoCandidates, applyMyinPhotoCandidate } from "@/lib/server/myin-photo-candidates";
 import { readLocalRenderStatus } from "@/lib/server/youtube-render-pc";
 import { checkMyinScreens, myinScreenCheck } from "@/lib/server/myin-screen-check";
+import { sendSceneNotes } from "@/lib/server/myin-scene-notes";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
 
 export const runtime = "nodejs";
@@ -69,6 +70,8 @@ const patchSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("screen_check_auto"), runId: z.string().uuid(), on: z.boolean() }),
   z.object({ action: z.literal("place"), runId: z.string().uuid(), place: z.enum(["pc", "local"]) }),
   z.object({ action: z.literal("prepare"), runId: z.string().uuid() }),
+  // 점검 시트 장면 의견 → 내 AI에 수정 요청 (직원 요청 11-12): the chosen notes as one 수정 요청.
+  z.object({ action: z.literal("scene_notes"), runId: z.string().uuid(), ids: z.array(z.string().uuid()).min(1).max(20) }),
   // 우리 이미지 올리기: an upload address for one storyboard photo file, then the upload kept for it.
   z.object({ action: z.literal("our_image_url"), runId: z.string().uuid(), file: z.string().min(1).max(200), type: z.string().max(40) }),
   z.object({ action: z.literal("our_image"), runId: z.string().uuid(), file: z.string().min(1).max(200), path: z.string().min(1).max(400) }),
@@ -98,6 +101,7 @@ export async function PATCH(request: Request) {
     const actor = await authenticateRequest(request, { allowAgent: false });
     const input = patchSchema.parse(await parseJson(request, 60_000));
     const result = input.action === "review" ? { run: await reviewMyinStoryboard(actor, input.runId, input.decision, input.note, input.place, input.screenCheck) }
+      : input.action === "scene_notes" ? { run: await sendSceneNotes(actor, input.runId, [...new Set(input.ids)]) }
       : input.action === "screen_check_auto" ? { run: await setMyinScreenCheck(actor, input.runId, input.on) }
       : input.action === "place" ? { run: await setMyinDraftPlace(actor, input.runId, input.place) }
       : input.action === "settings" ? { run: await setMyinSettings(actor, input.runId, { place: input.place, screenCheck: input.screenCheck }) }

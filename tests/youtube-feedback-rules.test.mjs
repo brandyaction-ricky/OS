@@ -138,7 +138,7 @@ test("최종 검토 시점 이동 (직원 요청 11/4): a typed time goes to tha
 test("썸네일 피드백 (직원 요청 11/4): one note may be for every thumbnail, and a 👍 can be taken back by whoever pressed it", async () => {
   const { feedbackCreateSchema } = await import("../lib/server/youtube-process-feedback.ts").catch(() => ({}));
   const source = readFileSync(new URL("../lib/server/youtube-process-feedback.ts", import.meta.url), "utf8");
-  assert.match(source, /target: z\.enum\(\["video", "A", "B", "C", "all"\]\)/);
+  assert.match(source, /target: z\.enum\(\["video", "A", "B", "C", "all", "scene"\]\)/); // "scene": 점검 시트 장면 의견 (11-12), listed apart
   if (feedbackCreateSchema) assert.equal(feedbackCreateSchema.parse({ target: "all", ver: 1, text: "세 개 다 글자가 작아요" }).target, "all");
   const like = { ...base, text: "", whoId: "u-author", reaction: true };
   assert.equal(applyFeedback(like, author, { action: "delete" }, now, null, "A").deleted, true);

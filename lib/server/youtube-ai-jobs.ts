@@ -15,7 +15,7 @@ import { assertScriptInputs, saveScriptBundle, scriptBundleSchema, scriptInputKe
 import { checkScenePlan, SCENE_PLAN_JSON_SCHEMA, scenePlanPrompt, youtubeSceneRuleRefs } from "./youtube-scenes";
 import { checkPronunciation, pronunciationPrompt, PRONUNCIATION_JSON_SCHEMA } from "./youtube-voice-worker";
 import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
-import { myinRunWithWords, saveMyinStoryboard } from "./myin-run";
+import { myinRunWithWords, saveMyinStoryboard, storyboardJson } from "./myin-run";
 import { checkMyinStoryboardResult, checkShortStoryboardResult, MYIN_CARD_DOCS, MYIN_CARD_REFERENCE_DOCS, myinStoryboardCard, myinStoryboardInputKey, SHORT_CARD_DOCS, shortStoryboardCard } from "./myin-storyboard-job";
 import { DIAGRAM_CATALOG } from "@/lib/shortform-diagram-catalog";
 import { diagramCatalogTypes } from "@/lib/diagram-catalog";
@@ -624,12 +624,16 @@ async function claimJob(agent: RequestActor, jobId: string, byGpt: boolean) {
     const myin = await currentStoryboardInput(job);
     const lease = await take();
     const note = myin.run.review?.decision === "revise" ? myin.run.review.note : undefined;
+    // 점검 시트 장면 의견: the notes in full with the storyboard they were written on, in place of the short 수정 요청 line.
+    const scenes = myin.run.review?.decision === "revise" ? myin.run.review.scenes : undefined;
+    const sceneNotes = scenes?.length ? { scenes, previous: myin.run.storyboard ? await storyboardJson(service(), myin.run)
+      .then((storyboard) => ({ storyboard, assets: myin.run.storyboard!.assets })).catch(() => null) : null } : undefined;
     if (myin.run.layout === "short") return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt,
       instructions: shortStoryboardCard({ title: myin.title, headCopy: myin.headCopy, screenScript: myin.screenScript, markdown: myin.markdown, words: myin.words,
-        durationSeconds: myin.run.words!.durationSeconds, note, leaseMinutes: minutes, diagrams: DIAGRAM_CATALOG, docIds: await myinCardDocIds(SHORT_CARD_DOCS) }) };
+        durationSeconds: myin.run.words!.durationSeconds, note: sceneNotes ? undefined : note, sceneNotes, leaseMinutes: minutes, diagrams: DIAGRAM_CATALOG, docIds: await myinCardDocIds(SHORT_CARD_DOCS) }) };
     return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt,
       instructions: myinStoryboardCard({ title: myin.title, markdown: myin.markdown, words: myin.words, durationSeconds: myin.run.words!.durationSeconds,
-        note: myin.run.review?.decision === "revise" ? myin.run.review.note : undefined, leaseMinutes: minutes, catalog: await readDiagramCatalog(), docIds: await myinCardDocIds([...MYIN_CARD_DOCS, ...MYIN_CARD_REFERENCE_DOCS]) }) };
+        note: sceneNotes ? undefined : note, sceneNotes, leaseMinutes: minutes, catalog: await readDiagramCatalog(), docIds: await myinCardDocIds([...MYIN_CARD_DOCS, ...MYIN_CARD_REFERENCE_DOCS]) }) };
   }
   if (m.task === "niche") {
     const lease = await take();

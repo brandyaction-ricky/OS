@@ -12,6 +12,7 @@ import { CostTag, useCostConfirm, useCostModels, voiceEstimate } from "./cost-no
 import { MyinSoundEditor } from "./myin-sound-editor";
 import { MyinOurImages } from "./myin-our-images";
 import { MyinScreenCheck } from "./myin-screen-check";
+import { MyinSceneNotes, type SceneSheets } from "./myin-scene-notes";
 import { MyinVoiceCheck, type MyinVoiceCheckView, type MyinVoiceFixView } from "./myin-voice-check";
 import { localBlocker, useLocalRender, type DraftPlace } from "./myin-local-render";
 import { lastSettings, MyinMakeSettings, placeName, rememberSettings, SettingsLine, type MakeSettings, type RunSettings } from "./myin-make-settings";
@@ -36,6 +37,8 @@ interface MyinRun { id: string; status: string; stage: string; layout?: "short" 
   clipsStale?: string[] | null; photoCredits?: Record<string, { source: string; license: string; url: string | null }>;
   voiceFixes?: MyinVoiceFixView[]; voiceCheck?: MyinVoiceCheckView | null; voiceFixable?: boolean; voiceChanged?: { at: string; count: number } | null;
   style?: { id: string; name: string; version: number; channel: string } | null; settings?: RunSettings | null }
+/** Where the server still takes a 수정 요청 (reviewMyinStoryboard): 장면 의견 can go to 내 AI up to the ③ check. */
+const SCENE_SEND_STAGES = ["storyboard_review", "storyboard_confirmed", "cta_pending", "prep_pending", "prep_ready", "clips_pending", "clips_review"];
 interface Outputs { clips: { label: string; url: string | null }[]; stills?: string | null; video: string | null; summary: string | null; deck: string | null; srt: string | null }
 
 const PHASE: Record<string, string> = { breath_pending: "영상 만드는 컴퓨터가 숨 자리 고르는 중", voice_pending: "음성 만드는 중", words_pending: "영상 만드는 컴퓨터가 받아쓰기·자막 만드는 중", words_ready: "받아쓰기·자막 완료",
@@ -128,8 +131,10 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
   const [error, setError] = useState("");
   const [qc, setQc] = useState("");
   const [note, setNote] = useState("");
-  const [sheets, setSheets] = useState<string[]>([]);
+  const [sheets, setSheets] = useState<SceneSheets | null>(null);
   const [sheetsOpen, setSheetsOpen] = useState(false);
+  // New sheets (or another run) are new pictures of a new storyboard: the cut grid and its scene list load again when opened.
+  useEffect(() => { setSheets(null); setSheetsOpen(false); }, [run?.id, run?.prepared?.at]);
   const [outputs, setOutputs] = useState<Outputs | null>(null);
   const lastStage = useRef<string | null>(null);
   // The clips' and video's signed addresses are asked for again only when they change or near their 30 minutes: a new address on every
@@ -238,13 +243,14 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
   };
   const showSheets = async () => {
     if (!run) return;
-    try { setSheets((await apiRequest<{ sheets: string[] }>(`/api/v1/content/youtube-automation/myin?sheets=${run.id}`, { token: accessToken })).sheets); }
+    try { const got = await apiRequest<{ sheets: string[]; scenes: SceneSheets["scenes"]; storyboardAt: string }>(`/api/v1/content/youtube-automation/myin?sheets=${run.id}`, { token: accessToken });
+      setSheets({ urls: got.sheets, scenes: got.scenes ?? [], storyboardAt: got.storyboardAt ?? "" }); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "점검 시트를 열지 못했습니다."); }
   };
   // 화면 자동 검사 › 장면 #n: open the sheets and go to the one that holds the scene.
   const showSheet = async (n: number) => {
     setSheetsOpen(true);
-    if (!sheets.length) await showSheets();
+    if (!sheets) await showSheets();
     window.setTimeout(() => document.getElementById(`yt-sheet-${n}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 300);
   };
   // [영상 만드는 컴퓨터로 보내기] · [내 컴퓨터로 만들기] while a step waits; at ④ the new place prepares again (its folder draws the video).
@@ -375,12 +381,11 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       {/* ③ and ④ both prepare new sheets; the screen check reads each set, the last chance being before the full video. */}
       {run?.prepared ? <MyinScreenCheck runId={run.id} preparedAt={run.prepared.at} token={accessToken} onScene={(sheet) => void showSheet(sheet)}
         auto={run.screenCheckAuto !== false} onAuto={(on) => act("screen_auto", () => post("/myin", "PATCH", { action: "screen_check_auto", runId: run.id, on }))} /> : null}
-      {run?.prepared ? <details className="yt-details" open={sheetsOpen} onToggle={(event) => { const open = (event.target as HTMLDetailsElement).open; setSheetsOpen(open); if (open && !sheets.length) void showSheets(); }}>
-        <summary>점검 시트 {run.prepared.sheets}장 보기</summary>
-        <p className="yt-note">장면마다 한 컷씩입니다. 쇼릴 뒤부터는 컷 시각이 조금 앞당겨져 보이니(점검 기능의 특성), 문구 확인은 위 개수로 합니다.</p>
-        {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed URLs from private storage */}
-        {sheets.map((url, index) => <img key={url} id={`yt-sheet-${index + 1}`} src={url} alt={`미리보기 점검 시트 ${index + 1}`} style={{ width: "100%", borderRadius: 8 }} />)}
-      </details> : null}
+      {/* 점검 시트 장면 의견 (직원 요청 11-12): the sheets cut into scenes with a note box under each; chosen notes go to 내 AI as the 수정 요청 below. */}
+      {run ? <MyinSceneNotes projectId={sourceId} runId={run.id} token={accessToken} short={short} storyboardAt={run.storyboard?.at ?? ""} sheetCount={run.prepared?.sheets ?? 0}
+        sheets={sheets} open={sheetsOpen} onOpen={(open) => { setSheetsOpen(open); if (open && !sheets) void showSheets(); }} refresh={`${run.review?.at}|${run.storyboard?.at}|${run.prepared?.at}`}
+        canSend={!materials && SCENE_SEND_STAGES.includes(run.stage)} busy={busy === "scene"}
+        onSend={(ids) => act("scene", async () => { await post("/myin", "PATCH", { action: "scene_notes", runId: run.id, ids }); await post("/ai-jobs", "POST", { task: "storyboard", sourceId }); })} /> : null}
       {run?.sound?.report ? <details className="yt-details"><summary>자동 선곡표</summary>
         <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, maxHeight: 360, overflow: "auto", margin: 0 }}>{run.sound.report}</pre></details> : null}
       {/* 로건 QA 10/30: 29 full-width players under code names — a folded grid named by scene and diagram. */}

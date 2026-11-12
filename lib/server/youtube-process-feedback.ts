@@ -7,23 +7,29 @@ import { conflict, getYoutubeProject, notify, readFailed } from "./youtube-proce
 import { readFinals, readStages } from "./youtube-process-stages";
 import { appendOnly, applyFeedback, cleanMarks, FEEDBACK_FILE_MAX, FEEDBACK_FILE_TYPES, FEEDBACK_FILES_PER_ITEM, feedbackFilePath, FeedbackRuleError, mentionedIds, normalizeReplies, replyRecipients, type FeedbackFile, type FeedbackMark, type FeedbackReply, type FeedbackState } from "@/lib/youtube-process/feedback";
 import { createServiceSupabase } from "@/lib/supabase/server";
+import type { SceneNotePin } from "@/lib/myin-scene-notes";
+import { sceneNoteInput, sceneNotePin } from "./myin-scene-notes";
 
 // S6 최종 검수 feedback (지시서 6-3): one content_feedback record per item, under the project. Needs the M1 record type.
 export interface YpFeedback {
   id: string; version: number; text: string; who: string; whoId: string; at: string;
-  target: "video" | "A" | "B" | "C" | "all"; ver: number; t: number | null; range: [number, number] | null;
+  target: "video" | "A" | "B" | "C" | "all" | "scene"; ver: number; t: number | null; range: [number, number] | null;
   kind: string; sug: string; reaction: boolean; status: "open" | "done" | "declined"; declinedWhy: string; fixedIn: number | null;
   replies: FeedbackReply[]; doneBy: string; doneAt: string; confirmedBy: string; confirmedAt: string; deleted: boolean; editedAt: string;
   marks: FeedbackMark[]; files: FeedbackFile[];
+  /** 점검 시트 장면 의견 (target "scene"): the scene it was written on, and when it went to 내 AI as a 수정 요청. */
+  scene: SceneNotePin | null; sent: { at: string; by: string; name: string } | null;
 }
 export const feedbackCreateSchema = z.object({
   // "all": one note for every thumbnail at once (직원 요청 11/4).
-  target: z.enum(["video", "A", "B", "C", "all"]), ver: z.number().int().positive(), t: z.number().min(0).max(86_400).nullable().default(null),
+  // "scene": a note under one scene of the ③ 점검 시트 (직원 요청 11-12), with the scene it is on.
+  target: z.enum(["video", "A", "B", "C", "all", "scene"]), scene: sceneNoteInput.optional(), ver: z.number().int().positive(), t: z.number().min(0).max(86_400).nullable().default(null),
   range: z.tuple([z.number().min(0), z.number().min(0)]).nullable().default(null), text: z.string().trim().max(2000).default(""),
   kind: z.enum(["", "제목", "썸네일 문구", "이미지 연출", "기타", "알림"]).default(""), sug: z.string().trim().max(200).default(""), reaction: z.boolean().default(false),
   marks: z.array(z.unknown()).max(20).default([]),
   files: z.array(z.object({ path: z.string().max(200), name: z.string().trim().min(1).max(160), mime: z.string().max(60), size: z.number().int().positive().max(FEEDBACK_FILE_MAX) }).strict()).max(FEEDBACK_FILES_PER_ITEM).default([]),
-}).strict().refine(value => value.reaction || value.text, { message: "피드백을 써 주세요." });
+}).strict().refine(value => value.reaction || value.text, { message: "피드백을 써 주세요." })
+  .refine(value => (value.target === "scene") === Boolean(value.scene), { message: "의견을 남길 장면을 골라 주세요." });
 export const feedbackActionSchema = z.object({ itemId: z.string().uuid(), expectedVersion: z.number().int().positive(),
   action: z.enum(["resolve", "reopen", "decline", "reply", "confirm", "unconfirm", "edit", "delete", "reply_edit", "reply_delete"]),
   text: z.string().trim().max(2000).default(""), replyId: z.string().max(120).optional() }).strict();
@@ -35,7 +41,8 @@ const present = (row: OsRecord): YpFeedback => {
     kind: String(m.kind ?? ""), sug: String(m.sug ?? ""), reaction: m.reaction === true, status: (m.status as YpFeedback["status"]) ?? "open",
     declinedWhy: String(m.declinedWhy ?? ""), fixedIn: typeof m.fixedIn === "number" ? m.fixedIn : null, replies: normalizeReplies(m.replies),
     doneBy: String(m.doneBy ?? ""), doneAt: String(m.doneAt ?? ""), confirmedBy: String(m.confirmedBy ?? ""), confirmedAt: String(m.confirmedAt ?? ""), deleted: m.deleted === true, editedAt: String(m.editedAt ?? ""),
-    marks: cleanMarks(m.marks), files: Array.isArray(m.files) ? (m.files as FeedbackFile[]) : [] };
+    marks: cleanMarks(m.marks), files: Array.isArray(m.files) ? (m.files as FeedbackFile[]) : [],
+    scene: (m.scene as SceneNotePin | undefined) ?? null, sent: (m.sent as YpFeedback["sent"] | undefined) ?? null };
 };
 
 /** Long-form items in running order (a range by its start), thumbnails A → B → C, then by time written (4-7). */
@@ -45,18 +52,20 @@ export function sortFeedback(items: YpFeedback[]) {
     : a.target.localeCompare(b.target) || a.at.localeCompare(b.at));
 }
 
-export async function listFeedback(actor: RequestActor, id: string) {
+/** The 최종 검토 items, or (`scenes`) only the 점검 시트 장면 의견 — the two lists never mix. */
+export async function listFeedback(actor: RequestActor, id: string, scenes = false) {
   const project = await getYoutubeProject(actor, id);
   const { data, error } = await actor.supabase.from("os_records").select("*").eq("parent_id", project.id).eq("record_type", "content_feedback").is("archived_at", null).limit(500);
   if (error) throw readFailed();
-  return sortFeedback((data ?? []).map(row => present(row as OsRecord)));
+  return sortFeedback((data ?? []).map(row => present(row as OsRecord)).filter(item => (item.target === "scene") === scenes));
 }
 
 const notReady = () => new ApiError(503, "FEEDBACK_NOT_READY", "피드백 저장 기능을 준비하는 중이에요. (데이터베이스에 피드백 칸을 더하는 작업이 아직 적용되지 않았어요)");
 
 export async function createFeedback(actor: RequestActor, id: string, input: z.infer<typeof feedbackCreateSchema>) {
   const project = await getYoutubeProject(actor, id);
-  if (!["review", "upload"].includes(project.yp.stage)) throw new ApiError(409, "STAGE_LOCKED", "최종 검토 단계에서 피드백을 남겨요.");
+  const scene = input.scene ? await sceneNotePin(actor, project.id, input.scene) : null;
+  if (!scene && !["review", "upload"].includes(project.yp.stage)) throw new ApiError(409, "STAGE_LOCKED", "최종 검토 단계에서 피드백을 남겨요.");
   if (input.target === "video") {
     const stages = await readStages(actor.supabase, project);
     const latest = (await readFinals(actor.supabase, project.id, stages.make.data, project.yp.topic.type)).at(-1)?.v ?? 0;
@@ -69,7 +78,7 @@ export async function createFeedback(actor: RequestActor, id: string, input: z.i
     id: randomUUID(), record_type: "content_feedback", title: `${project.title} · 피드백`.slice(0, 240), description: input.text, status: "open", priority: "normal",
     parent_id: project.id, owner_id: actor.id, created_by: actor.id, updated_by: actor.id, team: actor.team, tags: ["유튜브", "피드백"],
     metadata: { projectId: project.id, feedbackKind: "item", stage: "review", who: actor.name, target: input.target, ver: input.ver, t: input.t, range: input.range,
-      kind: input.kind, sug: input.sug, reaction: input.reaction, status: "open", replies: [], marks: cleanMarks(input.marks), files },
+      kind: input.kind, sug: input.sug, reaction: input.reaction, status: "open", replies: [], marks: cleanMarks(input.marks), files, ...(scene ? { scene, stage: "make" } : {}) },
   }).select("*").single();
   if (error?.code === "23514") throw notReady();
   if (error || !data) throw new ApiError(400, "FEEDBACK_SAVE_FAILED", "피드백을 저장하지 못했습니다.");
@@ -107,7 +116,8 @@ export async function actOnFeedback(actor: RequestActor, id: string, input: z.in
     try { after = applyFeedback(before, { id: actor.id, name: actor.name, admin: actor.role === "admin" }, input, new Date().toISOString(), latest, item.target); }
     catch (reason) { if (reason instanceof FeedbackRuleError) throw new ApiError(reason.status, reason.code, reason.message); throw reason; }
     const { text, whoId: _whoId, ...fields } = after; void _whoId;
-    const metadata = { ...m, doneBy: null, doneAt: null, confirmedBy: null, confirmedAt: null, deleted: null, editedAt: null, ...fields };
+    // 다시 열기 puts a 장면 의견 back to 대기 (it goes to 내 AI again with the next 수정 요청).
+    const metadata = { ...m, doneBy: null, doneAt: null, confirmedBy: null, confirmedAt: null, deleted: null, editedAt: null, ...(input.action === "reopen" ? { sent: null } : {}), ...fields };
     const { data: saved, error: saveError } = await actor.supabase.from("os_records").update({ metadata, description: text, status: after.status, updated_by: actor.id })
       .eq("id", row.id).eq("version", row.version).is("archived_at", null).select("*").maybeSingle();
     if (saveError) throw new ApiError(400, "FEEDBACK_SAVE_FAILED", "피드백을 저장하지 못했습니다.");

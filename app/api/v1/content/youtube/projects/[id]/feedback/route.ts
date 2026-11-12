@@ -16,6 +16,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const actor = await youtubeActor(request);
     const file = new URL(request.url).searchParams.get("file");
     if (file) return NextResponse.json({ url: await feedbackFileUrl(actor, projectId.parse((await params).id), file) }, { headers });
+    // 점검 시트 장면 의견 (③): their own list, never in the 최종 검토 one or the editor's.
+    if (new URL(request.url).searchParams.get("scenes") === "1") return NextResponse.json({ items: await listFeedback(actor, projectId.parse((await params).id), true) }, { headers });
     const id = projectId.parse((await params).id), items = await listFeedback(actor, id);
     // 영상 편집기 (v2 ④ · v3 6-6): each open video item says where it is in the editor; a video nobody edits reads as before.
     const edits = await feedbackEdits(actor, id, items).catch(() => ({} as Awaited<ReturnType<typeof feedbackEdits>>));
