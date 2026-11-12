@@ -39,3 +39,53 @@ export function diffMarkdownLines(before: string, after: string): LineChange[] {
   }
   return result;
 }
+
+/**
+ * 정본 변경 제안 (2026-11-12): the rich editor writes every line back in its own style (escaped `*`, `*` bullets, padded tables,
+ * HTML as text) even when one line changed. Given the text the editor was opened with (`original`), what the editor made of it
+ * untouched (`normalized`) and what it holds now (`edited`), keep the original wording of every part the person did not change and
+ * take the editor's text only where they did. A part the editor rewrote and the person also edited takes the edited text.
+ */
+export function keepOriginalLines(original: string, normalized: string, edited: string) {
+  if (normalized === edited) return original;
+  const base = normalized.split("\n");
+  // Units over the normalized lines: one line the editor left alone, or a run it rewrote, with the original lines behind it.
+  // A run rewritten line for line (escapes, bullets, table padding) is split back into single lines, so editing one bullet or one
+  // table row keeps the rest of the list or table as it was.
+  const units: { from: number; to: number; text: string[] }[] = [];
+  let at = 0, run: { from: number; to: number; text: string[] } | null = null;
+  const close = () => {
+    if (!run) return;
+    if (run.to - run.from === run.text.length) run.text.forEach((line, k) => units.push({ from: run!.from + k, to: run!.from + k + 1, text: [line] }));
+    else units.push(run);
+    run = null;
+  };
+  for (const change of diffMarkdownLines(normalized, original)) {
+    if (change.kind === "same") { close(); units.push({ from: at, to: at + 1, text: [change.text] }); at += 1; }
+    else {
+      run ??= { from: at, to: at, text: [] };
+      if (change.kind === "removed") { at += 1; run.to = at; } else run.text.push(change.text);
+    }
+  }
+  close();
+  // What the person did to each normalized line: kept or not, and the lines they added before it (index base.length = the end).
+  const kept = new Array<boolean>(base.length).fill(false);
+  const added: string[][] = Array.from({ length: base.length + 1 }, () => []);
+  at = 0;
+  for (const change of diffMarkdownLines(normalized, edited)) {
+    if (change.kind === "added") added[at].push(change.text);
+    else { if (change.kind === "same") kept[at] = true; at += 1; }
+  }
+  const out: string[] = [];
+  for (const unit of units) {
+    out.push(...added[unit.from].splice(0));
+    const untouched = kept.slice(unit.from, unit.to).every(Boolean) && added.slice(unit.from + 1, unit.to).every((lines) => !lines.length);
+    if (untouched) { out.push(...unit.text); continue; }
+    for (let k = unit.from; k < unit.to; k += 1) {
+      if (k > unit.from) out.push(...added[k].splice(0));
+      if (kept[k]) out.push(base[k]);
+    }
+  }
+  out.push(...added[base.length]);
+  return out.join("\n");
+}
