@@ -115,7 +115,14 @@ export async function saveMetaConnection(ownerId: string, platform: MetaPlatform
     const raw = await metaJson(config.token, { method: "POST", body: new URLSearchParams({ client_id: required(`${config.prefix}_APP_ID`), client_secret: required(`${config.prefix}_APP_SECRET`), grant_type: "authorization_code", redirect_uri: metaRedirectUri(), code }) }, "short_token");
     const short = raw.access_token ? raw : Array.isArray(raw.data) && raw.data.length === 1 ? raw.data[0] : null;
     if (!short?.access_token) throw new ApiError(502, "META_TOKEN_MISSING", "Meta 인증 정보를 받지 못했습니다.", { stage: "short_token" });
-    const long = await metaJson(`${config.host}/access_token?${new URLSearchParams({ grant_type: platform === "instagram" ? "ig_exchange_token" : "th_exchange_token", client_secret: required(`${config.prefix}_APP_SECRET`) })}`, { headers: { authorization: `Bearer ${short.access_token}` } }, "long_token");
+    const secret = required(`${config.prefix}_APP_SECRET`);
+    const long = platform === "threads"
+      ? await metaJson(`https://graph.threads.com/access_token?${new URLSearchParams({
+          grant_type: "th_exchange_token", client_secret: secret, access_token: short.access_token,
+        })}`, { redirect: "error" }, "long_token")
+      : await metaJson(`${config.host}/access_token?${new URLSearchParams({
+          grant_type: "ig_exchange_token", client_secret: secret,
+        })}`, { headers: { authorization: `Bearer ${short.access_token}` } }, "long_token");
     if (!long.access_token || !Number.isFinite(long.expires_in) || long.expires_in <= 0) throw new ApiError(502, "META_TOKEN_MISSING", "유효한 장기 인증 정보를 받지 못했습니다.", { stage: "long_token" });
     const me = await metaJson(`${config.host}/me?fields=${platform === "instagram" ? "user_id,username,account_type" : "id,username"}`, { headers: { authorization: `Bearer ${long.access_token}` } }, "profile");
     accountId = String(me.user_id ?? me.id ?? ""); name = String(me.username ?? ""); accountType = platform === "instagram" ? String(me.account_type ?? "") : "THREADS";

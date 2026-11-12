@@ -68,6 +68,49 @@ for (const stage of ["short_token","long_token","profile"]) {
   });
 }
 
+for (const platform of ["threads", "instagram"]) {
+  test(`${platform} exchanges a short token before reading a profile with the long token`, async () => {
+    const short = "test+short/with&reserved=characters";
+    const secret = "test+secret&only";
+    const prefix = platform === "threads" ? "META_THREADS" : "META_INSTAGRAM";
+    const env = {META_MODE:"live", OS_PUBLIC_URL:"https://os.example", [prefix + "_APP_ID"]:"test-app", [prefix + "_APP_SECRET"]:secret};
+    const calls = [];
+    const api = await moduleOf("lib/server/meta-oauth.ts", {
+      "node:crypto":crypto, "@/lib/http":{ApiError},
+      "./channel-access":{assertActiveChannelOwner:async()=>{}},
+      "@/lib/supabase/server":{},
+    }, {process:{env}, fetch:async (url, options) => {
+      calls.push({url:new URL(url), options});
+      if (calls.length === 1) return Response.json({access_token:short});
+      if (calls.length === 2) return Response.json({access_token:"test-long", expires_in:5184000});
+      return Response.json({error:{code:190}}, {status:401});
+    }});
+    await assert.rejects(api.saveMetaConnection("test-owner", platform, "test-code"),
+      error => error.details.stage === "profile");
+    assert.equal(calls.length, 3);
+    const [initial, exchange, profile] = calls;
+    assert.equal(initial.options.body.get("client_secret"), secret);
+    assert.equal(exchange.options.method ?? "GET", "GET");
+    assert.equal(exchange.options.cache, "no-store");
+    assert.equal(exchange.url.searchParams.get("client_secret"), secret);
+    if (platform === "threads") {
+      assert.equal(exchange.url.origin + exchange.url.pathname, "https://graph.threads.com/access_token");
+      assert.equal(exchange.url.searchParams.get("grant_type"), "th_exchange_token");
+      assert.deepEqual(exchange.url.searchParams.getAll("access_token"), [short]);
+      assert.equal(exchange.options.headers?.authorization, undefined);
+      assert.equal(exchange.options.redirect, "error");
+    } else {
+      assert.equal(exchange.url.origin + exchange.url.pathname, "https://graph.instagram.com/access_token");
+      assert.equal(exchange.url.searchParams.get("grant_type"), "ig_exchange_token");
+      assert.equal(exchange.url.searchParams.has("access_token"), false);
+      assert.equal(exchange.options.headers.authorization, `Bearer ${short}`);
+    }
+    assert.equal(profile.url.pathname, "/me");
+    assert.equal(profile.url.searchParams.has("access_token"), false);
+    assert.equal(profile.options.headers.authorization, "Bearer test-long");
+  });
+}
+
 test("callback redirects with a safe category and clears the state cookie on failure", async () => {
   const logs=[],cleared=[];
   const response={cookies:{set:(...args)=>cleared.push(args)}};
