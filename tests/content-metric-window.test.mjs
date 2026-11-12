@@ -17,3 +17,19 @@ test("performance screens read metrics per date window, never every hourly obser
   assert.match(sql, /order by identity, platform, measured desc/);
   assert.match(sql, /revoke all on function public\.os_content_metric_window\(timestamptz, timestamptz\) from public, anon/);
 });
+
+test("channel snapshots leave the window read and come only with ?snapshots=1, for posts published in the dates", () => {
+  const route = readFileSync("app/api/v1/content/metrics/route.ts", "utf8");
+  assert.match(route, /actor\.supabase\.rpc\("os_content_metric_window_v2", \{ \.\.\.window, p_snapshots: snapshots \}\)/);
+  assert.match(route, /if \(error\?\.code === "PGRST202"\)/, "until the migration is in, v1 answers and the split happens in the route");
+  const sql = readFileSync("supabase/migrations/20261112220000_content_metric_window_v2.sql", "utf8");
+  assert.match(sql, /where not p_snapshots and r\.record_type = 'content_metric'/);
+  assert.match(sql, /where p_snapshots and r\.record_type = 'content_metric' and r\.archived_at is null and r\.metadata->>'channelSnapshotVersion' = '1'/);
+  assert.match(sql, /r\.metadata->>'publishedAt' >= to_char\(p_from/);
+  assert.match(sql, /security invoker/);
+  assert.match(sql, /revoke all on function public\.os_content_metric_window_v2\(timestamptz, timestamptz, boolean\) from public, anon/);
+  assert.match(readFileSync("supabase/rollback/20261112220000_content_metric_window_v2.down.sql", "utf8"), /drop function if exists public\.os_content_metric_window_v2/);
+  const page = readFileSync("components/content-performance-dashboard.tsx", "utf8");
+  assert.match(page, /listMetricWindow\(accessToken, from, to, true\)/, "경과일 비교 asks for its snapshots itself");
+  assert.match(readFileSync("lib/api-client.ts", "utf8"), /if \(snapshots\) params\.set\("snapshots", "1"\);/);
+});

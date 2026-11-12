@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { addDays, dayFields, dueYtSnapshots, parseYtDays, ptDay, ytFormat, ytSnapshot } from "../lib/youtube-channel-analytics.ts";
+import { addDays, dayFields, dueYtSnapshots, hasActivity, parseYtDays, ptDay, ytFormat, ytSnapshot } from "../lib/youtube-channel-analytics.ts";
 
 // 영상 성과 채우기 (2026-11-11): every channel video day by day from YouTube Analytics.
 const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
@@ -46,4 +46,11 @@ test("the daily job reads every upload, writes daily rows that stand in for the 
   const vercel = JSON.parse(read("vercel.json"));
   assert.ok(vercel.crons.some((c) => c.path === "/api/v1/content/channel-analytics"));
   assert.equal(vercel.functions["app/api/v1/content/channel-analytics/route.ts"].maxDuration, 300);
+});
+
+test("a day with nothing on it is not stored as a row", () => {
+  assert.equal(hasActivity({ day: "2026-11-01", views: 0, likes: 0, subscribersGained: 0, subscribersLost: 0, averageViewPercentage: 0 }), false);
+  assert.equal(hasActivity({ day: "2026-11-01", views: 0, subscribersGained: 1 }), true);
+  assert.equal(hasActivity({ day: "2026-11-01", views: 3 }), true);
+  assert.match(readFileSync(new URL("../lib/server/youtube-channel-analytics.ts", import.meta.url), "utf8"), /d\.views != null && hasActivity\(d\)/);
 });

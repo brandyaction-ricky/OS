@@ -283,11 +283,13 @@ async function readAllRecordsOfType(token: string | null, recordType: RecordType
 }
 
 /** content_metric as the performance screens use it: per date window, the latest cumulative snapshot per
- *  video plus daily rows (not every hourly observation). No dates = all history. */
-export function metricWindowPath(from?: string, to?: string) {
+ *  video plus daily rows (not every hourly observation); `snapshots` = the D1 · D7 · D28 rows of posts published
+ *  in the window instead. No dates = all history. */
+export function metricWindowPath(from?: string, to?: string, snapshots = false) {
   const params = new URLSearchParams();
   if (from) params.set("from", from);
   if (to) params.set("to", to);
+  if (snapshots) params.set("snapshots", "1");
   return `/api/v1/content/metrics${params.size ? `?${params}` : ""}`;
 }
 /** The period 영상 성과 opens with (최근 30일 in Korean days, inclusive) — the same window its period buttons start on. */
@@ -304,8 +306,8 @@ export function recentMetricWindow(token: string | null, from?: string, to?: str
   const hit = recentRead<{ records: OsRecord[] }>(metricWindowPath(from, to), token);
   return hit ? decodedRecordTitles(hit.records) : undefined;
 }
-export async function listMetricWindow(token: string | null, from?: string, to?: string) {
-  const { records } = await sharedRead<{ records: OsRecord[] }>(metricWindowPath(from, to), token);
+export async function listMetricWindow(token: string | null, from?: string, to?: string, snapshots = false) {
+  const { records } = await sharedRead<{ records: OsRecord[] }>(metricWindowPath(from, to, snapshots), token);
   return decodedRecordTitles(records);
 }
 

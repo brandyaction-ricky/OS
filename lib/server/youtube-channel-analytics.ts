@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
-import { YT_DAY_METRICS, addDays, dayFields, dueYtSnapshots, parseYtDays, ptDay, ytFormat, ytSnapshot, type Snapshot, type YtDay } from "@/lib/youtube-channel-analytics";
+import { YT_DAY_METRICS, addDays, dayFields, dueYtSnapshots, hasActivity, parseYtDays, ptDay, ytFormat, ytSnapshot, type Snapshot, type YtDay } from "@/lib/youtube-channel-analytics";
 import { youtubeAnalyticsConnected } from "./channel-metrics";
 import { getYoutubeAccessToken, type YoutubeStoredConnection } from "./youtube-oauth";
 import { normalizeObservedVideo } from "./youtube-observation";
@@ -91,7 +91,9 @@ export async function syncChannelAnalytics(now = new Date(), budgetMs = 240_000)
           counts.videos++;
           const base = { record_type: "content_metric", title: video.title, status: "done", owner_id: connection.owner_id, created_by: connection.owner_id, updated_by: connection.owner_id,
             source_url: `https://www.youtube.com/watch?v=${video.id}`, brand: "브랜디액션", team: "콘텐츠", stage: "채널 자동 수집" };
-          const dailyRows = days.filter((d) => d.day >= keepFrom && d.views != null).map((d) => ({ ...base, id: ytDailyId(connection.channel_id, video.id, d.day),
+          // A day with nothing on it (no view, like, comment, share or subscriber change) is not stored: it adds nothing to a sum,
+          // and an old video has hundreds of them (8.5k of 11k rows in the first 30-day read).
+          const dailyRows = days.filter((d) => d.day >= keepFrom && d.views != null && hasActivity(d)).map((d) => ({ ...base, id: ytDailyId(connection.channel_id, video.id, d.day),
             description: "YouTube 분석 하루 기록", metric_current: d.views ?? null, metric_unit: "views", starts_at: `${d.day}T12:00:00Z`,
             metadata: { contentId: video.id, channelId: connection.channel_id, platform: "YouTube", format, metricMode: "daily", dataSource: DAILY, source: "api",
               day: d.day, measuredAt, publishedAt: video.publishedAt, durationSeconds: video.durationSeconds, ...dayFields(d) } }));
