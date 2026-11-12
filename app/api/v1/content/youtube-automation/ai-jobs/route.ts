@@ -16,7 +16,7 @@ const disabled = () => new ApiError(404, "AUTOMATION_PILOT_DISABLED", "영상 �
 // ② 원고 and ⑦ 발행키트 open on the staff switch; ③ 화면 설계 and 기획표 stay with the DEV-only pilot.
 // 기획안 (유튜브 공정 v1) opens with them.
 const STAFF_TASKS = ["script", "script-notes", "kit", "plan", "shorts", "short", "niche", "column", "short-copy", "retitle", "short-topics", "short-formula", "short-script", "topic-formula", "card", "image-creative", "thumbs"] as const;
-const TASKS = ["scene-plan", "storyboard", ...STAFF_TASKS] as const;
+const TASKS = ["scene-plan", "storyboard", "scene-notes", ...STAFF_TASKS] as const;
 const open = (task: (typeof TASKS)[number]) => ((STAFF_TASKS as readonly string[]).includes(task) ? canUseYoutubeStaffScript : canUseYoutubeAutomationPilot)(process.env);
 
 /** The latest staff AI job of one kind (③ scene-plan by default, ② script) for one video and when the requester's AI last used its key. */
@@ -27,7 +27,8 @@ export async function GET(request: Request) {
     if (!open(task)) throw disabled();
     const actor = await authenticateRequest(request, { allowAgent: false });
     const sourceId = z.string().uuid().parse(params.get("sourceId"));
-    return NextResponse.json(await staffJobStatus(actor, sourceId, task), { headers });
+    // ③ 장면 의견: several jobs wait in turn, so the panel reads the recent ones (all=1) to tell which notes are still being fixed.
+    return NextResponse.json(await staffJobStatus(actor, sourceId, task, params.get("all") === "1" ? 20 : 1), { headers });
   } catch (error) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "INVALID_AUTOMATION_INPUT", "콘텐츠를 확인해 주세요."));
     return apiErrorResponse(error);

@@ -37,8 +37,6 @@ interface MyinRun { id: string; status: string; stage: string; layout?: "short" 
   clipsStale?: string[] | null; photoCredits?: Record<string, { source: string; license: string; url: string | null }>;
   voiceFixes?: MyinVoiceFixView[]; voiceCheck?: MyinVoiceCheckView | null; voiceFixable?: boolean; voiceChanged?: { at: string; count: number } | null;
   style?: { id: string; name: string; version: number; channel: string } | null; settings?: RunSettings | null }
-/** Where the server still takes a 수정 요청 (reviewMyinStoryboard): 장면 의견 can go to 내 AI up to the ③ check. */
-const SCENE_SEND_STAGES = ["storyboard_review", "storyboard_confirmed", "cta_pending", "prep_pending", "prep_ready", "clips_pending", "clips_review"];
 interface Outputs { clips: { label: string; url: string | null }[]; stills?: string | null; video: string | null; summary: string | null; deck: string | null; srt: string | null }
 
 const PHASE: Record<string, string> = { breath_pending: "영상 만드는 컴퓨터가 숨 자리 고르는 중", voice_pending: "음성 만드는 중", words_pending: "영상 만드는 컴퓨터가 받아쓰기·자막 만드는 중", words_ready: "받아쓰기·자막 완료",
@@ -381,11 +379,10 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       {/* ③ and ④ both prepare new sheets; the screen check reads each set, the last chance being before the full video. */}
       {run?.prepared ? <MyinScreenCheck runId={run.id} preparedAt={run.prepared.at} token={accessToken} onScene={(sheet) => void showSheet(sheet)}
         auto={run.screenCheckAuto !== false} onAuto={(on) => act("screen_auto", () => post("/myin", "PATCH", { action: "screen_check_auto", runId: run.id, on }))} /> : null}
-      {/* 점검 시트 장면 의견 (직원 요청 11-12): the sheets cut into scenes with a note box under each; chosen notes go to 내 AI as the 수정 요청 below. */}
+      {/* 점검 시트 장면 의견 (직원 요청 11-12): the sheets cut into scenes with a note box under each; 내 AI sends a 수정안 per scene, applied one by one. */}
       {run ? <MyinSceneNotes projectId={sourceId} runId={run.id} token={accessToken} short={short} storyboardAt={run.storyboard?.at ?? ""} sheetCount={run.prepared?.sheets ?? 0}
         sheets={sheets} open={sheetsOpen} onOpen={(open) => { setSheetsOpen(open); if (open && !sheets) void showSheets(); }} refresh={`${run.review?.at}|${run.storyboard?.at}|${run.prepared?.at}`}
-        canSend={!materials && SCENE_SEND_STAGES.includes(run.stage)} busy={busy === "scene"}
-        onSend={(ids) => act("scene", async () => { await post("/myin", "PATCH", { action: "scene_notes", runId: run.id, ids }); await post("/ai-jobs", "POST", { task: "storyboard", sourceId }); })} /> : null}
+        canSend={!materials} canApply={!materials && ["storyboard_review", "clips_review"].includes(run.stage)} onChanged={load} /> : null}
       {run?.sound?.report ? <details className="yt-details"><summary>자동 선곡표</summary>
         <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, maxHeight: 360, overflow: "auto", margin: 0 }}>{run.sound.report}</pre></details> : null}
       {/* 로건 QA 10/30: 29 full-width players under code names — a folded grid named by scene and diagram. */}
