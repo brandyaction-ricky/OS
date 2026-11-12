@@ -58,10 +58,23 @@ export function metaAuthorizationUrl(platform: MetaPlatform, state: string) {
   const config = CONFIG[platform];
   return `${config.authorization}?${new URLSearchParams({ client_id: required(`${config.prefix}_APP_ID`), redirect_uri: metaRedirectUri(), response_type: "code", scope: config.scopes.join(","), state })}`;
 }
-async function metaJson(url: string, options: RequestInit, stage?: MetaOAuthStage) {
+// Next's global fetch puts the full URL in its tracing span. Meta requires both
+// credentials in this GET's query, so send it directly over TLS without redirects.
+async function getThreadsToken(url: string, options: RequestInit): Promise<Response> {
+  const { get } = await import("node:https");
+  const { text } = await import("node:stream/consumers");
+  return new Promise((resolve, reject) => {
+    get(url, { signal: options.signal ?? undefined }, reply => {
+      text(reply)
+        .then(body => new Response(body || null, { status: reply.statusCode }))
+        .then(resolve, reject);
+    }).once("error", reject);
+  });
+}
+async function metaJson(url: string, options: RequestInit, stage?: MetaOAuthStage, request: (url: string, init: RequestInit) => Promise<Response> = fetch) {
   let response: Response;
   try {
-    response = await fetch(url, { ...options, cache: "no-store", signal: AbortSignal.timeout(20_000) });
+    response = await request(url, { ...options, cache: "no-store", signal: AbortSignal.timeout(20_000) });
   } catch {
     // Fetch errors may embed credential-bearing URLs. Keep only the stage.
     throw new ApiError(502, "META_CONNECTION_FAILED", "Meta에 연결하지 못했습니다.", stage ? { stage } : undefined);
@@ -115,7 +128,14 @@ export async function saveMetaConnection(ownerId: string, platform: MetaPlatform
     const raw = await metaJson(config.token, { method: "POST", body: new URLSearchParams({ client_id: required(`${config.prefix}_APP_ID`), client_secret: required(`${config.prefix}_APP_SECRET`), grant_type: "authorization_code", redirect_uri: metaRedirectUri(), code }) }, "short_token");
     const short = raw.access_token ? raw : Array.isArray(raw.data) && raw.data.length === 1 ? raw.data[0] : null;
     if (!short?.access_token) throw new ApiError(502, "META_TOKEN_MISSING", "Meta 인증 정보를 받지 못했습니다.", { stage: "short_token" });
-    const long = await metaJson(`${config.host}/access_token?${new URLSearchParams({ grant_type: platform === "instagram" ? "ig_exchange_token" : "th_exchange_token", client_secret: required(`${config.prefix}_APP_SECRET`) })}`, { headers: { authorization: `Bearer ${short.access_token}` } }, "long_token");
+    const secret = required(`${config.prefix}_APP_SECRET`);
+    const long = platform === "threads"
+      ? await metaJson(`https://graph.threads.com/access_token?${new URLSearchParams({
+          grant_type: "th_exchange_token", client_secret: secret, access_token: short.access_token,
+        })}`, {}, "long_token", getThreadsToken)
+      : await metaJson(`${config.host}/access_token?${new URLSearchParams({
+          grant_type: "ig_exchange_token", client_secret: secret,
+        })}`, { headers: { authorization: `Bearer ${short.access_token}` } }, "long_token");
     if (!long.access_token || !Number.isFinite(long.expires_in) || long.expires_in <= 0) throw new ApiError(502, "META_TOKEN_MISSING", "유효한 장기 인증 정보를 받지 못했습니다.", { stage: "long_token" });
     const me = await metaJson(`${config.host}/me?fields=${platform === "instagram" ? "user_id,username,account_type" : "id,username"}`, { headers: { authorization: `Bearer ${long.access_token}` } }, "profile");
     accountId = String(me.user_id ?? me.id ?? ""); name = String(me.username ?? ""); accountType = platform === "instagram" ? String(me.account_type ?? "") : "THREADS";
