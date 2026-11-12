@@ -78,8 +78,21 @@ test("UTM tables are server-only and every route checks the staff session", asyn
   const widen = readFileSync("supabase/migrations/20261028100000_utm_content_case.sql", "utf8");
   assert.match(widen, /code ~ '\^\[a-z0-9_-\]\{1,80\}\$' or \(kind = 'content' and code ~ '\^\[A-Za-z0-9_-\]\{1,80\}\$'\)/);
   assert.doesNotMatch(widen, /\bupdate\b|\bdelete\b/i);
-  for (const route of ["options/route.ts", "options/[id]/route.ts", "links/route.ts", "links/[id]/short/route.ts", "links/[id]/ledger/route.ts"]) {
+  for (const route of ["options/route.ts", "options/[id]/route.ts", "links/route.ts", "links/[id]/route.ts", "links/[id]/short/route.ts", "links/[id]/ledger/route.ts"]) {
     assert.match(readFileSync(`app/api/v1/utm/${route}`, "utf8"), /await utmActor\(request\)/, route);
   }
   assert.match(readFileSync("lib/server/utm-links.ts", "utf8"), /if \(!actor\.isAdmin\) throw new ApiError\(403, "ADMIN_REQUIRED"/);
+});
+
+test("고치기 changes only a link's notes on the same row, and a stale edit is refused", async () => {
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync("lib/server/utm-links.ts", "utf8");
+  const edit = src.slice(src.indexOf("export const utmLinkUpdateSchema"), src.indexOf("/** Rebuilds the company"));
+  assert.match(edit, /usage: z\.string\(\)\.trim\(\)\.min\(1\)\.max\(200\), target: memo\(200\), location: memo\(200\), etc: memo\(500\), expectedUpdatedAt: [^}]*\}\)\.strict\(\)/);
+  // The addresses, UTM values, short link (and so its clicks) and the row id are never written here.
+  assert.doesNotMatch(edit, /origin_url|utm_url|short_url|short_key|params|request_id|insert\(/);
+  assert.match(edit, /\.eq\("id", id\)\.eq\("updated_at", expectedUpdatedAt\)/);
+  assert.match(edit, /409, "UTM_LINK_CHANGED"/);
+  // A row edited while the document is being rebuilt stays pending for the next rebuild.
+  assert.match(src, /\.neq\("ledger_status", "saved"\)\.lte\("updated_at", startedAt\)/);
 });
