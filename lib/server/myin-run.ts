@@ -6,7 +6,7 @@ import { localOwner, movePinned, pinnedElsewhere, placeFilter, settingsPlace } f
 import { changedMaterials, type MyinMaterials } from "@/lib/myin-materials";
 import { planVoiceFix } from "@/lib/myin-voice-plan";
 import { applySubtitleEdits, subtitleIssues, subtitleLines, subtitleTextProblem } from "@/lib/myin-subtitles";
-import { applyMyinSoundPlan, MYIN_METAPHOR_TYPES, myinDriftPairs, myinOnlySoundChanged, myinPhotoFetchUrl, myinPhotoFolders, myinPrepPhotos, myinSceneStarts, myinSoundIssues, myinSoundPlan, myinStoryboardSchema, type MyinSoundPlan } from "@/lib/myin-storyboard";
+import { applyMyinSoundPlan, MYIN_METAPHOR_TYPES, myinDriftPairs, myinOnlySoundChanged, myinTextPairs, myinPhotoFetchUrl, myinPhotoFolders, myinPrepPhotos, myinSceneStarts, myinSoundIssues, myinSoundPlan, myinStoryboardSchema, type MyinSoundPlan } from "@/lib/myin-storyboard";
 import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { RequestActor } from "./auth";
@@ -740,6 +740,11 @@ export async function visibleRun(actor: RequestActor, runId: string) {
   if (!data) throw new ApiError(404, "MYIN_RUN_NOT_FOUND", "v13 작업을 찾지 못했습니다.");
   return runRecord(createServiceSupabase(), runId);
 }
+/** What a render job gets: drift pairs, and {text, cue} slots the AI wrote as plain words fixed from the 도식 창고 examples (one read per job). */
+async function renderStory<T extends { scenes: Record<string, unknown>[] }>(story: T) {
+  myinTextPairs(story, new Map(((await readDiagramCatalog())?.items ?? []).flatMap((item) => item.example ? [[item.type, item.example] as const] : [])));
+  return myinDriftPairs(story);
+}
 export async function storyboardJson(service: Service, run: MyinRun) {
   const { data } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).download(run.storyboard?.path ?? "");
   if (!data) throw new ApiError(409, "MYIN_STORYBOARD_MISSING", "기획표 파일을 찾지 못했습니다.");
@@ -838,7 +843,7 @@ export async function claimMyinCta(service: Service = createServiceSupabase(), s
     const story = await storyboardJson(service, run);
     const lines = [];
     for (const c of run.cta ?? []) if (c.status === "pending") lines.push({ index: c.index, uploadUrl: await uploadUrl(service, YOUTUBE_VOICE_BUCKET, ctaPcPath(record, run, c)) });
-    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), storyboard: myinDriftPairs(story), fishVoice: fishVoice(run), lines,
+    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), storyboard: await renderStory(story), fishVoice: fishVoice(run), lines,
       ...await seedFor(service, run) };
   } catch (error) {
     await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_CTA_CLAIM_FAILED");
@@ -1055,7 +1060,7 @@ export async function claimMyinPrep(service: Service = createServiceSupabase(), 
     }
     const { data: bundle } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).createSignedUploadUrl(prepBundlePath(record, run, lease.token), { upsert: true });
     if (!bundle) throw new ApiError(503, "MYIN_SIGN_FAILED", "결과 업로드 주소를 만들지 못했습니다.");
-    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), draft, placeholders, storyboard: myinDriftPairs(story), assets, cta, ...(cta.some((c) => !c.url) ? { fishVoice: fishVoice(run) } : {}), siteCapture: story.scenes.some((sc) => sc.type === "site_ad"),
+    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), draft, placeholders, storyboard: await renderStory(story), assets, cta, ...(cta.some((c) => !c.url) ? { fishVoice: fishVoice(run) } : {}), siteCapture: story.scenes.some((sc) => sc.type === "site_ad"),
       sheetUploadUrls: sheetUploads, bundleUploadUrl: bundle.signedUrl, ...(owner ? { seed: await localSeed(service, run) } : await seedFor(service, run)), ...await subtitlesFor(service, run), ...styleFor(run) };
   } catch (error) {
     await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_PREP_CLAIM_FAILED");
@@ -1087,7 +1092,8 @@ export async function completeMyinPrep(input: { runId: string; lease: string }, 
     // ③: the render PC wrote Logan's music match (곡·앰비언스 키) into the storyboard; keep it only if nothing else changed.
     // Not kept is no stop: the drafts are made from our storyboard, with the music it has (2026-10-28 유쓰·로건).
     const at = new Date().toISOString();
-    if (myinOnlySoundChanged(bundle.storyboard, await storyboardJson(service, run))) {
+    // Ours as the render PC got it (renderStory), so a fixed {text, cue} slot is no "other change" — keeping the match keeps the fix too.
+    if (myinOnlySoundChanged(bundle.storyboard, await renderStory(await storyboardJson(service, run)))) {
       storyboard = await putStoryboard(service, record, run, bundle.storyboard);
       sound = { report: (bundle.soundReport ?? "").slice(0, 20_000), at };
     } else sound = { report: "자동 선곡을 쓰지 않았어요. 선곡 결과에서 음악 말고 다른 칸도 바뀌어 있었어요. 음악은 기획표에 적힌 대로 깔립니다.", at };
@@ -1453,7 +1459,7 @@ export async function claimMyinFinal(service: Service = createServiceSupabase(),
   try {
     const files = finalFiles(record, run, lease.token);
     // The storyboard as ④ left it (sound edits made after the preparation), written into the render PC's copy before the render.
-    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), storyboard: myinDriftPairs(await storyboardJson(service, run)),
+    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), storyboard: await renderStory(await storyboardJson(service, run)),
       videoUploadUrl: await uploadUrl(service, ASSET_VIDEO_BUCKET, files.video), srtUploadUrl: await uploadUrl(service, OUTPUT_BUCKET, files.srt),
       ...(files.summary && files.deck ? { summaryUploadUrl: await uploadUrl(service, OUTPUT_BUCKET, files.summary), deckUploadUrl: await uploadUrl(service, OUTPUT_BUCKET, files.deck) } : {}),
       ...(owner ? { seed: await localSeed(service, run) } : {}), ...await subtitlesFor(service, run), ...styleFor(run) };

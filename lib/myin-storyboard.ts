@@ -510,6 +510,22 @@ export function myinDriftPairs<T extends { scenes: Record<string, unknown>[] }>(
   return story;
 }
 
+/**
+ * A lib_ diagram's {text, cue} slot written as plain words (11-12: a question-typing "q": "…" stopped the engine at ③) is wrapped as the
+ * 도식 창고 example has it, cued at the scene's start. Changes the story in place; returns the scene numbers it changed.
+ */
+export function myinTextPairs(story: { scenes: Record<string, unknown>[] }, examples: Map<string, Record<string, unknown>>) {
+  const fixed = new Set<number>();
+  story.scenes.forEach((sc, i) => {
+    for (const [key, shape] of Object.entries(examples.get(String(sc.type)) ?? {}))
+      if (shape && typeof shape === "object" && !Array.isArray(shape) && "text" in shape && typeof sc[key] === "string") {
+        sc[key] = { text: sc[key], ...("cue" in shape ? { cue: String(sc.cue ?? sc.at ?? "") } : {}) };
+        fixed.add(i + 1);
+      }
+  });
+  return [...fixed];
+}
+
 /** ③: Logan's music match (music_match.py) changed only the sound — its storyboard and ours agree without the sound fields. It got ours
  * with drift pairs, and it also sets an ambience's offset, variation and level (amb_off · amb_var · amb_db, 2026-10-28 유쓰·로건). */
 export function myinOnlySoundChanged(matched: { scenes?: unknown }, ours: { scenes: Record<string, unknown>[] }) {
