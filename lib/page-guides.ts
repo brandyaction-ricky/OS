@@ -7,6 +7,7 @@ export const PAGE_GUIDES: Record<string,PageGuideDefinition> = {
   "/hr/documents": {steps:["빠진 서류를 눌러 처리 날짜와 파일을 남깁니다","근로 조건이 바뀌면 계약서 서명·교부를 다시 확인합니다","검토한 양식과 이전 파일은 이력으로 보존합니다"],next:"/hr/employees"},
   "/hr/my-leave": {steps:["남은 연차와 승인 대기 내역을 확인합니다","휴가를 신청하고 처리 결과를 확인합니다","받은 촉진 서면을 읽고 사용 계획을 회신합니다"],next:"/hr/my-leave"},
   "/finance/overview": {steps:["기간과 사업을 골라 매출·입금·순수익을 비교합니다","확인이 필요한 항목을 눌러 해당 메뉴로 이동합니다","현재는 모의 데이터이며 실제 거래·발송은 실행하지 않습니다"],next:"/finance/sales"},
+  "/finance/pnl": {steps:["연도와 사업을 고르면 월별 매출·비용·손익이 표와 차트로 나옵니다","항목 이름을 눌러 세부 항목을 펼치고, 금액을 눌러 그 달의 내역을 확인합니다","세금 납부·미분류 출금은 손익에서 빠지니 통장 내역에서 분류합니다"],next:"/finance/sales"},
   "/finance/sales": {steps:["토스 결제와 외부 매출을 나누어 확인합니다","검색·필터로 주문을 찾고 상세에서 모의 환불 요청을 검토합니다","외부 매출을 추가하면 같은 기간 합계에 반영됩니다"],next:"/finance/settlements"},
   "/finance/settlements": {steps:["지급일별 또는 거래별 정산을 고릅니다","미확인·금액 차이 항목의 상세를 확인합니다","확인 사유를 기록하고 연결된 통장 입금을 봅니다"],next:"/finance/bank"},
   "/finance/bank": {steps:["통장을 고르고 CSV·XLSX 내역을 로컬에서 가져옵니다","중복·오류를 확인한 뒤 거래를 분류합니다","외부 매출·통장 간 이체는 후보를 확인해 연결합니다"],next:"/finance/cards"},

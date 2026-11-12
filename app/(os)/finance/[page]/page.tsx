@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 
 const names: Record<string, string> = {
   overview: "개요",
+  pnl: "손익 현황",
   sales: "매출내역",
   settlements: "정산입금",
   bank: "통장 내역",

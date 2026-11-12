@@ -6,5 +6,6 @@ export function classifiedCards(data:FinanceData):FinanceRow[];
 export function classifiedBank(data:FinanceData):FinanceRow[];
 export function payoutsOf(data:FinanceData,today:string):Array<Record<string,unknown>>;
 export function budgetOf(data:FinanceData,month:string,biz?:string,today?:string):Record<string,unknown>;
+export function externalAmount(revenue:FinanceRow,bank:FinanceRow[],settings:typeof DEFAULT_SETTINGS):number;
 export function overviewOf(data:FinanceData,month:string,biz?:string,today?:string):Record<string,unknown>;
 export function validateLinks(data:FinanceData):void;

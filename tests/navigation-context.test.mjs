@@ -55,12 +55,15 @@ test("command palette finds both new labels and former menu labels", () => {
 });
 
 test('company documents and finance menus coexist with gated HR navigation',()=>{
-  assert.deepEqual(NAV_STAGES.filter(stage=>!stage.requiresHr).map(stage=>stage.pages.length),[8,12,4,4,9,3,4]);
+  assert.deepEqual(NAV_STAGES.filter(stage=>!stage.requiresHr).map(stage=>stage.pages.length),[8,12,4,4,10,3,4]);
   assert.deepEqual(NAV_STAGES.find(stage=>stage.id==='knowledge').pages.map(page=>page.href),['/knowledge/vault','/knowledge/notes','/knowledge/canon','/knowledge/trash']);
   assert.equal(NAV_STAGES.find(stage=>stage.id==='team').label,'업무 기록');
   assert.equal(NAV_STAGES.find(stage=>stage.id==='finance').requiresFinance,true);
   assert.deepEqual(searchNavigation('재무',false).map(page=>page.href),['/finance/cards','/finance/recurring'],'staff find only 카드지출·정기 결제');
   assert.equal(searchNavigation('재무',true).filter(page=>page.href.startsWith('/finance/')).length,8);
+  assert.deepEqual(NAV_STAGES.find(stage=>stage.id==='finance').pages.slice(0,2).map(page=>page.label),['개요','손익 현황']);
+  assert.deepEqual(searchNavigation('손익계산서',true).map(page=>page.href),['/finance/pnl']);
+  assert.deepEqual(searchNavigation('손익',false).map(page=>page.href),[],'손익 현황 stays hidden without finance access');
   assert.ok(!NAV_STAGES.some(stage=>stage.pages.some(page=>page.href===ACCOUNT_PAGE.href)));
   assert.equal(findPage(ACCOUNT_PAGE.href).label,'내 계정');
   assert.deepEqual(NAV_STAGES[0].pages.map(page=>page.processNumber),[1,2,3,4,5,6,7,8]);

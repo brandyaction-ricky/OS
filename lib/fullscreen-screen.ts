@@ -7,6 +7,7 @@ export const FULLSCREEN_ROUTES = {
   "/hr/documents": "hr-documents",
   "/hr/my-leave": "hr-self",
   "/finance/overview": "finance-overview",
+  "/finance/pnl": "finance-pnl",
   "/finance/sales": "finance-sales",
   "/finance/settlements": "finance-settlements",
   "/finance/bank": "finance-bank",
