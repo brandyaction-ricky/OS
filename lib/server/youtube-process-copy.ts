@@ -10,7 +10,7 @@ export async function copyYoutubeProject(actor: RequestActor, id: string): Promi
   const project = await getYoutubeProject(actor, id);
   const stages = await readStages(actor.supabase, project);
   const copy = await insertProject(actor, `${projectName(project)} (복사본)`.slice(0, 200), project.assigneeId,
-    { workflow: "youtube_v1", yp: copiedMeta(project.yp, new Date().toISOString()) });
+    { workflow: "youtube_v1", yp: { ...copiedMeta(project.yp, new Date().toISOString()), copiedFrom: project.id } });
   for (const kind of COPIED_STAGES) {
     const stage = stages[kind];
     if (stage.id) await writeStage(actor.supabase, actor.id, actor.team, copy, kind, { id: null, version: 0 }, kind === "make" ? copiedMake(stage.data as YpMake) : stage.data);

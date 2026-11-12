@@ -249,3 +249,17 @@ test("settlement exports and tables share status filtering; empty budget starts 
     ),
   );
 });
+
+test("settlement status badge uses the selected period while backlog notice names all periods", () => {
+  const model = createFinanceDemo();
+  const inMonth = model.settlementRows("확인 필요").length;
+  const html = model.renderPage("settlements");
+  const badge = html.match(/data-act="sestatus"[^>]*data-v="확인 필요"[^>]*>([\s\S]*?)<\/button>/);
+  assert.ok(badge);
+  assert.match(badge[1], new RegExp(`>${inMonth}<`));
+  model.period.mode = "all";
+  const total = model.settlementRows("확인 필요").length;
+  assert.ok(total > inMonth);
+  assert.match(html, new RegExp(`전체 기간 확인 필요 ${total}건`));
+  assert.match(html, /전체 기간 보기/);
+});

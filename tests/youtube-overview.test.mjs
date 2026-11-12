@@ -116,3 +116,15 @@ test("채널 확대 lists that channel's day — decisions and AI job moments �
   assert.deepEqual(channelDay(rows, decisionsToday(projects, NOW, 1), "longform", NOW, 1), []);
   assert.deepEqual(channelNext(rows, "card").map(row => row.id), ["c"]);
 });
+
+
+test("unclaimed AI jobs are queued, not running; blocked summaries hide internal errors", () => {
+  const projects = [project("queue", "live", "outline"), project("failure", "live", "outline")];
+  const { rows } = overviewRows(projects, [
+    {sourceId:"queue",task:"원고",status:"backlog",requestedAt:ago(60),claimedAt:null,failReason:null},
+    {sourceId:"failure",task:"원고",status:"blocked",requestedAt:ago(30),claimedAt:null,failReason:"/private/internal/file token=secret"},
+  ], {id:"me",canConfirm:false}, NOW);
+  assert.equal(rows.find(row => row.id === "queue").state, "queued");
+  assert.equal(overviewCounts(rows).ai, 0);
+  assert.doesNotMatch(rows.find(row => row.id === "failure").now, /private|secret/);
+});

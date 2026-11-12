@@ -38,7 +38,7 @@ export const YOUTUBE_V1_STEP_PAGES: NavPage[] = [
 export const OVERVIEW_PAGE: NavPage = { label: "한눈에 보기", href: "/content/overview", icon: Activity, aliases: ["관제실", "진행 현황", "확인 필요", "AI 일하는 중", "맡긴 일 현황"], ready: true };
 export const YOUTUBE_V1_COMMON_PAGES: NavPage[] = [
   OVERVIEW_PAGE,
-  { label: "주제 찾기", href: "/content/projects?view=discover", icon: Radar, aliases: ["주제", "레퍼런스", "참고 영상", "새 주제"], ready: true },
+  { label: "주제 찾기", href: "/content/projects?view=discover", icon: Radar, aliases: ["주제", "레퍼런스", "참고 영상", "새 주제", "주제·기획", "콘텐츠 레이더"], ready: true },
   ...YOUTUBE_V1_PAGES.slice(1),
 ];
 const platformStage = (id: string, label: string, page: string, platform: string, icon: NavPage["icon"]): NavStage => {
@@ -54,7 +54,7 @@ export const YOUTUBE_V1_PLATFORM_STAGES: NavStage[] = [
     pages: [...platformStage("yt-card", "카드뉴스", "내 카드뉴스", "card", GalleryHorizontal).pages, CARD_CANON_PAGE] },
 ];
 const THREADS_FLOW: Record<string, string> = {
-  "/automation/references": "스레드 글감 모으기", "/automation/topics": "주제 기획", "/automation/threads": "쓰레드 쓰기",
+  "/automation/references": "스레드 글감 모으기", "/automation/topics": "주제 기획", "/automation/threads": "스레드 쓰기",
   "/automation/review": "최종 확인", "/automation/calendar": "발행", "/automation/performance": "반응 · 성과",
 };
 /** The v1 side menu built from the shared stages: 공통 + one group per platform + 스레드 + 콘텐츠 자동화. */
@@ -65,7 +65,7 @@ export function youtubeV1Stages(stages: NavStage[]): NavStage[] {
     let step = 0;
     const threads = Object.keys(THREADS_FLOW).map(href => stage.pages.find(page => page.href === href)).filter((page): page is NavPage => Boolean(page))
       .map(page => ({ ...page, label: THREADS_FLOW[page.href], processNumber: page.href === "/automation/references" ? undefined : ++step, aliases: [page.label, ...(page.aliases ?? [])] }));
-    const rest = stage.pages.filter(page => !THREADS_FLOW[page.href]).map(page => page.href === "/automation/shorts" ? { ...page, label: "쇼츠 (예전 자동화)", processNumber: undefined } : { ...page, processNumber: undefined });
+    const rest = stage.pages.filter(page => !THREADS_FLOW[page.href]).map(page => page.href === "/automation/cardnews" ? { ...page, label: "카드뉴스 (예전 자동화)", processNumber: undefined } : page.href === "/automation/shorts" ? { ...page, label: "쇼츠 (예전 자동화)", processNumber: undefined } : { ...page, processNumber: undefined });
     return [{ ...stage, id: "threads", label: "스레드", icon: AtSign, href: threads[0]?.href ?? stage.href, pages: [...threads, THREADS_CANON_PAGE] }, { ...stage, icon: Settings, href: rest[0]?.href ?? stage.href, pages: rest }];
   });
 }

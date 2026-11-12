@@ -3,12 +3,12 @@
 import { ArrowRight, FileText, Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { searchNavigation } from "@/lib/navigation";
+import { searchNavigation, type NavStage } from "@/lib/navigation";
 import { canAccessFinance } from "@/lib/finance/access";
 import { canOpenMenu } from "@/lib/menu-access";
 import { useSession } from "./session-provider";
 
-export function CommandPalette({ open, onClose, allowedMenus = null, hrEnabled = false }: { open: boolean; onClose: () => void; allowedMenus?: string[] | null; hrEnabled?: boolean }) {
+export function CommandPalette({ open, onClose, allowedMenus = null, hrEnabled = false, stages }: { open: boolean; onClose: () => void; allowedMenus?: string[] | null; hrEnabled?: boolean; stages?: NavStage[] }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLElement>(null);
@@ -16,7 +16,7 @@ export function CommandPalette({ open, onClose, allowedMenus = null, hrEnabled =
   const { profile } = useSession();
   const financeAccess = canAccessFinance(profile);
 
-  const matches = useMemo(() => searchNavigation(query, financeAccess, href => canOpenMenu(profile, href, allowedMenus), hrEnabled), [query, financeAccess, profile, allowedMenus, hrEnabled]);
+  const matches = useMemo(() => searchNavigation(query, financeAccess, href => canOpenMenu(profile, href, allowedMenus), hrEnabled, stages), [query, financeAccess, profile, allowedMenus, hrEnabled, stages]);
   const knowledgeSearch = canOpenMenu(profile, "/knowledge/search", allowedMenus);
 
   useEffect(() => {

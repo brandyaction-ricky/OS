@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, Copy, Plus, Radar, RotateCcw, Search, Trash2, X } from "lucide-react";
 import { mayTrash, projectName, searchProjects, stepHref, TRASH_KEEP_DAYS, trashDaysLeft, YP_KIND_SHORT, type YpProject, type YpTrashed } from "@/lib/youtube-process/project";
 import { nextAction } from "@/lib/youtube-process/next";
+import { isTestContent } from "@/lib/youtube-process/test-content";
 import { TopicHub } from "./topic-hub";
 import { isTopicPlatform, projectPlatform, TOPIC_PLATFORMS } from "@/lib/content-platforms";
 import { useSession } from "./session-provider";
@@ -24,6 +25,7 @@ export function YoutubeProjectsScreen() {
   // 내 롱폼 · 숏폼 · 광고 영상 (side menu, owner 2026-10-29): the same list for one platform; no ?platform= shows every video.
   const asked = search.get("platform");
   const platform = isTopicPlatform(asked) && asked !== "threads" ? asked : null;
+  const noun = platform === "card" ? "카드뉴스" : "콘텐츠";
   const { accessToken, demo, profile } = useSession();
   const client = useMemo(() => youtubeProcessClient(accessToken, demo), [accessToken, demo]);
   const canConfirm = useYoutubeCanConfirm(true, accessToken, demo, profile?.role === "admin");
@@ -34,6 +36,7 @@ export function YoutubeProjectsScreen() {
   // ?filter=done opens 끝난 영상 (한눈에 보기 「끝」 카드).
   const [filter, setFilter] = useState<Filter>(() => search.get("filter") === "done" ? "done" : "open");
   const [query, setQuery] = useState("");
+  const [showTests, setShowTests] = useState(false);
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
@@ -88,7 +91,8 @@ export function YoutubeProjectsScreen() {
   const openCopy = (project: YpProject) => { setCopying(project); copyDialog.current?.showModal(); };
   const openPurge = (item: YpTrashed) => { setPurging(item); setReason(""); setSure(false); purgeDialog.current?.showModal(); };
 
-  const all = (projects ?? []).filter(project => (!platform || projectPlatform(project.yp.topic) === platform) && inChannel(project));
+  const testCount = (projects ?? []).filter(project => isTestContent(project.title) && (!platform || projectPlatform(project.yp.topic) === platform) && inChannel(project)).length;
+  const all = (projects ?? []).filter(project => (showTests || !isTestContent(project.title)) && (!platform || projectPlatform(project.yp.topic) === platform) && inChannel(project));
   const sorted = [...all].sort((a, b) => {
     // What needs someone first (수정 요청, then work to do), waiting ones after, finished last; newest edit first within.
     const rank = (project: YpProject) => ({ fix: 0, todo: 1, hold: 2, wait: 3, done: 4 })[nextAction(project).tone];
@@ -112,14 +116,16 @@ export function YoutubeProjectsScreen() {
       <input className="yp-in" autoFocus maxLength={200} placeholder="어떤 영상을 만들까요? 예) 하루 일이 두 개뿐인데 저녁마다 지치는 이유" aria-label="새 영상 주제" value={title} onChange={event => setTitle(event.target.value)} />
       <button type="submit" className="yp-btn yp-pri" disabled={busy || !title.trim()}>{busy ? "만드는 중…" : "시작하기"} <ArrowRight size={14} aria-hidden="true" /></button>
       <button type="button" className="yp-ib" aria-label="닫기" onClick={() => { setCreating(false); setTitle(""); }}><X size={14} /></button></form> : null}
-    {waitingMine ? <div className="yp-note yp-warn" role="status"><div>컨펌을 기다리는 영상이 <b>{waitingMine}개</b> 있어요. <Link className="yp-lnk" href="/content/confirm">컨펌하러 가기 →</Link></div></div> : null}
+    {waitingMine ? <div className="yp-note yp-warn" role="status"><div>컨펌을 기다리는 콘텐츠가 <b>{waitingMine}개</b> 있어요. <Link className="yp-lnk" href="/content/confirm">컨펌하러 가기 →</Link></div></div> : null}
     {error ? <div className="yp-note yp-warn" role="alert"><div>{error} <button type="button" className="yp-lnk" onClick={() => setAttempt(value => value + 1)}>다시 불러오기</button></div></div> : null}
     {projects === null && !error ? <p className="yp-hint" role="status">불러오는 중이에요…</p>
       : <>
+        {platform === "card" ? <p className="yp-hint">카드 만들기에서 제작한 콘텐츠입니다. <Link href="/automation/cardnews">예전 자동화 자료 보기</Link></p> : null}
+        <label className="yp-hint"><input type="checkbox" checked={showTests} onChange={event => setShowTests(event.target.checked)} /> 제목에 QA·테스트 표시된 항목 포함 ({testCount}) · 복사본은 기본 표시</label>
         <div className="yp-mv-filters">
-          <div className="yp-seg2" role="tablist" aria-label="보기">{([["open", "진행 중"], ["mine", "내가 담당"], ["done", "끝난 영상"], ["trash", "휴지통"]] as const).map(([key, label]) =>
+          <div className="yp-seg2" role="tablist" aria-label="보기">{([["open", "진행 중"], ["mine", "내가 담당"], ["done", `완료된 ${noun}`], ["trash", "휴지통"]] as const).map(([key, label]) =>
             <button key={key} type="button" role="tab" aria-selected={filter === key} className={filter === key ? "yp-on" : ""} onClick={() => setFilter(key)}>{label} {counts[key] + (key === "open" && (!platform || platform === "longform") ? legacy.length : 0)}</button>)}</div>
-          <label className="yp-platform-filter"><span>플랫폼</span><select className="yp-in" aria-label="영상 플랫폼" value={platform ?? "all"} onChange={event => {
+          <label className="yp-platform-filter"><span>플랫폼</span><select className="yp-in" aria-label="콘텐츠 플랫폼" value={platform ?? "all"} onChange={event => {
             const params = new URLSearchParams(search.toString());
             if (event.target.value === "all") params.delete("platform"); else params.set("platform", event.target.value);
             router.replace(`/content/projects${params.size ? `?${params}` : ""}`, { scroll: false });
@@ -127,12 +133,12 @@ export function YoutubeProjectsScreen() {
           {many ? <label className="yp-platform-filter"><span>채널</span><select className="yp-in" aria-label="채널" value={channel} onChange={event => setChannel(event.target.value)}>
             <option value="all">전체 채널</option>{channels.map(card => <option key={card.id} value={card.id}>{card.name}</option>)}</select></label> : null}
           <span className="yp-sp" />
-          <div className="yp-psearch"><Search size={15} className="yp-i" aria-hidden="true" /><input className="yp-in" placeholder="영상 이름으로 찾기" aria-label="영상 검색" value={query} onChange={event => setQuery(event.target.value)} /></div>
+          <div className="yp-psearch"><Search size={15} className="yp-i" aria-hidden="true" /><input className="yp-in" placeholder={`${noun} 이름으로 찾기`} aria-label={`${noun} 검색`} value={query} onChange={event => setQuery(event.target.value)} /></div>
         </div>
         {!projects?.length && !legacy.length && !trashed.length && !platform ? <div className="yp-mv-empty"><b>첫 영상을 만들어 보세요</b><span className="yp-muted">주제 한 줄만 쓰면 시작돼요. 나머지는 화면이 차례로 알려 줘요.</span>
           <button type="button" className="yp-btn yp-pri yp-lg" onClick={() => setCreating(true)}><Plus size={16} aria-hidden="true" /> 새 영상 만들기</button></div>
           : filter === "trash" ? <div className="yp-mv-list">
-          <p className="yp-hint" style={{ margin: "0 0 4px" }}>지운 영상은 {TRASH_KEEP_DAYS}일 동안 여기 있어요. [복구]하면 하던 단계 그대로 돌아와요. {TRASH_KEEP_DAYS}일이 지나면 관리자가 영구 삭제할 수 있어요.</p>
+          <p className="yp-hint" style={{ margin: "0 0 4px" }}>지운 {noun}는 {TRASH_KEEP_DAYS}일 동안 여기 있어요. [복구]하면 하던 단계 그대로 돌아와요. {TRASH_KEEP_DAYS}일이 지나면 관리자가 영구 삭제할 수 있어요.</p>
           {trashedHere.filter(item => !query.trim() || projectName(item.project).toLocaleLowerCase("ko-KR").includes(query.trim().toLocaleLowerCase("ko-KR"))).map(item => { const left = trashDaysLeft(item.trash.at);
             return <div key={item.project.id} className="yp-mv">
               <div className="yp-mv-m"><div className="yp-mv-th"><span className="yp-mv-t" title={projectName(item.project)}>{projectName(item.project)}</span></div>
@@ -152,9 +158,9 @@ export function YoutubeProjectsScreen() {
             const currentStep = Math.min(next.step + 1, next.total);
             return <div key={project.id} className="yp-mv">
               {/* 로건 QA 10/30: 실사 or 애니메이션 and the last change tell same-titled rows and copies apart without opening them. */}
-              <div className="yp-mv-m"><div className="yp-mv-th">{many ? <span className="yp-tag">{channelOf(channels, project.yp.topic.channel)?.name}</span> : null}{kind ? <span className={`yp-tag yp-pf-tag yp-pf-${platform}`}>{kind}</span> : null}
+              <div className="yp-mv-m"><div className="yp-mv-th">{many ? <span className="yp-tag">{channelOf(channels, project.yp.topic.channel)?.name}</span> : null}{isTestContent(project.title) ? <span className="yp-tag">시험 항목</span> : null}{kind ? <span className={`yp-tag yp-pf-tag yp-pf-${platform}`}>{kind}</span> : null}
                 {project.yp.topic.type === "live" || project.yp.topic.type === "anim" ? <span className="yp-tag">{YP_KIND_SHORT[project.yp.topic.type]}</span> : null}
-                <Link href={next.href} className="yp-mv-t" title={projectName(project)}>{projectName(project)}</Link></div>
+                {project.yp.copiedFrom ? <Link className="yp-tag" href={`/content/plan?project=${encodeURIComponent(project.yp.copiedFrom)}`}>원본 보기</Link> : null}<Link href={next.href} className="yp-mv-t" title={projectName(project)}>{projectName(project)}</Link></div>
                 <div className={`yp-mv-s yp-${next.tone}`}>{next.text}<span className="yp-muted"> · 고친 날 {md(project.yp.contentUpdatedAt)}</span></div></div>
               <div className="yp-mv-bar"><span>{currentStep}/{next.total} · {next.stepName}</span><span className="yp-mv-track" aria-hidden="true"><i className={`yp-${next.tone}`} style={{ width: `${currentStep / next.total * 100}%` }} /></span></div>
               <div className="yp-mv-pd">{pd ? <><span className="yp-mv-av" aria-hidden="true">{pd.slice(0, 1)}</span>{pd}</> : <span className="yp-muted">담당 없음</span>}</div>
@@ -165,25 +171,25 @@ export function YoutubeProjectsScreen() {
           {legacyShown.map(topic => <div key={topic.id} className="yp-mv">
             <div className="yp-mv-m"><div className="yp-mv-t" title={topic.title}>{topic.title}</div><div className="yp-mv-s">이전 화면에서 하던 영상이에요. 옮기면 여기서 이어서 해요.</div></div>
             <button type="button" className="yp-btn yp-pri" onClick={() => { setMoving(topic); moveDialog.current?.showModal(); }}>옮겨서 이어 하기 <ArrowRight size={14} aria-hidden="true" /></button></div>)}
-          {!shown.length && !legacyShown.length ? <p className="yp-pempty">{query.trim() ? "찾는 영상이 없어요" : filter === "done" ? "아직 끝난 영상이 없어요" : filter === "mine" ? "내가 담당한 영상이 없어요" : "진행 중인 영상이 없어요"}</p> : null}
+          {!shown.length && !legacyShown.length ? <p className="yp-pempty">{query.trim() ? `찾는 ${noun}가 없어요` : filter === "done" ? `아직 완료된 ${noun}가 없어요` : filter === "mine" ? `내가 담당한 ${noun}가 없어요` : `진행 중인 ${noun}가 없어요`}</p> : null}
         </div>}
       </>}
 
     <dialog ref={copyDialog} className="yp-modal" aria-labelledby="yp-copy-title" onClose={() => setCopying(null)}>
-      <div className="yp-modal-h"><span id="yp-copy-title">이 영상을 복제할까요?</span><span className="yp-sp" /><button type="button" className="yp-ib" aria-label="닫기" onClick={() => copyDialog.current?.close()}><X size={14} /></button></div>
+      <div className="yp-modal-h"><span id="yp-copy-title">이 콘텐츠를 복제할까요?</span><span className="yp-sp" /><button type="button" className="yp-ib" aria-label="닫기" onClick={() => copyDialog.current?.close()}><X size={14} /></button></div>
       <div className="yp-modal-b"><p style={{ marginTop: 0 }}><b>{copying ? projectName(copying) : ""}</b></p>
         <ul className="yp-nowsteps"><li>주제 · 기획안 · 구성안 원고와 주제 · 기획안 컨펌을 그대로 가져와 같은 단계에서 이어 가요. 이름 끝에 「(복사본)」이 붙어요.</li>
-          <li>음성 · 영상은 새로 만들어요. 최종 검토나 업로드까지 간 영상은 제작 단계에서 시작해요.</li></ul></div>
+          <li>{copying?.yp.topic.type === "card" ? "주제와 제작 기록을 복사합니다. 복제 후 카드 내용을 확인해 주세요." : "음성 · 영상은 새로 만들어요. 최종 검토나 업로드까지 간 콘텐츠는 제작 단계에서 시작해요."}</li></ul></div>
       <div className="yp-modal-f"><button type="button" className="yp-btn" onClick={() => copyDialog.current?.close()}>취소</button>
         <button type="button" className="yp-btn yp-pri" disabled={busy || !copying} onClick={() => copying && void act(async () => { await client!.copy(copying.id); }, copyDialog.current)}><Copy size={14} aria-hidden="true" /> {busy ? "복제하는 중…" : "복제하기"}</button></div>
     </dialog>
 
     <dialog ref={trashDialog} className="yp-modal" aria-labelledby="yp-trash-title" onClose={() => setTrashing(null)}>
-      <div className="yp-modal-h"><span id="yp-trash-title">이 영상을 휴지통으로 옮길까요?</span><span className="yp-sp" /><button type="button" className="yp-ib" aria-label="닫기" onClick={() => trashDialog.current?.close()}><X size={14} /></button></div>
+      <div className="yp-modal-h"><span id="yp-trash-title">이 콘텐츠를 휴지통으로 옮길까요?</span><span className="yp-sp" /><button type="button" className="yp-ib" aria-label="닫기" onClick={() => trashDialog.current?.close()}><X size={14} /></button></div>
       <div className="yp-modal-b"><p style={{ marginTop: 0 }}><b>{trashing ? projectName(trashing) : ""}</b></p>
         <ul className="yp-nowsteps"><li>휴지통에서 {TRASH_KEEP_DAYS}일 동안 [복구]할 수 있어요. 복구하면 하던 단계 그대로 돌아와요.</li>
           <li>{TRASH_KEEP_DAYS}일이 지나면 관리자가 영구 삭제할 수 있어요.</li>
-          {trashing && ["upload", "shorts", "done"].includes(trashing.yp.stage) ? <li>이미 유튜브에 올린 영상은 OS에서 지워도 유튜브에는 그대로 있어요.</li> : null}</ul>
+          {trashing && trashing.yp.topic.type !== "card" && ["upload", "shorts", "done"].includes(trashing.yp.stage) ? <li>이미 유튜브에 올린 영상은 OS에서 지워도 유튜브에는 그대로 있어요.</li> : null}</ul>
         <label className="yp-lbl">지우는 이유 (선택)<input className="yp-in" value={reason} maxLength={300} onChange={event => setReason(event.target.value)} placeholder="예) 주제가 겹쳐서 중단" /></label></div>
       <div className="yp-modal-f"><button type="button" className="yp-btn" onClick={() => trashDialog.current?.close()}>취소</button>
         <button type="button" className="yp-btn yp-danger" disabled={busy || !trashing} onClick={() => trashing && void act(() => client!.trash(trashing.id, trashing.version, reason.trim()), trashDialog.current)}><Trash2 size={14} aria-hidden="true" /> {busy ? "옮기는 중…" : "휴지통으로"}</button></div>
@@ -193,7 +199,7 @@ export function YoutubeProjectsScreen() {
       <div className="yp-modal-h"><span id="yp-purge-title">영구 삭제</span><span className="yp-sp" /><button type="button" className="yp-ib" aria-label="닫기" onClick={() => purgeDialog.current?.close()}><X size={14} /></button></div>
       <form className="yp-modal-b" onSubmit={event => { event.preventDefault(); if (purging) void act(() => client!.purge(purging.project.id, reason.trim()), purgeDialog.current); }}>
         <p style={{ marginTop: 0 }}><b>{purging ? projectName(purging.project) : ""}</b></p>
-        <ul className="yp-nowsteps"><li>최종본 · 썸네일 · 음성 · 자막 같은 이 영상의 파일을 지우고, 휴지통에서도 사라져요.</li><li>복구할 수 없어요. 누가 언제 왜 지웠는지만 기록으로 남아요.</li></ul>
+        <ul className="yp-nowsteps"><li>최종본 · 썸네일 · 음성 · 자막 같은 이 콘텐츠의 파일을 지우고, 휴지통에서도 사라져요.</li><li>복구할 수 없어요. 누가 언제 왜 지웠는지만 기록으로 남아요.</li></ul>
         <label className="yp-lbl">삭제 사유 (필수)<input className="yp-in" required value={reason} maxLength={300} onChange={event => setReason(event.target.value)} /></label>
         <label className="yp-cbx" style={{ marginTop: 8 }}><input type="checkbox" checked={sure} onChange={event => setSure(event.target.checked)} /> 복구할 수 없다는 걸 확인했어요</label>
         <div className="yp-modal-f" style={{ padding: "12px 0 0" }}><button type="button" className="yp-btn" onClick={() => purgeDialog.current?.close()}>취소</button>

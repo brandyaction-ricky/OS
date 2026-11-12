@@ -1,3 +1,4 @@
+import * as commerceAdminUrl from "../lib/commerce-admin-url.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
@@ -617,7 +618,7 @@ async function genericRecordsHarness(path,currentMetadata={space:"personal",proc
     "@/lib/server/skill-source":{assertSkillSource:noOp},"next/server":{NextResponse:Response},zod,
     "@/lib/http":{ApiError,parseJson:request=>request.json(),apiErrorResponse:error=>Response.json({error:{code:error.code}},{status:error.status??500})},
     "@/lib/server/auth":{authenticateRequest:async()=>({...actor,id:owner,type:path.includes("agent-records")?"agent":"user",supabase:db}),requireAgentScope:()=>{}},
-    "@/lib/record-types":types,"@/lib/record-validation":validation,
+    "@/lib/record-types":types,"@/lib/commerce-admin-url": commerceAdminUrl, "@/lib/record-validation":validation,
     "@/lib/content-pipeline":{protectedPipelineChange:()=>false},"@/lib/youtube-process/project":{protectedYoutubeChange:()=>false},
     "@/lib/appeal-decision-guard":{changesAppealDecision:()=>false,isAppealCandidatePackage:()=>false},
     "@/lib/development-requests":{isDevelopmentRequest:()=>false},"@/lib/development-links":{assertDevelopmentRequestLink:noOp},

@@ -1,3 +1,4 @@
+import * as commerceAdminUrl from "../lib/commerce-admin-url.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
@@ -54,7 +55,7 @@ async function harness(path, metadata = referenceMetadata, recordOwner = owner, 
     "@/lib/http": { ApiError, parseJson: request => request.json(), apiErrorResponse: error => Response.json({ error: { code: error.code } }, { status: error.status ?? 500 }) },
     "@/lib/server/auth": { authenticateRequest: async () => ({ id: owner, ownerId: owner, type: path.includes("agent-records") ? "agent" : "user", supabase: db }), requireAgentScope: () => {} },
     "@/lib/supabase/server": { createServiceSupabase: () => db }, "@/lib/server/organization": { assertOrganization: noOp },
-    "@/lib/record-types": types, "@/lib/record-validation": validation,
+    "@/lib/record-types": types, "@/lib/commerce-admin-url": commerceAdminUrl, "@/lib/record-validation": validation,
     "@/lib/threads-reference": contract, "@/lib/threads-editorial": editorial, "@/lib/threads-reference-record-guard": guard,
     "@/lib/image-creative/storage": imageStorage,
     "@/lib/content-comments": { isCommentDraftPatch: () => false }, "@/lib/server/meeting-review": { assertReviewedMeetingTask: noOp },

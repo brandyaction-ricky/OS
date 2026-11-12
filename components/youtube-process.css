@@ -1325,7 +1325,7 @@
 /* 한눈에 보기 (리키 관제실 시안 v0.1, 2026-10-31): colour only for state — 결정 warning · AI purple · 막힘 danger · 끝 mint; the channel is text.
    The state cards are 주제 찾기's .yp-pf cards (owner 2026-10-31: the same button style as the other pages), coloured by state. */
 .linear-shell .ui-v2.yp .yp-ov{display:flex;flex-direction:column;gap:12px}
-.linear-shell .ui-v2.yp div.yp-pf-tabs.yp-ov-tabs{grid-template-columns:repeat(6,minmax(0,1fr));margin:0}
+.linear-shell .ui-v2.yp div.yp-pf-tabs.yp-ov-tabs{grid-template-columns:repeat(7,minmax(0,1fr));margin:0}
 .linear-shell .ui-v2.yp .yp-ov-s-decide{color:var(--warning)}
 .linear-shell .ui-v2.yp .yp-ov-s-ai{color:var(--purple)}
 .linear-shell .ui-v2.yp .yp-ov-s-blocked{color:var(--danger)}
@@ -1549,4 +1549,14 @@
 .linear-shell .ui-v2.yp .yp-snote-diff p{margin:4px 0 0;white-space:pre-wrap}
 .linear-shell .ui-v2.yp .yp-snote-ended{margin-top:10px}
 @media (max-width:820px){.linear-shell .ui-v2.yp .yp-snote-diff{grid-template-columns:1fr}}
+}
+
+@layer os.screen {
+/* Touch targets keep destructive actions distinct on narrow screens. */
+@media (max-width: 820px) {
+  .linear-shell .ui-v2.yp .yp-mv-act { gap: 12px; }
+  .linear-shell .ui-v2.yp .yp-mv-act .yp-ib { min-width: 44px; min-height: 44px; }
+}
+.linear-shell .ui-v2.yp .yp-ov-dot[data-s=queued] { background: var(--muted-2); }
+.linear-shell .ui-v2.yp .yp-ov-log pre { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; }
 }

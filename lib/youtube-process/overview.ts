@@ -6,9 +6,10 @@ import { gateName } from "./confirm.ts";
 import { nextAction } from "./next.ts";
 import { projectName, type YpGate, type YpProject } from "./project.ts";
 
-export type OvState = "decide" | "ai" | "blocked" | "human" | "wait";
+export type OvState = "decide" | "queued" | "ai" | "blocked" | "human" | "wait";
 export const OV_STATES: { state: OvState; label: string; sub: string }[] = [
   { state: "decide", label: "내 결정 필요", sub: "고르면 그 일이 이어져요" },
+  { state: "queued", label: "AI 수령 대기", sub: "연결된 실행기를 확인해 주세요" },
   { state: "ai", label: "AI 일하는 중", sub: "맡긴 일" },
   { state: "blocked", label: "막힘", sub: "다시 맡기거나 고쳐야 해요" },
   { state: "human", label: "사람 작업 중", sub: "담당자 차례" },
@@ -65,7 +66,7 @@ export function overviewRows(projects: YpProject[], jobs: OvJob[], me: { id: str
     const job = jobOf.get(project.id);
     const base = { id: project.id, channel: platformOf(project.yp.topic), title: projectName(project), stage: `${Math.min(next.step + 1, next.total)}/${next.total} · ${next.stepName}`,
       assigneeId: project.assigneeId, href: next.href, ...(gate ? { gate } : {}), ...(job ? { job } : {}) };
-    if (job?.status === "blocked") rows.push({ ...base, state: "blocked", now: `${job.task} · 막힘${job.failReason ? ` · ${job.failReason}` : ""}`, since: job.requestedAt });
+    if (job?.status === "blocked") rows.push({ ...base, state: "blocked", now: `${job.task} · 작업을 완료하지 못했어요. 요청 조건과 실행기 연결을 확인해 주세요`, since: job.requestedAt });
     else if (gate && info?.state === "wait") {
       const mine = me.canConfirm || project.assigneeId === me.id;
       rows.push({ ...base, state: mine ? "decide" : "wait", now: `${gateName(gate, project.yp.topic.type)}${mine ? "" : " 대기"} · ${info.requestedAt ? elapsed(info.requestedAt, now) : ""}`.replace(/ · $/, ""), since: info.requestedAt ?? null });
@@ -74,14 +75,14 @@ export function overviewRows(projects: YpProject[], jobs: OvJob[], me: { id: str
       const mine = job.ownerId === me.id || project.assigneeId === me.id;
       rows.push({ ...base, state: mine ? "decide" : "human", now: `AI 결과 도착 · ${job.task}${mine ? "" : " · 담당자 확인 중"}`, since: job.doneAt ?? job.requestedAt });
     }
-    else if (job) rows.push({ ...base, state: "ai", now: job.status === "active" ? `${job.task} · ${elapsed(job.claimedAt ?? job.requestedAt, now)}` : `${job.task} · AI가 가져가기를 기다려요`, since: job.claimedAt ?? job.requestedAt });
+    else if (job) rows.push({ ...base, state: job.status === "active" ? "ai" : "queued", now: job.status === "active" ? `${job.task} · ${elapsed(job.claimedAt ?? job.requestedAt, now)}` : `${job.task} · AI가 가져가기를 기다려요`, since: job.claimedAt ?? job.requestedAt });
     else if (next.tone === "hold") rows.push({ ...base, state: "wait", now: next.text, since: info?.decidedAt ?? null });
     else rows.push({ ...base, state: "human", now: next.tone === "fix" ? next.text : `다음: ${next.button}`, since: project.yp.contentUpdatedAt });
   }
   for (const item of threads) {
     if (item.status === "published") { done += 1; continue; }
     const state: OvState = item.status === "review" || item.status === "arrived" ? "decide" : item.status === "ai" ? "ai" : item.status === "ready" || item.status === "scheduled" ? "wait" : "human";
-    const now = { review: "최종 확인 · 다섯 가지 직접 확인", arrived: "AI 결과 도착", ai: "AI 작업 중", ready: "발행 준비", scheduled: "게시 예정", blocked: "고칠 것", changes: "고칠 것" }[item.status] ?? "다음: 쓰레드 쓰기";
+    const now = { review: "최종 확인 · 다섯 가지 직접 확인", arrived: "AI 결과 도착", ai: "AI 작업 중", ready: "발행 준비", scheduled: "게시 예정", blocked: "고칠 것", changes: "고칠 것" }[item.status] ?? "다음: 스레드 쓰기";
     rows.push({ id: item.id, channel: "threads", title: item.title || "제목 없는 글", stage: "스레드", assigneeId: null, state, now, since: item.updatedAt,
       href: item.status === "review" ? "/automation/review" : "/automation/threads" });
   }

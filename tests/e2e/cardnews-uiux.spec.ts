@@ -344,19 +344,19 @@ test("card catalog and cover reads reject unauthenticated callers before validat
 
 test("project platform selector filters every kind, retains search and can leave an empty status", async ({ page }) => {
   await page.goto("/content/projects");
-  const platform = page.getByLabel("영상 플랫폼");
+  const platform = page.getByLabel("콘텐츠 플랫폼");
   for (const [value, label] of [["card", "카드뉴스"], ["ad", "광고"], ["short", "숏폼 · 릴스"], ["longform", "롱폼"]]) {
     await platform.selectOption(value);
     await expect(page).toHaveURL(new RegExp(`platform=${value}`));
     await expect.poll(async () => { const tags = await page.locator(".yp-mv-list .yp-pf-tag").allTextContents(); return tags.length > 0 && tags.every(tag => tag === label); }).toBe(true);
   }
-  await page.getByLabel("영상 검색").fill("QA 없는 주제");
+  await page.getByLabel("콘텐츠 검색").fill("QA 없는 주제");
   await platform.selectOption("card");
-  await expect(page.getByLabel("영상 검색")).toHaveValue("QA 없는 주제");
-  await expect(page.getByText("찾는 영상이 없어요", { exact: true })).toBeVisible();
-  await page.getByLabel("영상 검색").fill("");
-  await page.getByRole("tab", { name: /^끝난 영상/ }).click();
-  await expect(page.getByText("아직 끝난 영상이 없어요", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("카드뉴스 검색")).toHaveValue("QA 없는 주제");
+  await expect(page.getByText("찾는 카드뉴스가 없어요", { exact: true })).toBeVisible();
+  await page.getByLabel("카드뉴스 검색").fill("");
+  await page.getByRole("tab", { name: /^완료된 카드뉴스/ }).click();
+  await expect(page.getByText("아직 완료된 카드뉴스가 없어요", { exact: true })).toBeVisible();
   await expect(platform).toBeVisible();
   await platform.selectOption("longform");
   await expect(page.locator(".yp-mv-list .yp-pf-tag")).toHaveText(["롱폼"]);

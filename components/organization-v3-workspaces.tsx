@@ -219,6 +219,13 @@ function isContentAiJob(job: OsRecord) {
 
 export function AiOperationsWorkspace({ contentOnly = false }: { contentOnly?: boolean } = {}) {
   const { accessToken, demo } = useSession();
+  const [jobQuery, setJobQuery] = useState("");
+  const [jobStatus, setJobStatus] = useState("");
+  const [jobScope, setJobScope] = useState("all");
+  const [jobPage, setJobPage] = useState(0);
+  const [jobTotal, setJobTotal] = useState(0);
+  const [jobLoading, setJobLoading] = useState(false);
+  const [jobAscending, setJobAscending] = useState(false);
   const [jobs, setJobs] = useState<OsRecord[]>([]);
   const [health, setHealth] = useState<Awaited<
     ReturnType<typeof getHealth>
@@ -226,14 +233,23 @@ export function AiOperationsWorkspace({ contentOnly = false }: { contentOnly?: b
   const [error, setError] = useState("");
   const [selectedJob, setSelectedJob] = useState<OsRecord | null>(null);
   useEffect(() => {
-    if (demo) return;
-    Promise.all([listRecords(accessToken, "ai_job", "limit=100&excludeKind=development_request"), getHealth()])
-      .then(([result, status]) => {
-        setJobs(contentOnly ? result.records.filter(isContentAiJob) : result.records);
-        setHealth(status);
-      })
-      .catch((reason) => setError(reason.message));
-  }, [accessToken, contentOnly, demo]);
+    if (demo || !accessToken) return;
+    let live = true;
+    setJobLoading(true); setError("");
+    const query = new URLSearchParams({ limit: "25", offset: String(jobPage * 25), excludeKind: "development_request", q: jobQuery, status: jobStatus, order: jobAscending ? "oldest" : "newest" });
+    if (jobScope === "mine") query.set("createdBy", "me");
+    const timer = window.setTimeout(() => {
+      Promise.all([listRecords(accessToken, "ai_job", query.toString()), getHealth()])
+        .then(([result, status]) => {
+          if (!live) return;
+          setJobs(contentOnly ? result.records.filter(isContentAiJob) : result.records);
+          setJobTotal(result.total); setHealth(status);
+        })
+        .catch(reason => { if (live) setError(reason.message); })
+        .finally(() => { if (live) setJobLoading(false); });
+    }, 250);
+    return () => { live = false; window.clearTimeout(timer); };
+  }, [accessToken, contentOnly, demo, jobPage, jobQuery, jobStatus, jobScope, jobAscending]);
   const systems = [
     [
       "회의 녹음→받아쓰기·정리",
@@ -297,10 +313,12 @@ export function AiOperationsWorkspace({ contentOnly = false }: { contentOnly?: b
             <h2>사람이 맡긴 일</h2>
             <p>{contentOnly ? "콘텐츠 만들기 요청의 진행·검토 상태" : "GPT·Codex·Claude 요청서의 진행·검토 상태"}</p>
           </div>
-          <span className="count-badge">{jobs.length}</span>
+          <span className="count-badge">조회 전체 {jobTotal}</span>
         </div>
-        <div className="activity-list">
-          {jobs.map((job) => (
+        <div className="os-toolbar"><input aria-label="맡긴 일 검색" placeholder="제목·요청 내용 검색" value={jobQuery} onChange={event => { setJobQuery(event.target.value); setJobPage(0); }} /><select aria-label="작업 상태" value={jobStatus} onChange={event => { setJobStatus(event.target.value); setJobPage(0); }}><option value="">전체 상태</option><option value="backlog">수령 대기</option><option value="active">실행 중</option><option value="blocked">막힘</option><option value="review">검토</option><option value="done">완료</option></select><select aria-label="요청 범위" value={jobScope} onChange={event => { setJobScope(event.target.value); setJobPage(0); }}><option value="all">열람 가능한 전체 요청</option><option value="mine">내 요청</option></select><select aria-label="작업 정렬" value={jobAscending ? "oldest" : "newest"} onChange={event => { setJobAscending(event.target.value === "oldest"); setJobPage(0); }}><option value="newest">최근 수정 순</option><option value="oldest">오래된 수정 순</option></select></div>
+        {jobLoading ? <p role="status">작업을 불러오는 중…</p> : null}
+        <div className="activity-list" aria-busy={jobLoading}>
+          {!jobLoading && jobs.map((job) => (
             <button type="button" className="ai-job-item" key={job.id} onClick={() => setSelectedJob(job)} aria-label={`${job.title} 상세 열기`}>
               <span className="document-symbol">
                 <Sparkles size={15} />
@@ -318,7 +336,7 @@ export function AiOperationsWorkspace({ contentOnly = false }: { contentOnly?: b
               </span>
             </button>
           ))}
-          {!jobs.length ? (
+          {!jobLoading && !jobs.length ? (
             <div className="quiet-state">
               <Bot />
               <strong>맡긴 일 없음</strong>
@@ -326,6 +344,7 @@ export function AiOperationsWorkspace({ contentOnly = false }: { contentOnly?: b
             </div>
           ) : null}
         </div>
+        <div className="os-toolbar"><button type="button" disabled={jobLoading || !jobPage} onClick={() => setJobPage(value => value - 1)}>이전</button><span>{jobTotal ? jobPage * 25 + 1 : 0}–{Math.min((jobPage + 1) * 25, jobTotal)} / {jobTotal}건{contentOnly ? " · 이 범위의 콘텐츠 요청만 표시" : ""}</span><button type="button" disabled={jobLoading || (jobPage + 1) * 25 >= jobTotal} onClick={() => setJobPage(value => value + 1)}>다음</button></div>
       </section>
       {selectedJob ? <div className="drawer-backdrop" onMouseDown={() => setSelectedJob(null)}>
         <aside className="record-drawer" role="dialog" aria-label="맡긴 일 자세히" onMouseDown={(event) => event.stopPropagation()}>

@@ -1,5 +1,6 @@
 "use client";
 
+import { commerceAdminUrlError } from "@/lib/commerce-admin-url";
 import { PageTitle } from "./page-title";
 
 import { revenueNet } from "@/lib/revenue-metrics";
@@ -313,8 +314,11 @@ export function CommerceAdminLinks({ embedded = false }: { embedded?: boolean })
   const load = useCallback(async () => { if (demo) return; setLoading(true); setLoadError(""); try { setRecords((await listRecords(accessToken, "connection", "limit=200")).records.filter((item) => item.tags.includes("commerce-admin"))); } catch (reason) { setLoadError(reason instanceof Error ? reason.message : "관리 링크를 불러오지 못했습니다."); } finally { setLoading(false); } }, [accessToken, demo]);
   useEffect(() => { load(); }, [load]);
   const selected = records.filter((item) => embedded || matchesPerformanceBrand(item.brand, brand));
-  const openNew = () => { setEditing(null); setError(""); setOpen(true); };
-  const openEdit = (record: OsRecord) => { setEditing(record); setError(""); setOpen(true); };
+  const [adminUrl, setAdminUrl] = useState("");
+  const [urlConfirmed, setUrlConfirmed] = useState(false);
+  const adminHost = (() => { try { const url = new URL(adminUrl); return url.protocol === "https:" && !url.username && !url.password ? url.hostname : ""; } catch { return ""; } })();
+  const openNew = () => { setEditing(null); setAdminUrl(""); setUrlConfirmed(false); setError(""); setOpen(true); };
+  const openEdit = (record: OsRecord) => { setAdminUrl(record.source_url ?? ""); setUrlConfirmed(false); setEditing(record); setError(""); setOpen(true); };
   const closeDrawer = () => { if (!busyId) { setOpen(false); setEditing(null); } };
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -324,9 +328,12 @@ export function CommerceAdminLinks({ embedded = false }: { embedded?: boolean })
       description: String(form.get("description")),
       status: "healthy",
       brand: String(form.get("brand")),
-      sourceUrl: String(form.get("url")),
+      sourceUrl: adminUrl.trim(),
       tags: ["commerce-admin"],
     };
+    if (!adminHost || !urlConfirmed) { setError("HTTPS 관리자 주소와 실제 도메인을 확인해 주세요."); return; }
+    const urlError = commerceAdminUrlError(adminUrl);
+    if (urlError) { setError(urlError); return; }
     setBusyId(editing?.id ?? "new");
     setError("");
     try {
@@ -354,5 +361,5 @@ export function CommerceAdminLinks({ embedded = false }: { embedded?: boolean })
       setBusyId("");
     }
   };
-  return <><header className="page-header"><div className="page-title-group">{embedded ? <h2>외부 관리자 바로가기</h2> : <PageTitle />}<p>고객 개인정보를 OS에 복제하지 않고, 브랜드별 관리자 화면과 핵심 운영 메모만 연결합니다.</p></div><button className="primary-button" onClick={openNew}><Plus size={16} /> 관리 링크 추가</button></header>{error ? <div className="inline-alert danger"><CircleAlert size={16} />{error}</div> : null}<WorkspaceLoadState loading={loading} error={loadError} retry={load}><section className="commerce-admin-links panel">{selected.map((item) => <article key={item.id}><a href={item.source_url ?? "#"} target="_blank" rel="noreferrer"><Link2 size={16} /><span><strong>{item.title}</strong><small>{item.brand || "전체"} · {item.description || "외부 관리자"}</small></span><ArrowUpRight size={14} /></a><div className="commerce-admin-actions"><button type="button" className="icon-button" aria-label={`${item.title} 수정`} title="수정" disabled={Boolean(busyId)} onClick={() => openEdit(item)}><Pencil size={14} /></button><button type="button" className="icon-button danger-button" aria-label={`${item.title} 삭제`} title="삭제" disabled={Boolean(busyId)} onClick={() => remove(item)}><Trash2 size={14} /></button></div></article>)}{!selected.length ? <div className="empty-state full-span"><div><Link2 /><h3>아직 연결된 관리자 링크가 없습니다.</h3><p>“관리 링크 추가”로 마이인·브랜디액션 에듀 관리자 URL을 연결하세요.</p></div></div> : null}</section></WorkspaceLoadState>{open ? <div className="drawer-backdrop" onMouseDown={closeDrawer}><form className="record-drawer" onSubmit={submit} onMouseDown={(event) => event.stopPropagation()}><div className="drawer-head"><h2>{editing ? "자사몰 어드민 수정" : "자사몰 어드민 연결"}</h2><button type="button" className="icon-button" disabled={Boolean(busyId)} onClick={closeDrawer}><X size={18} /></button></div><label><span>이름</span><input name="title" required placeholder="마이인 주문 관리자" defaultValue={editing?.title ?? ""} /></label><label><span>브랜드</span><select name="brand" defaultValue={editing?.brand || (brand === "all" ? "마이인" : performanceBrandLabel(brand))}><option>마이인</option><option>브랜디액션 에듀</option></select></label><label><span>관리자 URL</span><input name="url" type="url" required defaultValue={editing?.source_url ?? ""} /></label><label><span>설명</span><textarea name="description" rows={4} defaultValue={editing?.description ?? ""} /></label><div className="drawer-actions"><button type="button" className="secondary-button" disabled={Boolean(busyId)} onClick={closeDrawer}>취소</button><button className="primary-button" disabled={Boolean(busyId)}>{busyId ? "저장 중…" : editing ? "변경 저장" : "저장"}</button></div></form></div> : null}</>;
+  return <><header className="page-header"><div className="page-title-group">{embedded ? <h2>외부 관리자 바로가기</h2> : <PageTitle />}<p>고객 개인정보를 OS에 복제하지 않고, 브랜드별 관리자 화면과 핵심 운영 메모만 연결합니다.</p></div><button className="primary-button" onClick={openNew}><Plus size={16} /> 관리 링크 추가</button></header>{error ? <div className="inline-alert danger"><CircleAlert size={16} />{error}</div> : null}<WorkspaceLoadState loading={loading} error={loadError} retry={load}><section className="commerce-admin-links panel">{selected.map((item) => <article key={item.id}><a href={item.source_url ?? "#"} target="_blank" rel="noreferrer"><Link2 size={16} /><span><strong>{item.title}</strong><small>{item.brand || "전체"} · {item.description || "외부 관리자"}</small></span><ArrowUpRight size={14} /></a><div className="commerce-admin-actions"><button type="button" className="icon-button" aria-label={`${item.title} 수정`} title="수정" disabled={Boolean(busyId)} onClick={() => openEdit(item)}><Pencil size={14} /></button><button type="button" className="icon-button danger-button" aria-label={`${item.title} 삭제`} title="삭제" disabled={Boolean(busyId)} onClick={() => remove(item)}><Trash2 size={14} /></button></div></article>)}{!selected.length ? <div className="empty-state full-span"><div><Link2 /><h3>아직 연결된 관리자 링크가 없습니다.</h3><p>“관리 링크 추가”로 마이인·브랜디액션 에듀 관리자 URL을 연결하세요.</p></div></div> : null}</section></WorkspaceLoadState>{open ? <div className="drawer-backdrop" onMouseDown={closeDrawer}><form className="record-drawer" onSubmit={submit} onMouseDown={(event) => event.stopPropagation()}><div className="drawer-head"><h2>{editing ? "자사몰 어드민 수정" : "자사몰 어드민 연결"}</h2><button type="button" className="icon-button" disabled={Boolean(busyId)} onClick={closeDrawer}><X size={18} /></button></div><label><span>이름</span><input name="title" required placeholder="마이인 주문 관리자" defaultValue={editing?.title ?? ""} /></label><label><span>브랜드</span><select name="brand" defaultValue={editing?.brand || (brand === "all" ? "마이인" : performanceBrandLabel(brand))}><option>마이인</option><option>브랜디액션 에듀</option></select></label><label><span>관리자 URL</span><input name="url" type="url" required value={adminUrl} onChange={event => { setAdminUrl(event.target.value); setUrlConfirmed(false); }} /></label><p>연결 도메인: <strong>{adminHost || "올바른 HTTPS 주소를 입력해 주세요"}</strong>{adminHost ? <> · <a href={adminUrl} target="_blank" rel="noreferrer">새 창에서 확인</a></> : null}</p><label><input type="checkbox" checked={urlConfirmed} onChange={event => setUrlConfirmed(event.target.checked)} /> 해당 브랜드의 관리자 주소임을 확인했습니다</label><label><span>설명</span><textarea name="description" rows={4} defaultValue={editing?.description ?? ""} /></label><div className="drawer-actions"><button type="button" className="secondary-button" disabled={Boolean(busyId)} onClick={closeDrawer}>취소</button><button className="primary-button" disabled={Boolean(busyId)}>{busyId ? "저장 중…" : editing ? "변경 저장" : "저장"}</button></div></form></div> : null}</>;
 }

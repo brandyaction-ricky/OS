@@ -419,7 +419,7 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
         </main></ContentWorkProvider>
       </div>
       <DevelopmentRequestDrawer open={requestOpen} onClose={() => setRequestOpen(false)} />
-      <CommandPalette hrEnabled={hrEnabled} open={paletteOpen} onClose={closePalette} allowedMenus={menuAccess.loading || menuAccess.error ? [] : menuAccess.allowed} />
+      <CommandPalette stages={visibleStages} hrEnabled={hrEnabled} open={paletteOpen} onClose={closePalette} allowedMenus={menuAccess.loading || menuAccess.error ? [] : menuAccess.allowed} />
       {passwordOpen ? <div className="modal-backdrop" onMouseDown={() => setPasswordOpen(false)}><div onMouseDown={(event) => event.stopPropagation()}><PasswordChangeForm onCancel={() => setPasswordOpen(false)} /></div></div> : null}
     </div>
   );

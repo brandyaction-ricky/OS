@@ -15,7 +15,7 @@ export interface YpRef { url: string; videoId?: string; title?: string }
  */
 export interface YpTopic { type: YpKind | null; target: string; note: string; refs: YpRef[]; purpose?: "ad" | null; channel?: string }
 export interface YpMeta {
-  v: 1; stage: YpStage; topic: YpTopic; gates: Record<YpGate, YpGateInfo>; contentUpdatedAt: string; multiFrom?: string;
+  v: 1; stage: YpStage; topic: YpTopic; gates: Record<YpGate, YpGateInfo>; contentUpdatedAt: string; multiFrom?: string; copiedFrom?: string;
   /** 쇼츠 확정 by the PD (owner decision 2026-10-25): each confirmed clip's script as it was confirmed (clipSignature); a later change needs a new 확정. */
   shortsConfirmed?: { at: string; by: string; clips: Record<string, string> };
   /** 쇼츠 확정 · 코멘트 기록, newest last: the 대표 reads it in 대표 메뉴 › 컨펌 and comments when something should change. */

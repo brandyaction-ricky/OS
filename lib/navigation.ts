@@ -75,11 +75,11 @@ export const NAV_STAGES: NavStage[] = [
   ] },
   { id: "automation", label: "콘텐츠 자동화", icon: Bot, href: "/automation/dashboard", pages: [
     { label: "자동화 현황", href: "/automation/dashboard", icon: LayoutDashboard, ready: true, aliases: ["대시보드"] },
-    { label: "레퍼런스 수집", href: "/automation/references", icon: BookOpen, ready: true },
+    { label: "스레드 글감 모으기", href: "/automation/references", icon: BookOpen, aliases: ["레퍼런스 수집"], ready: true },
     { label: "주제 기획", href: "/automation/topics", icon: Lightbulb, processNumber: 1, ready: true },
-    { label: "카드뉴스", href: "/automation/cardnews", icon: Image, processNumber: 2, ready: true },
+    { label: "카드뉴스 (예전 자동화)", href: "/automation/cardnews", icon: Image, aliases: ["카드뉴스"], processNumber: 2, ready: true },
     { label: "쇼츠", href: "/automation/shorts", icon: Smartphone, processNumber: 3, ready: true },
-    { label: "쓰레드", href: "/automation/threads", icon: AtSign, processNumber: 4, ready: true },
+    { label: "스레드 쓰기", href: "/automation/threads", icon: AtSign, aliases: ["쓰레드"], processNumber: 4, ready: true },
     { label: "최종 확인", href: "/automation/review", icon: ListChecks, processNumber: 5, ready: true, aliases: ["최종 점검"] },
     { label: "발행", href: "/automation/calendar", icon: CalendarRange, processNumber: 6, ready: true, children: [{ label: "발행 일정", href: "/automation/calendar?tab=schedule" }, { label: "발행 기록", href: "/automation/calendar?tab=history" }] },
     { label: "반응·성과", href: "/automation/performance", icon: MessageSquareText, processNumber: 7, ready: true, children: [{ label: "댓글·답글", href: "/automation/performance?tab=comments" }, { label: "성과", href: "/automation/performance?tab=metrics" }] },
@@ -188,8 +188,8 @@ export function findStage(pathname: string) {
   return NAV_STAGES.find(stage => stage.pages.some(item => item.href === href))
     ?? (YOUTUBE_V1_HREFS.includes(href) ? NAV_STAGES.find(stage => stage.id === "content") : undefined) ?? HOME_STAGE;
 }
-export function searchNavigation(query: string, financeAccess = false, canVisit: (href: string) => boolean = () => true, hrEnabled = false) {
+export function searchNavigation(query: string, financeAccess = false, canVisit: (href: string) => boolean = () => true, hrEnabled = false, stages: NavStage[] = NAV_STAGES) {
   const normalized = query.trim().toLocaleLowerCase("ko-KR");
-  const pages = [...NAV_STAGES.filter(stage => !stage.requiresHr || hrEnabled).flatMap(stage => stage.pages.filter(page => !stage.requiresFinance || financeAccess || STAFF_FINANCE_MENUS.includes(page.href)).map(page => ({ ...page, stage: stage.label }))), { label: "문서 찾기", href: "/knowledge/search", icon: Search, aliases: ["지식 검색"], stage: "회사 문서" }, { ...ACCOUNT_PAGE, stage: "내 계정" }];
+  const pages = [...stages.filter(stage => !stage.requiresHr || hrEnabled).flatMap(stage => stage.pages.filter(page => !stage.requiresFinance || financeAccess || STAFF_FINANCE_MENUS.includes(page.href)).map(page => ({ ...page, stage: stage.label }))), { label: "문서 찾기", href: "/knowledge/search", icon: Search, aliases: ["지식 검색"], stage: "회사 문서" }, { ...ACCOUNT_PAGE, stage: "내 계정" }];
   return (normalized ? pages.filter(page => `${page.stage} ${page.group ?? ""} ${page.label} ${(page.aliases ?? []).join(" ")}`.toLocaleLowerCase("ko-KR").includes(normalized)) : pages).filter(page => canVisit(page.href)).slice(0, 8);
 }
