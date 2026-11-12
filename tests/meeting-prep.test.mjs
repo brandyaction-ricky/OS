@@ -35,6 +35,7 @@ function fakeSupabase({ meetings = [], tasks = [], kpis = [], documents = [] }) 
         eq(column, value) { state.filters.push([column, value]); return chain; },
         like(column, pattern) { state.filters.push([column, pattern]); return chain; },
         is() { return chain; },
+        in() { return chain; },
         neq() { return chain; },
         order() { return chain; },
         limit() { return chain; },
@@ -160,4 +161,21 @@ test("prepareMeetingBrief takes the newest held meeting even before its AI summa
   assert.equal(result.latestMeeting?.id, "nov11");
   assert.equal(JSON.stringify(result.pending), JSON.stringify(["11일 미결"]));
   assert.equal(result.latestMeeting?.summary, "11일 회의 메모");
+});
+
+test("prepareMeetingBrief lists unfinished tasks from recent meetings and keeps decision candidates out of open questions", async () => {
+  const prepareMeetingBrief = await loadPrepareMeetingBrief();
+  const now = new Date().toISOString();
+  const meetings = [
+    { id: "m2", status: "active", title: "마이인 회의", brand: "마이인", starts_at: now, description: "메모", metadata: { items: [{ kind: "open", text: "열린 질문", state: "pending" }] } },
+    { id: "r1", status: "review", title: "마이인 회의", brand: "마이인", starts_at: now, description: "메모", metadata: { items: [{ kind: "decision", text: "광고비로만 쓰기로 했다", state: "pending" }] } },
+  ];
+  const tasks = [
+    { id: "t1", parent_id: "r1", status: "todo", title: "남은 할 일", brand: "마이인" },
+    { id: "t2", parent_id: "r1", status: "done", title: "끝난 할 일", brand: "마이인" },
+    { id: "t3", parent_id: "other", status: "todo", title: "다른 일", brand: "마이인" },
+  ];
+  const result = await prepareMeetingBrief(fakeSupabase({ meetings, tasks }), { brand: "마이인" });
+  assert.equal(JSON.stringify(result.pending), JSON.stringify(["열린 질문"]));
+  assert.equal(JSON.stringify(result.followUps.map(task => task.id)), JSON.stringify(["t1"]));
 });
