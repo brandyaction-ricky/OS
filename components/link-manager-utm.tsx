@@ -169,13 +169,13 @@ function LedgerEdit({ link, onDone }: { link: Link; onDone: (saved: boolean) => 
       onDone(true);
     } catch (reason) { setError(errorMessage(reason)); setBusy(false); }
   };
-  return <form style={{ display: "grid", gap: 6 }} onSubmit={event => { event.preventDefault(); void save(); }}>
+  return <form className="yp-stack10" onSubmit={event => { event.preventDefault(); void save(); }}>
     <label>링크 사용처<input className="yp-in" value={notes.usage} maxLength={200} onChange={event => set({ usage: event.target.value })} aria-label="링크 사용처 고치기" /></label>
     <label>target · 대상 고객<input className="yp-in" value={notes.target} maxLength={200} onChange={event => set({ target: event.target.value })} aria-label="target 대상 고객 고치기" /></label>
     <label>location · 게재 위치<input className="yp-in" value={notes.location} maxLength={200} onChange={event => set({ location: event.target.value })} aria-label="location 게재 위치 고치기" /></label>
     <label>etc · 기타<input className="yp-in" value={notes.etc} maxLength={500} onChange={event => set({ etc: event.target.value })} aria-label="etc 기타 고치기" /></label>
     <span className="yp-hint">주소·UTM 값·단축링크는 그대로예요. 이미 붙인 링크도 계속 같은 곳으로 가요.</span>
-    <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+    <span className="yp-row-btns">
       <button type="submit" className="yp-btn yp-sm yp-pri" disabled={busy || demo || !notes.usage.trim()}>{busy ? "저장하는 중…" : "고친 내용 저장"}</button>
       <button type="button" className="yp-btn yp-sm" disabled={busy} onClick={() => onDone(false)}>취소</button>
     </span>
