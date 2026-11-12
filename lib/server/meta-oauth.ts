@@ -1,5 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { ApiError } from "@/lib/http";
+import type { MetaOAuthStage } from "@/lib/meta-connection-result";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { assertActiveChannelOwner, assertConnectionAccess, auditChannelAction, type ChannelActor, type ChannelAction } from "./channel-access";
 
@@ -57,10 +58,17 @@ export function metaAuthorizationUrl(platform: MetaPlatform, state: string) {
   const config = CONFIG[platform];
   return `${config.authorization}?${new URLSearchParams({ client_id: required(`${config.prefix}_APP_ID`), redirect_uri: metaRedirectUri(), response_type: "code", scope: config.scopes.join(","), state })}`;
 }
-async function metaJson(url: string, options: RequestInit) {
-  const response = await fetch(url, { ...options, cache: "no-store", signal: AbortSignal.timeout(20_000) });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok || body.error) throw new ApiError(response.status === 401 || response.status === 403 ? 403 : 502, "META_CONNECTION_FAILED", "Meta 요청을 확인하지 못했습니다. 테스터 등록·초대 수락·권한과 연결 만료 여부를 확인해 주세요.");
+async function metaJson(url: string, options: RequestInit, stage?: MetaOAuthStage) {
+  let response: Response;
+  try {
+    response = await fetch(url, { ...options, cache: "no-store", signal: AbortSignal.timeout(20_000) });
+  } catch {
+    // Fetch errors may embed credential-bearing URLs. Keep only the stage.
+    throw new ApiError(502, "META_CONNECTION_FAILED", "Meta에 연결하지 못했습니다.", stage ? { stage } : undefined);
+  }
+  const parsed = await response.json().catch(() => ({}));
+  const body = parsed && typeof parsed === "object" ? parsed : {};
+  if (!response.ok || body.error) throw new ApiError(response.status === 401 || response.status === 403 ? 403 : 502, "META_CONNECTION_FAILED", "Meta 요청을 확인하지 못했습니다. 연결 설정과 권한을 확인해 주세요.", stage ? { stage, httpStatus: response.status, providerCode: typeof body.error?.code === "number" ? body.error.code : undefined, providerSubcode: typeof body.error?.error_subcode === "number" ? body.error.error_subcode : undefined } : undefined);
   return body;
 }
 /**
@@ -104,12 +112,12 @@ export async function saveMetaConnection(ownerId: string, platform: MetaPlatform
   let accountId = `mock-${ownerId}-${platform}`, name = `모의 ${platform} 계정`, accountType = "MOCK", encrypted = "mock", expiresIn = 60 * 86_400;
   if (!mock) {
     if (!code) throw new ApiError(400, "META_CODE_REQUIRED", "Meta 연결 코드가 없습니다.");
-    const raw = await metaJson(config.token, { method: "POST", body: new URLSearchParams({ client_id: required(`${config.prefix}_APP_ID`), client_secret: required(`${config.prefix}_APP_SECRET`), grant_type: "authorization_code", redirect_uri: metaRedirectUri(), code }) });
+    const raw = await metaJson(config.token, { method: "POST", body: new URLSearchParams({ client_id: required(`${config.prefix}_APP_ID`), client_secret: required(`${config.prefix}_APP_SECRET`), grant_type: "authorization_code", redirect_uri: metaRedirectUri(), code }) }, "short_token");
     const short = raw.access_token ? raw : Array.isArray(raw.data) && raw.data.length === 1 ? raw.data[0] : null;
-    if (!short?.access_token) throw new ApiError(502, "META_TOKEN_MISSING", "Meta 인증 정보를 받지 못했습니다.");
-    const long = await metaJson(`${config.host}/access_token?${new URLSearchParams({ grant_type: platform === "instagram" ? "ig_exchange_token" : "th_exchange_token", client_secret: required(`${config.prefix}_APP_SECRET`) })}`, { headers: { authorization: `Bearer ${short.access_token}` } });
-    if (!long.access_token || !Number.isFinite(long.expires_in) || long.expires_in <= 0) throw new ApiError(502, "META_TOKEN_MISSING", "유효한 장기 인증 정보를 받지 못했습니다.");
-    const me = await metaJson(`${config.host}/me?fields=${platform === "instagram" ? "user_id,username,account_type" : "id,username"}`, { headers: { authorization: `Bearer ${long.access_token}` } });
+    if (!short?.access_token) throw new ApiError(502, "META_TOKEN_MISSING", "Meta 인증 정보를 받지 못했습니다.", { stage: "short_token" });
+    const long = await metaJson(`${config.host}/access_token?${new URLSearchParams({ grant_type: platform === "instagram" ? "ig_exchange_token" : "th_exchange_token", client_secret: required(`${config.prefix}_APP_SECRET`) })}`, { headers: { authorization: `Bearer ${short.access_token}` } }, "long_token");
+    if (!long.access_token || !Number.isFinite(long.expires_in) || long.expires_in <= 0) throw new ApiError(502, "META_TOKEN_MISSING", "유효한 장기 인증 정보를 받지 못했습니다.", { stage: "long_token" });
+    const me = await metaJson(`${config.host}/me?fields=${platform === "instagram" ? "user_id,username,account_type" : "id,username"}`, { headers: { authorization: `Bearer ${long.access_token}` } }, "profile");
     accountId = String(me.user_id ?? me.id ?? ""); name = String(me.username ?? ""); accountType = platform === "instagram" ? String(me.account_type ?? "") : "THREADS";
     if (!accountId || !name || (platform === "instagram" && !["BUSINESS", "MEDIA_CREATOR", "CREATOR"].includes(accountType))) throw new ApiError(400, "META_ACCOUNT_TYPE", "인스타는 프로페셔널 계정인지 확인해 주세요. 연결 계정을 확인하지 못했습니다.");
     encrypted = encryptMetaToken(long.access_token); expiresIn = long.expires_in;
