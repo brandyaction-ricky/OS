@@ -1,33 +1,48 @@
 "use client";
-import Link from "next/link";
 import { useState } from "react";
 import { METRIC_LABELS, YOUTUBE_ANALYTICS_METRICS, compareMetricSamples, sampleSummary, metricSamples, measuredValue, type Snapshot } from "@/lib/channel-metrics";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 import { demoRecord } from "@/lib/demo-record";
-export function ChannelMetricsPanel({records,loading,youtubeOnly=false}:{records:OsRecord[];loading:boolean;youtubeOnly?:boolean}){
-  const {demo,profile}=useSession();
-  const [platform,setPlatform]=useState("all"),[snapshot,setSnapshot]=useState<Snapshot>("d7"),[metric,setMetric]=useState("views"),[examples,setExamples]=useState<OsRecord[]>([]);
-  const [from,setFrom]=useState(""),[to,setTo]=useState("");
-  const data=demo?examples:records;
-  const youtube=platform==="yt_long"||platform==="yt_shorts";
-  const kinds = youtubeOnly ? ["yt_long", "yt_shorts"] : ["instagram", "threads"];
-  const samples=metricSamples(data,metric,from,to);
-  const visible=samples.filter(row=>row.metadata.snapshot===snapshot&&(platform==="all"||row.metadata.platform===platform));
-  const values=(kind:string)=>visible.filter(row=>row.metadata.platform===kind).map(row=>measuredValue(row.metadata.value)!).filter(Number.isFinite);
-  const latest=data.map(row=>String(row.metadata.measuredAt??"")).sort().at(-1);
-  const number=(value:number|null)=>value===null?"—":value.toLocaleString("ko-KR",{maximumFractionDigits:1});
-  const loadExamples=()=>setExamples(kinds.flatMap(kind=>Array.from({length:6},(_,index)=>demoRecord({recordType:"content_metric",title:`연습용 ${kind} 게시물 ${index+1}`,metadata:{source:"api",platform:kind,snapshot:"d7",metric:"views",value:100+index*20+(kind==="threads"||kind==="yt_shorts"?50:0),publishId:`${kind}-${index}`,publishedAt:new Date(Date.now()-7*86400000).toISOString(),measuredAt:new Date().toISOString(),mock:true}},profile?.id??"demo"))));
-  return <section className="panel channel-metrics-panel" aria-label="게시 후 경과일 비교"><header><div><h2>게시 후 경과일 비교</h2><p>같은 경과일에 자동으로 모은 수치끼리 비교합니다. 놓친 날짜의 수치를 현재 값으로 채우지 않습니다.</p></div>{demo?<button className="secondary-button" onClick={loadExamples}>연습용 성과 불러오기</button>:null}</header>
-    <nav className="studio-tabs" aria-label="성과 플랫폼">{(youtubeOnly ? [["all","전체"],["yt_long","유튜브 롱폼"],["yt_shorts","유튜브 쇼츠"]] : [["all","전체"],["yt_long","유튜브 롱폼"],["yt_shorts","유튜브 쇼츠"],["instagram","인스타"],["threads","Threads"]]).map(([value,label])=><button key={value} className={platform===value?"active":""} onClick={()=>setPlatform(value)}>{label}</button>)}</nav>
-    <div className="channel-metric-filters"><label>경과일<select value={snapshot} onChange={event=>setSnapshot(event.target.value as Snapshot)}><option value="d1">D1 · 게시 후 1일</option><option value="d7">D7 · 게시 후 7일</option><option value="d28">D28 · 게시 후 28일</option></select></label><label>지표<select value={metric} onChange={event=>setMetric(event.target.value)}>{Object.entries(METRIC_LABELS).filter(([value])=>!youtubeOnly||(YOUTUBE_ANALYTICS_METRICS as readonly string[]).includes(value)).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label><label>게시 시작일<input type="date" value={from} onChange={event=>setFrom(event.target.value)}/></label><label>게시 종료일<input type="date" value={to} onChange={event=>setTo(event.target.value)}/></label></div>
-    {loading?<p role="status">성과 불러오는 중…</p>:youtube&&!youtubeOnly?<p className="inline-alert">YouTube 분석 미연결 · 업로드 연결과 분석 권한은 다릅니다. <Link href="/settings/account">내 계정에서 연결 확인 →</Link></p>:<>
-      <div className="channel-metric-samples">{kinds.filter(kind=>platform==="all"||platform===kind).map(kind=>{const stats=sampleSummary(values(kind));return <article key={kind}><h3>{kind==="yt_long"?"유튜브 롱폼":kind==="yt_shorts"?"유튜브 쇼츠":kind==="instagram"?"인스타":"Threads"} · {snapshot.toUpperCase()}</h3><strong>{number(stats.median)}</strong><p>{METRIC_LABELS[metric]} 중앙값 · n={stats.n}개 게시물</p><small>범위 {number(stats.min)}~{number(stats.max)} · {stats.n<5?"비교 보류":"표본 5개 이상"}</small></article>;})}</div>
-      {platform==="all"&&!youtubeOnly?<p>{compareMetricSamples(values("instagram"),values("threads"))} · 플랫폼별 집계 정의 차이를 고려해야 합니다.</p>:null}
-      <p className="channel-collection-status">{demo?"연습용 수치 · 실제 플랫폼 조회 없음":latest?`마지막 저장 ${new Date(latest).toLocaleString("ko-KR")} · 현재 수집 성공 여부는 작동 상태에서 확인`:"아직 모은 수치 없음 · 채널 연결·권한·수집 작업 준비를 확인해 주세요."}</p>
-      <div className="channel-metric-table"><table aria-label="경과일별 성과 비교"><thead><tr><th>플랫폼</th>{(["d1","d7","d28"] as const).map(day=><th key={day}>{day.toUpperCase()} · {METRIC_LABELS[metric]}</th>)}</tr></thead><tbody>{kinds.filter(kind=>platform==="all"||platform===kind).map(kind=><tr key={kind}><th scope="row">{kind==="yt_long"?"유튜브 롱폼":kind==="yt_shorts"?"유튜브 쇼츠":kind==="instagram"?"인스타":"Threads"}</th>{(["d1","d7","d28"] as const).map(day=>{const stats=sampleSummary(samples.filter(row=>row.metadata.platform===kind&&row.metadata.snapshot===day).map(row=>measuredValue(row.metadata.value)!));return <td key={day}><strong>{number(stats.median)}</strong><small>중앙값 · n={stats.n}<br/>범위 {number(stats.min)}~{number(stats.max)}{stats.n<5?" · 비교 보류":""}</small></td>;})}</tr>)}</tbody></table><p>경과일별 표본이 다를 수 있습니다. ‘—’는 미측정이며 0으로 대체하지 않습니다.</p></div>
-      <div className="channel-metric-table"><table aria-label="선택 경과일 측정 기록"><thead><tr><th>게시물</th><th>플랫폼</th><th>경과일</th><th>{METRIC_LABELS[metric]}</th><th>출처</th></tr></thead><tbody>{visible.map(row=><tr key={row.id}><td>{row.title}</td><td>{String(row.metadata.platform)}</td><td>{String(row.metadata.snapshot).toUpperCase()}</td><td>{number(measuredValue(row.metadata.value))}</td><td>{row.metadata.mock?"연습용":"자동 수집"}</td></tr>)}</tbody></table>{!visible.length?<p>선택 범위의 측정값이 없습니다. 미측정은 0이 아닙니다.</p>:null}</div>
+
+const NAMES: Record<string, string> = { yt_long: "롱폼", yt_shorts: "숏폼", instagram: "인스타", threads: "Threads" };
+const DAYS: readonly [Snapshot, string][] = [["d1", "게시 후 1일"], ["d7", "게시 후 7일"], ["d28", "게시 후 28일"]];
+const number = (value: number | null) => value === null ? "—" : value.toLocaleString("ko-KR", { maximumFractionDigits: 1 });
+
+/**
+ * 게시 후 경과일 비교: posts published in [from, to] side by side at the same age (D1 · D7 · D28) — the page's period and
+ * 롱폼/숏폼 choice decide which. A missing day stays "—", never filled with today's value.
+ */
+export function ChannelMetricsPanel({ records, loading, youtubeOnly = false, from = "", to = "", platform = "all" }: { records: OsRecord[]; loading: boolean; youtubeOnly?: boolean; from?: string; to?: string; platform?: string }) {
+  const { demo, profile } = useSession();
+  const [snapshot, setSnapshot] = useState<Snapshot>("d7"), [metric, setMetric] = useState("views"), [examples, setExamples] = useState<OsRecord[]>([]);
+  const data = demo ? examples : records;
+  const kinds = (youtubeOnly ? ["yt_long", "yt_shorts"] : ["instagram", "threads"]).filter((kind) => platform === "all" || platform === kind);
+  const samples = metricSamples(data, metric, from, to);
+  const visible = samples.filter((row) => row.metadata.snapshot === snapshot && kinds.includes(String(row.metadata.platform)));
+  const values = (kind: string) => visible.filter((row) => row.metadata.platform === kind).map((row) => measuredValue(row.metadata.value)!).filter(Number.isFinite);
+  const latest = data.map((row) => String(row.metadata.measuredAt ?? "")).sort().at(-1);
+  const loadExamples = () => setExamples((youtubeOnly ? ["yt_long", "yt_shorts"] : ["instagram", "threads"]).flatMap((kind) => Array.from({ length: 6 }, (_, index) => demoRecord({ recordType: "content_metric", title: `연습용 ${NAMES[kind]} 게시물 ${index + 1}`, metadata: { source: "api", platform: kind, snapshot: "d7", metric: "views", value: 100 + index * 20 + (kind === "threads" || kind === "yt_shorts" ? 50 : 0), publishId: `${kind}-${index}`, publishedAt: new Date(Date.now() - 7 * 86400000).toISOString(), measuredAt: new Date().toISOString(), mock: true } }, profile?.id ?? "demo"))));
+  const metricChoices = Object.entries(METRIC_LABELS).filter(([value]) => !youtubeOnly || (YOUTUBE_ANALYTICS_METRICS as readonly string[]).includes(value));
+  return <section className="panel perf-panel" aria-label="게시 후 경과일 비교">
+    <div className="card-head"><div><span className="card-title">게시 후 경과일 비교</span><p className="section-meta">이 기간에 올린 영상을 올린 지 같은 날짜끼리 비교해요.</p></div>
+      {demo ? <button type="button" className="secondary-button compact" onClick={loadExamples}>연습용 성과 불러오기</button> : null}</div>
+    <div className="os-toolbar">
+      <div className="segmented" role="group" aria-label="경과일">{DAYS.map(([value, label]) => <button type="button" key={value} aria-pressed={snapshot === value} onClick={() => setSnapshot(value)}>{label}</button>)}</div>
+      <label className="perf-field">지표<select value={metric} onChange={(event) => setMetric(event.target.value)}>{metricChoices.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    </div>
+    {loading ? <div className="perf-metrics" role="status" aria-label="성과 불러오는 중">{kinds.map((kind) => <div className="metric" key={kind}><span className="skeleton perf-skeleton" /></div>)}</div> : <>
+      <div className="perf-metrics">{kinds.map((kind) => { const stats = sampleSummary(values(kind)); return <div className="metric" key={kind}>
+        <div className="metric-label">{NAMES[kind]} · {DAYS.find(([value]) => value === snapshot)![1]} {METRIC_LABELS[metric]} (가운데 값)</div>
+        <p className="metric-value">{number(stats.median)}</p>
+        <div className="metric-note">{stats.n ? `영상 ${stats.n}개 · 범위 ${number(stats.min)}~${number(stats.max)}${stats.n < 5 ? " · 5개가 안 돼 비교 보류" : ""}` : "이 기간에 올린 영상의 기록이 없어요"}</div></div>; })}</div>
+      {!youtubeOnly && platform === "all" ? <p className="section-meta">{compareMetricSamples(values("instagram"), values("threads"))} · 플랫폼별 집계 정의 차이를 고려해야 합니다.</p> : null}
+      <div className="perf-table-wrap"><table className="data-table" aria-label="경과일별 성과 비교"><thead><tr><th>구분</th>{DAYS.map(([value, label]) => <th key={value} className="perf-num">{label}</th>)}</tr></thead>
+        <tbody>{kinds.map((kind) => <tr key={kind}><th scope="row" className="cell-title">{NAMES[kind]}</th>{DAYS.map(([day]) => { const stats = sampleSummary(samples.filter((row) => row.metadata.platform === kind && row.metadata.snapshot === day).map((row) => measuredValue(row.metadata.value)!)); return <td key={day} className="perf-num"><strong>{number(stats.median)}</strong><small className="perf-sub">{stats.n ? `영상 ${stats.n}개 · ${number(stats.min)}~${number(stats.max)}` : "기록 없음"}</small></td>; })}</tr>)}</tbody></table></div>
+      <div className="perf-table-wrap"><table className="data-table is-compact" aria-label="선택 경과일 측정 기록"><thead><tr><th>게시물</th><th>구분</th><th className="perf-num">{METRIC_LABELS[metric]}</th><th>출처</th></tr></thead>
+        <tbody>{visible.map((row) => <tr key={row.id}><td>{row.title}</td><td>{NAMES[String(row.metadata.platform)] ?? String(row.metadata.platform)}</td><td className="perf-num">{number(measuredValue(row.metadata.value))}</td><td>{row.metadata.mock ? "연습용" : "자동 수집"}</td></tr>)}</tbody></table></div>
+      {!visible.length ? <div className="empty-state">선택 범위의 측정값이 없습니다. 미측정은 0이 아닙니다.</div> : null}
+      <p className="section-meta">{demo ? "연습용 수치 · 실제 플랫폼 조회 없음" : latest ? `마지막 저장 ${new Date(latest).toLocaleString("ko-KR")} · ‘—’는 아직 안 잰 것이고 0이 아니에요` : "아직 모은 수치가 없어요 · 매일 아침 자동으로 모아요"}</p>
     </>}
-    <p>{youtubeOnly?"수기·기존 YouTube 기록은 아래 측정 기록에 그대로 보관합니다.":"수기·기존 기록은 아래 측정 기록에 그대로 보관합니다. 인스타 자동 수집에는 노출수를 쓰지 않습니다."}</p>
   </section>;
 }

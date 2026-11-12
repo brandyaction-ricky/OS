@@ -45,6 +45,7 @@ const FILE_LAYER = {
   "components/threads-editorial-workspace.css": "os.screen",
   "components/threads-reference-workspace.css": "os.screen",
   "components/youtube-process.css": "os.screen",
+  "components/content-performance.css": "os.screen",
   "components/youtube-process-card.css": "os.screen",
   "components/youtube-production-steps.css": "os.screen",
   "components/vendor/mdxeditor.layered.css": "os.legacy",

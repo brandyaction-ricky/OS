@@ -53,14 +53,14 @@ for (const theme of ["light", "dark"]) for (const width of [1440, 390]) {
   });
 }
 test("mock metrics preserve missing snapshots and show measured sample bounds", async ({ page }) => {
-  await page.goto("/content/performance");
+  await page.goto("/content/performance?tab=days");
   const panel = page.getByRole("region", { name: "게시 후 경과일 비교" });
   await panel.getByRole("button", { name: "연습용 성과 불러오기" }).click();
   await expect(panel.getByText("연습용 수치 · 실제 플랫폼 조회 없음", { exact: true })).toBeVisible();
   await expect(panel.getByRole("button", { name: "인스타" })).toHaveCount(0);
   await expect(panel.getByRole("button", { name: "Threads" })).toHaveCount(0);
   await expect(panel.getByRole("table", {name:"선택 경과일 측정 기록"}).getByRole("row")).toHaveCount(13);
-  await panel.getByRole("combobox",{name:/^경과일/}).selectOption("d1");
+  await panel.getByRole("button", { name: "게시 후 1일", exact: true }).click();
   await expect(panel.getByRole("table", {name:"선택 경과일 측정 기록"}).getByRole("row")).toHaveCount(1);
   await expect(panel.getByText("선택 범위의 측정값이 없습니다. 미측정은 0이 아닙니다.", { exact: true })).toBeVisible();
 });

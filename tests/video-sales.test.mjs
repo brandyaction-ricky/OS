@@ -46,6 +46,6 @@ test("the OS reads MYIN through its server key, keeps the last good figures when
   const route = read("app/api/v1/content/video-sales/route.ts");
   assert.match(route, /await authenticateRequest\(request\);/);
   assert.match(route, />= 92\)/);
-  assert.match(read("components/content-performance-dashboard.tsx"), /\{youtubeOnly \? <VideoSalesPanel from=\{from\} to=\{to\} \/> : null\}/);
+  assert.match(read("components/content-performance-dashboard.tsx"), /\{tab === "sales" \? youtubeOnly \? <VideoSalesPanel from=\{from\} to=\{to\} \/>/);
   assert.doesNotMatch(read("components/video-sales-panel.tsx"), /style=\{\{/);
 });
