@@ -48,7 +48,7 @@ export function TeamMeetingDetail({ meeting, meetings, tasks, token, userId, adm
   const [content, setContent] = useState(meeting.description ?? ""), [summary, setSummary] = useState(meeting.metadata.summary ?? "");
   const [items, setItems] = useState<MeetingItem[]>(meeting.metadata.items), [itemKind, setItemKind] = useState<MeetingItem["kind"]>("decision"), [itemText, setItemText] = useState("");
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [correction, setCorrection] = useState(""), [reason, setReason] = useState("");
-  // Long meetings: recorded in 10-minute segments, each transcribed and appended in order. The recorder is app-wide,
+  // Long meetings: recorded in 5-minute segments, each transcribed and appended in order. The recorder is app-wide,
   // so the meeting keeps recording in other menus; this screen sees only its own meeting's recording.
   const shared = useMeetingRecording();
   if (!shared) throw new Error("TeamMeetingDetail must be inside MeetingRecordingProvider");

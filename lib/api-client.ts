@@ -361,7 +361,11 @@ export async function uploadMeetingRecording(token: string | null, file: Blob) {
 export async function transcribeMeeting(token: string | null, file: Blob) {
   const body = new FormData();
   body.set("file", file, `meeting-${Date.now()}.webm`);
-  return apiRequest<{ transcript: string; mode: "ai" }>("/api/v1/meeting-transcription", { method: "POST", token, body });
+  // A long recording outlives the hourly access token (production 401 at minute 50, 2026-11-11): ask the session
+  // for the current one, which refreshes it when expired, instead of trusting the token the screen last rendered.
+  const { getBrowserSupabase } = await import("@/lib/supabase/client");
+  const fresh = (await getBrowserSupabase()?.auth.getSession())?.data.session?.access_token;
+  return apiRequest<{ transcript: string; mode: "ai" }>("/api/v1/meeting-transcription", { method: "POST", token: fresh ?? token, body });
 }
 
 export async function getMeetingRecordingUrl(token: string | null, path: string) {
