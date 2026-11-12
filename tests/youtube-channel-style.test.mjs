@@ -183,7 +183,7 @@ test("every AI job and the second review read the channel; the 기본 채널 and
     read("../lib/server/youtube-script-review2.ts"), read("../lib/youtube-script-review2.ts")]);
   assert.match(server, /if \(!card \|\| card\.id === styles\[0\]\.id\) return null;/, "the 기본 채널 adds nothing");
   assert.match(server, /"CHANNEL_PURPOSE_MISSING"/); assert.match(server, /"CHANNEL_CANON_MISSING"/);
-  assert.match(jobs, /await channelContext\(input\.task === "niche" \? null : input\.sourceId\);\n  for \(const job of await openJobs/, "a request without the 정본 fails at once");
+  assert.match(jobs, /if \(input\.task !== "image-creative"\) await channelContext\(input\.task === "niche" \? null : input\.sourceId\);\n  for \(const job of imageJobs \?\? await openJobs/, "a request without the 정본 fails at once");
   const claim = jobs.slice(jobs.indexOf("export async function claimStaffJob"), jobs.indexOf("async function claimJob("));
   assert.ok(claim.indexOf("channelContext(") < claim.indexOf("await claimJob("), "read before the job is taken");
   assert.match(claim, /const instructions = channel \? `\$\{channel\.text\}\\n\\n\$\{claimed\.instructions\}` : claimed\.instructions;/);

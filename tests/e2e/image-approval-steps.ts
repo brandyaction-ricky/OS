@@ -1,5 +1,10 @@
 import { expect, type Page } from "@playwright/test";
 
+export async function openWorkTools(page: Page, url = "/content/images") {
+  await page.goto(url);
+  await page.getByRole("button", { name: "작업 도구", exact: true }).click();
+}
+
 export async function approveFormat(page: Page) {
   await page.getByRole("button",{name:"포맷 승인",exact:true}).click();
   await expect(page.getByRole("button",{name:"포맷 승인됨",exact:true})).toBeDisabled();

@@ -72,7 +72,6 @@ export const NAV_STAGES: NavStage[] = [
     { label: "발행·업로드", href: "/content/publishing", icon: UploadCloud, processNumber: 6, aliases: ["유튜브 발행", "유튜브 업로드", "발행 승인"], ready: true },
     { label: "유튜브 관리", href: "/content/youtube", icon: Youtube, processNumber: 7, ready: true },
     { label: "영상 성과", href: "/content/performance", icon: BarChart3, processNumber: 8, aliases: ["콘텐츠 성과"], ready: true },
-    { label: "이미지 광고", href: "/content/images", icon: Image, ready: true },
   ] },
   { id: "automation", label: "콘텐츠 자동화", icon: Bot, href: "/automation/dashboard", pages: [
     { label: "자동화 현황", href: "/automation/dashboard", icon: LayoutDashboard, ready: true, aliases: ["대시보드"] },
@@ -84,6 +83,7 @@ export const NAV_STAGES: NavStage[] = [
     { label: "최종 확인", href: "/automation/review", icon: ListChecks, processNumber: 5, ready: true, aliases: ["최종 점검"] },
     { label: "발행", href: "/automation/calendar", icon: CalendarRange, processNumber: 6, ready: true, children: [{ label: "발행 일정", href: "/automation/calendar?tab=schedule" }, { label: "발행 기록", href: "/automation/calendar?tab=history" }] },
     { label: "반응·성과", href: "/automation/performance", icon: MessageSquareText, processNumber: 7, ready: true, children: [{ label: "댓글·답글", href: "/automation/performance?tab=comments" }, { label: "성과", href: "/automation/performance?tab=metrics" }] },
+    { label: "이미지 광고", href: "/content/images", icon: Image, aliases: ["A/B 테스트", "소구점 테스트"], ready: true },
     { label: "맡긴 일", href: "/automation/requests", icon: Bot, ready: true, children: [{ label: "작업 목록", href: "/automation/requests?tab=jobs" }, { label: "내 컴퓨터", href: "/automation/requests?tab=browsers" }, { label: "실행 기록", href: "/automation/requests?tab=runs" }] },
     { label: "자동화 설정", href: "/automation/settings", icon: Settings, ready: true, children: [{ label: "실행 규칙", href: "/automation/settings?tab=run" }, { label: "스킬", href: "/automation/settings?tab=skills" }, { label: "양식·이미지", href: "/automation/settings?tab=templates" }, { label: "기본값", href: "/automation/settings?tab=defaults" }] },
   ] },

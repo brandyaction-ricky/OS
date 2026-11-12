@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import catalog from "@/lib/image-creative/warehouse-formats.json";
-import { isWarehouseFormat, type ImageFormatId } from "@/lib/image-creative/formats";
+import { IMAGE_FORMATS, isWarehouseFormat, type ImageFormatId } from "@/lib/image-creative/formats";
 
 const groups = [...new Set(catalog.entries.map(format => format.group))];
 const libraryUrl = "https://brandyaction-os.vercel.app/knowledge/doc/";
@@ -17,7 +17,7 @@ export function ImageFormatLibrary({ selected = [], onSelect }: Props) {
   const formats = catalog.entries.filter(format =>
     (!recommended || isWarehouseFormat(format.id)) &&
     (!group || format.group === group) &&
-    (!wanted || [format.id, format.name, format.keep, format.slots].join(" ").toLocaleLowerCase().includes(wanted))
+    (!wanted || [format.id, format.name, isWarehouseFormat(format.id) ? IMAGE_FORMATS[format.id].name : "", format.keep, format.slots].join(" ").toLocaleLowerCase().includes(wanted))
   );
 
   return <section className="panel panel-pad-lg ic-panel" aria-labelledby="image-library-title">
@@ -41,8 +41,13 @@ export function ImageFormatLibrary({ selected = [], onSelect }: Props) {
     </div>
     <div className="ic-actions">{formats.slice(0, limit).map(format => {
       const chapter = catalog.chapterIds[format.id[0] as keyof typeof catalog.chapterIds];
+      const displayName = isWarehouseFormat(format.id) ? IMAGE_FORMATS[format.id].name : format.name;
       return <details key={format.id} className="ic-panel">
-        <summary>{format.name}</summary>
+        <summary>{displayName}</summary>
+        {isWarehouseFormat(format.id) &&
+          // eslint-disable-next-line @next/next/no-img-element -- packaged public format example
+          <img className="ic-format-library-sample" src={'/image-format-test/examples/' + format.id + '-portrait.webp'}
+            width={216} height={270} alt={displayName + " 광고 구성 예시"} loading="lazy"/>}
         <p>{format.keep}</p>
         <p><strong>바꿀 요소</strong> {format.slots}</p>
         <div className="ic-row">

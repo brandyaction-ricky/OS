@@ -1,4 +1,4 @@
-import { approveFormat, finishDemoBatch } from "./image-approval-steps";
+import { openWorkTools, approveFormat, finishDemoBatch } from "./image-approval-steps";
 import { test, expect } from "@playwright/test";
 import { createHash } from "node:crypto";
 import { mkdir, readFile } from "node:fs/promises";
@@ -7,7 +7,7 @@ import { FORMAT_TEST_FORMATS, renderFormatTestSvg } from "../../lib/image-creati
 import displayFonts from "../../lib/image-creative/format-test-fonts.json";
 
 test("일반 프로젝트가 업로드 사진과 브랜드로 창고 디자인을 저장하고 같은 PNG로 내보낸다", async ({ page }) => {
-  await page.goto("/content/images");
+  await openWorkTools(page);
   const site = "솔빛공방";
   const headline = "직접 구운 잔을 만나보세요";
   for (const [label,value] of Object.entries({

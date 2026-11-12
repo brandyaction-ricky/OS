@@ -1,16 +1,15 @@
-import * as artwork from '../lib/image-creative/safe-artwork.mjs';
+import { ImageCreativeView } from './helpers/image-view.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import ts from 'typescript';
 import { createElement } from 'react';
-import { emptyImageCreative, canSaveImageBrief, imageVariantProblems, imageBriefProblems, normalizeImageRequest, createImageBatch, imageCreativePrompt, reviseImageDesign } from '../lib/image-creative/model.ts';
-import { IMAGE_FORMATS, IMAGE_FORMAT_IDS, LEGACY_IMAGE_FORMAT_IDS, WAREHOUSE_FORMAT_IDS, CREATIVE_SIZES, isWarehouseFormat, recommendImageFormats } from '../lib/image-creative/formats.ts';
+import { emptyImageCreative, canSaveImageBrief, imageVariantProblems, imageBriefProblems, normalizeImageRequest, createImageBatch, imageCreativePrompt, reviseImageDesign, approveImageFormat, startImageCopyBatch, formatApprovalKey } from '../lib/image-creative/model.ts';
+import { IMAGE_FORMATS, IMAGE_FORMAT_IDS, LEGACY_IMAGE_FORMAT_IDS, WAREHOUSE_FORMAT_IDS, CREATIVE_SIZES, recommendImageFormats, usesBackgroundPhoto } from '../lib/image-creative/formats.ts';
 
 const image = (name = 'base') => ({ path: `demo/${name}.png`, w: 1080, h: 1350 });
 function state() {
-  return { ...emptyImageCreative(), brief: { objective: '무료 진단 시작', funnel: '첫 방문', audience: '일의 방향을 찾는 사람', product: '강점 진단', offer: '무료 결과 확인', landingUrl: 'https://example.test/start', facts: '제공 내용은 무료 결과 확인이다.' } };
+  return { ...emptyImageCreative(), brief: { objective: '무료 진단 시작', funnel: '첫 방문', audience: '일의 방향을 찾는 사람', product: '강점 진단', offer: '무료 결과 확인', facts: '제공 내용은 무료 결과 확인이다.' } };
 }
 function content(formatId = 'photo_headline', size = 'portrait') {
   const spec = IMAGE_FORMATS[formatId];
@@ -115,6 +114,33 @@ test('standalone starts independently and remains a legal appeal-test base', () 
   assert.equal(out.variants[1].parentId, s.variants[0].id);
 });
 
+test('an appeal-first test binds its five proposed motives to the individual copies and their follow-ups', () => {
+  const fresh = state();
+  const brief = { ...fresh.brief, objective: '', funnel: '' };
+  const plan = { mode: 'appeal', count: 5, size: 'portrait', appealFirst: true };
+  const request = { mode: 'appeal', count: 5, size: 'portrait', formatIds: ['photo_headline'], assetPaths: [image().path] };
+  const pending = { ...fresh, brief, formatRecommendation: plan };
+  const stamp = { by: 'owner', at: ctx().now };
+  assert.deepEqual(imageBriefProblems(brief, true), []);
+  assert.ok(imageBriefProblems({...brief, offer:''}, true).length);
+  assert.throws(() => approveImageFormat(pending, request, stamp), /현재 제안한 소구점/);
+  const variants = Array.from({ length: 5 }, (_, i) => ({...content(), ...appealDelta(i + 1)}));
+  const appeals = variants.map(row => row.appeal);
+  const stateWithIdeas = { ...pending, formatRecommendation: { ...plan, appeals, items: [{id:'photo_headline', reason:'사진 대비'}] } };
+  for (const patch of [{ count: 4 }, { size: 'square' }, { mode: 'standalone' }])
+    assert.throws(() => approveImageFormat(stateWithIdeas, {...request, ...patch}, stamp), /현재 제안한 소구점/);
+  const approved = approveImageFormat(stateWithIdeas, request, stamp);
+  const changed = { ...approved, formatRecommendation: { ...approved.formatRecommendation, appeals: [...appeals].reverse() } };
+  assert.notEqual(formatApprovalKey(changed, request), approved.formatApproval.key);
+  const prompt = imageCreativePrompt(approved, request);
+  for (const {id, meaning} of appeals) { assert.ok(prompt.includes(id)); assert.ok(prompt.includes(meaning)); }
+  unchangedAfterFailure(approved, () => create(approved, request, [...variants.slice(0,4), {...variants[4], appeal:{...appeals[4], meaning:'다른 구매 이유'}}]), /ID와 의미/);
+  const first = startImageCopyBatch(approved, create(approved, request, variants), request);
+  assert.deepEqual(first.variants.map(row => row.appeal), appeals);
+  const follow = create(first, { mode:'copy', count:1, baseId:first.variants[2].id, copyFields:['headline'] }, [{copy:{headline:'다시 살펴볼 일'}}]);
+  assert.deepEqual(follow.variants.at(-1).appeal, appeals[2]);
+});
+
 test('wrong lineage cannot skip stages or reuse an unrelated base', () => {
   const s = initial();
   for (const mode of ['copy', 'image']) unchangedAfterFailure(s, () => create(s, { mode, count: 1, baseId: s.variants[0].id }, []), /기준으로/);
@@ -183,16 +209,21 @@ test('fixed size, format and selected image cannot drift during controlled tests
   const noImage = initial('typography');
   const a = create(noImage, { mode: 'appeal', count: 1, baseId: noImage.variants[0].id }, [appealDelta()]);
   const c = create(a, { mode: 'copy', count: 1, baseId: a.variants.at(-1).id }, [{ copy: { headline: '해낸 일에서 발견하는 나' } }]);
-  assert.throws(() => normalizeImageRequest(c, { mode: 'image', count: 1, baseId: c.variants.at(-1).id }), /이미지 칸/);
+  const winner = c.variants.at(-1);
+  const after = create(c, { mode:'image', count:1, baseId:winner.id, assetPaths:[image('background').path] }, [{asset:image('background')}]);
+  const alternate = after.variants.at(-1);
+  assert.equal(winner.asset,undefined);
+  assert.deepEqual([alternate.formatId, alternate.copy, alternate.appeal], [winner.formatId, winner.copy, winner.appeal]);
+  assert.ok(usesBackgroundPhoto(alternate));
 });
 
-test('text clipping, unsupported images, untrusted URL and incomplete brief are rejected before success', () => {
+test('text clipping, unsupported images and incomplete brief are rejected before success', () => {
   assert.ok(imageVariantProblems({ ...content(), copy: { ...content().copy, headline: '가'.repeat(29) } }).some(x => /28자|칸/.test(x)));
   assert.ok(imageVariantProblems({ ...content(), copy: { ...content().copy, headline: '한 줄\n두 줄\n세 줄' } }).some(x => /칸/.test(x)));
-  assert.ok(imageVariantProblems({ ...content('typography'), asset: image() }).some(x => /이미지 칸/.test(x)));
+  assert.deepEqual(imageVariantProblems({ ...content('typography'), asset: image() }), []);
   assert.ok(imageVariantProblems({ ...content('checklist'), copy: { ...content().copy, body: '항목 하나' } }).some(x => /3개 항목/.test(x)));
   for (const headline of ['🙂 확인하기', 'Ж', '\u3165', '보이지\u200b않는 문자', '넓은\t간격', '강제\r줄바꿈']) assert.ok(imageVariantProblems({ ...content(), copy: { ...content().copy, headline } }).length > 0);
-  assert.ok(imageBriefProblems({ ...state().brief, landingUrl: 'https://user:secret@example.test' }).some(x => /HTTPS/.test(x)));
+  assert.deepEqual(imageBriefProblems(state().brief), []);
   const s = state(); s.brief.objective = '';
   unchangedAfterFailure(s, () => create(s, { mode: 'initial', count: 1, formatIds: ['photo_headline'] }, [content()]), /소재 목표/);
 });
@@ -208,7 +239,7 @@ test('warehouse selections use registered project content and keep the same desi
   fresh.brief.brand = '우리 브랜드';
   const ids = ['M01', 'A04', 'A10', 'D12', 'M09'];
   assert.deepEqual(WAREHOUSE_FORMAT_IDS, ids);
-  assert.equal(IMAGE_FORMAT_IDS.length, 17);
+  assert.equal(IMAGE_FORMAT_IDS.length, 18);
   const request = { mode: 'initial', count: 5, formatIds: ids, assetPaths: [image().path], compareFormats: true };
   const results = ids.map(id => ({ ...content(id), formatVersion: 2 }));
   const prompt = imageCreativePrompt(fresh, request);
@@ -307,15 +338,13 @@ test('worker prompt specifies requested count, full brief, real asset requiremen
 test('shared view renders real PNGs at every format and size with embedded local fonts', async () => {
   const require = createRequire(import.meta.url);
   const { ImageResponse } = require('next/og');
-  const source = await readFile(new URL('../lib/image-creative/view.tsx', import.meta.url), 'utf8');
-  const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
-  const compiled = { exports: {} };
-  new Function('require', 'module', 'exports', code)(name => name === './formats.ts' ? { CREATIVE_SIZES, isWarehouseFormat } : name === './safe-artwork.mjs' ? artwork : require(name), compiled, compiled.exports);
   const fonts = await Promise.all([400, 600].map(async weight => ({ name: 'Pretendard', weight, style: 'normal', data: await readFile(new URL(`../lib/cardnews/fonts/Pretendard-${weight}.woff`, import.meta.url)) })));
-  const assetUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==';
+  const sharp = require('next/dist/server/image-optimizer').getSharp();
+  const photo = async background => 'data:image/png;base64,' + (await sharp({create:{width:8,height:8,channels:3,background}}).png().toBuffer()).toString('base64');
+  const [assetUrl, bluePhoto] = await Promise.all([photo('#ff0000'),photo('#0000ff')]);
   for (const id of LEGACY_IMAGE_FORMAT_IDS) for (const size of Object.keys(CREATIVE_SIZES)) {
     const dimensions = CREATIVE_SIZES[size];
-    const response = new ImageResponse(createElement(compiled.exports.ImageCreativeView, { variant: { ...maximumContent(id, size), id: 'test', at: '2026-11-06', by: 'test' }, assetUrl }), { width: dimensions.width, height: dimensions.height, fonts });
+    const response = new ImageResponse(createElement(ImageCreativeView, { variant: { ...maximumContent(id, size), id: 'test', at: '2026-11-06', by: 'test' }, assetUrl }), { width: dimensions.width, height: dimensions.height, fonts });
     const png = Buffer.from(await response.arrayBuffer());
     assert.equal(png.toString('hex', 0, 8), '89504e470d0a1a0a', `${id}/${size} is PNG`);
     assert.equal(png.readUInt32BE(16), dimensions.width, `${id}/${size} width`);
@@ -323,7 +352,15 @@ test('shared view renders real PNGs at every format and size with embedded local
     if (size !== 'portrait') continue;
     // The CTA must reach the PNG: another CTA text has to change the picture.
     const variant = maximumContent(id, size);
-    const other = new ImageResponse(createElement(compiled.exports.ImageCreativeView, { variant: { ...variant, copy: { ...variant.copy, cta: '다른 버튼' }, id: 'test', at: '2026-11-06', by: 'test' }, assetUrl }), { width: dimensions.width, height: dimensions.height, fonts });
+    if (usesBackgroundPhoto(variant)) {
+      const alternate = new ImageResponse(createElement(ImageCreativeView, {variant,assetUrl:bluePhoto}), {...dimensions,fonts});
+      const blue = Buffer.from(await alternate.arrayBuffer());
+      // This pixel is outside the copy area. The choice of source photo must reach the exported PNG.
+      const corner = bytes => sharp(bytes).extract({left:8,top:8,width:1,height:1}).removeAlpha().raw().toBuffer();
+      const [a,b] = await Promise.all([corner(png),corner(blue)]);
+      assert.ok(b[2] > a[2] + 25 && a[0] > b[0] + 25, `${id} displays the selected background photo`);
+    }
+    const other = new ImageResponse(createElement(ImageCreativeView, { variant: { ...variant, copy: { ...variant.copy, cta: '다른 버튼' }, id: 'test', at: '2026-11-06', by: 'test' }, assetUrl }), { width: dimensions.width, height: dimensions.height, fonts });
     assert.ok(!png.equals(Buffer.from(await other.arrayBuffer())), `${id} CTA text is drawn`);
   }
 });

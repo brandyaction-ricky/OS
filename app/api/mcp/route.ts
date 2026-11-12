@@ -28,11 +28,15 @@ function jsonRpcError(id: string | number | null | undefined, code: number, mess
   });
 }
 
+class UpstreamToolError extends Error {
+  constructor(readonly status: number, message: string) { super(message); }
+}
+
 function toolError(id: string | number | null | undefined, error: unknown) {
   let message = "도구 실행에 실패했습니다.";
   if (error instanceof ZodError) message = "도구 입력값을 확인해 주세요.";
   else if (error instanceof Error && !/bos_pat_|Bearer\s+/i.test(error.message)) message = error.message.slice(0, 1_000);
-  return jsonRpc(id, { isError: true, content: [{ type: "text", text: message }] });
+  return jsonRpc(id, { isError: true, ...(error instanceof UpstreamToolError ? { structuredContent: { status: error.status } } : {}), content: [{ type: "text", text: message }] });
 }
 
 export async function POST(request: Request) {
@@ -74,7 +78,7 @@ export async function POST(request: Request) {
       const payload = await response.json().catch(() => ({ error: { message: "OS API 응답을 읽지 못했습니다." } }));
       if (!response.ok) {
         const safeMessage = typeof payload?.error?.message === "string" ? payload.error.message : `OS API ${response.status}`;
-        throw new Error(safeMessage);
+        throw new UpstreamToolError(response.status, safeMessage);
       }
       return payload;
     };

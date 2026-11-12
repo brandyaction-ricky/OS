@@ -526,6 +526,16 @@ test("team job lists preserve review results without revealing the owner's pinne
   assert.equal(data.jobs[0].stage, "completed");
   assert.equal(job.metadata.threadsInput.topic.source_documents[0].body, "private source body");
 });
+test("generic browser jobs never claim an employee subscription job",async()=>{
+  const rows=[{metadata:{kind:"youtube_staff_ai_v1"}},{metadata:{proc:"threads"}}];
+  const query={select(){return this;}, eq(){return this;}, is(){return this;}, order(){return this;},
+    or(filter){assert.equal(filter,"metadata->>kind.is.null,metadata->>kind.neq.youtube_staff_ai_v1");this.selected=rows.filter(row=>row.metadata.kind!=="youtube_staff_ai_v1");return this;},
+    async limit(n){return {data:(this.selected??rows).slice(0,n),error:null};}};
+  const lib=await load("lib/server/content-automation-v07.ts",{"./shortform-production":{},"./threads-reference":{},"node:crypto":crypto,
+    "@/lib/http":{ApiError},"@/lib/supabase/server":{createServiceSupabase:()=>({from:()=>query})}});
+  const jobs=await lib.listPersonalRecords(actor,"ai_job",1);
+  assert.deepEqual(jobs,[rows[1]]);
+});
 test("a large reference library cannot consume the ordinary-topic list limit",async()=>{
   const rows=[...Array.from({length:501},(_,index)=>({...source(),id:`ref-${index}`})),topic()];
   const calls=[];

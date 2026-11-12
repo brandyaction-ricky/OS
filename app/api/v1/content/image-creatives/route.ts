@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const headers = { "cache-control": "private, no-store" };
 export async function GET(request: Request) {
-  try { return Response.json({ projects: await listImageProjects(await authenticateRequest(request)) }, { headers }); }
+  try { return Response.json({ projects: await listImageProjects(await authenticateRequest(request), new URL(request.url).searchParams.get("experiment") === "true") }, { headers }); }
   catch (error) { return apiErrorResponse(imageError(error)); }
 }
 export async function POST(request: Request) {

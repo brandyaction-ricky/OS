@@ -25,7 +25,7 @@ async function staffAi(request: Request) {
 
 export async function GET(request: Request) {
   try {
-    return NextResponse.json(await listStaffJobs(await staffAi(request)), { headers });
+    return NextResponse.json(await listStaffJobs(await staffAi(request), new URL(request.url).searchParams.get("image_text_only") === "true"), { headers });
   } catch (error) { return apiErrorResponse(error); }
 }
 

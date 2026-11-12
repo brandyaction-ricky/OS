@@ -7,7 +7,7 @@ const EXTRA_COLOR = (style: ThumbStyle): Record<ThumbExtraColor, { color: string
   ink: { color: style.title.ink }, accent: { color: style.title.accent }, red: { color: "#D92B2B" }, white: { color: "#FFFFFF", band: style.title.ink },
 });
 
-export function ThumbFrame({ style, image, copy, edit: raw, subject }: { style: ThumbStyle; image?: string | null; copy: ThumbCopy; edit?: ThumbEdit; subject?: ThumbSubject | null }) {
+export function ThumbFrame({ style, image, copy, edit: raw, subject, titleFamily = "Pretendard" }: { style: ThumbStyle; image?: string | null; copy: ThumbCopy; edit?: ThumbEdit; subject?: ThumbSubject | null; titleFamily?: string }) {
   const edit = cleanThumbEdit(raw, style);
   const layout = thumbLayout(copy, style, edit, subject), t = style.title;
   const box = layout.photoBox, extraColor = EXTRA_COLOR(style);
@@ -24,14 +24,14 @@ export function ThumbFrame({ style, image, copy, edit: raw, subject }: { style: 
       ) : null}
       <div style={{ position: "absolute", left: t.sidePx, right: t.sidePx, top: layout.titleTop, display: "flex", flexDirection: "column", alignItems: "center" }}>
         {layout.lines.map((line, i) => (
-          <div key={i} style={{ display: "flex", fontFamily: "Pretendard", fontWeight: t.weight, fontSize: layout.size, lineHeight: t.lineHeight,
+          <div key={i} style={{ display: "flex", fontFamily: titleFamily, fontWeight: t.weight, fontSize: layout.size, lineHeight: t.lineHeight,
             letterSpacing: Math.round(t.tracking * layout.size * 10) / 10, color: t.ink, whiteSpace: "pre" }}>
             {thumbAccentParts(line, copy.accent).map((part, j) => <span key={j} style={{ color: part.accent ? t.accent : t.ink }}>{part.text}</span>)}
           </div>
         ))}
       </div>
       {(edit.extras ?? []).map((extra) => (
-        <div key={extra.id} style={{ position: "absolute", left: extra.x, top: extra.y, display: "flex", fontFamily: "Pretendard", fontWeight: t.weight, fontSize: extra.size,
+        <div key={extra.id} style={{ position: "absolute", left: extra.x, top: extra.y, display: "flex", fontFamily: titleFamily, fontWeight: t.weight, fontSize: extra.size,
           lineHeight: t.lineHeight, letterSpacing: Math.round(t.tracking * extra.size * 10) / 10, whiteSpace: "pre", color: extraColor[extra.color].color,
           ...(extraColor[extra.color].band ? { background: extraColor[extra.color].band, padding: `0 ${Math.round(extra.size * 0.2)}px`, borderRadius: Math.round(extra.size * 0.12) } : {}) }}>
           {extra.text}

@@ -34,6 +34,9 @@ test("menu selection preserves role/data boundaries and always-available destina
   assert.equal(access.canOpenMenu(member, "/settings/account", []), true);
   assert.equal(access.canOpenMenu(member, "/content/scripts", []), false);
   assert.equal(access.canOpenMenu(member, "/content/scripts", ["/content/scripts"]), true);
+  assert.equal(access.canOpenMenu(member, "/content/images?view=tests", ["/content/images"]), true);
+  assert.equal(access.canOpenMenu(member, "/content/images", ["/automation/dashboard"]), false);
+  assert.equal(access.canOpenMenu(member, "/content/projects", ["/content/images"]), true, "moving a menu preserves existing saved access");
   // 카드지출·정기 결제 are open to every active member (2026-10-30); the rest of 재무관리 still needs finance access.
   assert.equal(access.canOpenMenu(member, "/finance/cards", []), true);
   assert.equal(access.canOpenMenu(member, "/finance/recurring", []), true);

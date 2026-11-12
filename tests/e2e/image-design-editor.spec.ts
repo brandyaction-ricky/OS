@@ -1,4 +1,4 @@
-import { approveFormat, finishDemoBatch } from "./image-approval-steps";
+import { openWorkTools, approveFormat, finishDemoBatch } from "./image-approval-steps";
 import { test, expect, type Locator } from "@playwright/test";
 import { createHash } from "node:crypto";
 import { mkdir, readFile } from "node:fs/promises";
@@ -7,7 +7,7 @@ import { resolvePlacement } from "../../lib/image-creative/placement";
 
 // The browser-generated drawing represents an owned asset in a different advertiser's project.
 test("제작한 광고의 글꼴·카드·규격을 바꿔 원본과 별도 보관하고 세이프 존이 적용된 PNG를 내보낸다", async ({ page }) => {
-  await page.goto("/content/images");
+  await openWorkTools(page);
   for (const [label, value] of Object.entries({
     "새 작업 이름": "시계 공방 봄 예약", "브랜드명": "담시계", "소재 목표": "공방 예약", "퍼널": "첫 방문",
     "대상": "시계를 만드는 사람", "상품": "시계 수업", "제공 내용": "시계 하나를 직접 만들기",
@@ -87,7 +87,7 @@ test("제작한 광고의 글꼴·카드·규격을 바꿔 원본과 별도 보�
 });
 
 test("기존 범용 포맷도 디자인 수정 후 미리보기와 같은 정사각 PNG를 저장한다", async ({page}) => {
-  await page.goto("/content/images");
+  await openWorkTools(page);
   for (const [label,value] of Object.entries({
     "새 작업 이름":"글자 포스터", "브랜드명":"담시계", "소재 목표":"수업 예약", "퍼널":"첫 예약",
     "대상":"직장인", "상품":"공방 수업", "제공 내용":"나만의 시계",

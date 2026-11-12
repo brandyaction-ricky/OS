@@ -9,15 +9,15 @@ export const CREATIVE_SIZES: Record<CreativeSize, { width: number; height: numbe
 };
 export const LEGACY_IMAGE_FORMAT_IDS = ["photo_headline", "split_compare", "note", "annotated", "object_spotlight", "checklist", "question", "typography", "steps", "conversation", "reframe", "report_crop"] as const;
 type LegacyImageFormatId = typeof LEGACY_IMAGE_FORMAT_IDS[number];
-export type ImageFormatId = LegacyImageFormatId | WarehouseFormatId;
+export type ImageFormatId = LegacyImageFormatId | WarehouseFormatId | "thumbnail_subject";
 export const WAREHOUSE_FORMAT_IDS = FORMAT_TEST_FORMATS.map(format => format.id);
-export const IMAGE_FORMAT_IDS: readonly ImageFormatId[] = [...LEGACY_IMAGE_FORMAT_IDS, ...WAREHOUSE_FORMAT_IDS];
+export const IMAGE_FORMAT_IDS: readonly ImageFormatId[] = [...LEGACY_IMAGE_FORMAT_IDS, ...WAREHOUSE_FORMAT_IDS, "thumbnail_subject"];
 export function isWarehouseFormat(id: unknown): id is WarehouseFormatId {
   return FORMAT_TEST_FORMATS.some(format => format.id === id);
 }
 export interface ImageFormat {
   id: ImageFormatId; version: 1 | 2; name: string; when: string; assetRequired: boolean; supportsAsset: boolean;
-  bodyLines?: number; photoGuide?: string; limits: { headline: number; body: number; cta: number };
+  bodyLines?: number; photoGuide?: string; backgroundPhoto?: true; limits: { headline: number; body: number; cta: number };
   keywords: string[]; status: "candidate"; references: { title: string; url: string; sourceId: string; basis: string }[];
 }
 // References are structural inspiration, not copied artwork or evidence of campaign performance.
@@ -34,7 +34,8 @@ const REFERENCES: Partial<Record<ImageFormatId, ImageFormat["references"]>> = {
   reframe: [{ title: "Liz Fosslien · 단순 평가와 다른 가능성", url: "https://www.fosslien.com/liz-fosslien-why-i-procrastinated", sourceId: "F01", basis: "한 가지 평가를 다른 가능성으로 다시 보는 구조" }],
 };
 /** Conservative full-width character capacities shared with the fixed renderer. Explicit newlines consume lines too. */
-export const IMAGE_TEXT_SLOTS: Record<LegacyImageFormatId, { headline: [number, number]; body: [number, number] }> = {
+export const IMAGE_TEXT_SLOTS: Record<LegacyImageFormatId | "thumbnail_subject", { headline: [number, number]; body: [number, number] }> = {
+  thumbnail_subject: { headline: [12, 2], body: [22, 2] },
   photo_headline: { headline: [14, 2], body: [27, 2] },
   split_compare: { headline: [14, 2], body: [8, 5] },
   note: { headline: [10, 3], body: [17, 4] },
@@ -49,7 +50,8 @@ export const IMAGE_TEXT_SLOTS: Record<LegacyImageFormatId, { headline: [number, 
   report_crop: { headline: [14, 2], body: [26, 2] },
 };
 const format = (id: ImageFormatId, name: string, when: string, assetRequired: boolean, headline: number, body: number, keywords: string[], bodyLines?: number): ImageFormat =>
-  ({ id, version: 1, name, when, assetRequired, supportsAsset: assetRequired || id === "question", limits: { headline, body, cta: 18 }, keywords, ...(bodyLines ? { bodyLines } : {}), status: "candidate", references: REFERENCES[id] ?? [] });
+  ({ id, version: 1, name, when, assetRequired, supportsAsset: true, ...(!assetRequired && id !== "question" ? {backgroundPhoto: true as const} : {}),
+    limits: { headline, body, cta: 18 }, keywords, ...(bodyLines ? { bodyLines } : {}), status: "candidate", references: REFERENCES[id] ?? [] });
 function warehouse(id: WarehouseFormatId, when: string, photoGuide: string, keywords: string[], chapter: string): ImageFormat {
   const name = FORMAT_TEST_FORMATS.find(format => format.id === id)!.label;
   return { id, name, version: 2, when, photoGuide, keywords, assetRequired: true, supportsAsset: true,
@@ -57,6 +59,11 @@ function warehouse(id: WarehouseFormatId, when: string, photoGuide: string, keyw
     references: [{ title: name, sourceId: id, url: "https://brandyaction-os.vercel.app/knowledge/doc/" + chapter, basis: when }] };
 }
 export const IMAGE_FORMATS: Record<ImageFormatId, ImageFormat> = {
+  thumbnail_subject: {
+    ...format("thumbnail_subject", "썸네일형 · 한 장면", "고객이 겪는 순간을 사진 하나와 짧은 제목으로 보여줄 때", true, 24, 44, ["고객", "선택", "행동", "장면", "강점", "공감"]),
+    photoGuide: "흰 배경에서 표정이나 행동이 한눈에 읽히는 컬러 사진 한 장. 중앙에 피사체를 크게 담고 제목·로고·테두리는 넣지 않아요.",
+    references: [{ title: "OS 유튜브 제작 · 썸네일 합성", sourceId: "youtube-anim-thumb", url: "https://github.com/brandyaction-ricky/OS/blob/6c235d463a2c19310fd49d2ea645e8c0f8620abc/lib/youtube-process/thumb-style.ts", basis: "단일 피사체, 두 줄 제목, 한 곳의 강조색" }],
+  },
   M01: warehouse("M01", "망설이는 순간을 인물 사진과 손글씨 말풍선으로 보여줄 때", "인물의 얼굴이 잘 보이고 주변에 말풍선을 놓을 여백이 있는 사진.", ["속마음", "독백", "고민", "공감", "망설", "계획"], "d5681399-e3e7-4275-ad08-f43754e12f88"),
   A04: warehouse("A04", "한 질문에서 갈라지는 두 선택지를 방향 표지로 보여줄 때", "작은 원형으로 크롭해도 인물의 표정이 남는 정면 또는 반측면 사진.", ["갈림길", "선택", "기준", "비교", "고르", "진단"], "29f424df-f389-4ee4-9ff7-45202cdde7f7"),
   A10: warehouse("A10", "찾고 있지만 답이 없는 상황을 빈 검색 결과로 보여줄 때", "렌즈 일부에 옅게 비쳐도 상황이 전달되는 한 피사체의 사진.", ["검색", "빈칸", "선택 기준", "찾는", "찾기"], "29f424df-f389-4ee4-9ff7-45202cdde7f7"),
@@ -76,6 +83,9 @@ export const IMAGE_FORMATS: Record<ImageFormatId, ImageFormat> = {
   report_crop: format("report_crop", "실제 결과 화면", "고객이 무엇을 받는지 공개 가능한 실제 화면으로 보여줄 때", true, 28, 42, ["보고서", "결과", "실제", "근거", "구매"]),
 };
 export const isImageFormat = (value: unknown): value is ImageFormatId => typeof value === "string" && Object.hasOwn(IMAGE_FORMATS, value);
+export function usesBackgroundPhoto(variant: {formatId: ImageFormatId; asset?: unknown}) {
+  return Boolean(variant.asset && IMAGE_FORMATS[variant.formatId].backgroundPhoto);
+}
 /** Rules-based suggestions, not a performance prediction. No candidate is silently approved. */
 export function recommendImageFormats(brief: { objective: string; funnel: string; audience: string; product: string; offer: string; facts: string; brand?: string }, hasAsset = false, size: CreativeSize = "portrait") {
   const text = Object.values(brief).join(" ").toLocaleLowerCase("ko-KR");
