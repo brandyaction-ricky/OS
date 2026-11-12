@@ -31,12 +31,18 @@ test("new routes resolve to their names inside the YouTube group; shorts keeps t
   assert.ok(!YOUTUBE_V1_HREFS.some(href => NAV_STAGES.some(stage => stage.pages.some(page => page.href === href))), "no new route shadows an existing one");
 });
 
-test("existing YouTube steps are preserved alongside the new image-ad entry while the switch is off", () => {
+test("image ads belong to content automation and keep their project links with the YouTube menu off", () => {
   const content = NAV_STAGES.find(stage => stage.id === "content");
-  assert.deepEqual(content.pages.map(page => page.href), ["/content/topics", "/content/scripts", "/content/video", "/content/packages", "/content/shorts", "/content/publishing", "/content/youtube", "/content/performance", "/content/images"]);
+  assert.deepEqual(content.pages.map(page => page.href), ["/content/topics", "/content/scripts", "/content/video", "/content/packages", "/content/shorts", "/content/publishing", "/content/youtube", "/content/performance"]);
   assert.equal(findPage("/content/shorts").label, "숏폼 편집");
   assert.equal(findPage("/content/video").label, "영상 제작");
   assert.equal(findPage("/content/images").label, "이미지 광고");
+  assert.equal(findStage("/content/images?project=p1").label, "콘텐츠 자동화");
+  const pages = findStage("/content/images").pages;
+  const firstStep = pages.findIndex(page => page.processNumber === 1);
+  assert.deepEqual(pages.slice(firstStep, firstStep + 7).map(page => page.processNumber), [1, 2, 3, 4, 5, 6, 7]);
+  assert.equal(pages[firstStep + 7].href, "/content/images");
+  assert.equal(pages[firstStep + 7].processNumber, undefined);
 });
 
 test("each v1 screen has a three-step guide whose next page exists", () => {
@@ -47,13 +53,14 @@ test("each v1 screen has a three-step guide whose next page exists", () => {
   }
 });
 
-test("side menu by what is made (owner 2026-10-29, A안): 공통 + 롱폼 · 숏폼 · 광고 · 카드뉴스 + 스레드 + 자동화 관리, same addresses", async () => {
+test("the platform sidebar keeps video ads under 광고 and image ads under 콘텐츠 자동화", async () => {
   const { NAV_STAGES } = await import("../lib/navigation.ts");
   const { youtubeV1Stages, youtubeV1StageId, youtubeV1EntrySelected } = await import("../lib/youtube-process/navigation.ts");
   const stages = youtubeV1Stages(NAV_STAGES);
   const ids = stages.map(stage => stage.id);
   assert.deepEqual(ids.slice(0, 7), ["content", "yt-longform", "yt-short", "yt-ad", "yt-card", "threads", "automation"]);
-  assert.deepEqual(stages.map(stage => stage.label).slice(0, 7), ["공통", "롱폼 유튜브", "숏폼 · 릴스", "광고", "카드뉴스", "스레드", "자동화 관리"]);
+  assert.deepEqual(stages.map(stage => stage.label).slice(0, 7), ["공통", "롱폼 유튜브", "숏폼 · 릴스", "광고", "카드뉴스", "스레드", "콘텐츠 자동화"]);
+  assert.deepEqual(stages.filter(stage => stage.pages.some(page => page.href === "/content/images")).map(stage => stage.id), ["automation"]);
   // 한눈에 보기 (리키 관제실 시안, owner decision 2026-10-31) leads 공통.
   assert.deepEqual(stages[0].pages.map(page => page.label), ["한눈에 보기", "주제 찾기", "스케줄", "성과", "채널/링크 관리"]);
   const threads = stages.find(stage => stage.id === "threads");
@@ -68,6 +75,7 @@ test("side menu by what is made (owner 2026-10-29, A안): 공통 + 롱폼 · 숏
   assert.deepEqual(stages.find(stage => stage.id === "yt-longform").pages.map(page => page.href), ["/content/projects?platform=longform", "/content/script-canon", "/content/column-canon"], "원고 · 칼럼 정본 다듬기 sit under the 롱폼 list");
   for (const stage of stages.slice(0, 4)) for (const page of stage.pages) assert.ok(!page.href.includes("?") || page.href.startsWith("/content/projects?"), page.href);
   const p = query => new URLSearchParams(query);
+  assert.equal(youtubeV1StageId(stages, "/content/images", p("view=tests"), "content"), "automation");
   assert.equal(youtubeV1StageId(stages, "/content/projects", p("platform=short"), "content"), "yt-short");
   assert.equal(youtubeV1StageId(stages, "/content/projects", p("view=discover&platform=short"), "content"), "content");
   assert.equal(youtubeV1StageId(stages, "/automation/threads", p(""), "automation"), "threads");

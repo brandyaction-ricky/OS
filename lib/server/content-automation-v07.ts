@@ -43,6 +43,8 @@ export async function listPersonalRecords(actor:RequestActor,type:RecordType,lim
   let query=createServiceSupabase().from("os_records").select("*")
     .eq("owner_id",ownerId).eq("metadata->>space","personal").eq("record_type",type)
     .is("archived_at",null);
+  // Staff subscription jobs have their own claim, lease and completion protocol.
+  if(type==="ai_job")query=query.or("metadata->>kind.is.null,metadata->>kind.neq.youtube_staff_ai_v1");
   if(type==="content_topic"&&topicScope==="references")query=query.eq("metadata->>kind","threads_reference");
   if(type==="content_topic"&&topicScope==="topics")query=query.or("metadata->>kind.is.null,metadata->>kind.neq.threads_reference");
   const {data,error}=await query.order("updated_at",{ascending:false}).limit(limit);

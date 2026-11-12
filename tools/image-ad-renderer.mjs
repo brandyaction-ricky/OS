@@ -9,10 +9,13 @@ import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
 const run = promisify(execFile);
-const modules = ["formats.ts", "placement.ts", "view.tsx", "safe-artwork.mjs", "format-test-renderer.mjs", "format-test-renderer-v1.mjs", "format-test-fonts.json"];
+const modules = ["formats.ts", "placement.ts", "view.tsx", "thumbnail-ad.tsx", "safe-artwork.mjs", "format-test-renderer.mjs", "format-test-renderer-v1.mjs", "format-test-fonts.json"];
+const thumbModules = ["thumb-frame.tsx", "thumb-style.ts"];
+const thumbnailFiles = ["thumbnail-ad.mjs", ...thumbModules.map(name => "youtube-process/" + name.replace(/\.tsx?$/, ".mjs")), "fonts/Pretendard-900.otf"];
 const bodyFonts = [400, 500, 600];
 const displayFonts = ["hand", "sign", "serif"];
 const staticFiles = [
+  ["lib/cardnews/fonts/Pretendard-900.otf", "fonts/Pretendard-900.otf"],
   ["public/fonts/pretendard/PretendardVariable.woff2", "fonts/PretendardVariable.woff2"],
   ...bodyFonts.map(w => [`lib/cardnews/fonts/Pretendard-${w}.woff`, `fonts/Pretendard-${w}.woff`]),
   ...displayFonts.flatMap(f => [[`lib/image-creative/fonts/${f}.woff`, `fonts/${f}.woff`], [`public/image-format-test/fonts/${f}.woff2`, `fonts/${f}.woff2`]]),
@@ -26,6 +29,7 @@ function runtimeFiles(root) {
   const ogDir = path.dirname(require.resolve("next/dist/compiled/@vercel/og"));
   const reactDir = path.dirname(require.resolve("react/package.json"));
   const rows = modules.map(f => [path.join(root, "lib/image-creative", f), f.replace(/\.tsx?$/, ".mjs")]);
+  for (const file of thumbModules) rows.push([path.join(root, "lib/youtube-process", file), "youtube-process/" + file.replace(/\.tsx?$/, ".mjs")]);
   for (const [src,dest] of staticFiles) rows.push([path.join(root,src),dest]);
   for (const name of displayFonts) rows.push([path.join(root,"public/image-format-test/fonts",name+"-OFL.txt"),"fonts/"+name+"-OFL.txt"]);
   for (const f of ogFiles) rows.push([path.join(ogDir,f),"og/"+f]);
@@ -55,9 +59,12 @@ export function buildAdRuntime(root,out) {
   if (existsSync(path.join(installed,"FINGERPRINT")) && readFileSync(path.join(installed,"FINGERPRINT"),"utf8").trim()===adRuntimeDigest(root)) {
     if (path.resolve(out) !== path.resolve(installed)) {
       const files = ["package.json", "FINGERPRINT", ...modules.map(f => f.replace(/\.tsx?$/, ".mjs")),
+        ...thumbModules.map(f => "youtube-process/" + f.replace(/\.tsx?$/, ".mjs")),
         ...staticFiles.map(([,name]) => name), ...displayFonts.map(f => "fonts/" + f + "-OFL.txt"),
         ...ogFiles.map(f => "og/" + f), ...reactFiles.map(f => "node_modules/react/" + f)];
+      const hasThumbnails = existsSync(path.join(installed, "thumbnail-ad.mjs"));
       for (const name of files) {
+        if (!hasThumbnails && thumbnailFiles.includes(name)) continue;
         const dest = path.join(out, name);
         mkdirSync(path.dirname(dest), { recursive: true });
         cpSync(path.join(installed, name), dest);
@@ -74,7 +81,8 @@ export function buildAdRuntime(root,out) {
     if (/\.tsx?$/.test(source) || name === "safe-artwork.mjs") {
       let code = readFileSync(source,"utf8");
       if (/\.tsx?$/.test(source)) code = ts.transpileModule(code,{fileName:source, compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
-      writeFileSync(dest,code.replace(/(from "\.\/[\w-]+)\.ts"/g,'$1.mjs"'));
+      writeFileSync(dest, code.replace(/from "\.\.\/youtube-process\/([\w-]+)\.tsx?"/g, 'from "./youtube-process/$1.mjs"')
+        .replace(/(from "\.\/[\w-]+)\.tsx?"/g, '$1.mjs"'));
     } else cpSync(source,dest);
   }
   writeFileSync(path.join(out,"FINGERPRINT"),adRuntimeDigest(root)+"\n");
@@ -127,10 +135,11 @@ async function svgPng(svg,width,height,chromePath) {
 }
 
 export async function renderAdPng(dir,variant,photoDataUrl,options={}) {
-  const {isWarehouseFormat}=await import(fileUrl(dir,"formats.mjs"));
+  const {isWarehouseFormat,IMAGE_FORMATS}=await import(fileUrl(dir,"formats.mjs"));
   const {resolvePlacement}=await import(fileUrl(dir,"placement.mjs"));
   const {width,height}=resolvePlacement(variant.size,variant.design?.placement,variant.design?.outputWidth);
   if (Boolean(variant.asset)!==Boolean(photoDataUrl) || (photoDataUrl && !/^data:image\/(?:png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(photoDataUrl))) throw new Error("작업에 등록한 원본 사진을 확인해 주세요.");
+  if (variant.asset && !IMAGE_FORMATS[variant.formatId]?.supportsAsset) throw new Error("선택한 컴퓨터의 이미지 광고 렌더러를 업데이트해 주세요.");
   const selected=variant.design?.font||"original";
   if (!["original","sans",...displayFonts].includes(selected)) throw new Error("허용한 글꼴을 선택해 주세요.");
   if (isWarehouseFormat(variant.formatId)) {
@@ -146,6 +155,10 @@ export async function renderAdPng(dir,variant,photoDataUrl,options={}) {
   const { ImageCreativeView }=await import(fileUrl(dir,"view.mjs"));
   const { ImageResponse }=await import(fileUrl(dir,"og/index.node.js"));
   const fonts=bodyFonts.map(weight=>({name:"Pretendard",data:font(dir,`Pretendard-${weight}.woff`),style:"normal",weight}));
+  if (variant.formatId === "thumbnail_subject") {
+    if (!photoDataUrl) throw new Error("썸네일형 소재에는 원본 사진이 필요해요.");
+    fonts.push({name:"Pretendard",data:font(dir,"Pretendard-900.otf"),style:"normal",weight:900});
+  }
   if (displayFonts.includes(selected)) fonts.push({name:"Ad-"+selected,data:font(dir,selected+".woff"),style:"normal",weight:600});
   return Buffer.from(await new ImageResponse(ImageCreativeView({variant,assetUrl:photoDataUrl}),{width,height,fonts}).arrayBuffer());
 }
@@ -170,8 +183,26 @@ async function scenePhoto(url) {
   return `data:${type};base64,${Buffer.concat(chunks).toString("base64")}`;
 }
 
+const advertisedVersions = new Map();
+function rendererVersion(root) {
+  if (advertisedVersions.has(root)) return advertisedVersions.get(root);
+  // A separately updated worker may still have the previous video bundle installed.
+  const dir = existsSync(path.join(root, "lib/image-creative/view.tsx"))
+    ? installedAdRuntime(root) : path.join(root, "image-renderer");
+  const version = thumbnailFiles.every(file => existsSync(path.join(dir, file))) ? 3 : 2;
+  advertisedVersions.set(root, version);
+  return version;
+}
+
 export async function processAdRender(call,root,progress=()=>{}) {
-  const job=await call({action:"image_creative_claim",rendererVersion:1});
+  let job;
+  for (let version = rendererVersion(root); version >= 1; version--) {
+    try { job = await call({action:"image_creative_claim",rendererVersion:version}); break; }
+    catch (error) {
+      // Only a schema rejection is safe to retry: it happens before the server takes a lease.
+      if (version === 1 || !["INVALID_LOCAL_RENDER_REQUEST", "INVALID_WORKER_INPUT"].includes(error.code)) throw error;
+    }
+  }
   if (job.idle) return false;
   const lease={jobId:job.jobId,lease:job.lease};
   let reason="이 컴퓨터의 광고 렌더러를 확인해 주세요.";

@@ -6,6 +6,32 @@ import path from "node:path";
 import test from "node:test";
 import { adRuntimeDigest, buildAdRuntime, processAdRender } from "../tools/image-ad-renderer.mjs";
 
+test("an updated Mac can still poll an older OS without claiming a second job after an uncertain reply", async ()=>{
+  const versions=[];
+  const call=async ({rendererVersion})=>{
+    versions.push(rendererVersion);
+    if(rendererVersion>1) throw Object.assign(new Error(),{code:"INVALID_WORKER_INPUT"});
+    return {idle:true};
+  };
+  assert.equal(await processAdRender(call,process.cwd()),false);
+  assert.deepEqual(versions,[3,2,1]);
+  let attempts=0;
+  await assert.rejects(processAdRender(async()=>{attempts++;throw new Error("lost response");},"unused"),/lost response/);
+  assert.equal(attempts,1);
+});
+
+test("a new worker with an older installed image bundle advertises only the formats it has", async t => {
+  const root = mkdtempSync(path.join(os.tmpdir(),"ad-old-bundle-"));
+  t.after(() => rmSync(root,{recursive:true,force:true}));
+  const bundle = path.join(root,"image-renderer");
+  mkdirSync(bundle);
+  writeFileSync(path.join(bundle,"FINGERPRINT"),"1".repeat(64));
+  assert.equal(await processAdRender(async claim => {
+    assert.equal(claim.rendererVersion,2);
+    return {idle:true};
+  },root),false);
+});
+
 test("a staff video bundle renders offline without the OS checkout and uploads only the complete, checked set", async t=>{
   const root=mkdtempSync(path.join(os.tmpdir(),"ad-member-"));
   const originalFetch=globalThis.fetch;
@@ -37,7 +63,7 @@ test("a staff video bundle renders offline without the OS checkout and uploads o
   const dispatch=async body=>{
     sent.push(body.action);
     switch(body.action){
-      case "image_creative_claim":assert.equal(body.rendererVersion,1);return {jobId:"j",lease:"lease",variantIds:["v"]};
+      case "image_creative_claim":assert.equal(body.rendererVersion,3);return {jobId:"j",lease:"lease",variantIds:["v"]};
       case "image_creative_scene":assert.equal(body.variantId,"v");return scene("v");
       case "image_creative_prepare":return {signedUrl:"https://example.test/storage/v1/object/upload/sign/owned-result"};
       case "image_creative_complete":

@@ -30,7 +30,8 @@ const AUTOMATION_PERMISSION_ALIASES: Record<string, string[]> = {
   "/finance/documents": ["/finance/overview"],
 };
 // 유튜브 공정 v1 screens open for anyone allowed any existing YouTube process screen (지시서 5-3).
-const YOUTUBE_PROCESS_HREFS = NAV_STAGES.find(stage => stage.id === "content")!.pages.map(page => page.href);
+// Moving the image-ad menu must not revoke navigation access granted under its previous group.
+const YOUTUBE_PROCESS_HREFS = [...NAV_STAGES.find(stage => stage.id === "content")!.pages.map(page => page.href), "/content/images"];
 
 /** Navigation preferences never grant document, finance, or mutation privileges. */
 export function canOpenMenu(profile: MenuAccessProfile | null, href: string, allowed: string[] | null = null) {

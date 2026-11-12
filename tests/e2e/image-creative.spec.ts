@@ -1,11 +1,11 @@
-import { approveFormat, finishDemoBatch } from "./image-approval-steps";
+import { openWorkTools, approveFormat, finishDemoBatch } from "./image-approval-steps";
 import { test, expect } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 
 mkdirSync("validation/ui", { recursive: true });
 
 test("체험 모드에서 결과를 가져오고 새로고침 후 기준 소재를 보존한다", async ({ page }) => {
-  await page.goto("/content/images");
+  await openWorkTools(page);
   await expect(page.getByText("체험 모드", { exact: false })).toBeVisible();
   await page.getByLabel("새 작업 이름").fill("광고 테스트");
   await page.getByLabel("소재 목표").fill("진단 시작");
@@ -30,7 +30,7 @@ test("체험 모드에서 결과를 가져오고 새로고침 후 기준 소재�
   await page.getByRole("button",{name:"결과 가져오기"}).click();
   await finishDemoBatch(page,1);
   await page.getByRole("button",{name:"기준 시안 선택",exact:true}).click();
-  await page.reload();
+  await openWorkTools(page);
   await page.getByLabel("기존 작업").selectOption({label:"광고 테스트"});
   await expect(page.getByRole("button",{name:"기준으로 선택됨"})).toBeVisible();
   await page.getByRole("button",{name:/소구점 비교/}).click();
@@ -58,7 +58,7 @@ test("체험 모드에서 결과를 가져오고 새로고침 후 기준 소재�
 });
 
 test("이미지 업로드와 독립 제작 후 이미지 변형까지 실제 상태를 보존한다", async ({ page }) => {
-  await page.goto("/content/images");
+  await openWorkTools(page);
   await page.getByLabel("새 작업 이름").fill("그림 비교");
   await page.getByLabel("소재 목표").fill("결과 확인"); await page.getByLabel("퍼널").fill("무료 진단");
   await page.getByLabel("대상").fill("직장인"); await page.getByLabel("상품").fill("강점 진단"); await page.getByLabel("제공 내용").fill("결과");

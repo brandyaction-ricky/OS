@@ -33,7 +33,7 @@ export const YOUTUBE_V1_STEP_PAGES: NavPage[] = [
 ];
 // Owner decision 2026-10-29 (메뉴 A안 「만드는 것별」): what is made decides the menu. Shared work (주제 찾기 · 스케줄 · 성과 ·
 // 링크관리) sits under 공통; each platform lists its own videos; 스레드 gets the channel-automation flow, and the rest of the old
-// automation menu becomes 자동화 관리. Addresses do not change, so bookmarks, guides and menu permissions (by address) keep working.
+// automation pages stay under 콘텐츠 자동화. Bookmarks and menu permissions follow the page address.
 /** 한눈에 보기 (리키 관제실 시안, owner decision 2026-10-31: its own menu with an everyday name, first under 공통). */
 export const OVERVIEW_PAGE: NavPage = { label: "한눈에 보기", href: "/content/overview", icon: Activity, aliases: ["관제실", "진행 현황", "확인 필요", "AI 일하는 중", "맡긴 일 현황"], ready: true };
 export const YOUTUBE_V1_COMMON_PAGES: NavPage[] = [
@@ -57,16 +57,16 @@ const THREADS_FLOW: Record<string, string> = {
   "/automation/references": "스레드 글감 모으기", "/automation/topics": "주제 기획", "/automation/threads": "쓰레드 쓰기",
   "/automation/review": "최종 확인", "/automation/calendar": "발행", "/automation/performance": "반응 · 성과",
 };
-/** The v1 side menu built from the shared stages: 공통 + one group per platform + 스레드 + 자동화 관리. */
+/** The v1 side menu built from the shared stages: 공통 + one group per platform + 스레드 + 콘텐츠 자동화. */
 export function youtubeV1Stages(stages: NavStage[]): NavStage[] {
   return stages.flatMap(stage => {
-    if (stage.id === "content") return [{ ...stage, label: "공통", icon: Lightbulb, href: YOUTUBE_V1_COMMON_PAGES[0].href, pages: YOUTUBE_V1_COMMON_PAGES }, ...YOUTUBE_V1_PLATFORM_STAGES.map(platform => { const image = stage.pages.find(page => page.href === "/content/images"); return platform.id === "yt-ad" && image ? { ...platform, pages: [...platform.pages, image] } : platform; })];
+    if (stage.id === "content") return [{ ...stage, label: "공통", icon: Lightbulb, href: YOUTUBE_V1_COMMON_PAGES[0].href, pages: YOUTUBE_V1_COMMON_PAGES }, ...YOUTUBE_V1_PLATFORM_STAGES];
     if (stage.id !== "automation") return [stage];
     let step = 0;
     const threads = Object.keys(THREADS_FLOW).map(href => stage.pages.find(page => page.href === href)).filter((page): page is NavPage => Boolean(page))
       .map(page => ({ ...page, label: THREADS_FLOW[page.href], processNumber: page.href === "/automation/references" ? undefined : ++step, aliases: [page.label, ...(page.aliases ?? [])] }));
     const rest = stage.pages.filter(page => !THREADS_FLOW[page.href]).map(page => page.href === "/automation/shorts" ? { ...page, label: "쇼츠 (예전 자동화)", processNumber: undefined } : { ...page, processNumber: undefined });
-    return [{ ...stage, id: "threads", label: "스레드", icon: AtSign, href: threads[0]?.href ?? stage.href, pages: [...threads, THREADS_CANON_PAGE] }, { ...stage, label: "자동화 관리", icon: Settings, href: rest[0]?.href ?? stage.href, pages: rest }];
+    return [{ ...stage, id: "threads", label: "스레드", icon: AtSign, href: threads[0]?.href ?? stage.href, pages: [...threads, THREADS_CANON_PAGE] }, { ...stage, icon: Settings, href: rest[0]?.href ?? stage.href, pages: rest }];
   });
 }
 /** Which v1 group a screen belongs to: a platform list by its ?platform=, a page of its own (정본 다듬기) by its group, 주제 찾기 and

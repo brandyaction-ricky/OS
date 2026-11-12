@@ -1,7 +1,8 @@
+import { openWorkTools } from "./image-approval-steps";
 import { expect, test } from "@playwright/test";
 
 test("포맷 창고의 5종 비교도 일반 작업의 포맷 승인을 거친다", async ({page})=>{
-  await page.goto("/content/images");
+  await openWorkTools(page);
   const catalog=page.getByRole("region",{name:"포맷 창고"});
   await expect(catalog.getByRole("status")).toHaveText("5개");
   await catalog.getByRole("checkbox").uncheck();
@@ -26,12 +27,12 @@ test("기존 저장 묶음은 승인 없이 내려받지 못하고 반려 사유
   state.variants=[{id:"v1",formatId:"typography",formatVersion:1,size:"portrait",appeal:{id:"gift",meaning:"직접 만드는 선물"},copy:{headline:"하나뿐인 내 시계",body:"내가 원하는 시곗바늘을 골라요.",cta:"예약하기"},at:"",by:"직원"}];
   state.batches=[{id:"b1",mode:"initial",count:1,formatIds:["typography"],copyFields:[],variantIds:["v1"],at:""}];
   state.selectedId="v1";
-  await page.goto("/content/images");
+  await openWorkTools(page);
   await page.evaluate(({id,state})=>localStorage.setItem("os-image-creatives-demo-v1",JSON.stringify([{project:{id,title:"승인 도입 전 작업",version:1},state,assets:[],jobs:[]}])),{id,state});
   await page.goto("/content/images?project="+id);
   const group=page.getByRole("region",{name:"1번째 묶음 검토"});
   await expect(group.getByText("포맷 승인 대기",{exact:true})).toBeVisible();
-  await expect(group.getByRole("button",{name:"내보내기",exact:true})).toBeDisabled();
+  await expect(group.getByRole("button",{name:"내보내기",exact:true})).toHaveCount(0);
   await group.getByRole("button",{name:"묶음 포맷 승인"}).click();
   await expect(group.getByText("내가 원하는 시곗바늘을 골라요.",{exact:true})).toBeVisible();
   await expect(group.getByRole("img")).toHaveCount(0);
@@ -47,5 +48,5 @@ test("기존 저장 묶음은 승인 없이 내려받지 못하고 반려 사유
   await group.getByRole("button",{name:"수정 요청 보내기"}).click();
   await expect(group.getByText("미리보기 확인 대기",{exact:true})).toBeVisible();
   await expect(group.getByRole("button",{name:"최종 검수 완료",exact:true})).toHaveCount(0);
-  await expect(group.getByRole("button",{name:"내보내기",exact:true})).toBeDisabled();
+  await expect(group.getByRole("button",{name:"내보내기",exact:true})).toHaveCount(0);
 });

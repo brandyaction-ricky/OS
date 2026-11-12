@@ -3,6 +3,7 @@ import { getSharp } from "next/dist/server/image-optimizer";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { resolvePlacement } from "@/lib/image-creative/placement";
+import { usesBackgroundPhoto } from "@/lib/image-creative/formats";
 import { IMAGE_CREATIVE_KIND } from "@/lib/image-creative/storage";
 import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
@@ -14,7 +15,7 @@ const variantId = z.string().uuid();
 const fileSize = z.number().int().positive().max(20 * 1024 * 1024);
 const file = z.object({variantId, bytes: fileSize, sha256: z.string().regex(/^[a-f0-9]{64}$/)}).strict();
 export const imageMacActions = [
-  z.object({action:z.literal("image_creative_claim"), rendererVersion:z.literal(1)}).strict(),
+  z.object({action:z.literal("image_creative_claim"), rendererVersion:z.union([z.literal(1),z.literal(2),z.literal(3)])}).strict(),
   z.object({action:z.literal("image_creative_scene"), ...lease, variantId}).strict(),
   z.object({action:z.literal("image_creative_prepare"), ...lease, variantId, fileSize}).strict(),
   z.object({action:z.literal("image_creative_complete"), ...lease, files:z.array(file).min(1).max(20)}).strict(),
@@ -38,7 +39,7 @@ async function updateRun(record: OsRecord, run: ImageMacRun) {
   const meta = imageMeta(record);
   return saveImageMeta(createServiceSupabase(), record, { ...meta, renders: meta.renders!.map(r => r.id === run.id ? run : r) });
 }
-async function claim(computer: Computer) {
+async function claim(computer: Computer, rendererVersion: 1 | 2 | 3) {
   for (const status of ["queued", "active"] as const) {
     for (let start = 0;; start += 20) {
       const {data,error} = await projects(computer,{target:computer.target,status})
@@ -48,7 +49,9 @@ async function claim(computer: Computer) {
       for (const record of rows) {
         const meta = imageMeta(record);
         const run = meta.renders?.find(r => r.target === computer.target && r.status === status &&
-          (status === "queued" || (r.expires ?? 0) <= Date.now()) && isApprovedRender(meta, r));
+          (status === "queued" || (r.expires ?? 0) <= Date.now()) && isApprovedRender(meta, r) &&
+          meta.state.variants.every(v => !r.variantIds.includes(v.id) ||
+            rendererVersion >= (v.formatId === "thumbnail_subject" ? 3 : usesBackgroundPhoto(v) ? 2 : 1)));
         if (!run) continue;
         const token = randomUUID();
         try {
@@ -83,7 +86,7 @@ function variantOf(record: OsRecord, run: ImageMacRun, id: string) {
   return variant;
 }
 export async function imageMacWork(computer: Computer, input: Action) {
-  if (input.action === "image_creative_claim") return claim(computer);
+  if (input.action === "image_creative_claim") return claim(computer,input.rendererVersion);
   const { record,run } = await assigned(computer,input);
   if (input.action === "image_creative_fail") {
     await updateRun(record,{...run,status:"failed",reason:input.reason});

@@ -2,9 +2,9 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import ts from "typescript";
+import { ImageCreativeView } from "../tests/helpers/image-view.mjs";
 import { createElement } from "react";
-import { LEGACY_IMAGE_FORMAT_IDS, WAREHOUSE_FORMAT_IDS, IMAGE_FORMATS } from "../lib/image-creative/formats.ts";
+import { IMAGE_FORMAT_IDS, WAREHOUSE_FORMAT_IDS, IMAGE_FORMATS } from "../lib/image-creative/formats.ts";
 import { PLACEMENT_IDS, resolvePlacement } from "../lib/image-creative/placement.ts";
 import { renderFormatTestSvg } from "../lib/image-creative/format-test-renderer.mjs";
 
@@ -12,12 +12,6 @@ const require = createRequire(new URL("../lib/image-creative/view.tsx", import.m
 const { chromium } = require("playwright");
 const sharp = require("sharp");
 const { ImageResponse } = require("next/og");
-const source = await readFile(new URL("../lib/image-creative/view.tsx", import.meta.url), "utf8");
-const code = ts.transpileModule(source, { compilerOptions: {
-  module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX,
-} }).outputText;
-const compiled = { exports: {} };
-new Function("require", "module", "exports", code)(require, compiled, compiled.exports);
 const read = p => readFile(new URL("../" + p, import.meta.url));
 const baseFont = await read("public/fonts/pretendard/PretendardVariable.woff2");
 const fontData = "data:font/woff2;base64," + baseFont.toString("base64");
@@ -35,7 +29,7 @@ const browser = await chromium.launch({headless:true, ...(process.env.CHROME_PAT
 let verified = 0;
 try {
   const page = await browser.newPage();
-  const allIds = [...LEGACY_IMAGE_FORMAT_IDS, ...WAREHOUSE_FORMAT_IDS];
+  const allIds = IMAGE_FORMAT_IDS;
   for (const id of allIds) for (const pid of PLACEMENT_IDS) {
     const compareMac = Boolean(renderer) && PLACEMENT_IDS[allIds.indexOf(id) % PLACEMENT_IDS.length] === pid;
     const edited = compareMac && pid === "reel";
@@ -69,9 +63,11 @@ try {
         },svg);
         return Buffer.from(b64,"base64");
       }
-      const selectedFonts = edited ? [...fonts, { name: "Ad-serif", weight: 600, style: "normal",
-        data: await read("lib/image-creative/fonts/serif.woff") }] : fonts;
-      const png = new ImageResponse(createElement(compiled.exports.ImageCreativeView,{variant,assetUrl:photo}),
+      const regular = id === "thumbnail_subject" ? [...fonts, { name: "Pretendard", weight: 900, style: "normal",
+        data: await read("lib/cardnews/fonts/Pretendard-900.otf") }] : fonts;
+      const selectedFonts = edited ? [...regular, { name: "Ad-serif", weight: 600, style: "normal",
+        data: await read("lib/image-creative/fonts/serif.woff") }] : regular;
+      const png = new ImageResponse(createElement(ImageCreativeView,{variant,assetUrl:photo}),
         {width:p.width,height:p.height,fonts:selectedFonts});
       return Buffer.from(await png.arrayBuffer());
     }

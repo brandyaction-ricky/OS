@@ -1,10 +1,13 @@
 import type { CSSProperties, ReactNode } from "react";
-import { CREATIVE_SIZES, isWarehouseFormat } from "./formats.ts";
+import { CREATIVE_SIZES, isWarehouseFormat, usesBackgroundPhoto } from "./formats.ts";
 import { artworkGeometry } from "./safe-artwork.mjs";
+import { ThumbnailAdView } from "./thumbnail-ad.tsx";
 import type { CreativeVariant } from "./model.ts";
 
 /** One deterministic composition for both the editor and next/og. No generated lettering, responsive reflow, or auto font shrinking. */
 const C = { ink: "#132A2B", paper: "#F5F1E8", muted: "#4F625E", lime: "#DBEE83", blue: "#D6E7FF", coral: "#EF775F", white: "#FFFFFF" };
+// Opaque cards carry all the text in note and conversation. Reframe has muted type directly on the paper.
+const backgroundPhotoOpacity: Partial<Record<CreativeVariant["formatId"],number>> = {note:.8, conversation:.8, reframe:.14};
 const flex: CSSProperties = { display: "flex", boxSizing: "border-box" };
 function Words({ field, text, size, lines, color = C.ink, weight = 600, style = {} }: {
   field: string; text: string; size: number; lines: number; color?: string; weight?: number; style?: CSSProperties;
@@ -26,6 +29,7 @@ const Arrow = ({ color = C.ink, width = 90 }: { color?: string; width?: number }
 
 export function ImageCreativeView({ variant, assetUrl }: { variant: CreativeVariant; assetUrl?: string }) {
   if (variant.formatVersion !== 1 || isWarehouseFormat(variant.formatId)) throw new Error("이 시안은 해당 버전의 창고 디자인 렌더러로 열어 주세요.");
+  if (variant.formatId === "thumbnail_subject") return <ThumbnailAdView variant={variant} assetUrl={assetUrl} />;
   // A tall placement has more interface covering it, so use the compact square composition inside its safe area.
   const { width: W, height: H } = CREATIVE_SIZES[variant.size === "story" ? "square" : variant.size];
   const geometry = artworkGeometry(variant.size, variant.design, W, H);
@@ -147,14 +151,18 @@ export function ImageCreativeView({ variant, assetUrl }: { variant: CreativeVari
       break;
     }
   }
+  const backdrop = usesBackgroundPhoto(variant);
+  const photoOpacity = backgroundPhotoOpacity[variant.formatId] ?? .3;
   return <div data-image-format={variant.formatId} style={{ ...flex, position: "relative", width: spec.width, height: spec.height,
     overflow: "hidden", background: card === "paper" ? "#DFCDB4" : background, color: C.ink, fontFamily: "Pretendard" }}>
+    {backdrop && card === "original" && pic({...rect(0,0,spec.width,spec.height), opacity:photoOpacity})}
     {card === "frame" && <div style={{ ...flex, ...rect(x-padding,y-padding,geometry.width+2*padding,geometry.height+2*padding),
       border: "3px solid #202324", background: "#FEFDFA" }} />}
     {card === "paper" && <div style={{ ...flex, ...rect(x-padding*.8,y-padding*.8,geometry.width+padding*1.6,geometry.height+padding*1.6),
       background: "#FFF9EF", boxShadow: "8px 11px 0 #A38E72" }} />}
-    <div data-protected-art="true" style={{ ...flex, ...rect(x,y,W,H), overflow: "hidden", background,
+    <div data-protected-art="true" style={{ ...flex, ...rect(x,y,W,H), overflow: "hidden", background:backdrop && card === "original" ? "transparent" : background,
       transform: `scale(${scale})`, transformOrigin: "top left" }}>
+      {backdrop && card !== "original" && pic({...rect(0,0,W,H), opacity:photoOpacity})}
       <div style={{ ...flex, ...rect(pad, top, w, h) }}>{content}</div>
       <div style={{ ...flex, ...rect(pad, ctaY, w, 84), borderRadius: card === "original" ? 42 : card === "frame" ? 0 : 8,
         background: card === "frame" ? C.white : ctaBackground, ...(card === "frame" ? { border: "4px solid #132A2B" } : {}),

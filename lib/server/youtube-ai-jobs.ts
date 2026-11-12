@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { canUseYoutubeStaffScript } from "@/lib/youtube-automation-gate";
-import { imageRecord, imageMeta, imageInputKey, imageJobInstructions, imageRequestSchema, renderTarget, imageError, importImageResults, prepareImageAsset, commitImageAsset } from "./image-creatives";
+import { imageRecord, imageMeta, imageInputKey, imageJobPhase, imageJobInstructions, imageJobRequestSchema, importFormatRecommendations, renderTarget, imageError, importImageResults, prepareImageAsset, commitImageAsset } from "./image-creatives";
 import { pastAdsForAi } from "@/lib/youtube-process/ad-results";
 import { adHistory } from "./youtube-ad-results";
 import { z } from "zod";
@@ -80,13 +80,14 @@ const jobMetaSchema = z.object({
   market: z.custom<PackagingMarket>(value => Boolean(value && typeof value === "object")).optional(),
   // GPT 초안 (2026-10-29): the OS itself does the card with the company's GPT credit; no staff AI may take it.
   target: renderTarget.optional(), executor: z.literal("gpt").optional(), tier: z.enum(["precise", "saving"]).optional(),
+  imagePhase: z.enum(["appeal-options", "appeals", "concepts", "scene", "formats", "copy"]).optional(),
   // 한눈에 보기: the AI's 결론 먼저 report, and who took the result (채택) so it leaves the list.
   report: jobReportSchema.optional(), adoptedAt: z.string().optional(), adoptedBy: z.string().optional(),
 }).passthrough();
 type JobMeta = z.infer<typeof jobMetaSchema>;
 
 export const staffJobRequestSchema = z.discriminatedUnion("task", [
-  z.object({ task: z.literal("image-creative"), sourceId: z.string().uuid(), target: renderTarget.optional(), request: imageRequestSchema }).strict(),
+  z.object({ task: z.literal("image-creative"), sourceId: z.string().uuid(), target: renderTarget.optional(), guided: z.literal(true).optional(), request: imageJobRequestSchema }).strict(),
   z.object({ task: z.literal("scene-plan"), sourceId: z.string().uuid(), inputKey: z.string().length(64) }).strict(),
   // attachments = 원고 공정 정본 §2 "카드 첨부": what the staff member hands the AI with the job (댓글 원문, 직접 고른 재료).
   z.object({ task: z.literal("script"), sourceId: z.string().uuid(), targetMinutes: z.number().int().min(1).max(60).default(10),
@@ -155,11 +156,12 @@ async function saveJob(job: OsRecord, changes: { status?: string; stage?: string
   return data as OsRecord;
 }
 
-async function openJobs(ownerId: string, sourceId?: string, task?: JobMeta["task"]) {
+async function openJobs(ownerId: string, sourceId?: string, task?: JobMeta["task"], imageTextOnly = false) {
   let query = service().from("os_records").select("*").eq("record_type", "ai_job").eq("metadata->>kind", STAFF_AI_JOB_KIND)
     .eq("owner_id", ownerId).in("status", ["backlog", "active"]).is("archived_at", null).order("created_at", { ascending: true }).limit(50);
   if (sourceId) query = query.eq("parent_id", sourceId);
   if (task) query = query.eq("metadata->>task", task);
+  if (imageTextOnly) query = query.in("metadata->>imagePhase", ["appeal-options", "appeals", "concepts", "scene", "formats", "copy"]);
   const { data, error } = await query;
   if (error) throw dbError();
   return (data ?? []) as OsRecord[];
@@ -173,15 +175,22 @@ async function openJobs(ownerId: string, sourceId?: string, task?: JobMeta["task
 export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof staffJobRequestSchema>, gpt?: { tier: GptTier }) {
   let source: OsRecord; let title: string; let inputKey: string;
   let myinRunId: string | undefined;
+  let imagePhase: JobMeta["imagePhase"];
+  let imageJobs: OsRecord[] | undefined;
   let taskName: string = TASK_NAME[input.task];
   let note = "";
   let pool: NicheVideo[] | undefined;
   let marketFor: { query: string; short: boolean; topic?: string } | undefined;
   if (input.task === "image-creative") {
     if (gpt) throw new ApiError(403, "IMAGE_SUBSCRIPTION_ONLY", "이미지 소재는 연결된 내 AI로만 만들어요.");
-    if (!canUseYoutubeStaffScript(process.env)) throw new ApiError(409, "IMAGE_WORKER_UNAVAILABLE", "내 AI 작업 연결이 아직 꺼져 있어요. 프롬프트 복사와 결과 가져오기를 사용할 수 있어요.");
+    if (!canUseYoutubeStaffScript(process.env)) throw new ApiError(409, "IMAGE_WORKER_UNAVAILABLE", "개인 AI 작업 연결이 꺼져 있어요. OS 담당자에게 연결을 요청한 뒤 다시 시도해 주세요.");
+    // Take the queue snapshot first: an older project read must never cancel a newer direction's job.
+    imageJobs = await openJobs(actor.ownerId,input.sourceId,input.task);
     source = await imageRecord(actor.supabase, actor.ownerId, input.sourceId); title = source.title;
-    try { inputKey = imageInputKey(source, input.request); } catch (error) { throw imageError(error); }
+    try { inputKey = imageInputKey(source, input.request); imagePhase = imageJobPhase(source,input.request,input.guided); } catch (error) { throw imageError(error); }
+    taskName = imagePhase === "concepts" ? "광고 소구점과 컨셉 제안" : imagePhase === "scene" ? "광고 장면 기획과 포맷 추천" :
+      imagePhase === "appeals" || imagePhase === "appeal-options" ? "광고 소구점 제안" : "phase" in input.request ? "광고 포맷 추천" :
+      input.guided && !imagePhase ? "광고 사진 원본 제작" : "광고 카피 작성";
   } else if (input.task === "niche") {
     if (input.sourceId !== NICHE_BOARD_ID) throw new ApiError(404, "NICHE_BOARD_NOT_FOUND", "틈새 판을 찾지 못했어요.");
     pool = await nichePool(service());
@@ -296,12 +305,18 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
   const jobOwner = input.task === "image-creative" ? actor.ownerId : actor.id;
   // 다채널 3단계: a channel without its 목적 정본 is told now, not when its AI takes the job.
   if (input.task !== "image-creative") await channelContext(input.task === "niche" ? null : input.sourceId);
-  for (const job of await openJobs(jobOwner, input.sourceId, input.task)) {
+  for (const job of imageJobs ?? await openJobs(jobOwner, input.sourceId, input.task)) {
     const m = meta(job);
     const sameDoer = Boolean(m.executor) === Boolean(gpt);
     if (!sameDoer && job.status === "active" && leaseLive(m.lease))
       throw new ApiError(409, "STAFF_AI_JOB_BUSY", m.executor ? "GPT가 만드는 중이에요. 끝난 뒤에 다시 해 주세요." : "내 AI가 쓰는 중이에요. 끝난 뒤에 다시 해 주세요.");
     if (sameDoer && (input.task !== "image-creative" || m.target === input.target) && m.inputKey === inputKey && m.targetMinutes === targetMinutes && m.role === role && m.attachments === attachments && m.slot === slot && m.market?.query === marketFor?.query) return publicStaffJob(job);
+    if (input.task === "image-creative" && imageMeta(source).appliedJobs[job.id]) continue;
+    if (input.task === "image-creative" && (m.imageRequest as {phase?:string} | undefined)?.phase === "formats" &&
+        m.inputKey !== inputKey && "phase" in input.request) {
+      await saveJob(job, {status:"cancelled", metadata:{...m, lease:undefined, failReason:"광고 기획이 바뀌어 새 포맷을 추천합니다."}});
+      continue;
+    }
     if (input.task === "image-creative" && job.status === "active" && leaseLive(m.lease)) throw new ApiError(409, "IMAGE_JOB_BUSY", "내 AI가 이 작업을 만드는 중이에요. 완료한 뒤 다음 요청을 보내 주세요.");
     await saveJob(job, { status: "cancelled", metadata: { ...meta(job), failReason: "입력이 바뀌어 새 요청으로 바꿨어요." } });
   }
@@ -316,7 +331,7 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
     ...(input.task === "scene-plan" ? { templateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION } : input.task === "storyboard" ? { myinRunId }
       : { targetMinutes, role, ...(attachments ? { attachments } : {}), ...(slot ? { slot } : {}) }), ...(pool ? { pool } : {}),
     ...(input.task === "card" ? { formats: input.formats } : {}), ...(input.task === "thumbs" ? { thumbTool: input.tool } : {}),
-    ...(input.task === "image-creative" ? { space: "personal", imageRequest: input.request, ...(input.target ? {target:input.target} : {}) } : {}),
+    ...(input.task === "image-creative" ? { space: "personal", ...(imagePhase ? {imagePhase} : {}), proc:"image-creative", targetId:input.sourceId, sub:"phase" in input.request ? "formats" : "copy", imageRequest: input.request, ...(input.target ? {target:input.target} : {}) } : {}),
     ...(gpt ? { executor: "gpt" as const, tier: gpt.tier } : {}) };
   const writer = input.task === "image-creative" ? service() : actor.supabase;
   const { data, error } = await writer.from("os_records").insert({
@@ -325,6 +340,11 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
     brand: source.brand, team: source.team, owner_id: jobOwner, parent_id: input.sourceId, created_by: jobOwner, updated_by: jobOwner,
     tags: ["유튜브", gpt ? "GPT" : "직원AI"], metadata,
   }).select("*").maybeSingle();
+  if (input.task === "image-creative" && error?.code === "23505") {
+    const same = (await openJobs(jobOwner,input.sourceId,input.task)).find(job => meta(job).inputKey === inputKey);
+    if (same) return publicStaffJob(same);
+    throw new ApiError(409, "IMAGE_JOB_BUSY", "다른 이미지 작업이 접수됐어요. 현재 진행 상황을 불러와 주세요.");
+  }
   if (error || !data) throw new ApiError(400, "STAFF_AI_JOB_CREATE_FAILED", "AI 작업을 만들지 못했습니다.");
   // The picker shows the PD's candidate among the same market videos the AI reads.
   if (input.task === "thumbs") await keepThumbFeed({ id: source.id, team: source.team, ownerId: source.owner_id ?? actor.id }, market).catch(() => undefined);
@@ -388,9 +408,9 @@ export async function adoptStaffJob(actor: RequestActor, jobId: string, projectI
 
 // ── The staff AI side (agent key) ──
 
-export async function listStaffJobs(agent: RequestActor) {
-  const jobs = (await openJobs(agent.ownerId)).filter(job => !meta(job).executor && (job.status === "backlog" || !leaseLive(meta(job).lease)));
-  return { jobs: jobs.map(job => ({ jobId: job.id, task: meta(job).task, title: job.title, requestedAt: meta(job).requestedAt })),
+export async function listStaffJobs(agent: RequestActor, imageTextOnly = false) {
+  const jobs = (await openJobs(agent.ownerId, undefined, imageTextOnly ? "image-creative" : undefined, imageTextOnly)).filter(job => !meta(job).executor && (job.status === "backlog" || !leaseLive(meta(job).lease)));
+  return { jobs: jobs.map(job => ({ jobId: job.id, task: meta(job).task, ...(imageTextOnly ? {imagePhase:meta(job).imagePhase} : {}), title: job.title, requestedAt: meta(job).requestedAt })),
     next: jobs.length ? "process_youtube_ai_job로 action=claim, job_id를 보내 가져가세요." : "지금 처리할 작업이 없어요." };
 }
 
@@ -474,7 +494,7 @@ async function currentShortScriptInput(job: OsRecord) {
 }
 
 async function currentImageInput(job: OsRecord, allowSaved = false) {
-  const m = meta(job), request = imageRequestSchema.safeParse(m.imageRequest);
+  const m = meta(job), request = imageJobRequestSchema.safeParse(m.imageRequest);
   if (!request.success) return closeStale(job, m);
   const record = await imageRecord(service(), job.owner_id!, m.sourceId).catch(error => {
     if (error instanceof ApiError && error.status === 404) return closeStale(job, m);
@@ -629,7 +649,7 @@ async function claimJob(agent: RequestActor, jobId: string, byGpt: boolean) {
   }
   if (m.task === "image-creative") {
     const { record, request } = await currentImageInput(job), lease = await take();
-    return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: imageJobInstructions(record, request) };
+    return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, ...(m.imagePhase ? {imagePhase:m.imagePhase} : {}), instructions: imageJobInstructions(record, request, m.imagePhase === "copy", jobId) };
   }
   if (m.task === "card") {
     const { project, cards, canon, formats } = await currentCardInput(job);
@@ -730,9 +750,17 @@ export async function completeStaffJob(agent: RequestActor, input: Extract<z.inf
   if (m.task === "image-creative") {
     if (!leaseLive(m.lease)) throw new ApiError(409, "STAFF_AI_JOB_LEASE", "작업 시간이 지났어요. 목록에서 다시 가져와 주세요.");
     const { record, request } = await currentImageInput(job, true);
-    const saved = await keepIssues(job, m, () => importImageResults(service(), record, request, input.result, agent.name, job.id));
+    const response = "phase" in request
+      ? await keepIssues(job, m, async () => {
+          await importFormatRecommendations(service(), record, input.result, job.id);
+          return {done:true, next:m.imagePhase === "concepts" ? "이미지 광고에서 소구점을 보고 컨셉과 표현 방식을 선택합니다." : m.imagePhase === "scene" ? "이미지 광고에서 기획된 장면과 추천 포맷을 확인합니다." : m.imagePhase === "appeals" || m.imagePhase === "appeal-options" ? "이미지 광고에서 제안된 소구점을 확인합니다." : "이미지 광고에서 추천 이미지를 보고 포맷을 고릅니다."};
+        })
+      : await keepIssues(job, m, async () => {
+          const saved = await importImageResults(service(), record, request, input.result, agent.name, job.id);
+          return {done:true, batchId:saved.batchId, next:"이미지 광고에서 전체 카피를 확인합니다."};
+        });
     await saveJob(job, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });
-    return { done: true, batchId: saved.batchId, next: "이미지 광고 화면에서 실제 후보를 비교하고 고릅니다. 광고는 집행하지 않았습니다." };
+    return response;
   }
   if (m.task === "niche") {
     const clusters = await keepIssues(job, m, () => checkNicheResult(input.result, jobPool(m)));
@@ -884,7 +912,8 @@ export const imageAssetWorkerSchema = z.discriminatedUnion("action", [
 export async function imageAssetForJob(agent: RequestActor, input: z.infer<typeof imageAssetWorkerSchema>) {
   const job = await ownJob(agent, input.jobId), m = liveLease(job, input.lease);
   if (m.task !== "image-creative" || !leaseLive(m.lease)) throw new ApiError(409, "IMAGE_JOB_LEASE", "진행 중인 내 이미지 작업에서만 파일을 넣을 수 있어요.");
-  const { record } = await currentImageInput(job);
+  const { record, request } = await currentImageInput(job);
+  if ("phase" in request || m.imagePhase === "copy") throw new ApiError(409, "IMAGE_JOB_PHASE", "포맷 추천과 카피 작성에는 파일을 올릴 수 없어요.");
   return input.action === "prepare" ? prepareImageAsset(record, input.mimeType, input.fileSize, input.lease)
-    : commitImageAsset(record, input.path, input.receipt, input.lease);
+    : commitImageAsset(record, input.path, input.receipt, input.lease, job.id);
 }

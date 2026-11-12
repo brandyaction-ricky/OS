@@ -17,7 +17,7 @@ const TYPES:RecordType[]=["content_topic","content_script","content_package","co
 export function ContentWorkProvider({children,youtubeV1=false}:{children:React.ReactNode;youtubeV1?:boolean}) {
   const path=usePathname(), search=useSearchParams(), {accessToken,demo,profile}=useSession();
   // 유튜브 공정 v1 screens read their own project data instead of the legacy topic list.
-  const enabled=path.startsWith("/content/")&&!youtubeV1Screen(path), topicsOnly=readsTopicsOnly(path,youtubeV1);
+  const enabled=path.startsWith("/content/")&&path!=="/content/images"&&!youtubeV1Screen(path), topicsOnly=readsTopicsOnly(path,youtubeV1);
   const [records,setRecords]=useState<OsRecord[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState("");
   const [saved,setSaved]=useState(""),[revision,setRevision]=useState(0);
   const storageKey=`brandy-os-work-topic:${profile?.id??"demo"}`;
