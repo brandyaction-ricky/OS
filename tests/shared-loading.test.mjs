@@ -111,6 +111,7 @@ async function clientFixture(browser = true) {
   const calls = [];
   const api = await load("lib/api-client.ts", {
     "./html-entities": { decodeHtmlEntities: text => text }, "./knowledge/graph-transport": {}, "./development-attachments": {},
+    "./performance-period": await import("../lib/performance-period.ts"),
   }, {
     Headers, FormData, URLSearchParams, structuredClone,
     ...(browser ? { window: {} } : {}),

@@ -3,6 +3,7 @@ import type { DocumentProposal, DocumentVersion, KnowledgeDocument, SearchResult
 import type { KnowledgeGraph } from "./knowledge-links";
 import { unpackKnowledgeGraph, type CompactKnowledgeGraph } from "./knowledge/graph-transport";
 import type { OsRecord, RecordType } from "./record-types";
+import { DEFAULT_PERIOD, kstDay, periodRange } from "./performance-period";
 import type { ProductionWorkflowStep } from "./content-production-workflow";
 import { developmentAttachmentUploadBody } from "./development-attachments";
 import type { KnowledgeAsset, MissingKnowledgeAssetReference } from "./knowledge-assets";
@@ -289,9 +290,9 @@ export function metricWindowPath(from?: string, to?: string) {
   if (to) params.set("to", to);
   return `/api/v1/content/metrics${params.size ? `?${params}` : ""}`;
 }
-/** The 30 days 영상 성과 opens with (UTC days, inclusive). */
+/** The period 영상 성과 opens with (최근 30일 in Korean days, inclusive) — the same window its period buttons start on. */
 export function defaultMetricWindow(now = Date.now()) {
-  return { from: new Date(now - 29 * 86400000).toISOString().slice(0, 10), to: new Date(now).toISOString().slice(0, 10) };
+  return periodRange(DEFAULT_PERIOD, kstDay(new Date(now)))!;
 }
 /** On a full load of 영상 성과 the session asks for these figures beside the profile (startEarlyRead). */
 export function firstMetricRead(pathname: string) {
