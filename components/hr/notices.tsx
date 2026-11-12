@@ -10,7 +10,7 @@ export function MigrationNotice() {
   if (!count) return null;
   return (
     <p className="hr-banner warning" role="status">
-      구분이 정해지지 않은 계정 {count}개 — 이관을 끝내야 연차·서류가 계산됩니다.{" "}
+      초기 설정 {data.profiles.length-count}/{data.profiles.length}계정 완료 · 구분 미설정 {count}개. 인사 담당자가 근로자·사업주·외부 협업·공용 여부를 확인해 주세요. 이관을 끝내야 연차·서류가 계산됩니다.{" "}
       <Link href="/hr/employees?migrate=1">이관 시작</Link>
     </p>
   );

@@ -30,13 +30,13 @@ export function KnowledgeCanon(){
   const proposals=new Set(canonList?.proposalDocumentIds??state.proposals.filter(p=>p.status==="open").map(p=>p.document_id));
   const today=kstDay();
   const overdue=(d:CanonListDocument)=>Boolean(d.review_due_on&&d.review_due_on<today);
-  const rows=all.filter(d=>(!folder||d.folder===folder||d.folder.startsWith(folder+"/"))&&d.title.toLowerCase().includes(q.toLowerCase())&&(filter==="all"||filter==="overdue"&&overdue(d)||filter==="nosteward"&&!d.steward_id||filter==="proposal"&&proposals.has(d.id))).sort((a,b)=>b.updated_at.localeCompare(a.updated_at));
+  const rows=all.filter(d=>(!folder||d.folder===folder||d.folder.startsWith(folder+"/"))&&d.title.toLowerCase().includes(q.toLowerCase())&&(filter==="all"||filter==="overdue"&&overdue(d)||filter==="nodate"&&!d.review_due_on||filter==="nosteward"&&!d.steward_id||filter==="proposal"&&proposals.has(d.id))).sort((a,b)=>b.updated_at.localeCompare(a.updated_at));
   function query(patch:Record<string,string>){const next=new URLSearchParams(params);Object.entries(patch).forEach(([k,v])=>v?next.set(k,v):next.delete(k));setPage(0);router.replace(`/knowledge/canon?${next}`);}
   if(loading)return <Empty>정본 목록을 불러오는 중입니다</Empty>;
   if(error)return <Empty>정본 목록을 확인하지 못했습니다. 위의 다시 불러오기를 눌러 주세요.</Empty>;
   return <>
     <Header title="회사 정본" description="승인된 업무 기준입니다. 직접 덮어쓰지 않고 변경 제안을 통해 새 버전으로 갱신합니다."><Link href="/knowledge/review?tab=todo">정본 검토·등록</Link></Header>
-    <div className="kw-metrics">{[["all","전체 정본",all.length],["overdue","검토 기한 지남",all.filter(overdue).length],["nosteward","담당자 미지정",all.filter(d=>!d.steward_id).length],["proposal","변경 제안 대기",proposals.size]].map(([key,label,count])=><button className="kw-card" key={key} aria-pressed={filter===key} onClick={()=>query({filter:String(key)})}><span>{label}<strong>{count}</strong></span></button>)}</div>
+    <div className="kw-metrics">{[["all","전체 정본",all.length],["overdue","검토 기한 지남",all.filter(overdue).length],["nodate","검토일 미지정",all.filter(d=>!d.review_due_on).length],["nosteward","담당자 미지정",all.filter(d=>!d.steward_id).length],["proposal","변경 제안 대기",proposals.size]].map(([key,label,count])=><button className="kw-card" key={key} aria-pressed={filter===key} onClick={()=>query({filter:String(key)})}><span>{label}<strong>{count}</strong></span></button>)}</div>
     <div className="kw-db">
       <aside className="kw-card kw-categories"><h3>정본 폴더</h3><button aria-pressed={!folder} onClick={()=>query({folder:""})}>전체 폴더</button>{[...folderCounts].sort(([a],[b])=>a.localeCompare(b,"ko")).map(([path,count])=><button key={path} title={path||"분류 없음"} aria-pressed={folder===path} onClick={()=>query({folder:path})}><span className="kw-category-name">{path.includes("/")&&<em>{path.slice(0,path.lastIndexOf("/"))}</em>}{path.slice(path.lastIndexOf("/")+1)||"분류 없음"}</span><small>{count}</small></button>)}</aside>
       <div>

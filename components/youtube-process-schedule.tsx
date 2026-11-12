@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, GripVertical, X } from "lucide-react";
+import { isTestContent } from "@/lib/youtube-process/test-content";
 import { gateName } from "@/lib/youtube-process/confirm";
 import { personName, projectHref, projectName, stageLabel, YP_FLOW, YP_STAGE_INDEX } from "@/lib/youtube-process/project";
 import { useSession } from "./session-provider";
@@ -24,6 +25,7 @@ export function YoutubeScheduleScreen({ header }: { header: ReactNode }) {
   const [offset, setOffset] = useState(0);
   const [pd, setPd] = useState("all");
   const [stage, setStage] = useState("all");
+  const [showTests, setShowTests] = useState(false);
   const [showConfirm, setShowConfirm] = useState(true);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<YpScheduleItem | null>(null);
@@ -46,7 +48,7 @@ export function YoutubeScheduleScreen({ header }: { header: ReactNode }) {
   if (mode === "week") start.setDate(anchor.getDate() - anchor.getDay()); else start.setDate(1 - new Date(anchor.getFullYear(), anchor.getMonth(), 1).getDay());
   const monthCells = Math.ceil((new Date(anchor.getFullYear(), anchor.getMonth(), 1).getDay() + new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0).getDate()) / 7) * 7;
   const days = Array.from({ length: mode === "week" ? 7 : monthCells }, (_, index) => { const date = new Date(start); date.setDate(start.getDate() + index); return date; });
-  const shown = (items ?? []).filter(item => (pd === "all" || item.project.assigneeId === pd) && (stage === "all" || String(YP_STAGE_INDEX[item.project.yp.stage]) === stage) && item.project.yp.stage !== "done");
+  const shown = (items ?? []).filter(item => (showTests || !isTestContent(item.project.title)) && (pd === "all" || item.project.assigneeId === pd) && (stage === "all" || String(YP_STAGE_INDEX[item.project.yp.stage]) === stage) && item.project.yp.stage !== "done");
   const events: Ev[] = shown.flatMap(item => [
     ...(item.uploadPlan ? [{ item, kind: "up" as const, date: item.uploadPlan, label: "업로드 예상일" }] : []),
     // 공개 예약 (로건 요청 10/30): set on 업로드 › 5. 공개 범위, not moved here.
@@ -95,6 +97,7 @@ export function YoutubeScheduleScreen({ header }: { header: ReactNode }) {
       <button type="button" aria-pressed={mode === "week"} className={mode === "week" ? "yp-on" : ""} onClick={() => { setMode("week"); setOffset(0); }}>주</button>
       <button type="button" aria-pressed={mode === "month"} className={mode === "month" ? "yp-on" : ""} onClick={() => { setMode("month"); setOffset(0); }}>월</button></div></div>
     {error ? <div className="yp-note yp-warn" role="alert"><div>{error}</div></div> : null}
+    <label className="yp-hint"><input type="checkbox" checked={showTests} onChange={event => setShowTests(event.target.checked)} /> 제목에 QA·테스트 표시된 항목 포함 ({(items ?? []).filter(item => isTestContent(item.project.title)).length})</label>
     <div className="yp-schedule-toolbar">
       <div className="yp-schedule-nav"><button type="button" className="yp-btn yp-sm" aria-label="이전 기간" onClick={() => setOffset(value => value - 1)}><ChevronLeft size={16} /></button><b aria-live="polite">{title}</b><button type="button" className="yp-btn yp-sm" aria-label="다음 기간" onClick={() => setOffset(value => value + 1)}><ChevronRight size={16} /></button>
         <button type="button" className="yp-btn yp-sm" onClick={() => setOffset(0)}>오늘</button></div>

@@ -22,7 +22,7 @@ const startHref = (platform: TopicPlatform, text: string) => platform === "longf
   ? `/content/plan?project=new&view=topic${text ? `&title=${encodeURIComponent(text)}` : ""}`
   : `/content/projects?view=discover&platform=${platform}${text ? `&q=${encodeURIComponent(text)}` : ""}`;
 // The state cards use 주제 찾기's platform cards (owner 2026-10-31: the same button style as the other pages), coloured by state.
-const CARD_ICON = { decide: CircleAlert, ai: Bot, blocked: AlertTriangle, human: UserRound, wait: PauseCircle } as const;
+const CARD_ICON = { decide: CircleAlert, queued: PauseCircle, ai: Bot, blocked: AlertTriangle, human: UserRound, wait: PauseCircle } as const;
 
 function Dot({ state }: { state: OvState | "done" }) { return <span className="yp-ov-dot" data-s={state} aria-hidden="true" />; }
 
@@ -113,7 +113,7 @@ export function YoutubeOverviewScreen() {
   const rowButton = (row: OvRow, card = false) => <button key={row.id} type="button" className={`${card ? "yp-ov-card" : "yp-ov-row"}${selected === row.id ? " yp-on" : ""}`} data-s={row.state} onClick={() => setSelected(row.id)}>
     <span className="yp-ov-ch">{TOPIC_PLATFORMS[row.channel].label}</span>
     <span className="yp-ov-main"><b className="yp-ov-t">{row.title}</b><span className="yp-ov-stg">{row.stage}{card && row.assigneeId ? ` · ${who(row.assigneeId)}` : ""}</span></span>
-    <span className="yp-ov-now"><Dot state={row.state} />{row.now}</span>
+    <span className="yp-ov-now"><Dot state={row.state} />{row.now}{row.since ? <small> · {new Date(row.since).toLocaleString("ko-KR")}</small> : null}</span>
     {card ? null : <><span className="yp-ov-who">{who(row.assigneeId)}</span><ChevronRight size={14} className="yp-ov-go" aria-hidden="true" /></>}
   </button>;
 
@@ -168,7 +168,7 @@ export function YoutubeOverviewScreen() {
         {pick && pick.state !== "decide" ? <div className="yp-ov-detail">
           <div className="yp-ov-ph"><button type="button" className="yp-btn yp-sm yp-ghost" onClick={() => setSelected(null)} aria-label="확인 필요로 돌아가기"><ChevronLeft size={16} aria-hidden="true" /></button><div><h3>{pick.title}</h3><small>{TOPIC_PLATFORMS[pick.channel].label} · {pick.stage}</small></div></div>
           <div className="yp-ov-nowbox" data-s={pick.state}><span className="yp-ov-k">{OV_STATES.find(group => group.state === pick.state)?.label}</span><b>{pick.now}</b>
-            {pick.job ? <ul className="yp-ov-log"><li>{hhmm(pick.job.requestedAt)} 맡김</li>{pick.job.claimedAt ? <li>{hhmm(pick.job.claimedAt)} AI가 가져감</li> : null}{pick.job.doneAt ? <li>{hhmm(pick.job.doneAt)} 결과 도착</li> : null}{pick.job.failReason ? <li>{pick.job.failReason}</li> : null}</ul> : null}
+            {pick.job ? <ul className="yp-ov-log"><li>{hhmm(pick.job.requestedAt)} 맡김</li>{pick.job.claimedAt ? <li>{hhmm(pick.job.claimedAt)} AI가 가져감</li> : null}{pick.job.doneAt ? <li>{hhmm(pick.job.doneAt)} 결과 도착</li> : null}{pick.job.failReason && profile?.role === "admin" ? <li><details><summary>관리자 진단 정보</summary><pre>{pick.job.failReason.replace(/(?:[A-Za-z]:\\|\/(?:Users|home|tmp|private)\/)[^\s]+/g, "[경로 숨김]").replace(/(?:Bearer\s+|(?:key|token|password|secret)\s*[:=]\s*)[^\s,;]+/gi, "[인증 정보 숨김]")}</pre></details></li> : null}</ul> : null}
             {pick.job?.report ? <Report report={pick.job.report} /> : null}</div>
           {pick.assigneeId ? <p className="yp-ov-meta">담당 {who(pick.assigneeId)}</p> : null}
           <div><Link className="yp-btn yp-pri" href={pick.href}>{pick.state === "blocked" ? "화면에서 다시 맡기기 →" : "화면 열기 →"}</Link></div>

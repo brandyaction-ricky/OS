@@ -11,7 +11,7 @@ test("한눈에 보기 groups open work, confirms from the panel and switches to
   const pane = page.getByRole("complementary", { name: "확인 필요" });
   await expect(pane.getByRole("heading", { name: "확인 필요 2" })).toBeVisible();
   await expect(page.getByRole("region", { name: "AI 일하는 중" })).toContainText("분째");
-  await expect(page.getByRole("region", { name: "막힘" })).toContainText("참고 영상 주소를 열지 못했어요");
+  await expect(page.getByRole("region", { name: "막힘" })).toContainText("작업을 완료하지 못했어요");
   await expect(page.getByRole("link", { name: /한눈에 보기/ }).first()).toBeVisible();
   // The state cards are 주제 찾기's platform cards; one narrows the list to its group.
   await page.getByRole("button", { name: /^사람 작업 중/ }).click();

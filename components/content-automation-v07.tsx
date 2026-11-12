@@ -47,14 +47,14 @@ const merge=(rows:OsRecord[],more:OsRecord[])=>[...rows.map(row=>({...row,...mor
   ...more.filter(row=>!rows.some(existing=>existing.id===row.id))];
 const PAGE_INFO:Record<AutomationPage,{title:string;description:string;next:string}>={
   dashboard:{title:"자동화 현황",description:"내가 만든 콘텐츠·맡긴 일·내 채널 계정만 봅니다.",next:"/automation/topics"},
-  references:{title:"레퍼런스 수집",description:"원문의 장면·반응·질문·관점을 비교하고 쓸 주제를 고릅니다.",next:"/automation/topics"},
-  topics:{title:"① 주제 기획",description:"무엇을 누구에게 전할지 확인하고, 선택한 채널에서 집필을 이어갑니다.",next:"/automation/cardnews"},
-  cardnews:{title:"② 카드뉴스",description:"양식의 칸 이름에 맞춰 글과 이미지를 준비합니다.",next:"/automation/review"},
+  references:{title:"스레드 글감 모으기",description:"원문의 장면·반응·질문·관점을 비교하고 쓸 주제를 고릅니다.",next:"/automation/topics"},
+  topics:{title:"① 주제 기획",description:"무엇을 누구에게 전할지 확인하고, 스레드 집필을 이어갑니다.",next:"/automation/threads"},
+  cardnews:{title:"카드뉴스 (예전 자동화)",description:"양식의 칸 이름에 맞춰 글과 이미지를 준비합니다.",next:"/automation/review"},
   shorts:{title:"③ 쇼츠",description:"컷 구성·MP4·커버와 설명을 준비합니다.",next:"/automation/review"},
-  threads:{title:"④ 쓰레드",description:"글타래를 다듬고 확인으로 보냅니다.",next:"/automation/review"},
-  review:{title:"⑤ 최종 확인",description:"게시 전에 직접 확인하고 기록을 남깁니다.",next:"/automation/calendar"},
-  calendar:{title:"⑥ 발행",description:"승인한 쓰레드는 공식 API로 발행하고, 게시 결과를 확인합니다.",next:"/automation/performance"},
-  performance:{title:"⑦ 반응·성과",description:"댓글과 같은 기간의 성과를 확인합니다.",next:"/automation/dashboard"},
+  threads:{title:"② 스레드 쓰기",description:"글타래를 다듬고 확인으로 보냅니다.",next:"/automation/review"},
+  review:{title:"③ 최종 확인",description:"게시 전에 직접 확인하고 기록을 남깁니다.",next:"/automation/calendar"},
+  calendar:{title:"④ 발행",description:"승인한 스레드는 공식 API로 발행하고, 게시 결과를 확인합니다.",next:"/automation/performance"},
+  performance:{title:"⑤ 반응·성과",description:"댓글과 같은 기간의 성과를 확인합니다.",next:"/automation/dashboard"},
   requests:{title:"맡긴 일",description:"내 Chrome의 Claude in Chrome이 처리할 작업을 관리합니다.",next:"/automation/settings"},
   settings:{title:"자동화 설정",description:"내 실행 규칙·스킬·양식·이미지를 관리합니다.",next:"/automation/dashboard"},
 };
@@ -89,10 +89,12 @@ function workerInstruction(via:"sched"|"now",name="내 컴퓨터"){
 
 function PageHead({page,name}:{page:AutomationPage;name:string}){
   const search=useSearchParams(),selectedThread=page==="threads"&&Boolean(search.get("sel"));
-  const scope=page==="threads"||page==="review"?"내 글은 나만 보임 · 팀 검토함은 사내 구성원 열람":"나만 보임";
+  const company=page==="settings"&&search.get("tab")==="company";
+  const scope=company?"회사 공통 · 구성원 전체에 적용":page==="threads"||page==="review"?"내 글은 나만 보임 · 팀 검토함은 사내 구성원 열람":"나만 보임";
   const info=PAGE_INFO[page],guide=PAGE_GUIDES[`/automation/${page}`];
   const process=info.title.match(/^([①-⑦])\s/),title=process?info.title.slice(2):info.title;
-  return <><header className="ca-v07-head"><div><span className="ca-v07-eyebrow">콘텐츠 자동화 · {name}의 작업 공간 · {scope}</span><div className="ca-v07-title"><h1>{title}</h1></div><p>{selectedThread?"Aside에 집필을 요청하고, 완성된 원고를 이 화면에서 확인합니다.":info.description}</p></div></header>
+  return <><header className="ca-v07-head"><div><span className="ca-v07-eyebrow">콘텐츠 자동화 · {company?"회사 설정":`${name}의 작업 공간`} · {scope}</span><div className="ca-v07-title"><h1>{title}</h1></div><p>{company?"저장한 회사 비용·검토·발행 기준은 저장 이후의 작업에 적용됩니다.":selectedThread?"Aside에 집필을 요청하고, 완성된 원고를 이 화면에서 확인합니다.":info.description}</p></div></header>
+    {page==="cardnews"?<p className="ca-v07-guide">이전 자동화 자료 보관 영역입니다. 새 카드뉴스와 기존 제작 작업은 <Link href="/content/projects?platform=card">내 카드뉴스</Link>에서 확인하세요.</p>:null}
     {selectedThread?null:<div className="ca-v07-guide"><strong>이 화면에서 할 일</strong><span>{guide.steps.map((step,i)=><span key={step}>{i+1}. {step}</span>)}</span>{page!=="topics"?<Link href={info.next}>다음 단계 →</Link>:null}</div>}</>;
 }
 function Tabs({base,tabs,active,param="tab"}:{base:string;tabs:{id:string;label:string}[];active:string;param?:string}){
@@ -338,7 +340,7 @@ function TopicsView({data,mutate}:ViewProps){
               {channels.includes(channel)?<label className="ca-v07-due-label">마감일 <small>선택</small><input type="date" aria-label={`${CHANNEL_LABELS[channel]} 마감`} value={dues[channel]??""} onChange={event=>setDues({...dues,[channel]:event.target.value})}/></label>:null}
             </div>)}</div>
           </div>
-          {channels.includes("threads")?<div className="ca-v07-topic-sharing"><label className="ca-v07-check"><input type="checkbox" checked={shareThreads} onChange={event=>setTeamThreads(event.target.checked)}/>쓰레드 원고를 팀 검토함에 공유</label><p>{shareThreads?"사내 구성원이 원고를 보고 의견을 남길 수 있습니다. 수정·승인은 작성자와 지정 검토자가 합니다.":"내 글에 만듭니다. 나중에 쓰레드 화면에서 팀 검토함에 공유할 수 있습니다."}</p></div>:null}
+          {channels.includes("threads")?<div className="ca-v07-topic-sharing"><label className="ca-v07-check"><input type="checkbox" checked={shareThreads} onChange={event=>setTeamThreads(event.target.checked)}/>스레드 원고를 팀 검토함에 공유</label><p>{shareThreads?"사내 구성원이 원고를 보고 의견을 남길 수 있습니다. 수정·승인은 작성자와 지정 검토자가 합니다.":"내 글에 만듭니다. 나중에 스레드 화면에서 팀 검토함에 공유할 수 있습니다."}</p></div>:null}
         </fieldset>
         <details className="ca-v07-topic-ai"><summary>기획을 더 다듬고 싶다면</summary><p>선택 사항입니다. 지금 입력한 기획을 저장한 뒤 기획 메모 작성을 맡깁니다. 결과는 직접 읽고 채택하세요.</p>
           <div className="ca-v07-actions"><button className="secondary-button" disabled={busy} onClick={()=>void save(false).then(saved=>{if(saved)setJobOpen("brief");})}>내 AI로 기획 메모 쓰기</button><CostTag kind="ai"/><Link href="/automation/requests">맡긴 일·결과 보기 →</Link></div>
@@ -529,7 +531,7 @@ function ItemsView({page,data,mutate,refresh}:ViewProps&{page:AutomationPage;ref
     {channel==="threads"?<><Tabs base="/automation/threads" active={scope} tabs={[{id:"mine",label:"내 글 "+all.filter(row=>row.owner_id===data.me).length},{id:"team",label:"팀 검토함 "+all.filter(isTeam).length}]} param="scope"/>
       {scope==="team"?<ReviewerRoster team={data.team} mutate={mutate}/>:null}</>:null}
     <div className="ca-v07-tabs">{tabs.map(([key,label])=><button type="button" role="tab" aria-selected={tab===key} className={tab===key?"active":""} key={key} onClick={()=>setTab(key)}>{label} {items.filter(row=>key==="all"||key==="making"&&["draft","blocked"].includes(row.status)||key===row.status||key==="ready"&&row.status==="scheduled").length}</button>)}</div></>}
-    <div className={channel==="threads"&&selected?"ca-v07-threads-workspace":"ca-v07-split"}>{channel==="threads"&&selected?<button type="button" className="secondary-button ca-v07-back-to-list" onClick={()=>router.replace("/automation/threads"+(scope==="team"?"?scope=team":""))}>← 쓰레드 목록</button>:<section className="ca-v07-card ca-v07-item-list"><h2>{scope==="team"?"팀 검토함":PAGE_INFO[page].title+" 목록"}</h2>{filtered.length?filtered.map(row=><button key={row.id} className="ca-v07-row" onClick={()=>router.replace("/automation/"+page+"?"+(scope==="team"?"scope=team&":"")+"sel="+row.id)}><span><strong>{row.title}</strong><small>v{row.version} · 마감 {row.due_date??"없음"}{scope==="team"?" · 작성 "+ownerName(row):isTeam(row)?" · 팀 검토함에 공유됨":""}</small></span><Status value={row.status}/></button>):<Empty text={scope==="team"?"팀 검토함에 올라온 원고가 없습니다.":"이 상태의 내 콘텐츠가 없습니다."}/>}</section>}
+    <div className={channel==="threads"&&selected?"ca-v07-threads-workspace":"ca-v07-split"}>{channel==="threads"&&selected?<button type="button" className="secondary-button ca-v07-back-to-list" onClick={()=>router.replace("/automation/threads"+(scope==="team"?"?scope=team":""))}>← 스레드 목록</button>:<section className="ca-v07-card ca-v07-item-list"><h2>{scope==="team"?"팀 검토함":PAGE_INFO[page].title+" 목록"}</h2>{filtered.length?filtered.map(row=><button key={row.id} className="ca-v07-row" onClick={()=>router.replace("/automation/"+page+"?"+(scope==="team"?"scope=team&":"")+"sel="+row.id)}><span><strong>{row.title}</strong><small>v{row.version} · 마감 {row.due_date??"없음"}{scope==="team"?" · 작성 "+ownerName(row):isTeam(row)?" · 팀 검토함에 공유됨":""}</small></span><Status value={row.status}/></button>):<Empty text={scope==="team"?"팀 검토함에 올라온 원고가 없습니다.":"이 상태의 내 콘텐츠가 없습니다."}/>}</section>}
       {selected?<section className="ca-v07-card ca-v07-edit"><div className="ca-v07-detail-head"><h2>{CHANNEL_LABELS[channel]} · v{selected.version}</h2><button className="secondary-button" onClick={()=>router.replace("/automation/"+page+(scope==="team"?"?scope=team":""))}>닫기</button></div>
         <p><Status value={selected.status}/> · {topic?.title??(selected.metadata.originalSourceId?"롱폼에서 가져온 숏폼":"주제 없음")}{isTeam(selected)?` · 팀 검토함 · 작성 ${own?"나":ownerName(selected)}`:" · 나만 보임"}</p>
         {channel==="threads"?<div className="ca-v07-actions">
@@ -757,7 +759,7 @@ function CalendarView({data,mutate,refresh}:ViewProps&{refresh:()=>Promise<void>
   const reminderFields=selected&&selected.status!=="published"?<><label>게시 날짜<input type="date" value={date} onChange={event=>setDate(event.target.value)}/></label><label>시각<input type="time" value={time} onChange={event=>setTime(event.target.value)}/></label><button className="secondary-button" onClick={()=>void reserve()} disabled={!date}>알림 예약</button></>:null;
   const manualFields=selected?<><h3>앱에서 직접 게시했나요?</h3><p>실제로 게시한 뒤 기록해 주세요. URL이 없으면 성과 수집에 필요한 게시물 식별자를 확인할 수 없습니다. 연결된 계정과 게시물 식별자까지 확인되어야 자동 수집됩니다.</p><label>플랫폼<select value={platform} onChange={event=>setPlatform(event.target.value)}>{availablePlatforms(selected).map(value=><option key={value} value={value}>{value==="instagram"?"인스타그램":value==="youtube"?"YouTube":"Threads"}</option>)}</select></label><label>게시물 URL<input type="url" value={url} onChange={event=>setUrl(event.target.value)} placeholder="선택 입력"/></label><div className="ca-v07-actions"><button className="secondary-button" onClick={()=>router.replace("/automation/calendar?tab=schedule")}>닫기</button><button className="secondary-button" disabled={!availablePlatforms(selected).length} onClick={()=>{if(window.confirm("앱에 실제로 게시했습니까? 해당 플랫폼의 게시 기록을 남깁니다."))void manualDone();}}>앱에서 직접 게시함</button></div></>:null;
   return <><Tabs base="/automation/calendar" active={tab} tabs={[{id:"schedule",label:"발행 일정 "+schedule.length},{id:"history",label:"발행 기록 "+data.publications.length}]}/>
-    {tab==="schedule"?<><div className="ca-v07-card"><h2>발행 준비</h2><p>승인한 콘텐츠를 선택하세요. 쓰레드는 계정과 원고를 확인한 뒤 공식 API로 발행합니다.</p>{schedule.length?schedule.map(row=><button className="ca-v07-row" key={row.id} onClick={()=>router.replace("/automation/calendar?tab=schedule&pub="+row.id)}><strong>{row.title}</strong><span>{row.due_date??"날짜 미정"} · <Status value={row.status}/></span></button>):<Empty text="발행을 기다리는 내 콘텐츠가 없습니다."/>}</div>
+    {tab==="schedule"?<><div className="ca-v07-card"><h2>발행 준비</h2><p>승인한 콘텐츠를 선택하세요. 스레드는 계정과 원고를 확인한 뒤 공식 API로 발행합니다.</p>{schedule.length?schedule.map(row=><button className="ca-v07-row" key={row.id} onClick={()=>router.replace("/automation/calendar?tab=schedule&pub="+row.id)}><strong>{row.title}</strong><span>{row.due_date??"날짜 미정"} · <Status value={row.status}/></span></button>):<Empty text="발행을 기다리는 내 콘텐츠가 없습니다."/>}</div>
       {selected?<section className="ca-v07-card ca-v07-detail"><h2>{selected.title}</h2><p>원고 버전 v{selected.version} · 게시하는 사람: 나</p>
         {selected.metadata.channel==="threads"?<><ThreadsApiPublication key={selected.id} item={selected} onRefresh={refresh}/>
           {reminderFields?<details className="ca-v07-api-secondary"><summary>나중에 게시할 알림 받기</summary><p>게시 시각에 알림만 받습니다. 예약 시각에 자동으로 게시하지 않습니다.</p>{reminderFields}</details>:null}
@@ -1118,7 +1120,7 @@ function SettingsView({data,mutate}:ViewProps){
       <label>이미지 최소 짧은 변(px)<input type="number" min="1" max="10000" value={Number(rules.defaults?.minImageShortSide??1080)} onChange={event=>setRules({...rules,defaults:{...rules.defaults,minImageShortSide:Number(event.target.value)}})}/></label>
       <button className="primary-button" onClick={()=>void saveRules()}>기본값 저장</button></section>
     :tab==="skills"?<SkillSettings data={data} mutate={mutate}/>
-    :tab==="company"?<ContentAutomationSettings embedded/>
+    :tab==="company"?<><p role="status">회사 공통 설정 · 저장 이후 구성원의 자동화 실행과 새 콘텐츠 기본값에 적용됩니다. 기존 게시물은 변경하지 않습니다.</p><ContentAutomationSettings embedded/></>
     :<>{demo&&kind==="templates"?<section className="ca-v07-card ca-v07-form"><h2>카드 문구 미리보기 · 저장 없음</h2><label>미리보기 제목<input value={previewTitle} onChange={event=>setPreviewTitle(event.target.value)}/></label><label>미리보기 본문<textarea value={previewBody} onChange={event=>setPreviewBody(event.target.value)}/></label><div className="automation-template-preview"><h2>{previewTitle||"카드 제목"}</h2><p>{previewBody||"카드 본문"}</p></div></section>:null}<div className="ca-v07-toolbar"><select value={kind} onChange={event=>setKind(event.target.value)} aria-label="자료 종류"><option value="templates">양식</option><option value="assets">이미지</option></select></div>
       <section className="ca-v07-card ca-v07-form"><h2>내 양식·이미지</h2><label>이름<input value={title} onChange={event=>setTitle(event.target.value)}/></label>
         <label>{kind==="assets"?"이미지 파일":"양식 배경 파일"}<input type="file" accept={kind==="assets"?"image/png,image/jpeg,image/webp":"image/png,image/jpeg"} onChange={event=>setFile(event.target.files?.[0]??null)}/></label>

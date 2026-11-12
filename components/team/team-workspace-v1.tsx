@@ -321,7 +321,7 @@ function MyTasks({ tasks, members, userId, requested, token, onChanged }: { task
 }
 function TaskBoard({ tasks, members, owner, token, onChanged }: { tasks: OsRecord[]; members: OsMember[]; owner: string | null; token: string | null; onChanged: () => Promise<void> }) {
   const [business, setBusiness] = useState("all"), [source, setSource] = useState("all"), [layout, setLayout] = useState<"board" | "list">("board");
-  const visible = tasks.filter(task => (!owner || task.assignee_id === owner) && (business === "all" || teamBusiness(task.brand)?.key === business) && (source === "all" || taskSource(task) === source));
+  const visible = tasks.filter(task => (!owner || (owner === "unassigned" ? !task.assignee_id || !members.some(member => member.id === task.assignee_id) : task.assignee_id === owner)) && (business === "all" || teamBusiness(task.brand)?.key === business) && (source === "all" || taskSource(task) === source));
   const [dropTarget, setDropTarget] = useState<string | null>(null), [moveError, setMoveError] = useState("");
   async function drop(event: React.DragEvent, column: typeof TASK_COLUMNS[number]) {
     event.preventDefault(); setDropTarget(null); setMoveError("");
@@ -359,24 +359,26 @@ function ScheduleView({ meetings, tasks, publishes, absences, absenceNotice, wee
 function PeopleView({ members, tasks, absences, absenceNotice }: { members: OsMember[]; tasks: OsRecord[]; absences: TeamAbsence[]; absenceNotice: string }) {
   const people = [...new Map(members.map(member => [member.id, member])).values()];
   const active = tasks.filter(task => !["done", "archived", "cancelled"].includes(task.status));
+  const unassigned = active.filter(task => !people.some(member => member.id === task.assignee_id));
   const overdue = active.filter(task => (daysUntil(task.due_date) ?? 0) < 0);
   const dueSoon = active.filter(task => { const days = daysUntil(task.due_date); return days !== null && days >= 0 && days <= 7; });
   const metrics = [
-    { label: "진행 중", value: active.length },
+    { label: "열린 업무", value: active.length },
+    { label: "진행 중", value: active.filter(task => ["active", "doing"].includes(task.status)).length },
     { label: "막힘", value: active.filter(task => task.status === "blocked").length },
     { label: "기한 지남", value: overdue.length },
     { label: "7일 안 마감", value: dueSoon.length },
   ];
   return <>
     <div className="tm-stats">{metrics.map(metric => <div className="metric" key={metric.label}><div className="metric-label">{metric.label}</div><div className="metric-value">{metric.value}</div></div>)}</div>
-    <div className="panel tm-table-wrap">{people.length ? <table className="data-table"><thead><tr><th>구성원</th><th>열린 업무</th><th>진행 중</th><th>막힘</th><th>기한 지남</th><th>7일 안 마감</th><th>2주 안 부재</th><th>최근 완료</th></tr></thead><tbody>{people.map(member => {
+    <div className="panel tm-table-wrap">{people.length || unassigned.length ? <table className="data-table"><thead><tr><th>구성원</th><th>열린 업무</th><th>진행 중</th><th>막힘</th><th>기한 지남</th><th>7일 안 마감</th><th>2주 안 부재</th><th>최근 완료</th></tr></thead><tbody>{people.map(member => {
       const own = active.filter(task => task.assignee_id === member.id);
       const recentDone = tasks.filter(task => task.assignee_id === member.id && task.status === "done" && (daysUntil(task.updated_at) ?? -999) >= -7).length;
       const role = member.role === "admin" ? "관리자" : member.role === "lead" ? "리드" : "팀원";
       const twoWeeks = dayKey(addDays(new Date(),14));
       const absenceCount = absenceNotice || absences.filter(absence => absence.name === member.display_name && absence.start <= twoWeeks && absence.end >= dayKey(new Date())).length;
       return <tr key={member.id}><td className="cell-title"><Link className="tm-person" href={`/organization/tasks?view=board&owner=${encodeURIComponent(member.id)}`}><span className="os-avatar">{member.display_name.slice(0,1)}</span><span>{member.display_name}<small className="tm-muted"> · {role}</small></span></Link></td><td>{own.length}</td><td>{own.filter(task => ["active", "doing"].includes(task.status)).length}</td><td>{own.filter(task => task.status === "blocked").length}</td><td>{own.filter(task => (daysUntil(task.due_date) ?? 0) < 0).length}</td><td>{own.filter(task => { const days = daysUntil(task.due_date); return days !== null && days >= 0 && days <= 7; }).length}</td><td>{absenceCount}</td><td>{recentDone}</td></tr>;
-    })}</tbody></table> : empty("표시할 팀원이 없습니다.")}</div>
-    <p className="tm-muted"><Users size={14}/> 계정·권한과 인사 상세 정보는 이 화면에 없습니다. 부재는 인사 데이터에서 읽기 전용으로 표시합니다.</p>
+    })}<tr><td><Link href="/organization/tasks?view=board&owner=unassigned">담당 미지정 · 목록 밖 담당</Link></td><td>{unassigned.length}</td><td>{unassigned.filter(task => ["active", "doing"].includes(task.status)).length}</td><td>{unassigned.filter(task => task.status === "blocked").length}</td><td>{unassigned.filter(task => (daysUntil(task.due_date) ?? 0) < 0).length}</td><td>{unassigned.filter(task => { const days = daysUntil(task.due_date); return days !== null && days >= 0 && days <= 7; }).length}</td><td>—</td><td>—</td></tr></tbody></table> : empty("표시할 팀원이 없습니다.")}</div>
+    <p className="tm-muted"><Users size={14}/> 열린 업무는 완료·보관·취소를 제외한 전체이며, 담당 미지정 업무를 포함합니다. 계정·권한과 인사 상세 정보는 이 화면에 없습니다. 부재는 인사 데이터에서 읽기 전용으로 표시합니다.</p>
   </>;
 }

@@ -1,3 +1,4 @@
+import { commerceAdminUrlError } from "@/lib/commerce-admin-url";
 import { protectedImageCreativeChange } from "@/lib/image-creative/storage";
 import { isCommentDraftPatch } from "@/lib/content-comments";
 import { assertReviewedMeetingTask } from "@/lib/server/meeting-review";
@@ -68,7 +69,7 @@ export async function GET(request: Request) {
       .from("os_records")
       .select("*", countRows ? { count: "exact" } : {})
       .is("archived_at", null)
-      .order("updated_at", { ascending: false })
+      .order("updated_at", { ascending: url.searchParams.get("order") === "oldest" })
       .order("id", { ascending: true })
       .range(offset, offset + limit - 1);
     builder = builder.or(`metadata->>kind.is.null,metadata->>kind.neq.image_creative_v1,owner_id.eq.${actor.id}`);
@@ -102,6 +103,7 @@ export async function GET(request: Request) {
       if (!z.string().uuid().safeParse(parentId).success) throw new ApiError(400, "INVALID_PARENT_ID", "연결된 프로젝트 ID를 확인해 주세요.");
       builder = builder.eq("parent_id", parentId);
     }
+    if (url.searchParams.get("createdBy") === "me") builder = builder.eq("created_by", actor.id);
     if (status) builder = builder.eq("status", status);
     if (brand) builder = builder.eq("brand", brand);
     if (team) builder = builder.eq("team", team);
@@ -118,6 +120,10 @@ export async function POST(request: Request) {
   try {
     const actor = await authenticateRequest(request);
     const input = recordCreateSchema.parse(await parseJson(request));
+    if (input.recordType === "connection" && input.tags.includes("commerce-admin")) {
+      const error = commerceAdminUrlError(input.sourceUrl);
+      if (error) throw new ApiError(400, "INVALID_ADMIN_URL", error);
+    }
     if (input.recordType === "content_publish" && input.metadata.space === "personal")
       throw new ApiError(403,"PERSONAL_AUTOMATION_API_REQUIRED","개인 콘텐츠는 콘텐츠 자동화 화면에서 만들고 확인해 주세요.");
     if (protectedThreadsAutomationJob(input.recordType, input.metadata))
@@ -167,8 +173,12 @@ export async function PATCH(request: Request) {
   try {
     const actor = await authenticateRequest(request);
     const input = recordUpdateSchema.parse(await parseJson(request));
-    const { data: current } = await actor.supabase.from("os_records").select("record_type,status,metadata,assignee_id,due_date,parent_id").eq("id", input.id).maybeSingle();
+    const { data: current } = await actor.supabase.from("os_records").select("record_type,status,metadata,assignee_id,due_date,parent_id,tags,source_url").eq("id", input.id).maybeSingle();
     if (!current) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
+    if (current.record_type === "connection" && (input.tags ?? current.tags ?? []).includes("commerce-admin")) {
+      const error = commerceAdminUrlError(input.sourceUrl === undefined ? current.source_url : input.sourceUrl);
+      if (error) throw new ApiError(400, "INVALID_ADMIN_URL", error);
+    }
     if (current.record_type === "content_publish" && current.metadata?.space === "personal")
       throw new ApiError(403,"PERSONAL_AUTOMATION_API_REQUIRED","개인 콘텐츠는 콘텐츠 자동화 화면에서 수정해 주세요.");
     if (protectedThreadsAutomationJob(current.record_type, current.metadata)

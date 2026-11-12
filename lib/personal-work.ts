@@ -39,9 +39,9 @@ const closed = new Set(["done", "completed", "cancelled", "published", "rejected
 export function buildPersonalWork(records: OsRecord[], documents: KnowledgeDocument[], userId: string, admin = false): Record<WorkTab, WorkItem[]> {
   const visible = records.filter(record => !record.archived_at && contentOrigin(record) === "own");
   const item = (record: OsRecord): WorkItem => ({ id: record.id, title: record.title,
-    status: record.metadata.kind === "development_request" ? developmentStatusLabel(record.status) : ({ backlog: "대기", planned: "예정", active: "진행", review: "검토", ready: "승인 대기", blocked: "막힘", done: "완료" } as Record<string, string>)[record.status] || record.status,
+    status: record.metadata.kind === "development_request" ? developmentStatusLabel(record.status) : ({ backlog: "대기", planned: "예정", active: "진행", review: "검토", ready: "승인 대기", blocked: "막힘", done: "완료", todo: "할 일", confirmed: "확정", doing: "진행 중", completed: "완료", cancelled: "취소", published: "발행됨", rejected: "반려", healthy: "정상", pending: "대기", decided: "확정", approval: "승인 대기", pending_approval: "승인 대기" } as Record<string, string>)[record.status] || "상태 확인",
     dueDate: record.due_date, href: recordWorkHref(record), kind: record.record_type,
-    nextAction: record.metadata.kind === "development_request" ? requestPlainSummary(record).nextAction : String(record.metadata.nextAction || record.metadata.doneCriteria || "상세에서 다음 행동 확인"),
+    nextAction: record.metadata.kind === "development_request" ? requestPlainSummary(record).nextAction : String(record.metadata.nextAction || record.metadata.doneCriteria || ({ task: "업무 내용과 기한을 확인하고 진행 상태 갱신", meeting: "안건과 참석 일정을 확인", decision: "확정된 결정과 후속 업무 확인", leave_request: "휴가 일정과 승인 상태 확인" } as Record<string, string>)[record.record_type] || "요청 내용과 결과 확인"),
   });
   const pending = visible.filter(record => !closed.has(record.status));
   const review = pending.filter(record => record.assignee_id === userId && ["review", "ready", "approval", "pending_approval"].includes(record.status)).map(item);
