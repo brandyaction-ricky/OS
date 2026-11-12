@@ -8,7 +8,7 @@ import type { OsRecord } from "@/lib/record-types";
 import type { OvJob } from "@/lib/youtube-process/overview";
 import { newProjectMeta, projectName, TOPIC_FIELD_OF, topicFieldEditable, topicLines, topicMissing, trashDaysLeft, YP_MAX_LINES, type YpGate, type YpKind, type YpProject, type YpRef, type YpTrashed } from "@/lib/youtube-process/project";
 import { applyGateAction, confirmTab, GateError, type YpApproverAction } from "@/lib/youtube-process/confirm";
-import { columnSignature, confirmPlan, draftMissing, emptyStage, outlineMissing, scriptFromPlan, scriptKey, thumbsMissing, withScriptVersion, type YpStageData, type YpStageKind, type YpStoredFormula } from "@/lib/youtube-process/stages";
+import { columnSignature, confirmPlan, draftMissing, emptyStage, outlineMissing, scriptFromPlan, scriptKey, thumbsMissing, withNotePatch, withScriptVersion, type YpNotePatch, type YpStageData, type YpStageKind, type YpStoredFormula } from "@/lib/youtube-process/stages";
 import { shortScriptMissing, type YpShortRefFetch } from "@/lib/youtube-process/short-script";
 import { columnMeta } from "@/lib/seo-column";
 import { markReviewed, setReviewers, type YpReviewer } from "@/lib/youtube-process/reviewers";
@@ -519,10 +519,11 @@ function demoClient(): YpClient {
       const now = new Date().toISOString();
       let data = { ...current.data, ...patch } as YpStageData[typeof kind];
       if (kind === "outline") {
-        const { saveVersion, restore, ...fields } = patch as { saveVersion?: boolean; restore?: number };
+        const { saveVersion, restore, note, noteState, applyNote, ...fields } = patch as { saveVersion?: boolean; restore?: number } & YpNotePatch;
         const outline = { ...current.data, ...fields } as YpStageData["outline"];
-        data = (restore ? withScriptVersion(outline, outline.versions.find(item => item.v === restore)?.md ?? outline.script, "리키", now, "restore")
-          : saveVersion ? withScriptVersion(outline, outline.script, "리키", now, "manual") : outline) as YpStageData[typeof kind];
+        const versioned = restore ? withScriptVersion(outline, outline.versions.find(item => item.v === restore)?.md ?? outline.script, "리키", now, "restore")
+          : saveVersion ? withScriptVersion(outline, outline.script, "리키", now, "manual") : outline;
+        data = withNotePatch(versioned, { note, noteState, applyNote }, "리키", now, crypto.randomUUID().slice(0, 8)) as YpStageData[typeof kind];
       }
       if (kind === "make") {
         const make = { ...(current.data as YpStageData["make"]) }; const p = patch as Record<string, unknown>;

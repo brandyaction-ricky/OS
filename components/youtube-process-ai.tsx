@@ -12,7 +12,7 @@ import type { YpPattern, YpPatterns } from "@/lib/youtube-process/stages";
 
 // S12 내 AI (지시서 9장): the job goes to the requester's own Claude through the OS connection (owner decision 2026-10-17, already
 // running for ② 원고 · ⑦ 업로드 자료), so the screen talks to the same staff-AI queue instead of a Chrome extension.
-type Task = "thumbs" | "script" | "kit" | "plan" | "shorts" | "short" | "niche" | "column" | "short-copy" | "retitle" | "short-topics" | "short-formula" | "short-script" | "topic-formula" | "card";
+type Task = "thumbs" | "script" | "script-notes" | "kit" | "plan" | "shorts" | "short" | "niche" | "column" | "short-copy" | "retitle" | "short-topics" | "short-formula" | "short-script" | "topic-formula" | "card";
 /** What the job hooks read from a page; 주제 찾기 › 틈새 passes its shared board as the project. */
 type JobPage = Pick<YpPage, "demo" | "accessToken" | "profile"> & { bundle?: { project: { id: string; version: number } } | null; reload?: () => Promise<unknown> };
 const TASK: Record<Task, { name: string; result: string }> = {
@@ -30,6 +30,7 @@ const TASK: Record<Task, { name: string; result: string }> = {
   shorts: { name: "쇼츠 대본 쓰기", result: "정한 편수만큼 쇼츠 대본을 써 줘요. PD가 고르고 확정해요." },
   plan: { name: "기획안 쓰기", result: "시장 영상에서 뽑은 공식대로 제목 후보 · 썸네일 후보를, 영상 흐름 초안과 함께 채워 줘요." },
   script: { name: "구성안 원고 쓰기", result: "원고 초안을 써서 새 버전으로 넣어 줘요." },
+  "script-notes": { name: "구간 의견으로 원고 고치기", result: "고른 구간마다 의견을 반영한 수정안을 하나씩 줘요. 원문과 나란히 보고 반영할 것만 반영해요. 반영하기 전까지 원고는 그대로예요." },
   kit: { name: "설명란 · 고정 댓글 만들기", result: "설명란 · 고정 댓글 · 다른 채널 문안을 만들어 줘요." },
 };
 const since = (iso: string | null) => iso ? Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60_000)) : null;
