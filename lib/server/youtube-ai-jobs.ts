@@ -888,7 +888,7 @@ export async function completeStaffJob(agent: RequestActor, input: Extract<z.inf
       ? checkShortStoryboardResult(input.result, { words: myin.words, speech: myin.speech, headCopy: myin.headCopy, durationSeconds: myin.run.words!.durationSeconds, diagrams: DIAGRAM_CATALOG })
       : checkMyinStoryboardResult(input.result, myin.words, catalogTypes, myin.speech));
     await saveMyinStoryboard(service(), myin.record, myin.run, { storyboard: checked.storyboard, assets: checked.assets, reasons: checked.reasons,
-      fuzzy: checked.fuzzy, notes: checked.notes, model: input.model });
+      fuzzy: checked.fuzzy, notes: checked.notes, reading: (checked as { reading?: string[] }).reading, model: input.model });
     await saveJob(job, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });
     return { done: true, scenes: (checked.storyboard.scenes as unknown[]).length, fuzzyCues: checked.fuzzy.length, next: myin.run.layout === "short" ? "로건, 유쓰가 숏폼 제작 화면에서 기획표를 확인합니다." : "로건, 유쓰가 ③ 영상 제작 화면에서 비유 포인트·구독 위치·한 장 정리를 확인합니다." };
   }

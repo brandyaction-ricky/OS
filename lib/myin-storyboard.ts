@@ -400,9 +400,41 @@ function stageReuseIssues(scenes: Record<string, unknown>[]) {
   return issues;
 }
 
+// ── 읽을 시간 (수정 요청 2026-11-08 2순위). Eight recent videos (11-01~11-06, 395 timed scenes): screen text came at a median 2.6 and
+// a 90th percentile 5.8 characters a second; 0–6 scenes a video went past 8, mostly fast openings and chat screens. A note for the
+// person who checks the storyboard, never a stop: no voice, subtitle or scene time is changed. ──
+const READ_RATE = 8, READ_MIN = 15;
+const NOT_SHOWN = /^(cue.*|at|at_time|type|mood|music|bg|file|image|images|kind|panel|focus.*|slam|size|accent|blue|cup|x|y|w|h|box|top|rowh|credit|link|url|next_video|sound|ambience|gain_db|beat|why|recall|t|t_.*|_.*)$/;
+const FLAG = new Set(["accent", "blue", "strike", ""]);
+/** The words a scene puts on screen: no cue phrases, file names, links or notes; a title cell [shown, cue, flag] counts its first word. */
+function shownWords(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) {
+    if ((value.length === 2 || (value.length === 3 && FLAG.has(String(value[2])))) && value.every((item) => typeof item === "string")) return [value[0] as string];
+    return value.flatMap(shownWords);
+  }
+  if (value && typeof value === "object") return Object.entries(value).filter(([key]) => !NOT_SHOWN.test(key)).flatMap(([, item]) => shownWords(item));
+  return [];
+}
+const mmss = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
+/** Scenes whose screen text comes faster than READ_RATE characters a second for as long as the scene stays (from the voice). */
+export function myinReadingNotes(scenes: Record<string, unknown>[], words: [number, number, string][], end?: number) {
+  const starts = myinSceneStarts(scenes, words), last = end ?? words.at(-1)?.[1] ?? 0;
+  return scenes.flatMap((scene, index) => {
+    const start = starts[index];
+    // 한 장 정리 is there to be captured (and held at least 5 s); the end card and the site capture are not read line by line.
+    if (start === null || ["summary", "endscreen", "site_ad"].includes(String(scene.type))) return [];
+    const seconds = (starts.slice(index + 1).find((value) => value !== null) ?? last) - start;
+    if (seconds <= 0.3) return [];        // a 0-second opening placeholder (intro off)
+    const chars = myinNorm(shownWords(scene).join("")).length;
+    return chars >= READ_MIN && chars / seconds > READ_RATE
+      ? [`${index + 1}번 장면 (${mmss(start)}) · 화면 글자 ${chars}자가 ${seconds.toFixed(1)}초 동안 — 1초에 ${Math.round(chars / seconds)}자. 글자를 줄일지, 그대로 둘지 정해 주세요`] : [];
+  });
+}
+
 export function checkMyinStoryboard(value: unknown, words: [number, number, string][], catalogTypes: readonly string[] = [], speech = "", options: { deck?: boolean } = {}) {
   const parsed = myinStoryboardSchema.safeParse(value);
-  if (!parsed.success) return { issues: parsed.error.issues.slice(0, 20).map((issue) => `${issue.path.join(".") || "기획표"}: ${issue.message}`), notes: [] as string[], fuzzy: [] as string[], story: null };
+  if (!parsed.success) return { issues: parsed.error.issues.slice(0, 20).map((issue) => `${issue.path.join(".") || "기획표"}: ${issue.message}`), notes: [] as string[], fuzzy: [] as string[], reading: [] as string[], story: null };
   const story = parsed.data;
   const issues: string[] = [];
   const types = story.scenes.map((sc) => sc.type);
@@ -419,7 +451,7 @@ export function checkMyinStoryboard(value: unknown, words: [number, number, stri
   issues.push(...screenOrderIssues(story, words), ...openingTextIssues(story, words, speech), ...statListIssues(story), ...ctaWordingIssues(story), ...photoFocusIssues(story));
   const notes = unknown.filter((type) => !type.startsWith("lib_"))
     .map((type) => `새 장면 종류 "${type}": 로건님 코드에 그리는 방법을 먼저 추가해야 합니다.`);
-  return { issues: issues.slice(0, 40), notes, fuzzy: cues.fuzzy, story };
+  return { issues: issues.slice(0, 40), notes, fuzzy: cues.fuzzy, reading: myinReadingNotes(story.scenes as Record<string, unknown>[], words, typeof story.end === "number" ? story.end : undefined), story };
 }
 
 /** Where the render PC fetches a storyboard photo, or null when it cannot fetch it by itself. An Unsplash page link is refused:

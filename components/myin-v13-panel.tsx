@@ -22,7 +22,7 @@ import { MyinSubtitleEdit } from "./myin-subtitle-edit";
 
 interface Storyboard { scenes: number; model: string; at: string; metaphors: { scene: number; type: string; at: string }[]; cta: { after: string; line: string }[];
   summary: { title: string; points: string[] } | null; reasons: { metaphors: string; cta: string; summary: string };
-  assets: { kind: string; file: string; url: string; source: string; license: string; use: string }[]; fuzzy: string[]; notes: string[] }
+  assets: { kind: string; file: string; url: string; source: string; license: string; use: string }[]; fuzzy: string[]; notes: string[]; reading?: string[] }
 interface MyinRun { id: string; status: string; stage: string; layout?: "short" | null; paragraphs: number; paragraphsReady: number; voiceOnPc?: boolean; lastErrorCode: string | null; waitingPhotos?: string[];
   words: { words: number; subtitleLines: number; durationSeconds: number } | null; storyboard: Storyboard | null;
   review: { decision: "confirmed" | "revise"; name: string; note: string; at: string } | null;
@@ -344,6 +344,9 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
         <MyinOurImages key={run.id} runId={run.id} token={accessToken} open={Boolean(run.waitingPhotos?.length)} onSaved={() => void load()} onScene={(scene) => void showSheet(Math.ceil(scene / 12))} />
         {board.fuzzy.length ? <details className="yt-details"><summary>받아쓰기와 비슷한 구간으로만 찾은 문구 {board.fuzzy.length}개</summary>
           <ul className="yt-list">{board.fuzzy.map((f) => <li key={f}>{f}</li>)}</ul></details> : null}
+        {board.reading?.length ? <details className="yt-details"><summary>읽을 시간이 짧을 수 있는 장면 {board.reading.length}개 (참고 · 막지 않아요)</summary>
+          <ul className="yt-list">{board.reading.map((line) => <li key={line}>{line}</li>)}</ul>
+          <p className="yt-note">화면 글자 수를 그 장면이 머무는 시간(음성 기준)으로 나눠 1초에 8자를 넘는 곳이에요. 음성 · 자막 · 장면 시간은 바꾸지 않아요.</p></details> : null}
         {board.notes.length ? <details className="yt-details"><summary>AI가 남긴 제안 {board.notes.length}개</summary>
           <ul className="yt-list">{board.notes.map((n) => <li key={n}>{n}</li>)}</ul></details> : null}
         {/* Every stage the server takes a 수정 요청 in, the preview clips included (로건 피드백 A-7: the button was gone at 시안 확인). */}

@@ -3,7 +3,7 @@
 import { z } from "zod";
 import type { YpScreenCheck } from "./youtube-process/stages.ts";
 
-export const SCREEN_KINDS = ["넘침", "겹침", "잘림", "빈 화면", "깨진 글자", "로고", "글자 많음", "기타"] as const;
+export const SCREEN_KINDS = ["넘침", "겹침", "잘림", "빈 화면", "깨진 글자", "로고", "글자 많음", "가림 가능", "기타"] as const;
 
 /** Each scene's type and its words (cut short), so GPT can say which storyboard field to change. */
 export function sceneHints(scenes: Record<string, unknown>[]) {
@@ -23,7 +23,7 @@ export function screenPrompt(hints: string, short: boolean) {
 - 깨진 글자: □ 같은 깨진 글자, 파일 이름 · 코드 · 영어 변수 이름이 화면에 보임
 - 로고: 화면 구석의 MYIN 로고 · 표기 (진단 광고 · 마이인 사이트 화면 장면은 괜찮음)
 - 글자 많음: 한 화면에 글자가 너무 많아 한눈에 안 읽힘
-- 기타: 위에 없지만 분명히 이상한 것
+${short ? "- 가림 가능: 꼭 읽어야 할 글자 · 버튼 문구가 화면 맨 위 14% 안이나 맨 아래 35% 안에 있음(릴스 · 쇼츠의 버튼 · 설명이 덮을 수 있는 자리 — 기기마다 달라 확정이 아닌 참고). 위 제목 띠처럼 원래 그 자리에 두는 것은 적지 않음\n" : ""}- 기타: 위에 없지만 분명히 이상한 것
 
 지킬 것
 - 확실히 보이는 것만 적습니다. 작아서 판단이 어려우면 적지 않습니다. 디자인 취향(색 · 글꼴 · 배치 선호)은 적지 않습니다.

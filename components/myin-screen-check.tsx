@@ -57,6 +57,9 @@ export function MyinScreenCheck({ runId, preparedAt, token, onScene, auto = true
         {group.scenes.length > 6 ? <small style={{ alignSelf: "center" }}>외 {group.scenes.length - 6}곳</small> : null}</div>
       {group.fix ? <div className="yt-note" style={{ margin: "2px 0 0" }}>→ {group.fix}</div> : null}</li>)}</ul> : null}
     {current?.state === "done" && current.note ? <p className="yt-note">{current.note}</p> : null}
+    {/* 수정 요청 2026-11-08 (1순위): what the check did not look at is said, so 「문제 없음」 is not read as the whole video. */}
+    {current?.state === "done" ? <p className="yt-note">검사 범위: 장면마다 한 순간(점검 시트의 한 칸)만 봐요. 장면 안에서 움직이며 생기는 문제는 미리보기 · 완성 영상에서 확인해 주세요.
+      {scenes.some((item) => item.kind === "가림 가능") ? " 「가림 가능」은 릴스 · 쇼츠 버튼이 덮을 수 있는 자리라는 참고예요(기기마다 달라요)." : ""}</p> : null}
     <div className="yt-actions">
       <select aria-label="검사 모델" value={tier} disabled={Boolean(blocked)} onChange={(event) => setTier(event.target.value as GptTier)}>
         {(Object.keys(GPT_TIERS) as GptTier[]).map((key) => <option key={key} value={key}>{GPT_TIERS[key].label} · {modelName(GPT_TIERS[key].model)}</option>)}</select>
