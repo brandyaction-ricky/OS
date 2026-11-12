@@ -5,6 +5,7 @@ import { CircleAlert, Instagram, Youtube, MessageCircle, KeyRound } from "lucide
 import Link from "next/link";
 import { apiRequest, listMembers, startYoutubeOAuth, type OsMember } from "@/lib/api-client";
 import type { ChannelConnection, ChannelPlatform } from "@/lib/channel-types";
+import { metaConnectionResultMessage } from "@/lib/meta-connection-result";
 import type { OsRecord } from "@/lib/record-types";
 import { PageTitle } from "./page-title";
 import { GuideNumber } from "./page-guide";
@@ -69,7 +70,7 @@ export function AccountWorkspace() {
     <header className="page-header"><div className="page-title-group"><PageTitle/><p>내 정보와 채널 연결을 관리합니다. 회사 전체 연결 상태는 <Link href="/settings/connections">작동 상태</Link>에서 확인하세요.</p></div></header>
     {error?<div className="inline-alert danger" role="alert"><CircleAlert size={16}/>{error}<button onClick={load}>다시 불러오기</button></div>:null}
     {notice?<div className="inline-alert success" role="status">{notice}</div>:null}
-    {callback?<div className="inline-alert" role="status">{callback==="connected"?"채널을 연결했습니다.":callback==="already_connected"?"다른 OS 계정에 연결되어 있습니다. 그 계정에서 팀 공유를 켜 주세요.":callback==="disconnect_first"?"기존 계정을 먼저 해제한 뒤 다른 계정을 연결해 주세요.":"연결을 완료하지 못했습니다. 관리자 테스터 등록 → 초대 수락 → 연결 순서와 권한을 확인해 주세요."}</div>:null}
+    {callback?<div className="inline-alert" role="status">{metaConnectionResultMessage(callback)}</div>:null}
     {demo||mode==="mock"?<div className="inline-alert">{demo?"로컬 연습용 화면":"Meta 연습용 모드"} · Meta 실제 인증·게시·답글은 실행하지 않습니다.</div>:null}
     <div className="account-layout"><aside>
       <section className="panel account-info"><h2>내 정보</h2><dl><dt>이름</dt><dd>{profile?.displayName}</dd><dt>팀</dt><dd>{profile?.team}</dd><dt>역할</dt><dd>{profile?.role==="admin"?"관리자":profile?.role==="lead"?"팀 리드":"구성원"}</dd></dl><label>화면 테마<select value={theme} onChange={event=>changeTheme(event.target.value as Theme)}><option value="system">기기 설정 따름</option><option value="light">밝게</option><option value="dark">다크</option></select></label><button className="secondary-button" onClick={()=>setPassword(true)}><KeyRound size={14}/>비밀번호 변경</button></section>

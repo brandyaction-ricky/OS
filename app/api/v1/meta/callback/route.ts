@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { ApiError } from "@/lib/http";
+import { metaConnectionFailure } from "@/lib/meta-connection-result";
 import { META_COOKIE, metaMode, saveMetaConnection, verifyMetaState } from "@/lib/server/meta-oauth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,14 +13,16 @@ export async function GET(request: Request) {
   let result = "failed";
   try {
     const state = verifyMetaState(jar.get(META_COOKIE)?.value, url.searchParams.get("state"));
-    if (metaMode() !== "live" || url.searchParams.has("error")) result = "tester_or_permission_required";
-    else {
-      const code = url.searchParams.get("code");
-      if (!code) throw new ApiError(400, "META_CODE_REQUIRED", "연결 코드가 없습니다.");
-      await saveMetaConnection(state.ownerId, state.platform, code); result = "connected";
-    }
+    if (metaMode() !== "live") throw new ApiError(503, "META_MODE_NOT_LIVE", "Meta 실제 연결 모드가 아닙니다.");
+    if (url.searchParams.has("error")) throw new ApiError(403, "META_PROVIDER_DENIED", "Meta 동의가 완료되지 않았습니다.");
+    const code = url.searchParams.get("code");
+    if (!code) throw new ApiError(400, "META_CODE_REQUIRED", "연결 코드가 없습니다.");
+    await saveMetaConnection(state.ownerId, state.platform, code); result = "connected";
   } catch (error) {
-    result = error instanceof ApiError && error.code === "CHANNEL_ALREADY_CONNECTED" ? "already_connected" : error instanceof ApiError && error.code === "CHANNEL_REPLACEMENT_REQUIRED" ? "disconnect_first" : "tester_or_permission_required";
+    const failure = metaConnectionFailure(error);
+    result = failure.result;
+    // Only allowlisted codes/stages/numbers. Never log the raw error, request, URL or provider body.
+    console.warn("Meta OAuth connection failed", failure.diagnostic);
   }
   const response = NextResponse.redirect(`${base}/settings/account?meta=${result}`);
   response.cookies.set(META_COOKIE, "", { httpOnly: true, secure: true, sameSite: "lax", path: "/api/v1/meta", maxAge: 0 });
