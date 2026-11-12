@@ -48,7 +48,8 @@ test("an earlier video's 채널 모양 only fills a new video's start", async ()
   assert.doesNotMatch(earlier, /save\(|\.insert\(|\.update\(|\.upload\(|createService/, "reading changes nothing");
   assert.match(await read("app/api/v1/content/youtube-automation/myin/route.ts"), /query\.get\("earlierStyles"\)[\s\S]*myinEarlierStyles\(actor/);
   const panel = await read("components/myin-v13-panel.tsx");
-  assert.match(panel, /<EarlierStylePick sourceId=\{sourceId\} token=\{accessToken\} styles=\{styles\} onPick=\{setStyleId\} \/>/, "it sets the start's choice");
+  assert.match(await read("components/myin-make-settings.tsx"), /<EarlierStylePick sourceId=\{sourceId\} token=\{token\} styles=\{styles\} onPick=\{onStyle\} \/>/, "it sets the start's choice");
+  assert.match(panel, /onStyle=\{setStyleId\}/);
   const pick = (await read("components/myin-run-record.tsx")).split("export function EarlierStylePick")[1];
   assert.doesNotMatch(pick, /method: "(POST|PATCH)"/);
 });

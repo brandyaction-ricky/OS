@@ -35,3 +35,9 @@ export function localBlocker(status: LocalRenderStatus | null, ready = true) {
   if (status.engine === "unknown") return "영상 만드는 컴퓨터 엔진 버전을 확인하는 중이에요";
   return null;
 }
+
+/** 제작 설정 (직원 요청 2026-11-05): where a confirm that brings no choice of its own places the next step. A staff computer only for a
+ *  longform whose stage 1 left the voice for staff Macs; otherwise the render PC. */
+export function settingsPlace(settings: { place: "pc" | "local" } | undefined, run: { layout?: string | null; words?: { voice?: unknown } | null }) {
+  return settings?.place === "local" && !run.layout && run.words?.voice ? "local" as const : "pc" as const;
+}

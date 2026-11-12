@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { myinBreathText, myinCleanScript, myinRunMatchesScript, myinScriptMarkdown } from "@/lib/myin-script";
-import { localOwner, movePinned, pinnedElsewhere, placeFilter } from "@/lib/myin-local";
+import { localOwner, movePinned, pinnedElsewhere, placeFilter, settingsPlace } from "@/lib/myin-local";
 import { changedMaterials, type MyinMaterials } from "@/lib/myin-materials";
 import { planVoiceFix } from "@/lib/myin-voice-plan";
 import { applySubtitleEdits, subtitleIssues, subtitleLines, subtitleTextProblem } from "@/lib/myin-subtitles";
@@ -142,6 +142,9 @@ const runSchema = z.object({
   // 직원 요청 2026-11-03: ④ 자료 준비 and the full video on a member's own computer too — both, since the video is drawn from the folder
   // the preparation filled. The render PC still makes the 구독 대사 voice (the Fish key and Logan's voice tools live only there).
   localFinish: z.object({ by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict().optional(),
+  // 제작 설정 (직원 요청 2026-11-05): where every later step is made and whether GPT checks the screens, chosen once when the video starts
+  // (or changed later) instead of at each step. 「내 컴퓨터」 is the computer of whoever chose it.
+  settings: z.object({ place: z.enum(["pc", "local"]), screenCheck: z.boolean(), by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict().optional(),
   // 사운드 창고 (2026-10-27): Logan's music match report from the ③ preparation, and who last changed the sound at ④.
   sound: z.object({ report: z.string().max(20_000), at: z.string().datetime(),
     edited: z.object({ by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict().optional() }).strict().optional(),
@@ -218,6 +221,7 @@ export function presentMyinRun(record: OsRecord) {
     style: run.style ? { id: run.style.id, name: run.style.name, version: run.style.version, channel: run.style.channel } : null,
     lastErrorCode: run.lastError?.code ?? null, waitingPhotos: (run.lastError?.files ?? []).filter((file) => !run.ours?.[file]), createdAt: record.created_at, local: run.local ? { by: run.local.by, name: run.local.name } : null,
     localFinish: run.localFinish ? { by: run.localFinish.by, name: run.localFinish.name } : null, clipsStale: previewStale(run),
+    settings: run.settings ? { place: run.settings.place, screenCheck: run.settings.screenCheck, name: run.settings.name } : null,
     photoCredits: Object.fromEntries(Object.entries(run.ours ?? {}).map(([file, image]) => [file, image.credit ? { source: image.credit.source, license: image.credit.license, url: image.credit.url }
       : { source: `우리 이미지 · ${image.name}`, license: "", url: null }])), localReady: Boolean(run.words?.voice) && !run.layout,
     // 로건 피드백 10/26-8: when the render PC took this step, so the screen can say how long it has been working.
@@ -272,7 +276,7 @@ function storyboardFields(storyboard: Record<string, unknown>) {
 }
 
 /** Logan (연출자) confirms the storyboard, or sends it back with a note for the staff AI's next pass. */
-export async function reviewMyinStoryboard(actor: RequestActor, runId: string, decision: "confirmed" | "revise", note: string, place: "pc" | "local" = "pc", screenCheck = true) {
+export async function reviewMyinStoryboard(actor: RequestActor, runId: string, decision: "confirmed" | "revise", note: string, place?: "pc" | "local", screenCheck?: boolean) {
   const service = createServiceSupabase();
   const { record, run } = await visibleRun(actor, runId);
   // Confirm from review; a change of mind (revise) is still possible after confirming, until the preview clips start.
@@ -281,7 +285,7 @@ export async function reviewMyinStoryboard(actor: RequestActor, runId: string, d
   if (decision === "revise" && !note.trim()) throw new ApiError(400, "MYIN_REVIEW_NOTE_REQUIRED", "무엇을 고칠지 한 줄 적어 주세요.");
   if (decision === "confirmed") await assertCurrent(service, run);
   const next: MyinRun = { ...run, review: { decision, by: actor.id, name: actor.name, note: note.trim().slice(0, 2000), at: new Date().toISOString() } };
-  if (decision === "confirmed") { draftPlace(next, actor, place); if (screenCheck) delete next.screenCheckOff; else next.screenCheckOff = true; }
+  if (decision === "confirmed") { placeStep(next, actor, place); if (screenCheck ?? run.settings?.screenCheck ?? true) delete next.screenCheckOff; else next.screenCheckOff = true; }
   if (decision === "revise") { delete next.prepared; delete next.clips; delete next.stills; delete next.clipsReview; delete next.sound; delete next.lease; return presentMyinRun(await save(service, record, "backlog", "words_ready", next)); }
   // 2026-10-27 대표: 시안(도식·글자)을 먼저 본다. 사진 허락과 구독 대사 음성은 시안 확인 뒤 ④ 자료 준비에서(2026-10-19의 「확인 = 사진 허락」을 옮김).
   const saved = await save(service, record, "done", "storyboard_confirmed", next);
@@ -289,10 +293,26 @@ export async function reviewMyinStoryboard(actor: RequestActor, runId: string, d
 }
 
 /** ③ drafts go to `local`, ④ with the full video (once the drafts are confirmed) to `localFinish`. */
-function draftPlace(run: MyinRun, actor: RequestActor, place: "pc" | "local") {
+function draftPlace(run: MyinRun, who: { ownerId: string; name: string }, place: "pc" | "local") {
   const field = run.clipsReview ? "localFinish" : "local";
-  if (place === "local") { assertLocalReady(run); run[field] = { by: actor.ownerId, name: actor.name, at: new Date().toISOString() }; }
+  if (place === "local") { assertLocalReady(run); run[field] = { by: who.ownerId, name: who.name, at: new Date().toISOString() }; }
   else delete run[field];
+}
+
+/** A confirm places the next step as asked, else by the 제작 설정 — on the chooser's computer, or the render PC where a staff computer cannot make this video. */
+function placeStep(run: MyinRun, actor: RequestActor, place?: "pc" | "local") {
+  if (place) return draftPlace(run, actor, place);
+  const settings = run.settings;
+  draftPlace(run, settings ? { ownerId: settings.by, name: settings.name } : actor, settingsPlace(settings, run));
+}
+
+/** 제작 설정 바꾸기: steps that start after this follow the new choice; a step already waiting is moved with 만드는 곳 buttons. */
+export async function setMyinSettings(actor: RequestActor, runId: string, choice: { place: "pc" | "local"; screenCheck: boolean }) {
+  const service = createServiceSupabase();
+  const { record, run } = await visibleRun(actor, runId);
+  if (run.final && record.stage === "final_ready") throw new ApiError(409, "MYIN_SETTINGS_DONE", "완성된 영상이에요. 다시 만들 때 바꿔 주세요.");
+  const next: MyinRun = { ...run, settings: { ...choice, by: actor.ownerId, name: actor.name, at: new Date().toISOString() } };
+  return presentMyinRun(await save(service, record, record.status, record.stage!, next));
 }
 
 /**
@@ -344,7 +364,7 @@ async function assertOneChannel(sourceId: string, markdownHash: string, channel:
 export const runVoice = (run?: { voiceReference?: string }) => run?.voiceReference || process.env.FISH_VOICE_REFERENCE_ID?.trim() || "";
 
 /** [v13 음성 만들기]: any member who can read the video starts its one run for the approved script (owner decision 2026-10-20: no extra roles). */
-export async function createMyinRun(actor: RequestActor, sourceId: string, styleId?: string) {
+export async function createMyinRun(actor: RequestActor, sourceId: string, styleId?: string, settings?: { place: "pc" | "local"; screenCheck: boolean }) {
   const input = await currentInput(actor.supabase, sourceId);
   const cards = (await readChannelStyles()).styles;
   const picked = styleId ? cards.find((style) => style.id === styleId) : undefined;
@@ -366,6 +386,7 @@ export async function createMyinRun(actor: RequestActor, sourceId: string, style
   const run: MyinRun = { kind: MYIN_RUN_KIND, runKey, sourceId, inputKey: input.inputKey, script: input.script, scriptMarkdownHash: markdownHash,
     voiceModel: MYIN_VOICE_MODEL, voiceReferenceFingerprint: fingerprint, ...(channelVoice ? { voiceReference: channelVoice } : {}), attempts: 0, ...(input.layout ? { layout: input.layout } : {}), ...(onPc ? { voiceOn: "render_pc" as const } : {}),
     ...(picked ? { style: pinStyle(picked) } : {}),
+    ...(settings ? { settings: { ...settings, by: actor.ownerId, name: actor.name, at: new Date().toISOString() } } : {}),
     paragraphs: input.spoken.map((text, index) => ({ index, textHash: sha(text), status: "pending" })) };
   const { data, error } = await actor.supabase.from("os_records").insert({
     id, record_type: "ai_job", title: `${input.state.source.title} · ${input.layout ? "숏폼 " : ""}v13 음성·받아쓰기`.slice(0, 240),
@@ -1297,7 +1318,7 @@ export async function completeMyinClips(input: { runId: string; lease: string; n
 }
 
 /** Logan's OK on the clips starts the full render; changes go back through 수정 요청 on the storyboard. The same button restarts a stopped full render. */
-export async function confirmMyinClips(actor: RequestActor, runId: string, note: string, place: "pc" | "local" = "pc") {
+export async function confirmMyinClips(actor: RequestActor, runId: string, note: string, place?: "pc" | "local") {
   const service = createServiceSupabase();
   const { record, run } = await visibleRun(actor, runId);
   await assertCurrent(service, run);
@@ -1306,7 +1327,7 @@ export async function confirmMyinClips(actor: RequestActor, runId: string, note:
   const stale = previewStale(run);
   if (stale?.length) throw new ApiError(409, "MYIN_CLIPS_STALE", `미리보기를 만든 뒤 ${stale.join(" · ")}이(가) 바뀌었어요. [미리보기 다시 만들기]로 새로 만든 뒤 확인해 주세요.`);
   const next: MyinRun = { ...run, attempts: 0, clipsReview: { by: actor.id, name: actor.name, note: note.trim().slice(0, 2000), at: new Date().toISOString() } };
-  draftPlace(next, actor, place);
+  placeStep(next, actor, place);
   retireFinal(next);
   // 장면 그림: 완성 runs ④ and ⑤ in one go (the sound is checked in the editor screen, before), as a 숏폼's ④ does.
   if (run.stills) next.resumeFinal = true;
