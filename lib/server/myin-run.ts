@@ -128,7 +128,9 @@ const runSchema = z.object({
     credit: z.object({ source: z.string().max(300), license: z.string().max(120), url: z.string().url().max(600) }).strict().optional() }).strict()).optional(),
   // `pc`: a line the render PC made with Logan's stage_cta for a member's own computer (a finished file, used as it is).
   cta: z.array(z.object({ index: z.number().int().min(0), textHash: hex, status: z.enum(["pending", "ready"]), path: z.string().optional(), pc: z.literal(true).optional() }).strict()).optional(),
-  prepared: z.object({ path: z.string(), misses: z.array(z.string()), sheets: z.array(z.string()), credits: z.array(z.string()), at: z.string().datetime(), used: materialsSchema.optional(), engine: engineFp.optional() }).strict().optional(),
+  // storyboardPath: the storyboard file the sheets show, kept once a 장면 수정안 changes the storyboard under them (직원 요청 11-12).
+  prepared: z.object({ path: z.string(), misses: z.array(z.string()), sheets: z.array(z.string()), credits: z.array(z.string()), at: z.string().datetime(), used: materialsSchema.optional(), engine: engineFp.optional(),
+    storyboardPath: z.string().optional() }).strict().optional(),
   // Stage 4: Logan's 720p clips (opening + reel, each metaphor), his OK, then the full render, mix and handouts.
   clips: z.object({ items: z.array(z.object({ name: z.string(), label: z.string(), path: z.string() }).strict()), at: z.string().datetime(), used: materialsSchema.optional(),
     engine: engineFp.optional() }).strict().optional(),
@@ -750,6 +752,27 @@ export async function storyboardJson(service: Service, run: MyinRun) {
   if (!data) throw new ApiError(409, "MYIN_STORYBOARD_MISSING", "기획표 파일을 찾지 못했습니다.");
   return JSON.parse(await data.text()) as Record<string, unknown> & { scenes: Record<string, unknown>[]; cta: { line: string }[] };
 }
+/** The storyboard the ③ sheets were drawn from and its version (at): the one now, unless a 장면 수정안 changed it since (storyboardPath). */
+export async function sheetsStory(service: Service, run: MyinRun) {
+  const at = run.prepared?.used?.storyboard || run.storyboard?.at || "";
+  const path = run.prepared?.storyboardPath ?? (at === run.storyboard?.at ? run.storyboard?.path : undefined);
+  if (!path) throw new ApiError(409, "MYIN_SHEETS_STORY_MISSING", "점검 시트를 그린 기획표를 찾지 못했어요. 미리보기를 다시 만들어 주세요.");
+  const story = await storyboardJson(service, { ...run, storyboard: { ...run.storyboard!, path } });
+  return { ...story, at };
+}
+
+/**
+ * 장면 수정안 반영 (직원 요청 11-12): the storyboard with a scene replaced, as a new version (new at) at the same stage. The ③ sheets
+ * stay and keep showing the version they were drawn from; the preview reads as made from an older storyboard until it is made again.
+ */
+export async function saveMyinSceneEdit(service: Service, record: OsRecord, run: MyinRun, story: Record<string, unknown>) {
+  const { path } = await putStoryboard(service, record, run, story);
+  const prepared = run.prepared && !run.prepared.storyboardPath && (run.prepared.used?.storyboard ?? run.storyboard?.at) === run.storyboard?.at
+    ? { ...run.prepared, storyboardPath: run.storyboard!.path } : run.prepared;
+  const next: MyinRun = { ...run, ...(prepared ? { prepared } : {}), storyboard: { ...run.storyboard!, ...storyboardFields(story), path, at: new Date().toISOString() } };
+  return save(service, record, record.status ?? "done", record.stage ?? "", next);
+}
+
 /** A changed storyboard (its sound only) as a new file — storage serves a replaced file's old bytes for a while. */
 async function putStoryboard(service: Service, record: OsRecord, run: MyinRun, value: unknown) {
   const path = `${record.owner_id}/${run.sourceId}/${record.id}/myin-storyboard-${Date.now().toString(36)}.json`;
@@ -1150,10 +1173,10 @@ export async function myinSheetSources(service: Service, runId: string) {
 export async function myinPreviewSheets(actor: RequestActor, runId: string) {
   const { run } = await visibleRun(actor, runId);
   const service = createServiceSupabase();
-  // 점검 시트 장면 의견: each cell's scene (its 시작 문구 and kind) and the storyboard the sheets were drawn from.
-  const story = run.prepared?.sheets.length && run.storyboard ? await storyboardJson(service, run).catch(() => null) : null;
+  // 점검 시트 장면 의견: each cell's scene (its 시작 문구 and kind) in the storyboard the sheets were drawn from (not the one now, after a 수정안).
+  const story = run.prepared?.sheets.length ? await sheetsStory(service, run).catch(() => null) : null;
   return { sheets: await Promise.all((run.prepared?.sheets ?? []).map((path) => sign(service, SHEET_BUCKET, path))),
-    scenes: (story?.scenes ?? []).map((scene) => ({ type: String(scene.type ?? ""), at: String(scene.at ?? "") })), storyboardAt: run.storyboard?.at ?? "" };
+    scenes: (story?.scenes ?? []).map((scene) => ({ type: String(scene.type ?? ""), at: String(scene.at ?? "") })), storyboardAt: story?.at ?? "" };
 }
 
 // ── 우리 이미지 올리기 (2026-10-28 대표 · 로건): our own photo for a file name the storyboard uses, until the full video starts ──
