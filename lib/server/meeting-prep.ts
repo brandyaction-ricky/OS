@@ -63,14 +63,15 @@ export async function prepareMeetingBrief(
   // Only the last meeting's open questions. Decision candidates of unreviewed meetings are not open questions
   // (they read "~하기로 했다"); they stay listed under unreviewed for review instead (대표 2026-11-12).
   pending = [...new Set(pending)];
-  // 체크할 할 일: tasks created from this business's recent meetings that are not finished yet.
-  const since = new Date(Date.now() - 60 * 86_400_000).toISOString();
-  const recentIds = matchingMeetings.filter(item => item.status !== "cancelled" && (item.starts_at ?? item.updated_at ?? "") >= since).map(item => item.id);
+  // 체크할 할 일: tasks created from this business's meetings of the last 30 days that are not finished yet.
+  // Only dated meetings count: imported old records carry a recent updated_at and brought back September tasks.
+  const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
+  const recentIds = matchingMeetings.filter(item => item.status !== "cancelled" && item.metadata?.workspace === "knowledge" && typeof item.starts_at === "string" && item.starts_at >= since).map(item => item.id);
   const followUpRead = recentIds.length ? await supabase.from("os_records").select("*").eq("record_type", "task").in("parent_id", recentIds).is("archived_at", null) : { data: [], error: null };
   if (followUpRead.error) throw new ApiError(400, "MEETING_PREP_FAILED", "회의 준비 자료를 불러오지 못했습니다.", followUpRead.error.message);
   const order = new Map(recentIds.map((id, index) => [id, index]));
   const followUps = (followUpRead.data ?? []).filter(item => recentIds.includes(item.parent_id) && !["done", "cancelled"].includes(item.status))
-    .sort((a, b) => (order.get(a.parent_id) ?? 0) - (order.get(b.parent_id) ?? 0)).slice(0, 30);
+    .sort((a, b) => (order.get(a.parent_id) ?? 0) - (order.get(b.parent_id) ?? 0)).slice(0, 15);
   let latestSummary = typeof latest?.metadata?.summary === "string" && latest.metadata.summary ? latest.metadata.summary
     : typeof latest?.metadata?.transcript === "string" ? latest.metadata.transcript.slice(0, 800) : String(latest?.description ?? "").slice(0, 800);
   let latestTitle = latest?.title ?? "";
@@ -93,7 +94,7 @@ export async function prepareMeetingBrief(
       .maybeSingle();
     if (doc?.content_md) {
       latestSummary = extractSection(doc.content_md, "핵심 요약");
-      latestTitle = doc.title ?? latestTitle;
+      latestTitle = latest ? latestTitle : doc.title ?? latestTitle;
       latestDate = latestDate ?? doc.updated_at ?? null;
       if (!pending.length) pending = extractBulletList(doc.content_md, "미결사항");
     }
