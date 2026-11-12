@@ -27,6 +27,9 @@ export function parseYtDays(headers: unknown, rows: unknown): YtDay[] {
   }).filter((day) => /^\d{4}-\d{2}-\d{2}$/.test(day.day));
 }
 
+/** Something happened that day: a view, like, comment, share, watch minute or subscriber change. */
+export const hasActivity = (day: YtDay) => (["views", "likes", "comments", "shares", "estimatedMinutesWatched", "subscribersGained", "subscribersLost"] as const).some((metric) => (day[metric] ?? 0) > 0);
+
 /** One day's row fields as the 영상 성과 cards read them (views, retention weighted by views, net subscribers). */
 export function dayFields(day: YtDay) {
   const net = day.subscribersGained != null && day.subscribersLost != null ? day.subscribersGained - day.subscribersLost : undefined;

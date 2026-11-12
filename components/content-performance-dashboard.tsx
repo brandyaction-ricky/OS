@@ -49,7 +49,7 @@ export function ContentPerformanceDashboard({ youtubeOnly = false }: { youtubeOn
   const choosePeriod = (id: PeriodId) => setAddress(id === "custom" ? { period: "custom", from, to } : { period: id === DEFAULT_PERIOD ? null : id, from: null, to: null });
   const chooseTab = (id: Tab) => setAddress({ tab: id === "summary" ? null : id });
 
-  const [records, setRecords] = useState<OsRecord[]>([]), [before, setBefore] = useState<OsRecord[]>([]), [snapshots, setSnapshots] = useState<OsRecord[]>([]), [olderSnapshots, setOlderSnapshots] = useState<OsRecord[] | null>(null);
+  const [records, setRecords] = useState<OsRecord[]>([]), [before, setBefore] = useState<OsRecord[]>([]), [snapshots, setSnapshots] = useState<OsRecord[] | null>(null);
   const [hypotheses, setHypotheses] = useState<OsRecord[]>([]), [allSources, setSources] = useState<OsRecord[]>([]), [loading, setLoading] = useState(!demo);
   const [origin, setOrigin] = useState<OriginFilter>("own"), [format, setFormat] = useState<Format>("all");
   const [brand, setBrand] = useState("all"), [hierarchy, setHierarchy] = useState("all"), [localSourceId, setLocalSourceId] = useState("all");
@@ -82,7 +82,7 @@ export function ContentPerformanceDashboard({ youtubeOnly = false }: { youtubeOn
     const prev = previousRange(from, to);
     if (demo) { setRecords(daily(demoMetricWindow(from, to))); setBefore(daily(demoMetricWindow(prev.from, prev.to))); setLoading(false); return; }
     let active = true;
-    const apply = (metrics: OsRecord[]) => { const visible = visibleMetrics(metrics); setSnapshots(visible.filter((item) => item.metadata.channelSnapshotVersion === 1)); setRecords(visible.filter((item) => item.metadata.channelSnapshotVersion !== 1)); };
+    const apply = (metrics: OsRecord[]) => setRecords(daily(metrics));
     const recent = recentMetricWindow(accessToken, from, to);
     if (recent) { apply(recent); setLoading(false); } else setLoading(true);
     listMetricWindow(accessToken, from, to).then((metrics) => { if (active) apply(metrics); }).catch((reason) => { if (active) setError(reason.message); }).finally(() => { if (active) setLoading(false); });
@@ -90,13 +90,14 @@ export function ContentPerformanceDashboard({ youtubeOnly = false }: { youtubeOn
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- daily() is visibleMetrics() plus a fixed filter
   }, [accessToken, demo, from, to, reload, visibleMetrics]);
-  // 경과일 비교 counts posts published in the period; their D1 · D7 · D28 are taken later, up to today.
+  // 경과일 비교 reads, only when opened, the D1 · D7 · D28 rows of posts published in the period (they are taken later,
+  // so the window is the publish dates). The other tabs never carry them.
   useEffect(() => {
-    if (demo || tab !== "days" || to >= today) { setOlderSnapshots(null); return; }
-    let active = true;
-    listMetricWindow(accessToken, from, today).then((metrics) => { if (active) setOlderSnapshots(visibleMetrics(metrics).filter((item) => item.metadata.channelSnapshotVersion === 1)); }).catch((reason) => { if (active) setError(reason.message); });
+    if (demo || tab !== "days") return;
+    let active = true; setSnapshots(null);
+    listMetricWindow(accessToken, from, to, true).then((metrics) => { if (active) setSnapshots(visibleMetrics(metrics).filter((item) => item.metadata.channelSnapshotVersion === 1)); }).catch((reason) => { if (active) { setSnapshots([]); setError(reason.message); } });
     return () => { active = false; };
-  }, [accessToken, demo, tab, from, to, today, reload, visibleMetrics]);
+  }, [accessToken, demo, tab, from, to, reload, visibleMetrics]);
   useEffect(() => {
     if (demo || tab !== "learn") return;
     let active = true;
@@ -239,7 +240,7 @@ export function ContentPerformanceDashboard({ youtubeOnly = false }: { youtubeOn
         <p className="section-meta">같은 영상의 시간별 기록은 하나로 묶었어요 · ‘—’는 아직 안 잰 값이에요 · 머리글을 누르면 정렬돼요</p>
       </section> : null}
 
-      {tab === "days" ? <ChannelMetricsPanel records={(olderSnapshots ?? snapshots).filter((row) => sourceId === "all" || row.parent_id === sourceId)} loading={loading} youtubeOnly={youtubeOnly} from={from} to={to} platform={format === "long" ? "yt_long" : format === "shorts" ? "yt_shorts" : "all"} /> : null}
+      {tab === "days" ? <ChannelMetricsPanel records={(snapshots ?? []).filter((row) => sourceId === "all" || row.parent_id === sourceId)} loading={!demo && snapshots === null} youtubeOnly={youtubeOnly} from={from} to={to} platform={format === "long" ? "yt_long" : format === "shorts" ? "yt_shorts" : "all"} /> : null}
 
       {tab === "sales" ? youtubeOnly ? <VideoSalesPanel from={from} to={to} /> : <div className="empty-state">매출은 유튜브 영상 성과에서만 보여요.</div> : null}
 
