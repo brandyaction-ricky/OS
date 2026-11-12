@@ -9,7 +9,7 @@ import { errorMessage } from "./youtube-process-data";
 type Option = { id: string; kind: UtmKind; label: string; code: string; active: boolean };
 type Param = { code: string; label: string } | null;
 type Link = { id: string; brand: string; usage: string; origin_url: string; source_id: string; medium_id: string; campaign_id: string; content_id: string | null;
-  params: Record<string, Param>; target: string; location: string; etc: string; utm_url: string; short_url: string | null; ledger_status: "pending" | "saved" | "failed"; created_at: string; creator?: string };
+  params: Record<string, Param>; target: string; location: string; etc: string; utm_url: string; short_url: string | null; ledger_status: "pending" | "saved" | "failed"; created_at: string; updated_at: string; creator?: string };
 type Saved = { link: Link; ledgerSaved: boolean };
 type Form = { brand: string; origin: string; usage: string; target: string; location: string; etc: string; picks: Partial<Record<UtmKind, string>> };
 
@@ -153,11 +153,42 @@ export function UtmLinkBuilder({ options, setOptions, prefill, onSaved }: { opti
   </form>;
 }
 
+/** 사용처·메모 고치기: only the notes change; the addresses, UTM values and short link stay the same link. */
+function LedgerEdit({ link, onDone }: { link: Link; onDone: (saved: boolean) => void }) {
+  const { accessToken, demo } = useSession();
+  const [notes, setNotes] = useState({ usage: link.usage, target: link.target, location: link.location, etc: link.etc });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const set = (patch: Partial<typeof notes>) => setNotes(current => ({ ...current, ...patch }));
+  const save = async () => {
+    setBusy(true); setError("");
+    try {
+      const result = await apiRequest<Saved>(`/api/v1/utm/links/${link.id}`, { method: "PATCH", token: accessToken, body: JSON.stringify({
+        usage: notes.usage.trim(), target: notes.target.trim(), location: notes.location.trim(), etc: notes.etc.trim(), expectedUpdatedAt: link.updated_at }) });
+      if (!result.ledgerSaved) { setError("고친 내용은 저장했지만 회사 문서(링크 대장)에는 아직 못 적었어요. 목록의 '회사 문서 보관 다시 시도'를 눌러 주세요."); setBusy(false); return; }
+      onDone(true);
+    } catch (reason) { setError(errorMessage(reason)); setBusy(false); }
+  };
+  return <form style={{ display: "grid", gap: 6 }} onSubmit={event => { event.preventDefault(); void save(); }}>
+    <label>링크 사용처<input className="yp-in" value={notes.usage} maxLength={200} onChange={event => set({ usage: event.target.value })} aria-label="링크 사용처 고치기" /></label>
+    <label>target · 대상 고객<input className="yp-in" value={notes.target} maxLength={200} onChange={event => set({ target: event.target.value })} aria-label="target 대상 고객 고치기" /></label>
+    <label>location · 게재 위치<input className="yp-in" value={notes.location} maxLength={200} onChange={event => set({ location: event.target.value })} aria-label="location 게재 위치 고치기" /></label>
+    <label>etc · 기타<input className="yp-in" value={notes.etc} maxLength={500} onChange={event => set({ etc: event.target.value })} aria-label="etc 기타 고치기" /></label>
+    <span className="yp-hint">주소·UTM 값·단축링크는 그대로예요. 이미 붙인 링크도 계속 같은 곳으로 가요.</span>
+    <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+      <button type="submit" className="yp-btn yp-sm yp-pri" disabled={busy || demo || !notes.usage.trim()}>{busy ? "저장하는 중…" : "고친 내용 저장"}</button>
+      <button type="button" className="yp-btn yp-sm" disabled={busy} onClick={() => onDone(false)}>취소</button>
+    </span>
+    {error ? <span className="yp-errline" role="alert">{error}</span> : null}
+  </form>;
+}
+
 function LedgerRow({ link, onChange, onDuplicate }: { link: Link; onChange: () => void; onDuplicate: (link: Link) => void }) {
   const { accessToken } = useSession();
   const { note, copy } = useCopy();
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [editing, setEditing] = useState(false);
   const run = async (what: "short" | "ledger") => {
     setBusy(what); setError("");
     try { await apiRequest(`/api/v1/utm/links/${link.id}/${what}`, { method: "POST", token: accessToken }); onChange(); }
@@ -168,10 +199,12 @@ function LedgerRow({ link, onChange, onDuplicate }: { link: Link; onChange: () =
     <span><b>{link.usage}</b> · {brandLabel(link.brand)} · <span className="yp-hint">{link.created_at.slice(0, 10)} · {link.creator}</span></span>
     <span className="yp-hint">{UTM_KINDS.map(param).filter(Boolean).join(" / ")}{[link.target, link.location, link.etc].some(Boolean) ? ` · 메모: ${[link.target, link.location, link.etc].filter(Boolean).join(" · ")}` : ""}</span>
     <span className="yp-hint" style={{ wordBreak: "break-all" }}>{link.utm_url}</span>
+    {editing ? <LedgerEdit link={link} onDone={saved => { setEditing(false); if (saved) onChange(); }} /> : null}
     <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
       <button type="button" className="yp-btn yp-sm" onClick={() => void copy(link.utm_url, "UTM 링크")}><Copy size={12} aria-hidden="true" /> UTM 링크 복사</button>
       {link.short_url ? <button type="button" className="yp-btn yp-sm" onClick={() => void copy(link.short_url!, "단축링크")}><Copy size={12} aria-hidden="true" /> {link.short_url}</button>
         : <button type="button" className="yp-btn yp-sm" disabled={busy === "short"} onClick={() => void run("short")}><Link2 size={12} aria-hidden="true" /> {busy === "short" ? "만드는 중…" : "단축링크 만들기"}</button>}
+      {!editing ? <button type="button" className="yp-btn yp-sm" onClick={() => setEditing(true)}>사용처·메모 고치기</button> : null}
       <button type="button" className="yp-btn yp-sm" onClick={() => onDuplicate(link)}>복제하여 새 링크 만들기</button>
       {link.ledger_status !== "saved" ? <button type="button" className="yp-btn yp-sm" disabled={busy === "ledger"} onClick={() => void run("ledger")}>회사 문서 보관 다시 시도</button> : null}
     </span>

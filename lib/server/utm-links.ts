@@ -54,9 +54,9 @@ export async function updateUtmOption(id: string, input: z.infer<typeof utmOptio
   return data as UtmOption;
 }
 
-const LINK_COLUMNS = "id,request_id,brand,usage,origin_url,source_id,medium_id,campaign_id,content_id,params,target,location,etc,utm_url,short_key,short_url,ledger_status,created_by,created_at";
+const LINK_COLUMNS = "id,request_id,brand,usage,origin_url,source_id,medium_id,campaign_id,content_id,params,target,location,etc,utm_url,short_key,short_url,ledger_status,created_by,created_at,updated_at";
 export type UtmLink = { id: string; request_id: string; brand: string; usage: string; origin_url: string; source_id: string; medium_id: string; campaign_id: string; content_id: string | null; params: UtmLedgerRow["params"]; target: string; location: string; etc: string;
-  utm_url: string; short_key: string | null; short_url: string | null; ledger_status: "pending" | "saved" | "failed"; created_by: string; created_at: string; creator?: string };
+  utm_url: string; short_key: string | null; short_url: string | null; ledger_status: "pending" | "saved" | "failed"; created_by: string; created_at: string; updated_at: string; creator?: string };
 
 async function withCreators(rows: UtmLink[]) {
   const ids = [...new Set(rows.map(row => row.created_by))];
@@ -113,6 +113,19 @@ export async function createUtmLink(input: z.infer<typeof utmLinkSchema>, actor:
   return { link: link as UtmLink, repeated: false };
 }
 
+// 링크 사용처·관리 메모 고치기 (수정 요청 2026-11-11): only the human notes change. The id, addresses, UTM values, short link
+// (and so its clicks) stay; the row's updated_at guards a simultaneous edit, and the 링크 대장 document's versions keep each earlier text.
+export const utmLinkUpdateSchema = z.object({ usage: z.string().trim().min(1).max(200), target: memo(200), location: memo(200), etc: memo(500), expectedUpdatedAt: z.string().min(1).max(64) }).strict();
+export async function updateUtmLink(id: string, input: z.infer<typeof utmLinkUpdateSchema>) {
+  const { expectedUpdatedAt, ...notes } = input;
+  const { data, error } = await createServiceSupabase().from("os_utm_links").update({ ...notes, ledger_status: "pending", updated_at: new Date().toISOString() })
+    .eq("id", id).eq("updated_at", expectedUpdatedAt).select(LINK_COLUMNS).maybeSingle();
+  if (error) throw new ApiError(503, "UTM_LINK_SAVE_FAILED", "링크를 저장하지 못했어요.");
+  if (data) return data as UtmLink;
+  await readUtmLink(id);
+  throw new ApiError(409, "UTM_LINK_CHANGED", "그사이 다른 곳에서 이 링크를 고쳤어요. 새로 불러온 내용을 보고 다시 고쳐 주세요.");
+}
+
 /** Rebuilds the company 링크 대장 document from every row; true when the document holds them all. */
 export async function syncUtmLedger(ownerFallback: string) {
   const db = createServiceSupabase(), startedAt = new Date().toISOString();
@@ -133,7 +146,7 @@ export async function syncUtmLedger(ownerFallback: string) {
       if (saved) break;
       if (attempt === 1) throw new Error("ledger version race");
     }
-    await db.from("os_utm_links").update({ ledger_status: "saved", updated_at: new Date().toISOString() }).neq("ledger_status", "saved").lte("created_at", startedAt);
+    await db.from("os_utm_links").update({ ledger_status: "saved", updated_at: new Date().toISOString() }).neq("ledger_status", "saved").lte("updated_at", startedAt);
     return true;
   } catch {
     await db.from("os_utm_links").update({ ledger_status: "failed", updated_at: new Date().toISOString() }).eq("ledger_status", "pending");
