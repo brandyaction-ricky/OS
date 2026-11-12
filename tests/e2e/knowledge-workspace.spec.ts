@@ -3,7 +3,7 @@ test.beforeEach(async({page})=>{
  await page.addInitScript(()=>localStorage.setItem("brandy-os-menu-guide-final","seen"));
 });
 const paths=[
- ["/knowledge","문서 보관함"],["/knowledge/notes","내 노트"],["/knowledge/meetings","회의록"],
+ ["/knowledge","문서 보관함"],["/knowledge/notes","내 노트"],
  ["/knowledge/decisions","결정 모음"],["/knowledge/docs","팀 문서"],["/knowledge/canon","회사 정본"],
  ["/knowledge/graph","연결"],["/knowledge/review","정본 검토·등록"],["/knowledge/templates","양식"],
  ["/knowledge/trash","휴지통"],["/knowledge/search","문서 찾기"],["/knowledge/activity","문서 활동 기록"],
@@ -233,55 +233,14 @@ test("personal template saves body, creates selected-space document, survives re
  await expect(page.getByRole("textbox",{name:"editable markdown"})).toContainText("확인 항목");
  await expect(page.locator(".kw-editor-card")).toContainText("내 노트");
 });
-test("meeting start, review, confirmation and append-only correction",async({page})=>{
- await page.goto("/knowledge/meetings");
- await page.getByRole("button",{name:"새 회의",exact:true}).click();
- await expect(page.getByRole("dialog").getByText("템플릿",{exact:false})).toHaveCount(0);
- await page.getByRole("textbox",{name:"제목",exact:true}).fill("QA 회의");
- await page.getByRole("button",{name:"만들기",exact:true}).click();
- await expect(page.getByRole("heading",{name:"QA 회의",level:1})).toBeVisible();
- await expect(page.locator('label:has-text("회의 예정 시각") input[type="datetime-local"]')).not.toHaveValue("");
- await page.getByRole("group",{name:"회의 메모",exact:true}).getByRole("textbox").fill("원문은 보존합니다.");
- await page.getByRole("button",{name:"저장",exact:true}).click();
- await page.getByRole("button",{name:"회의 시작",exact:true}).click();
- await page.getByRole("textbox",{name:"결정·할 일 내용"}).fill("검증된 결정을 채택합니다.");
- await page.getByRole("button",{name:"항목 추가"}).click();
- await page.getByRole("button",{name:"회의 종료 · 검토로"}).click();
- await expect(page.getByRole("button",{name:"검토 완료",exact:true})).toBeDisabled();
- await page.getByRole("button",{name:"채택",exact:true}).click();
- await page.getByRole("button",{name:"검토 완료",exact:true}).click();
- await expect(page.getByRole("button",{name:"정정 기록 추가"})).toBeVisible();
- await expect(page.getByRole("group",{name:"회의 메모",exact:true})).toHaveCount(0);
- await page.getByRole("button",{name:"정정 기록 추가"}).click();
- await page.getByRole("textbox",{name:"정정 내용"}).fill("후속 확인 내용");
- await page.getByRole("textbox",{name:"정정 사유"}).fill("추가 근거");
- await page.getByRole("button",{name:"정정 저장"}).click();
- await expect(page.getByText("후속 확인 내용",{exact:true})).toBeVisible();
- await page.goto("/knowledge/decisions");await expect(page.getByRole("heading",{name:"검증된 결정을 채택합니다."})).toBeVisible();
- await expect(page.getByRole("heading",{name:"후속 확인 내용"})).toBeVisible();await expect(page.getByText("정정 — 추가 근거",{exact:true})).toBeVisible();
+test("the retired 회의록 screen opens 회의·결정, keeping a meeting link's meeting",async({page})=>{
+ await page.goto("/knowledge/meetings");await expect(page).toHaveURL(/\/organization\/meetings$/,{timeout:60_000});
+ await page.goto("/knowledge/meetings/00000000-0000-4000-8000-000000000001");await expect(page).toHaveURL(/\/organization\/meetings\?meeting=00000000-0000-4000-8000-000000000001$/,{timeout:60_000});
 });
 test("document APIs fail closed without a session",async({request})=>{
  for(const path of ["/api/v1/knowledge/workspace","/api/v1/knowledge/search?q=QA"]){expect((await request.get(path)).status()).toBe(401);}
  expect((await request.post("/api/v1/knowledge/workspace",{data:{action:"document.create",space:"team",title:"denied"}})).status()).toBe(401);
  for(const path of ["/api/v1/knowledge/trash/purge","/api/v1/knowledge/reminders"]){expect((await request.get(path)).status()).toBe(401);}
-});
-
-test("meeting import preserves content, autosaves, and saves before internal navigation",async({page})=>{
- await page.goto("/knowledge/meetings");await page.getByRole("button",{name:"새 회의",exact:true}).click();
- await page.getByRole("textbox",{name:"제목",exact:true}).fill("QA 파일 회의");await page.getByRole("button",{name:"만들기",exact:true}).click();
- const memo=page.getByRole("group",{name:"회의 메모",exact:true}).getByRole("textbox");await expect(memo).toBeVisible();
- const url=page.url();await memo.fill("기존 메모");
- await page.locator('input[type="file"]').setInputFiles({name:"qa-meeting.txt",mimeType:"text/plain",buffer:Buffer.from("가져온 합성 원문")});
- await expect(page.getByRole("textbox",{name:"가져온 원문 미리보기"})).toHaveValue("가져온 합성 원문");
- await page.getByRole("button",{name:"기존 메모 뒤에 추가"}).click();await expect(memo).toContainText("기존 메모");await expect(memo).toContainText("가져온 합성 원문");
- await expect(page.getByText("저장됨",{exact:true})).toBeVisible({timeout:5000});
- await page.reload();await expect(memo).toContainText("기존 메모");await expect(memo).toContainText("가져온 합성 원문");
- await memo.fill("이동 직전 추가 내용");await page.getByRole("link",{name:"회의 목록",exact:true}).click();
- await expect(page).toHaveURL(/\/knowledge\/meetings$/);await page.goto(url);await expect(memo).toContainText("이동 직전 추가 내용");
- test.setTimeout(120_000);await memo.fill("x".repeat(60000));
- await page.locator('input[type="file"]').setInputFiles({name:"qa-limit.txt",mimeType:"text/plain",buffer:Buffer.from("보존할 원문")});
- await page.getByRole("button",{name:"기존 메모 뒤에 추가"}).click();
- await expect(page.getByRole("textbox",{name:"가져온 원문 미리보기"})).toHaveValue("보존할 원문");
 });
 
 test("tag suggestions, no-version property save, archive and restore persist",async({page})=>{
