@@ -40,5 +40,23 @@
 .linear-shell .ui-v2 .tm-root .yp-muted { color: var(--muted); }
 .linear-shell .ui-v2 .tm-root .yp-btn { display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--text); font-size: 12px; font-weight: 500; cursor: pointer; }
 .linear-shell .ui-v2 .tm-root .yp-btn.yp-pri { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+/* 단계 화면: one step of a live meeting at a time, one big button to the next */
+.linear-shell .ui-v2 .tm-root .tm-detail-grid[data-solo] { grid-template-columns: minmax(0, 860px); }
+.linear-shell .ui-v2 .tm-root .tm-wizard-panel { display: grid; gap: 14px; }
+.linear-shell .ui-v2 .tm-root .tm-wizard-panel h3 { margin: 0; font-size: 18px; }
+.tm-wizard-label { font-weight: 700; font-size: 13px; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.tm-wizard-cta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding-top: 4px; }
+.linear-shell .ui-v2 .tm-root .tm-wizard-cta .primary-button { min-height: 44px; padding: 0 22px; font-size: 15px; }
+.tm-link-button { border: 0; background: none; color: var(--muted); font-size: 13px; text-decoration: underline; cursor: pointer; padding: 4px; }
+.tm-link-button:disabled { opacity: .5; cursor: default; }
+.tm-person { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 999px; background: var(--line-soft); font-size: 12px; }
+.tm-rec-live { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--danger-soft, var(--line-soft)); color: var(--danger, var(--text)); font-size: 13px; font-weight: 600; }
+.tm-wizard-counts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.tm-wizard-counts > div { padding: 10px 12px; border: 1px solid var(--line-soft); border-radius: 10px; font-size: 13px; }
+.tm-wizard-counts ul { margin: 6px 0 0; padding-left: 16px; color: var(--text-2); }
+.linear-shell .ui-v2 .tm-root .tm-more { padding: 10px 14px; border: 1px solid var(--line-soft); border-radius: 10px; }
+.tm-more > summary, .tm-wizard-panel details > summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.tm-more[open] > summary { margin-bottom: 10px; }
+@media (max-width: 820px) { .tm-wizard-counts { grid-template-columns: minmax(0, 1fr); } }
 
 }

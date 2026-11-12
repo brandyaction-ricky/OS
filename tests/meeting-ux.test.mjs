@@ -19,3 +19,12 @@ test("team meeting notes save themselves and the screen is not remounted by its 
   assert.match(prep, /export function QuickMeetingStart/);
   assert.match(workspace, /reason: "빈 회의 정리"/);
 });
+
+test("a live meeting shows one step at a time, each with one main button (owner request 2026-11-12)", async () => {
+  const actions = await read("components/team/meeting-actions.tsx");
+  assert.match(actions, /if \(wizardOn\) return wizard;/);
+  assert.match(actions, /\["준비", "회의 · 녹음", "정리 확인", "검토 · 확정"\]/);
+  for (const button of ["● 녹음하며 회의 시작", "회의 끝내기 · 자동 정리", "다음: 검토 · 확정 →"]) assert.ok(actions.includes(button), button);
+  // the rarely used controls fold away under one line instead of sitting beside the steps
+  assert.match(actions, /<summary>회의 정보 바꾸기 · 내려받기 · 삭제<\/summary>/);
+});
