@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { ApiError, apiErrorResponse } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
+import { createServiceSupabase } from "@/lib/supabase/server";
+import { withObservedOrigin } from "@/lib/content-metrics";
 import { validDay } from "@/lib/team/dates";
 import type { OsRecord } from "@/lib/record-types";
 
@@ -24,6 +26,10 @@ export async function GET(request: Request) {
       records.push(...(data ?? []) as OsRecord[]);
       if ((data?.length ?? 0) < 1000) break;
     }
-    return NextResponse.json({ records }, { headers: { "Cache-Control": "private, no-store" } });
+    // Observer rows saved before they carried `origin`: only our connected channels count as 우리 콘텐츠.
+    const { data: own, error: ownError } = await createServiceSupabase().from("os_youtube_connections").select("channel_id");
+    if (ownError) throw new ApiError(503, "METRIC_WINDOW_FAILED", "성과 기록을 불러오지 못했습니다.");
+    const ownChannelIds = new Set((own ?? []).map((row) => String(row.channel_id)));
+    return NextResponse.json({ records: records.map((record) => withObservedOrigin(record, ownChannelIds)) }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) { return apiErrorResponse(error); }
 }

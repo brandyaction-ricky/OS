@@ -43,3 +43,10 @@ export function fixedWeek(start: string) {
   const date = new Date(`${start}T00:00:00Z`); if (!Number.isFinite(date.getTime())) return null;
   date.setUTCDate(date.getUTCDate() + 6); return { start, end: date.toISOString().slice(0, 10) };
 }
+/** Hourly YouTube observer rows have no parent topic, so the channel decides: a connected channel of ours is
+ *  "own", any other tracked channel is "market". New rows carry `origin`; older rows get it here. */
+export function withObservedOrigin<T extends Pick<OsRecord, "metadata">>(record: T, ownChannelIds: ReadonlySet<string>): T {
+  const channelId = record.metadata?.channelId;
+  if (record.metadata?.origin || record.metadata?.dataSource !== 'youtube_data_api' || typeof channelId !== 'string' || !channelId) return record;
+  return { ...record, metadata: { ...record.metadata, origin: ownChannelIds.has(channelId) ? 'own' : 'market' } };
+}

@@ -11,7 +11,7 @@ type YoutubeItem = {
   liveStreamingDetails?: unknown;
 };
 
-type TrackedChannel = { channelId: string; title: string; ownerId: string };
+type TrackedChannel = { channelId: string; title: string; ownerId: string; origin: "own" | "market" };
 
 function durationSeconds(value = "") {
   const match = value.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
@@ -45,8 +45,9 @@ async function trackedChannels(): Promise<TrackedChannel[]> {
   ]);
   if (recordError || connectionError) throw new ApiError(500, "YOUTUBE_CHANNELS_READ_FAILED", "관찰 채널 목록을 읽지 못했습니다.", recordError?.message ?? connectionError?.message);
   const values: TrackedChannel[] = [
-    ...(records ?? []).map((row) => ({ channelId: String(row.metadata?.channelId ?? ""), title: row.title, ownerId: row.owner_id })),
-    ...(connections ?? []).map((row) => ({ channelId: row.channel_id, title: row.channel_title, ownerId: row.owner_id })),
+    ...(records ?? []).map((row) => ({ channelId: String(row.metadata?.channelId ?? ""), title: row.title, ownerId: row.owner_id, origin: "market" as const })),
+    // Listed last so a connected channel that is also tracked stays ours.
+    ...(connections ?? []).map((row) => ({ channelId: row.channel_id, title: row.channel_title, ownerId: row.owner_id, origin: "own" as const })),
   ].filter((item) => item.channelId && item.ownerId);
   return [...new Map(values.map((item) => [item.channelId, item])).values()];
 }
@@ -91,7 +92,7 @@ export async function observeYoutubeChannels(now = new Date()) {
         const observationKey = `${channel.channelId}:${video.id}:${hour}`;
         const momentum = youtubeMomentum([...(history.get(video.id) ?? []), { views: video.views, measuredAt }]);
         const metadata = {
-          observationKey, contentId: video.id, channelId: channel.channelId, channelTitle: video.channelTitle || channel.title,
+          observationKey, contentId: video.id, channelId: channel.channelId, channelTitle: video.channelTitle || channel.title, origin: channel.origin,
           platform: "YouTube", dataSource: "youtube_data_api", metricMode: "cumulative", measuredAt,
           views: video.views, likes: video.likes, comments: video.comments, durationSeconds: video.durationSeconds,
           formatBucket: youtubeFormatBucket(video.durationSeconds), ageCheckpoint: youtubeAgeCheckpoint(video.publishedAt, now.getTime()), publishedAt: video.publishedAt, momentum,
