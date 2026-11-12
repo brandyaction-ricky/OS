@@ -1,3 +1,3 @@
-import { KnowledgeMeetingPage } from "@/components/knowledge/meetings";
-export const metadata = { title: "회의 기록 | 브랜디 OS" };
-export default async function Page({params}:{params:Promise<{id:string}>}){return <KnowledgeMeetingPage id={(await params).id}/>;}
+import { redirect } from "next/navigation";
+// 회의는 한 화면에서 (대표 요청 2026-11-12): an old 회의록 link opens the same meeting in 업무 기록 › 회의·결정.
+export default async function Page({params}:{params:Promise<{id:string}>}){redirect(`/organization/meetings?meeting=${encodeURIComponent((await params).id)}`);}

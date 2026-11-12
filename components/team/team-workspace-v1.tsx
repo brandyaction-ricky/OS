@@ -8,14 +8,14 @@ import { apiRequest, archiveRecord, listAllRecordsOfType, listMembers, updateRec
 import { CreateTeamMeeting, TeamMeetingDetail, TeamMeetingReview } from "@/components/team/meeting-actions";
 import { CreateTeamTask, EditableTaskDrawer, TeamTaskInbox, moveTeamTask } from "@/components/team/task-actions";
 import { TeamDecisionList } from "@/components/team/decision-actions";
-import { TeamPrepView } from "@/components/team/prep-actions";
+import { QuickMeetingStart, TeamPrepView } from "@/components/team/prep-actions";
 import { TeamKpiView } from "@/components/team/team-kpi";
 import { LegacyMerge } from "@/components/team/legacy-merge";
 import { teamDecisions } from "@/lib/team/decisions";
 import { teamBusiness } from "@/lib/team/business";
 import { TEAM_BUSINESSES } from "@/lib/team/business";
 import { taskSource } from "@/lib/team/source";
-import { listTeamRange } from "@/lib/team/client";
+import { listTeamRange, teamCommand } from "@/lib/team/client";
 import type { TeamAbsence } from "@/lib/team/absence";
 import type { Meeting } from "@/lib/knowledge/model";
 import { plainMarkdown } from "@/lib/knowledge/search";
@@ -204,7 +204,7 @@ export function TeamWorkspaceV1({ section }: { section: Section }) {
 
   return <div className="tm-root">
     <header className="page-header"><div className="page-title-group"><h1 className="page-title" data-ui="page-title">{TITLE[section]}</h1><p>{DESCRIPTION[section]}</p></div><div className="header-actions">
-      {section === "meetings" && accessToken && !demo ? <CreateTeamMeeting token={accessToken} projects={data.projects} onChanged={load} /> : null}
+      {section === "meetings" && accessToken && !demo ? <><QuickMeetingStart meetings={data.meetings} token={accessToken} onChanged={load} /><CreateTeamMeeting token={accessToken} projects={data.projects} onChanged={load} /></> : null}
       {section === "tasks" && accessToken && !demo ? <CreateTeamTask token={accessToken} members={data.members} projects={data.projects} onChanged={load} /> : null}
       {section === "schedule" ? <><Link className="secondary-button compact" href="/hr/my-leave">휴가 신청</Link><Link className="primary-button compact" href="/organization/meetings"><Plus size={15}/> 회의 잡기</Link></> : null}
     </div></header>
@@ -225,7 +225,7 @@ export function TeamWorkspaceV1({ section }: { section: Section }) {
       {(section === "schedule" || section === "people") && absenceLoading ? <p className="tm-muted" role="status">부재 일정을 불러오는 중입니다.</p> : null}
       {section === "meetings" ? <>
         {activeTab !== "prep" && activeTab !== "decisions" ? <label className="os-search"><Search size={15} /><input aria-label="회의 검색" placeholder="회의 검색" value={search} onChange={event => setSearch(event.target.value)} /></label> : null}
-        {selectedMeeting && !["decisions", "kpi"].includes(activeTab) && accessToken ? params.get("step") === "review" && !selectedMeeting.legacy ? <TeamMeetingReview key={`${selectedMeeting.id}:${selectedMeeting.version}`} meeting={selectedMeeting} token={accessToken} userId={profile?.id} admin={profile?.role === "admin"} members={data.members} tasks={data.tasks} onChanged={load} /> : <TeamMeetingDetail key={`${selectedMeeting.id}:${selectedMeeting.version}`} meeting={selectedMeeting} meetings={data.meetings} tasks={data.tasks} token={accessToken} userId={profile?.id} admin={profile?.role === "admin"} members={data.members} projects={data.projects} onChanged={load} /> : activeTab === "decisions" && accessToken ? <TeamDecisionList rows={decisionRows} selectedId={params.get("record")} members={data.members} tasks={data.tasks} projects={data.projects} meetings={data.meetings} userId={profile?.id} admin={profile?.role === "admin"} token={accessToken} onChanged={load} /> : activeTab === "prep" && accessToken ? <TeamPrepView meetings={data.meetings} token={accessToken} onChanged={load} /> : activeTab === "kpi" && accessToken ? <TeamKpiView token={accessToken} /> : <MeetingList meetings={meetingRows} filter={params.get("f") ?? "all"} records={[...data.tasks,...data.decisions]} token={accessToken} userId={profile?.id} admin={profile?.role === "admin"} onChanged={load} />}
+        {selectedMeeting && !["decisions", "kpi"].includes(activeTab) && accessToken ? params.get("step") === "review" && !selectedMeeting.legacy ? <TeamMeetingReview key={`${selectedMeeting.id}:${selectedMeeting.version}`} meeting={selectedMeeting} token={accessToken} userId={profile?.id} admin={profile?.role === "admin"} members={data.members} tasks={data.tasks} onChanged={load} /> : <TeamMeetingDetail key={selectedMeeting.id} meeting={selectedMeeting} meetings={data.meetings} tasks={data.tasks} token={accessToken} userId={profile?.id} admin={profile?.role === "admin"} members={data.members} projects={data.projects} onChanged={load} /> : activeTab === "decisions" && accessToken ? <TeamDecisionList rows={decisionRows} selectedId={params.get("record")} members={data.members} tasks={data.tasks} projects={data.projects} meetings={data.meetings} userId={profile?.id} admin={profile?.role === "admin"} token={accessToken} onChanged={load} /> : activeTab === "prep" && accessToken ? <TeamPrepView meetings={data.meetings} token={accessToken} onChanged={load} /> : activeTab === "kpi" && accessToken ? <TeamKpiView token={accessToken} /> : <MeetingList meetings={meetingRows} filter={params.get("f") ?? "all"} records={[...data.tasks,...data.decisions]} token={accessToken} userId={profile?.id} admin={profile?.role === "admin"} onChanged={load} />}
       </> : null}
       {section === "tasks" ? <>
         <label className="os-search"><Search size={15} /><input aria-label="업무 검색" placeholder="업무 검색" value={search} onChange={event => setSearch(event.target.value)} /></label>
@@ -240,7 +240,25 @@ export function TeamWorkspaceV1({ section }: { section: Section }) {
 
 function MeetingList({ meetings, filter, records, token, userId, admin, onChanged }: { meetings: Meeting[]; filter: string; records: OsRecord[]; token: string | null; userId?: string; admin: boolean; onChanged: () => Promise<void> }) {
   const [archiveBusy, setArchiveBusy] = useState(false), [archiveError, setArchiveError] = useState("");
-  const blankLegacy = meetings.filter(meeting => meeting.legacy && !meeting.title.trim() && !meeting.description.trim() && !meeting.metadata.summary?.trim() && !meeting.metadata.agenda.trim() && !records.some(record => record.parent_id === meeting.id || record.metadata.meetingId === meeting.id));
+  const linked = (meeting: Meeting) => records.some(record => record.parent_id === meeting.id || record.metadata.meetingId === meeting.id);
+  const blankLegacy = meetings.filter(meeting => meeting.legacy && !meeting.title.trim() && !meeting.description.trim() && !meeting.metadata.summary?.trim() && !meeting.metadata.agenda.trim() && !linked(meeting));
+  // 목록 정리 (대표 요청 2026-11-12): meetings from before today that were never written in (no notes, summary,
+  // decisions or tasks), mostly duplicates of the same morning. They go to the trash, from which they can be restored.
+  const today = dayKey(new Date());
+  const emptyPast = meetings.filter(meeting => !meeting.legacy && ["planned", "active"].includes(meeting.status) && Boolean(meeting.starts_at) && dayKey(meeting.starts_at) < today
+    && !meeting.description.trim() && !meeting.metadata.summary?.trim() && !meeting.metadata.items.length && !linked(meeting));
+  async function archiveEmpty() {
+    const mine = emptyPast.filter(meeting => admin || meeting.owner_id === userId);
+    if (!token || !mine.length || !window.confirm(`메모·결정·할 일이 하나도 없는 지난 회의 ${mine.length}건을 휴지통으로 옮길까요? 휴지통에서 되살릴 수 있어요.`)) return;
+    setArchiveBusy(true); setArchiveError("");
+    let failed = 0;
+    for (const meeting of mine) { try { await teamCommand(token, { action: "meeting.archive", id: meeting.id, expectedVersion: meeting.version, reason: "빈 회의 정리" }); } catch { failed++; } }
+    await onChanged(); setArchiveBusy(false);
+    if (failed) setArchiveError(`${failed}건은 옮기지 못했어요. 회의를 열어 확인해 주세요.`);
+  }
+  // A meeting still 진행 중 a week later was never closed: it sits under 정리 필요 instead of among this week's meetings.
+  const weekAgo = dayKey(addDays(new Date(), -7));
+  const stale = (meeting: Meeting) => meeting.status === "active" && dayKey(meeting.starts_at) < weekAgo;
   async function archiveBlank(meeting: Meeting) {
     if (!token || !(admin || meeting.owner_id === userId) || !window.confirm("내용 없는 이전 회의 기록을 보관할까요? 기록은 삭제되지 않습니다.")) return;
     setArchiveBusy(true); setArchiveError("");
@@ -261,12 +279,14 @@ function MeetingList({ meetings, filter, records, token, userId, admin, onChange
   const groups = [
     { label: "다가오는 회의", matches: (meeting: Meeting) => dayKey(meeting.starts_at) >= nextMonday },
     { label: "이번 주", matches: (meeting: Meeting) => dayKey(meeting.starts_at) >= thisMonday && dayKey(meeting.starts_at) < nextMonday },
-    { label: "지난 주", matches: (meeting: Meeting) => dayKey(meeting.starts_at) >= lastMonday && dayKey(meeting.starts_at) < thisMonday },
-    { label: "그 이전", matches: (meeting: Meeting) => dayKey(meeting.starts_at) < lastMonday },
+    { label: "지난 주", matches: (meeting: Meeting) => !stale(meeting) && dayKey(meeting.starts_at) >= lastMonday && dayKey(meeting.starts_at) < thisMonday },
+    { label: "그 이전", matches: (meeting: Meeting) => !stale(meeting) && dayKey(meeting.starts_at) < lastMonday },
+    { label: "정리 필요 · 일주일 넘게 진행 중", matches: stale },
   ];
   return <>
     {token ? <LegacyMerge meetings={meetings} records={records} token={token} onChanged={onChanged} /> : null}
     {blankLegacy.length ? <div className="os-callout" data-tone="warn"><strong>내용 없는 이전 회의 {blankLegacy.length}건</strong><div className="os-callout-actions">{blankLegacy.map(meeting => <button key={meeting.id} type="button" className="secondary-button compact" disabled={archiveBusy || !(admin || meeting.owner_id === userId)} onClick={() => void archiveBlank(meeting)}>기록 보관</button>)}</div></div> : null}
+    {emptyPast.length ? <div className="os-callout" data-tone="warn"><strong>내용 없는 지난 회의 {emptyPast.length}건</strong><small>메모·결정·할 일이 하나도 없어요. 같은 날 여러 번 만들어진 회의가 대부분이에요.</small><div className="os-callout-actions"><button type="button" className="secondary-button compact" disabled={archiveBusy || !emptyPast.some(meeting => admin || meeting.owner_id === userId)} onClick={() => void archiveEmpty()}>{archiveBusy ? "옮기는 중…" : "휴지통으로 정리"}</button></div></div> : null}
     {archiveError ? <p className="tm-danger-text" role="alert">{archiveError}</p> : null}
     <div className="os-toolbar">{filters.map(item => <Link key={item.key} className="os-chip" aria-current={filter === item.key ? "page" : undefined} href={item.key === "all" ? "/organization/meetings" : `/organization/meetings?f=${item.key}`}>{item.label} <b>{meetings.filter(item.matches).length}</b></Link>)}</div>
     {rows.length ? groups.map(group => { const section = rows.filter(group.matches); return section.length ? <section key={group.label}><h2 className="os-section-head">{group.label} <span className="os-count">{section.length}</span></h2><div className="tm-meeting-list">{section.map(meeting => {
