@@ -44,9 +44,22 @@ export interface YpPlan {
   confirmed?: { at: string } & Partial<Record<YpSlot, YpPick>>;
 }
 export interface YpScriptVersion { v: number; at: string; by: string; md: string; why: "manual" | "ai" | "make" | "restore"; model?: string }
+/**
+ * 구간 의견 (수정 요청 2026-11-12): a passage of the 원고 with a comment on it, written in 의견 모드. The quote and a little text on
+ * each side find the passage again; only 「반영」 changes the 원고, and only when the passage is found once.
+ */
+export interface YpScriptNote {
+  id: string; quote: string; before: string; after: string; text: string;
+  /** The 원고 version the comment was written on (0 = before any version was kept). */
+  v: number; by: string; at: string;
+  state: "open" | "proposed" | "applied" | "dismissed";
+  proposal?: { text: string; why: string; by: string; model: string; at: string; jobId: string };
+  appliedAt?: string;
+}
 export interface YpOutline {
   spec: { runtimeMin: number | null; res: string; fps: string; ratio: string };
   script: string; versions: YpScriptVersion[];
+  notes?: YpScriptNote[];
   /** The staff AI's working notes behind its draft (원고 공정 정본 §8-2): kept for reading, not edited. */
   ai?: { jobId: string; model: string; at: string; by: string; materials: string; axis: string; design: string; review: string; canonBundle: string; suggestions: string[]; head?: string };
 }
@@ -381,6 +394,71 @@ export const MAX_SCRIPT_VERSIONS = 30;
 export function withScriptVersion(outline: YpOutline, md: string, by: string, at: string, why: YpScriptVersion["why"], model?: string): YpOutline {
   const v = (outline.versions.at(-1)?.v ?? 0) + 1;
   return { ...outline, script: md, versions: [...outline.versions, { v, at, by, md, why, ...(model ? { model } : {}) }].slice(-MAX_SCRIPT_VERSIONS) };
+}
+
+/** Where a note's passage is in the 원고: found once (start index), or why it is not safe to change. */
+export function noteSpot(script: string, note: Pick<YpScriptNote, "quote" | "before" | "after">): { at: number } | { problem: string } {
+  const hits: number[] = [];
+  for (let at = script.indexOf(note.quote); at >= 0; at = script.indexOf(note.quote, at + 1)) hits.push(at);
+  if (!hits.length) return { problem: "원고가 바뀌어 이 구간을 찾지 못했어요" };
+  if (hits.length === 1) return { at: hits[0] };
+  // The same words appear more than once: the text written around the passage decides, or nothing changes.
+  const tail = (text: string) => text.replace(/\s+/g, " ").trim();
+  const near = hits.filter(at => tail(script.slice(Math.max(0, at - 200), at)).endsWith(tail(note.before)) && tail(script.slice(at + note.quote.length, at + note.quote.length + 200)).startsWith(tail(note.after)));
+  return near.length === 1 ? { at: near[0] } : { problem: "같은 글이 원고에 여러 번 있어 어느 곳인지 확실하지 않아요" };
+}
+// The editor shows text without markdown marks or the blank lines between paragraphs; these are skipped when matching.
+const MARKS = /[\s*_~`]/g;
+const bare = (text: string) => text.replace(MARKS, "");
+/**
+ * 의견 모드: the text dragged in the editor, found in the 원고 markdown. The stored quote is the markdown itself, so 「반영」 replaces
+ * exactly those characters; text the editor draws differently (a table, a link) is refused rather than guessed.
+ */
+export function quoteFromSelection(script: string, shown: string, shownBefore: string): { quote: string; before: string; after: string } | { problem: string } {
+  const target = bare(shown);
+  if (!target) return { problem: "고를 글이 없어요" };
+  const pattern = new RegExp([...target].map(char => char.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("[\\s*_~`]*"), "g");
+  const hits = [...script.matchAll(pattern)].map(match => ({ at: match.index ?? 0, text: match[0] }));
+  const before = bare(shownBefore);
+  const picked = hits.length === 1 ? hits : hits.filter(hit => bare(script.slice(0, hit.at)).endsWith(before.slice(-40)));
+  if (picked.length !== 1) return { problem: hits.length ? "같은 글이 원고에 여러 번 있어 어느 곳인지 정하지 못했어요. 조금 더 길게 골라 주세요" : "이 구간은 원고 글과 바로 맞출 수 없어요(표 · 링크 · 그림 등). 글만 골라 주세요" };
+  // A drag that starts or ends inside bold or italic takes the marks next to it, so 「반영」 never leaves half a pair behind.
+  let from = picked[0].at, to = from + picked[0].text.length;
+  while (from > 0 && /[*_~`]/.test(script[from - 1])) from -= 1;
+  while (to < script.length && /[*_~`]/.test(script[to])) to += 1;
+  return { quote: script.slice(from, to), before: script.slice(Math.max(0, from - 40), from), after: script.slice(to, to + 40) };
+}
+/** Two notes whose passages overlap in the 원고 (sent together they could change the same words). */
+export function notesOverlap(script: string, notes: YpScriptNote[]) {
+  const spans = notes.flatMap(note => { const spot = noteSpot(script, note); return "at" in spot ? [{ from: spot.at, to: spot.at + note.quote.length }] : []; }).sort((a, b) => a.from - b.from);
+  return spans.some((span, index) => index > 0 && span.from < spans[index - 1].to);
+}
+export interface YpNotePatch { note?: Pick<YpScriptNote, "quote" | "before" | "after" | "text">; noteState?: { id: string; state: "open" | "dismissed" }; applyNote?: string }
+/** One 구간 의견 change (write · set aside or back · 반영), shared by the server and the demo; a refusal throws its reason. */
+export function withNotePatch(outline: YpOutline, patch: YpNotePatch, by: string, at: string, newId: string): YpOutline {
+  const notes = outline.notes ?? [];
+  if (patch.note) {
+    if (notes.length >= 200) throw new Error("구간 의견이 200개를 넘었어요. 끝난 의견을 정리한 뒤 남겨 주세요.");
+    outline = { ...outline, notes: [...notes, { id: newId, ...patch.note, v: outline.versions.at(-1)?.v ?? 0, by, at, state: "open" }] };
+  }
+  if (patch.noteState) {
+    const { id, state } = patch.noteState, note = notes.find(item => item.id === id);
+    if (!note) throw new Error("그 의견을 찾지 못했어요.");
+    if (note.state === "applied") throw new Error("반영한 의견은 그대로 남겨요.");
+    outline = { ...outline, notes: (outline.notes ?? []).map(item => item.id === id ? { ...item, state: state === "open" && item.proposal ? "proposed" : state } : item) };
+  }
+  return patch.applyNote ? applyScriptNote(outline, patch.applyNote, by, at) : outline;
+}
+/** 「반영」: the AI's text replaces the passage, as a new version; anything uncertain is refused instead of guessed. */
+export function applyScriptNote(outline: YpOutline, id: string, by: string, at: string): YpOutline {
+  const notes = outline.notes ?? [], note = notes.find(item => item.id === id);
+  if (!note) throw new Error("그 의견을 찾지 못했어요.");
+  if (note.state !== "proposed" || !note.proposal) throw new Error("AI 수정안이 온 의견만 반영할 수 있어요.");
+  const spot = noteSpot(outline.script, note);
+  if ("problem" in spot) throw new Error(`${spot.problem}. 원고에서 직접 고치거나 의견을 다시 남겨 주세요.`);
+  const script = outline.script.slice(0, spot.at) + note.proposal.text + outline.script.slice(spot.at + note.quote.length);
+  const next = withScriptVersion(outline, script, by, at, "ai", note.proposal.model);
+  return { ...next, notes: notes.map(item => item.id === id ? { ...item, state: "applied" as const, appliedAt: at } : item) };
 }
 
 // ── 제작 (S5) ──

@@ -7,7 +7,7 @@ import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
 import { editableFields } from "@/lib/youtube-process/confirm";
 import { parseYoutubeRef, projectFromRecord, projectName, type YpGate, type YpKind, type YpProject } from "@/lib/youtube-process/project";
 import { oneArrow,
-  confirmPlan, draftMissing, hiddenTagsOf, lateMakeOk, outlineMissing, PLAN_FIELD_KEY, scriptFromPlan, SLOTS, stageData, STAGE_RECORD, thumbsMissing, withScriptVersion,
+  confirmPlan, draftMissing, hiddenTagsOf, lateMakeOk, outlineMissing, PLAN_FIELD_KEY, scriptFromPlan, SLOTS, stageData, STAGE_RECORD, thumbsMissing, withScriptVersion, withNotePatch,
   columnSignature, type YpColumn, type YpColumnItem, type YpColumnMyin, type YpMake, type YpOutline, type YpPlan, type YpStageKind, type YpStages, type YpUpload,
 } from "@/lib/youtube-process/stages";
 import { checkColumnHtml, cleanColumnHtml, columnForMyin, type ColumnFill } from "@/lib/seo-column";
@@ -104,7 +104,10 @@ export const stagePatchSchemas = {
   plan: z.object({ titles: z.array(z.object({ id: text(40), text: text(200) }).strict()).min(1).max(12), thumbs: z.array(thumbSchema).min(1).max(8),
     opening: text(2000), body: text(6000), closing: text(2000), note: text(2000), extraRefs: z.array(refSchema).max(50), stats: z.array(statSchema).max(3), aiDraft: z.null() }).partial().strict(),
   outline: z.object({ spec: z.object({ runtimeMin: z.number().int().min(1).max(120).nullable(), res: text(60), fps: text(60), ratio: text(60) }).strict(),
-    script: text(120_000), saveVersion: z.literal(true), restore: z.number().int().positive() }).partial().strict(),
+    script: text(120_000), saveVersion: z.literal(true), restore: z.number().int().positive(),
+    // 구간 의견: write one, set one aside (or back), or put the AI's text for one into the 원고.
+    note: z.object({ quote: z.string().trim().min(1).max(600), before: text(80), after: text(80), text: z.string().trim().min(1).max(1000) }).strict(),
+    noteState: z.object({ id: text(40), state: z.enum(["open", "dismissed"]) }).strict(), applyNote: text(40) }).partial().strict(),
   make: z.object({ editDue: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/), editDueWhy: text(200), status: z.enum(["prep", "shoot", "edit", "done"]),
     thumb: z.object({ slot: z.enum(SLOTS), path: text(300), name: text(240), edit: thumbSavedEditSchema.optional() }).strict(), addFinal: z.object({ path: text(300), name: text(240), bytes: z.number().int().positive() }).strict(),
     aTitle: text(100), aReason: text(200),
@@ -156,6 +159,10 @@ function nextOutline(current: YpOutline, patch: Patch<"outline">, actor: Request
     if (!version) throw new ApiError(404, "SCRIPT_VERSION_NOT_FOUND", "그 버전을 찾지 못했어요.");
     outline = withScriptVersion(outline, version.md, actor.name, now, "restore");
   } else if (patch.saveVersion) outline = withScriptVersion(outline, outline.script, actor.name, now, "manual");
+  if (patch.note || patch.noteState || patch.applyNote) {
+    try { outline = withNotePatch(outline, patch, actor.name, now, randomUUID().slice(0, 8)); }
+    catch (error) { throw new ApiError(409, "NOTE_NOT_SAVED", error instanceof Error ? error.message : "의견을 저장하지 못했어요."); }
+  }
   return outline;
 }
 function nextMake(current: YpMake, patch: Patch<"make">, actor: RequestActor, now: string, projectId: string): YpMake {
