@@ -58,6 +58,8 @@ test("체험 모드에서 결과를 가져오고 새로고침 후 기준 소재�
 });
 
 test("이미지 업로드와 독립 제작 후 이미지 변형까지 실제 상태를 보존한다", async ({ page }) => {
+  // Four batches each render a preview, approve and export: past the default 30 s on a busy CI runner.
+  test.slow();
   await openWorkTools(page);
   await page.getByLabel("새 작업 이름").fill("그림 비교");
   await page.getByLabel("소재 목표").fill("결과 확인"); await page.getByLabel("퍼널").fill("무료 진단");
