@@ -17,6 +17,8 @@ export interface KnowledgeRichEditorProps {
   accessToken: string | null;
   disabled?: boolean;
   onChange: (markdown: string) => void;
+  /** What the editor made of `markdown` before anyone typed (only sent when it differs). */
+  onNormalize?: (markdown: string) => void;
   onError: (message: string) => void;
   onRequestImage?: () => void;
   onCreateChildPage?: () => void;

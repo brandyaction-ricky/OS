@@ -154,6 +154,7 @@ export default function KnowledgeRichEditorInitialized({
   accessToken,
   disabled,
   onChange,
+  onNormalize,
   onError,
   onRequestImage,
   onCreateChildPage,
@@ -165,6 +166,7 @@ export default function KnowledgeRichEditorInitialized({
   accessToken: string | null;
   disabled?: boolean;
   onChange: (markdown: string) => void;
+  onNormalize?: (markdown: string) => void;
   onError: (message: string) => void;
   onRequestImage?: () => void;
   onCreateChildPage?: () => void;
@@ -284,7 +286,9 @@ export default function KnowledgeRichEditorInitialized({
     trim={false}
     plugins={plugins}
     onChange={(value, initialNormalize) => {
-      if (!initialNormalize) onChange(preserveKnowledgeWikiLinks(value));
+      // The editor's own rewrite of the text it was opened with (nothing typed yet): a screen can keep the original wording with it.
+      if (initialNormalize) onNormalize?.(preserveKnowledgeWikiLinks(value));
+      else onChange(preserveKnowledgeWikiLinks(value));
     }}
     onError={({ error }) => onError(`이 문서의 일부 Markdown을 편집 화면으로 바꾸지 못했습니다. 원문은 보존됩니다. (${error})`)}
     translation={(_key, defaultValue, interpolations) => {
