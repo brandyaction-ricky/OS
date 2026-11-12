@@ -113,7 +113,7 @@ const runSchema = z.object({
     summary: z.object({ title: z.string(), points: z.array(z.string()) }).strict().nullable(),
     reasons: z.object({ metaphors: z.string(), cta: z.string(), summary: z.string() }).strict(),
     assets: z.array(z.object({ kind: z.enum(["people", "situations", "bgm"]), file: z.string(), url: z.string(), source: z.string(), license: z.string(), use: z.string() }).strict()),
-    fuzzy: z.array(z.string()), notes: z.array(z.string()) }).strict().optional(),
+    fuzzy: z.array(z.string()), notes: z.array(z.string()), reading: z.array(z.string()).optional() }).strict().optional(),
   review: z.object({ decision: z.enum(["confirmed", "revise"]), by: z.string().uuid(), name: z.string(), note: z.string(), at: z.string().datetime() }).strict().optional(),
   // Stage 3: the photos approved with the storyboard (by file name), the CTA lines' voice, and the render PC's preparation
   // with Logan's preview check. Music comes from the 음악 창고 on the render PC (owner decision 2026-10-19).
@@ -255,13 +255,13 @@ export async function myinRunWithWords(service: Service, sourceId: string) {
 /** A storyboard the OS checked goes to Logan: kept as a file, summarised for the ③ panel. */
 export async function saveMyinStoryboard(service: Service, record: OsRecord, run: MyinRun, value: {
   storyboard: Record<string, unknown>; assets: NonNullable<MyinRun["storyboard"]>["assets"]; reasons: NonNullable<MyinRun["storyboard"]>["reasons"];
-  fuzzy: string[]; notes: string[]; model: string;
+  fuzzy: string[]; notes: string[]; model: string; reading?: string[];
 }) {
   const path = `${record.owner_id}/${run.sourceId}/${record.id}/myin-storyboard-${Date.now().toString(36)}.json`;
   const { error } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).upload(path, Buffer.from(JSON.stringify(value.storyboard)), { contentType: "application/json", upsert: true });
   if (error) throw new ApiError(502, "MYIN_STORYBOARD_UPLOAD_FAILED", "기획표를 저장하지 못했습니다.");
   const next: MyinRun = { ...run, storyboard: { path, ...storyboardFields(value.storyboard), model: value.model, at: new Date().toISOString(),
-    reasons: value.reasons, assets: value.assets, fuzzy: value.fuzzy.slice(0, 60), notes: value.notes } };
+    reasons: value.reasons, assets: value.assets, fuzzy: value.fuzzy.slice(0, 60), notes: value.notes, ...(value.reading?.length ? { reading: value.reading.slice(0, 40) } : {}) } };
   delete next.review;
   return save(service, record, "backlog", "storyboard_review", next);
 }

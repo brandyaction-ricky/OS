@@ -47,3 +47,10 @@ test("the same problem on many scenes is one line, listed after the one-off prob
   const groups = groupScreenIssues([logo(1), logo(2), { scene: 6, kind: "빈 화면", issue: "인용할 말이 없어요", fix: "말을 넣어요" }, logo(3), logo(3)]);
   assert.deepEqual(groups.map((group) => [group.kind, group.scenes]), [["빈 화면", [6]], ["로고", [1, 2, 3]]]);
 });
+
+test("a vertical 숏폼 is also checked for text the Reels · Shorts buttons may cover; a longform is not (수정 요청 2026-11-08)", () => {
+  const vertical = screenPrompt("#1 opening: 제목", true), wide = screenPrompt("#1 opening: 제목", false);
+  assert.ok(vertical.includes("- 가림 가능:") && vertical.includes("맨 위 14%") && vertical.includes("맨 아래 35%") && vertical.includes("참고"));
+  assert.ok(!wide.includes("가림 가능"));
+  assert.ok(SCREEN_KINDS.includes("가림 가능"));
+});

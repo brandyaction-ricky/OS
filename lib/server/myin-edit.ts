@@ -156,7 +156,7 @@ export async function submitEditOrder(actor: RequestActor, projectId: string, in
     storyboard = anchored.storyboard as Record<string, unknown>;
     const checked = checkMyinStoryboard(storyboard, myin.words, diagramCatalogTypes(await readDiagramCatalog()), myin.speech);
     if (checked.issues.length || !checked.story) throw new ApiError(422, "EDIT_STORYBOARD_ISSUES", `기획표 검사에서 걸린 곳 ${checked.issues.length}개: ${checked.issues.join(" / ")}`);
-    notes = [...checked.notes, ...(anchored.changed.length ? [`받아쓰기에 맞춘 문구 ${anchored.changed.length}개`] : [])];
+    notes = [...checked.notes, ...(anchored.changed.length ? [`받아쓰기에 맞춘 문구 ${anchored.changed.length}개`] : []), ...checked.reading.map((line) => `읽을 시간 참고: ${line}`)];
   }
   const id = randomUUID();
   const path = storyboard ? `${myin.record.owner_id}/${project.id}/edits/${id}-storyboard.json` : null;
@@ -654,7 +654,7 @@ export async function draftFinish(actor: RequestActor, projectId: string, input:
     for (const row of rows ?? []) await moveOrder(service, row, "done", who(actor), { result: { version: "v1", note: "첫 완성본에 들어가요", at, by: who(actor) } }).catch(() => undefined);
   }
   await changeSession(service, project.id, who(actor), (m) => { const next = { ...m }; delete next.save; return next; });
-  return { ok: true, label: "v1", making: true, notes: [...checked.notes, ...(anchored.changed.length ? [`받아쓰기에 맞춘 문구 ${anchored.changed.length}개`] : [])] };
+  return { ok: true, label: "v1", making: true, notes: [...checked.notes, ...(anchored.changed.length ? [`받아쓰기에 맞춘 문구 ${anchored.changed.length}개`] : []), ...checked.reading.map((line) => `읽을 시간 참고: ${line}`)] };
 }
 
 /** One version's files for the screen to play, readable for six hours (an editing afternoon: an address expiring mid-play stops the video). */

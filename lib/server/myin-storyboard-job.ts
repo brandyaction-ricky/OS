@@ -121,7 +121,7 @@ export function checkMyinStoryboardResult(value: unknown, words: [number, number
   }
   const checked = checkMyinStoryboard(story, words, catalogTypes, speech, { deck: true });
   if (checked.issues.length || !checked.story) throw new ApiError(422, "MYIN_STORYBOARD_ISSUES", `기획표 검사에서 걸린 곳 ${checked.issues.length}개: ${checked.issues.join(" / ")}`);
-  return { ...parsed.data, storyboard: story, fuzzy: checked.fuzzy,
+  return { ...parsed.data, storyboard: story, fuzzy: checked.fuzzy, reading: checked.reading,
     notes: [...checked.notes, ...(anchored.changed.length ? [`받아쓰기에 맞춘 문구 ${anchored.changed.length}개: ${anchored.changed.slice(0, 8).join(" · ")}`] : []), ...(parsed.data.suggestions ?? []).map((s) => `제안: ${s}`)] };
 }
 
