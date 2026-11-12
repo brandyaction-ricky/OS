@@ -99,7 +99,7 @@ test("route instructions and candidate preview keep human selection before produ
   expect(state.topics).toHaveLength(1); expect(state.items).toHaveLength(0);
   await page.locator(".ca-v07-topic").filter({ hasText: candidate("insight").title }).click();
   await expect(page.getByLabel("한 줄 주제", { exact: true })).toHaveValue(candidate("insight").title);
-  await expect(page.getByLabel("쓰레드 원고를 팀 검토함에 공유", { exact: true })).not.toBeChecked();
+  await expect(page.getByLabel("스레드 원고를 팀 검토함에 공유", { exact: true })).not.toBeChecked();
   await expect(page.getByRole("checkbox", { name: "카드뉴스", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "기획 확인하고 쓰레드 집필로 이동", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "기획 확인하고 쓰레드 집필로 이동", exact: true }).click();
