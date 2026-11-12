@@ -159,16 +159,16 @@ test("a read the session started beside the profile is taken once by the screen 
   const { api, calls } = await clientFixture();
   const { from, to } = api.defaultMetricWindow();
   const path = api.firstMetricRead("/content/performance");
-  assert.equal(path, api.metricWindowPath(from, to));
+  assert.equal(path, api.metricSummaryPath(from, to));
   assert.equal(api.firstMetricRead("/content/topics"), null);
   api.startEarlyRead(path, "one");
-  const screen = api.listMetricWindow("one", from, to);
+  const screen = api.listMetricSummary("one", from, to);
   assert.equal(calls.length, 1, "the screen joins the read already on its way");
-  calls[0].reply({ records: [{ ...recordBody.records[0], record_type: "content_metric" }] });
-  assert.equal((await screen).length, 1);
-  const again = api.listMetricWindow("one", from, to);
+  calls[0].reply({ days: [], videos: [], rows: [{ ...recordBody.records[0], record_type: "content_metric" }] });
+  assert.equal((await screen).rows.length, 1);
+  const again = api.listMetricSummary("one", from, to);
   assert.equal(calls.length, 2, "it is taken once; the next read asks again");
-  calls[1].reply({ records: [] }); await again;
+  calls[1].reply({ days: [], videos: [], rows: [] }); await again;
 });
 
 test("whole-type pagination counts only the first page and keeps exact-boundary termination", async () => {

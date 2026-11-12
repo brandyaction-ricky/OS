@@ -37,7 +37,8 @@ export function groupMetricDimension(records: OsRecord[], dimension: string) {
     const key = String(dimension === "video" ? metricIdentity(record) : record.metadata[dimension] || "미분류");
     groups.set(key, [...(groups.get(key) ?? []), record]);
   }
-  return [...groups].map(([key, group]) => ({ key, title: dimension === "video" ? group[0].title : key, count: group.length, ...summarizeMetrics(group) }));
+  // A row added up over several days (metadata.days, 영상 성과 summary) counts as that many measurements.
+  return [...groups].map(([key, group]) => ({ key, title: dimension === "video" ? group[0].title : key, count: group.reduce((n, record) => n + (Number(record.metadata.days) || 1), 0), ...summarizeMetrics(group) }));
 }
 export function fixedWeek(start: string) {
   const date = new Date(`${start}T00:00:00Z`); if (!Number.isFinite(date.getTime())) return null;

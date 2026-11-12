@@ -296,11 +296,25 @@ export function metricWindowPath(from?: string, to?: string, snapshots = false) 
 export function defaultMetricWindow(now = Date.now()) {
   return periodRange(DEFAULT_PERIOD, kstDay(new Date(now)))!;
 }
+/** 영상 성과 in one small answer: YouTube Analytics days and videos added up, plus the window's other rows (`observed` adds the
+ *  hourly tracked-channel rows, which 시장 레퍼런스 · 전체 need). */
+export function metricSummaryPath(from: string, to: string, observed = false) {
+  return `/api/v1/content/metrics/summary?${new URLSearchParams({ from, to, ...(observed ? { observed: "1" } : {}) })}`;
+}
+type MetricSummaryBody = { days: import("./content-metric-summary").SummaryDay[]; videos: import("./content-metric-summary").SummaryVideo[]; rows: OsRecord[] };
+const decodedSummary = (body: MetricSummaryBody) => ({ ...body, rows: decodedRecordTitles(body.rows ?? []), videos: (body.videos ?? []).map((video) => ({ ...video, title: decodeHtmlEntities(video.title ?? "") })) });
+export function recentMetricSummary(token: string | null, from: string, to: string, observed = false) {
+  const hit = recentRead<MetricSummaryBody>(metricSummaryPath(from, to, observed), token);
+  return hit ? decodedSummary(hit) : undefined;
+}
+export async function listMetricSummary(token: string | null, from: string, to: string, observed = false) {
+  return decodedSummary(await sharedRead<MetricSummaryBody>(metricSummaryPath(from, to, observed), token));
+}
 /** On a full load of 영상 성과 the session asks for these figures beside the profile (startEarlyRead). */
 export function firstMetricRead(pathname: string) {
   if (pathname !== "/content/performance") return null;
   const { from, to } = defaultMetricWindow();
-  return metricWindowPath(from, to);
+  return metricSummaryPath(from, to);
 }
 export function recentMetricWindow(token: string | null, from?: string, to?: string) {
   const hit = recentRead<{ records: OsRecord[] }>(metricWindowPath(from, to), token);
