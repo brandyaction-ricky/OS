@@ -1059,6 +1059,15 @@
       "productionApprovedAt": "2026-11-10",
       "appliedEnvironments": ["production"],
       "notes": "Restrictive authenticated INSERT, UPDATE (old and new values) and DELETE policies only for image_creative_v1 projects and image-creative staff AI jobs. Existing reads and other record kinds keep their prior policies. Domain writes use service_role after owner/version/approval validation. Owner approved Production in chat on 2026-11-10 (\"DB 적용하고 운영 반영해\"). Read-only check first: 0 image policies, 11 os_records policies, 0 image rows, history 0. Applied in one transaction with 20261106120000 and both schema history rows before the code (#539) was deployed, read back (3 image policies, 14 os_records policies, history 2). Not applied to DEV."
+    },
+    {
+      "file": "20261112220000_content_metric_window_v2.sql",
+      "sha256": "4b709e1da753ac855c8df54441673f278baa079435bf4d9f7c359d231772b635",
+      "purpose": "영상 성과: os_content_metric_window_v2 leaves channel snapshots out of the window read (or returns only those of posts published in the window), after the first YouTube Analytics run made one 30-day read 22k rows / 27 MB",
+      "requiresApproval": true,
+      "productionApprovedAt": null,
+      "appliedEnvironments": [],
+      "notes": "Additive: one new security-invoker function with the same grants as v1; v1, rows and policies unchanged. The route falls back to v1 (PGRST202) until v2 is in, so deploy order does not matter. Checked on temp tables (window 2 rows without snapshots, 1 snapshot published in the window, latest cumulative kept). Manual undo: supabase/rollback/20261112220000_content_metric_window_v2.down.sql. Production only with the owner's approval through the owner-run script (auto mode blocks production database access). Not applied to DEV."
     }
   ],
   "legacyMigrations": [
