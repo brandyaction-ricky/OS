@@ -46,9 +46,37 @@ export function diffMarkdownLines(before: string, after: string): LineChange[] {
  * untouched (`normalized`) and what it holds now (`edited`), keep the original wording of every part the person did not change and
  * take the editor's text only where they did. A part the editor rewrote and the person also edited takes the edited text.
  */
+// A table row's cells, or null for any other line. `\|` inside a cell is not a border.
+function tableCells(line: string) {
+  if (!/^\s*\|.*\|\s*$/.test(line)) return null;
+  return line.trim().slice(1, -1).split(/(?<!\\)\|/).map((cell) => cell.trim());
+}
+const unescape = (cell: string) => cell.replace(/\\([!-/:-@[-`{-~])/g, "$1");
+// What a line says, ignoring how the editor spaced or escaped it: one edited cell makes the editor re-pad every row of the
+// table and escape `~`, which must not count as the person changing those rows.
+function lineKey(line: string) {
+  const cells = tableCells(line);
+  return cells ? `|${cells.map((cell) => (/^:?-+:?$/.test(cell) ? "---" : unescape(cell))).join("|")}|` : line;
+}
+const keyed = (lines: string[]) => lines.map(lineKey).join("\n");
+// An edited table row: cells the person did not change keep the original cell text, and no padding is added.
+function mergeRow(original: string | undefined, normalized: string, edited: string) {
+  const o = original === undefined ? null : tableCells(original), n = tableCells(normalized), e = tableCells(edited);
+  if (!e) return edited;
+  const same = o && n && o.length === e.length && n.length === e.length;
+  return `| ${e.map((cell, i) => (same && unescape(cell) === unescape(n![i]) ? o![i] : /^:?-+:?$/.test(cell) ? cell.replace(/-+/, "---") : cell)).join(" | ")} |`;
+}
+
+/**
+ * 정본 변경 제안 (2026-11-12): the rich editor writes every line back in its own style (escaped `*`, `*` bullets, padded tables,
+ * HTML as text) even when one line changed. Given the text the editor was opened with (`original`), what the editor made of it
+ * untouched (`normalized`) and what it holds now (`edited`), keep the original wording of every part the person did not change and
+ * take the editor's text only where they did. A part the editor rewrote and the person also edited takes the edited text; an
+ * edited table row keeps its untouched cells as written and gets no padding.
+ */
 export function keepOriginalLines(original: string, normalized: string, edited: string) {
   if (normalized === edited) return original;
-  const base = normalized.split("\n");
+  const base = normalized.split("\n"), from = original.split("\n"), now = edited.split("\n");
   // Units over the normalized lines: one line the editor left alone, or a run it rewrote, with the original lines behind it.
   // A run rewritten line for line (escapes, bullets, table padding) is split back into single lines, so editing one bullet or one
   // table row keeps the rest of the list or table as it was.
@@ -60,32 +88,43 @@ export function keepOriginalLines(original: string, normalized: string, edited: 
     else units.push(run);
     run = null;
   };
-  for (const change of diffMarkdownLines(normalized, original)) {
-    if (change.kind === "same") { close(); units.push({ from: at, to: at + 1, text: [change.text] }); at += 1; }
+  for (const change of diffMarkdownLines(keyed(base), keyed(from))) {
+    if (change.kind === "same") { close(); units.push({ from: at, to: at + 1, text: [from[change.newLine! - 1]] }); at += 1; }
     else {
       run ??= { from: at, to: at, text: [] };
-      if (change.kind === "removed") { at += 1; run.to = at; } else run.text.push(change.text);
+      if (change.kind === "removed") { at += 1; run.to = at; } else run.text.push(from[change.newLine! - 1]);
     }
   }
   close();
-  // What the person did to each normalized line: kept or not, and the lines they added before it (index base.length = the end).
+  // What the person did to each normalized line: kept, replaced (removed lines paired in order with the lines added right after
+  // them), or removed; and the lines they added before it (index base.length = the end).
   const kept = new Array<boolean>(base.length).fill(false);
+  const replaced = new Array<string | undefined>(base.length);
   const added: string[][] = Array.from({ length: base.length + 1 }, () => []);
+  const pending: number[] = [];
   at = 0;
-  for (const change of diffMarkdownLines(normalized, edited)) {
-    if (change.kind === "added") added[at].push(change.text);
-    else { if (change.kind === "same") kept[at] = true; at += 1; }
+  for (const change of diffMarkdownLines(keyed(base), keyed(now))) {
+    const text = now[(change.newLine ?? 1) - 1];
+    if (change.kind === "added") { const k = pending.shift(); if (k === undefined) added[at].push(text); else replaced[k] = text; }
+    else if (change.kind === "removed") { pending.push(at); at += 1; }
+    else { pending.length = 0; kept[at] = true; at += 1; }
   }
   const out: string[] = [];
   for (const unit of units) {
-    out.push(...added[unit.from].splice(0));
+    out.push(...added[unit.from].splice(0).map((line) => mergeRow(undefined, line, line)));
     const untouched = kept.slice(unit.from, unit.to).every(Boolean) && added.slice(unit.from + 1, unit.to).every((lines) => !lines.length);
     if (untouched) { out.push(...unit.text); continue; }
+    // One edited line: a table row keeps its untouched cells as written.
+    if (unit.to - unit.from === 1 && unit.text.length === 1 && replaced[unit.from] !== undefined) {
+      out.push(mergeRow(unit.text[0], base[unit.from], replaced[unit.from]!));
+      continue;
+    }
     for (let k = unit.from; k < unit.to; k += 1) {
-      if (k > unit.from) out.push(...added[k].splice(0));
+      if (k > unit.from) out.push(...added[k].splice(0).map((line) => mergeRow(undefined, line, line)));
       if (kept[k]) out.push(base[k]);
+      else if (replaced[k] !== undefined) out.push(mergeRow(undefined, replaced[k]!, replaced[k]!));
     }
   }
-  out.push(...added[base.length]);
+  out.push(...added[base.length].map((line) => mergeRow(undefined, line, line)));
   return out.join("\n");
 }

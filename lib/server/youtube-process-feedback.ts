@@ -7,7 +7,7 @@ import { conflict, getYoutubeProject, notify, readFailed } from "./youtube-proce
 import { readFinals, readStages } from "./youtube-process-stages";
 import { appendOnly, applyFeedback, cleanMarks, FEEDBACK_FILE_MAX, FEEDBACK_FILE_TYPES, FEEDBACK_FILES_PER_ITEM, feedbackFilePath, FeedbackRuleError, mentionedIds, normalizeReplies, replyRecipients, type FeedbackFile, type FeedbackMark, type FeedbackReply, type FeedbackState } from "@/lib/youtube-process/feedback";
 import { createServiceSupabase } from "@/lib/supabase/server";
-import type { SceneNotePin } from "@/lib/myin-scene-notes";
+import type { SceneNotePin, SceneProposal } from "@/lib/myin-scene-notes";
 import { sceneNoteInput, sceneNotePin } from "./myin-scene-notes";
 
 // S6 최종 검수 feedback (지시서 6-3): one content_feedback record per item, under the project. Needs the M1 record type.
@@ -18,7 +18,7 @@ export interface YpFeedback {
   replies: FeedbackReply[]; doneBy: string; doneAt: string; confirmedBy: string; confirmedAt: string; deleted: boolean; editedAt: string;
   marks: FeedbackMark[]; files: FeedbackFile[];
   /** 점검 시트 장면 의견 (target "scene"): the scene it was written on, and when it went to 내 AI as a 수정 요청. */
-  scene: SceneNotePin | null; sent: { at: string; by: string; name: string } | null;
+  scene: SceneNotePin | null; sent: { at: string; by: string; name: string; jobId?: string } | null; proposal: SceneProposal | null;
 }
 export const feedbackCreateSchema = z.object({
   // "all": one note for every thumbnail at once (직원 요청 11/4).
@@ -42,7 +42,7 @@ const present = (row: OsRecord): YpFeedback => {
     declinedWhy: String(m.declinedWhy ?? ""), fixedIn: typeof m.fixedIn === "number" ? m.fixedIn : null, replies: normalizeReplies(m.replies),
     doneBy: String(m.doneBy ?? ""), doneAt: String(m.doneAt ?? ""), confirmedBy: String(m.confirmedBy ?? ""), confirmedAt: String(m.confirmedAt ?? ""), deleted: m.deleted === true, editedAt: String(m.editedAt ?? ""),
     marks: cleanMarks(m.marks), files: Array.isArray(m.files) ? (m.files as FeedbackFile[]) : [],
-    scene: (m.scene as SceneNotePin | undefined) ?? null, sent: (m.sent as YpFeedback["sent"] | undefined) ?? null };
+    scene: (m.scene as SceneNotePin | undefined) ?? null, sent: (m.sent as YpFeedback["sent"] | undefined) ?? null, proposal: (m.proposal as SceneProposal | undefined) ?? null };
 };
 
 /** Long-form items in running order (a range by its start), thumbnails A → B → C, then by time written (4-7). */
@@ -117,7 +117,7 @@ export async function actOnFeedback(actor: RequestActor, id: string, input: z.in
     catch (reason) { if (reason instanceof FeedbackRuleError) throw new ApiError(reason.status, reason.code, reason.message); throw reason; }
     const { text, whoId: _whoId, ...fields } = after; void _whoId;
     // 다시 열기 puts a 장면 의견 back to 대기 (it goes to 내 AI again with the next 수정 요청).
-    const metadata = { ...m, doneBy: null, doneAt: null, confirmedBy: null, confirmedAt: null, deleted: null, editedAt: null, ...(input.action === "reopen" ? { sent: null } : {}), ...fields };
+    const metadata = { ...m, doneBy: null, doneAt: null, confirmedBy: null, confirmedAt: null, deleted: null, editedAt: null, ...(input.action === "reopen" ? { sent: null, proposal: null } : {}), ...fields };
     const { data: saved, error: saveError } = await actor.supabase.from("os_records").update({ metadata, description: text, status: after.status, updated_by: actor.id })
       .eq("id", row.id).eq("version", row.version).is("archived_at", null).select("*").maybeSingle();
     if (saveError) throw new ApiError(400, "FEEDBACK_SAVE_FAILED", "피드백을 저장하지 못했습니다.");
