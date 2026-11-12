@@ -168,7 +168,7 @@ test("prepareMeetingBrief lists unfinished tasks from recent meetings and keeps 
   const now = new Date().toISOString();
   const meetings = [
     { id: "m2", status: "active", title: "마이인 회의", brand: "마이인", starts_at: now, description: "메모", metadata: { items: [{ kind: "open", text: "열린 질문", state: "pending" }] } },
-    { id: "r1", status: "review", title: "마이인 회의", brand: "마이인", starts_at: now, description: "메모", metadata: { items: [{ kind: "decision", text: "광고비로만 쓰기로 했다", state: "pending" }] } },
+    { id: "r1", status: "review", title: "마이인 회의", brand: "마이인", starts_at: now, description: "메모", metadata: { workspace: "knowledge", items: [{ kind: "decision", text: "광고비로만 쓰기로 했다", state: "pending" }] } },
   ];
   const tasks = [
     { id: "t1", parent_id: "r1", status: "todo", title: "남은 할 일", brand: "마이인" },
@@ -178,4 +178,17 @@ test("prepareMeetingBrief lists unfinished tasks from recent meetings and keeps 
   const result = await prepareMeetingBrief(fakeSupabase({ meetings, tasks }), { brand: "마이인" });
   assert.equal(JSON.stringify(result.pending), JSON.stringify(["열린 질문"]));
   assert.equal(JSON.stringify(result.followUps.map(task => task.id)), JSON.stringify(["t1"]));
+});
+
+test("follow-ups come only from dated, current-system meetings of the last 30 days", async () => {
+  const prepareMeetingBrief = await loadPrepareMeetingBrief();
+  const meetings = [
+    { id: "new", status: "active", title: "마이인 회의", brand: "마이인", starts_at: new Date().toISOString(), description: "메모", metadata: { workspace: "knowledge" } },
+    { id: "old", status: "done", title: "마이인 회의", brand: "마이인", starts_at: "2026-09-23T01:00:00Z", description: "메모", metadata: { workspace: "knowledge", summary: "9월" } },
+    { id: "imported", status: "done", title: "마이인 회의", brand: "마이인", starts_at: new Date().toISOString(), description: "옛 기록", metadata: { summary: "옛 봇" } },
+    { id: "undated", status: "done", title: "마이인 회의", brand: "마이인", starts_at: null, updated_at: new Date().toISOString(), description: "메모", metadata: {} },
+  ];
+  const tasks = ["new", "old", "undated", "imported"].map(parent => ({ id: `t-${parent}`, parent_id: parent, status: "todo", title: parent, brand: "마이인" }));
+  const result = await prepareMeetingBrief(fakeSupabase({ meetings, tasks }), { brand: "마이인" });
+  assert.equal(JSON.stringify(result.followUps.map(task => task.id)), JSON.stringify(["t-new"]));
 });
