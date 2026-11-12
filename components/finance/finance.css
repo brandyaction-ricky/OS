@@ -22,6 +22,8 @@
   line-height: 1.55;
   color: var(--text);
   min-width: 0;
+  word-break: keep-all; /* 한글은 낱말 단위로 줄바꿈 ("제|외" · "빠집니|다" 처럼 끊기지 않게) */
+  overflow-wrap: break-word;
 }
 
 /* OS sidebar/header remain outside this scope. */
@@ -31,16 +33,15 @@
 .page-content .finance-workspace [hidden] {
   display: none !important;
 }
-.page-content .finance-workspace a {
+.page-content .finance-workspace a:where(:not(.primary-button):not(.secondary-button)) { /* 단추 모양 링크는 공통 단추 글자색 그대로 */
   color: var(--accent-2);
 }
-.page-content .finance-workspace a:hover {
+.page-content .finance-workspace a:where(:not(.primary-button):not(.secondary-button)):hover {
   color: var(--accent-hover);
 }
 .page-content .finance-workspace :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: 4px;
 }
 .page-content .finance-workspace h1,
 .page-content .finance-workspace h2,
@@ -329,6 +330,7 @@
   gap: 10px;
   margin-bottom: 10px;
   flex-wrap: wrap;
+  min-height: 28px; /* 단추가 있는 머리와 없는 머리의 높이를 맞춤 */
 }
 .page-content .finance-workspace .fin-card-h .fin-sub {
   font-size: 12px;
@@ -338,6 +340,13 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 12px;
+}
+.page-content .finance-workspace .fin-tiles:not(.fin-t3,.fin-t4,.fin-t5) { /* 개수가 정해지지 않은 칸 줄: 남는 칸 없이 줄을 채움 */
+  display: flex;
+  flex-wrap: wrap;
+}
+.page-content .finance-workspace .fin-tiles:not(.fin-t3,.fin-t4,.fin-t5) > * {
+  flex: 1 1 200px; /* 1440: 다섯 칸 한 줄 · 1024: 3 + 2 */
 }
 .page-content .finance-workspace .fin-tiles.fin-t3 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -387,6 +396,7 @@
 .page-content .finance-workspace button.fin-tile[aria-pressed="true"] {
   border: 2px solid var(--accent);
   padding: 13px 15px;
+  background: var(--accent-soft);
 }
 .page-content .finance-workspace .fin-up {
   color: var(--mint);
@@ -419,9 +429,9 @@
 .page-content .finance-workspace .fin-sel {
   height: 32px;
   border: 1px solid var(--line);
-  background: var(--panel);
+  background-color: var(--panel); /* background 줄임 속성은 공통 select 의 ▾ 그림까지 지운다 */
   color: var(--text);
-  padding: 0 8px;
+  padding: 0 28px 0 8px;
   font-family: inherit;
 }
 .page-content .finance-workspace .fin-input,
@@ -429,11 +439,15 @@
 .page-content .finance-workspace textarea.fin-input {
   width: 100%;
   border: 1px solid var(--line);
-  background: var(--panel);
+  background-color: var(--panel);
   color: var(--text);
   font-family: inherit;
+  line-height: normal; /* 도구 줄의 찾기 칸이 35px 로 커지지 않게 (옆 select 32px) */
   padding: 7px 10px;
 } /* 높이 32 · 둥글기 6 · 12px 는 공통 입력칸 (D4). 긴 글 칸만 13px */
+.page-content .finance-workspace select.fin-input {
+  padding-right: 30px;
+}
 .page-content .finance-workspace textarea.fin-input {
   min-height: 72px;
   border-radius: 6px;
@@ -542,8 +556,25 @@
   align-items: center;
   flex-wrap: wrap;
 }
+.page-content .finance-workspace .fin-pctl .segmented button { /* 22px → 줄의 다른 단추와 같은 28px (테두리 포함) */
+  min-height: 26px;
+}
+.page-content .finance-workspace .fin-pctl .segmented button[aria-pressed="true"] { /* 고른 기간: 다른 선택 카드처럼 테두리 + 진한 글자 */
+  color: var(--text);
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+.page-content .finance-workspace .fin-pctl .fin-sel,
+.page-content .finance-workspace .fin-bulk .fin-sel { /* 단추(28px)와 한 줄에 놓이는 select */
+  height: 28px;
+  min-height: 28px;
+}
+.page-content .finance-workspace .fin-mpick > button { /* ‹ › 누를 곳 20px → 28px */
+  min-width: 28px;
+}
 .page-content .finance-workspace .fin-crange input {
-  height: 32px;
+  height: 28px;
+  min-height: 28px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--panel);
@@ -580,6 +611,7 @@
 
 /* table */
 .page-content .finance-workspace .fin-tbl-wrap {
+  position: relative;
   overflow-x: auto;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -657,11 +689,18 @@
   background: none;
   padding: 0;
   min-height: 24px;
+  min-width: 24px;
   font: inherit;
   color: var(--text);
   text-align: left;
   cursor: pointer;
   font-weight: 500;
+}
+.page-content .finance-workspace .fin-tbl input[type="checkbox"] { /* 13px → 16px */
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  vertical-align: middle;
 }
 .page-content .finance-workspace .fin-rowbtn:hover {
   color: var(--accent-2);
@@ -1015,6 +1054,9 @@
 .page-content .finance-workspace .fin-usebar .fin-meter {
   flex: 1;
 }
+.page-content .finance-workspace .fin-tbl .fin-usebar .fin-meter { /* 표 안에서는 막대 길이를 고정 — 뒤의 숫자 폭에 따라 달라지지 않게 */
+  flex: 0 0 110px;
+}
 
 /* drawer / modal / toast */
 .page-content .finance-workspace .fin-scrim {
@@ -1108,6 +1150,7 @@
 }
 .page-content .finance-workspace .fin-modal .fin-mbody {
   min-height: 0;
+  flex: 1 1 auto;
   overflow-y: auto;
   padding: 16px 20px;
   display: flex;
@@ -1240,6 +1283,24 @@
   gap: 8px;
   align-items: center;
 }
+.page-content .finance-workspace .fin-dropzone input[type="file"] {
+  max-width: 100%;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.page-content .finance-workspace .fin-dropzone input[type="file"]::file-selector-button {
+  height: 28px;
+  margin-right: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
 .page-content .finance-workspace .fin-vh {
   position: absolute;
   width: 1px;
@@ -1350,7 +1411,7 @@
 }
 .page-content .finance-workspace .fin-eq .fin-term {
   flex: 1 1 120px;
-  min-width: 120px;
+  min-width: min-content;
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 10px 12px;
@@ -1817,6 +1878,39 @@
   .page-content .finance-workspace .fin-view {
     padding-top: 16px;
   }
+}
+.page-content .finance-workspace .fin-chart-scroll { /* 일별 결제 차트: 좁은 화면에서는 줄이지 않고 옆으로 넘김 */
+  overflow-x: auto;
+}
+@media (max-width: 1100px) {
+  .page-content .finance-workspace .fin-netgrid, /* 위 v0.3 규칙이 1000px 규칙을 덮어 휴대폰에서도 두 칸이던 것 */
+  .page-content .finance-workspace .fin-view > .fin-grid2 { /* 개요 · 카드지출 아래 두 칸: 표가 잘리지 않게 한 칸 */
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .page-content .finance-workspace .fin-netgrid .fin-chart { /* 한 칸이 되면 월별 순수익 막대가 화면 폭만큼 커지지 않게 */
+    max-width: 520px;
+  }
+}
+@media (max-width: 520px) {
+  .page-content .finance-workspace .fin-tiles:not(.fin-t3,.fin-t4,.fin-t5) > * { /* 휴대폰: 전처럼 두 칸, 마지막 칸만 한 줄 */
+    flex-basis: 150px;
+  }
+  .page-content .finance-workspace .fin-chart-scroll > .fin-chart { /* 축 글자가 4.7px 로 줄지 않게 제 크기(11px) */
+    min-width: 760px;
+  }
+  .page-content .finance-workspace .fin-samplebar > span { /* 휴대폰은 말풍선이 없어 잘린 안내를 볼 길이 없음 */
+    white-space: normal;
+  }
+  .page-content .finance-workspace .fin-sub2 { /* 예산 표: 항목 설명이 숫자 칸을 화면 밖으로 밀지 않게 */
+    max-width: 200px;
+  }
+}
+/* 서류함: 고른 폴더 · 「전체 서류」가 한눈에 보이게 (공통 .active 는 테두리 한 톤 차이뿐) */
+.finance-doc-pick > button[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  color: var(--text);
 }
 .finance-sync-body { padding: 0 16px 16px; display: grid; gap: 12px; }
 .finance-sync-body p { margin: 0; font-size: 13px; line-height: 1.6; }
