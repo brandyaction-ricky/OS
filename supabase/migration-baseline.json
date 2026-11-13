@@ -1086,6 +1086,18 @@
       "productionApprovedAt": null,
       "appliedEnvironments": [],
       "notes": "Replaces the function body only (same signature, grants and indexes as 20261112230000); rows and policies unchanged. Until it is in, the page shows CTR from the route's own sums only when the function is missing, otherwise CTR stays empty. Manual undo: run 20261112230000_content_metric_summary.sql again. Production only with the owner's approval through the owner-run script. Not applied to DEV."
+    },
+    {
+      "file": "20261113100000_finance_purchase_invoices.sql",
+      "sha256": "44f17c92543b55d4710e4e920b5905a3730e26f2cd6a3ad0428e953ca58a665b",
+      "purpose": "재무 2026-11-13: os_fin_purchase_invoices (홈택스 전자(세금)계산서 매입) for the 매입세액 and 예상 납부세액 (매출세액 − 매입세액) reference on 부가세 신고 참고 자료",
+      "requiresApproval": true,
+      "productionApprovedAt": "2026-11-13",
+      "appliedEnvironments": [
+        "development",
+        "production"
+      ],
+      "notes": "Owner approved Production on 2026-11-13 (\"운영 적용·병합\"). Applied to the brandyaction OS Production project the same way as DEV: the 95 applied Production history rows were fetched into a disposable staging directory, this one file (same sha256) was added, the dry-run listed exactly this migration, then db push; history 95 -> 96 with the earlier 95 unchanged; postflight read back RLS on, the 3 finance policies, 3 indexes, authenticated select/insert/update only, anon none, 0 rows, os_fin_tax_invoices untouched. No seed, reset, history repair, other migration, environment variable or business row. Applied before the code merge; the previous code never reads the table. Owner approved DEV on 2026-11-13 (\"#574도 DEV DB 적용해서 확인해줘\"). Applied to brandyaction-os-dev only: the 70 applied DEV history rows were fetched into a disposable staging directory, this one file was added, the dry-run listed exactly this migration, then db push; history 70 -> 71 with the earlier 70 unchanged; postflight read back RLS on, 3 policies, 3 indexes, authenticated select/insert/update only, anon none, 0 rows. Connected DEV check with synthetic identities through the real API (7 checks: 401/403/200, import and read-back, re-import dedupe, other-business 409, invalid 400, RLS and check constraints, archive-only, live permission revoke); all synthetic rows and users removed. DEV is still missing 26 earlier migrations that Production has (among them 20261029120000_finance_tax_invoices), so GET /api/v1/finance/vat answers 503 FINANCE_SETUP_REQUIRED there and the page-level flow was not exercised on DEV. Additive: one new table with the same columns, checks, index, grants (select/insert/update, no delete) and finance_read/finance_insert/finance_update policies as os_fin_tax_invoices (tests/finance-purchase-vat.test.mjs compares the two definitions); no existing table, row, policy or function changes, os_fin_log_action untouched. Deploy order does not matter: until the table exists GET /api/v1/finance/vat answers purchase.available=false with the sales fields unchanged and /api/v1/finance/purchase-invoices answers 503 FINANCE_PURCHASE_NOT_READY. Manual undo: supabase/rollback/20261113100000_finance_purchase_invoices.down.sql (drops the table; saved 매입 rows can be uploaded again). DEV and Production each need the owner's approval."
     }
   ],
   "legacyMigrations": [

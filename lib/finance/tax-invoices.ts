@@ -58,10 +58,13 @@ export function hometaxWon(value: unknown): number | null {
 
 export type ParsedInvoices = { invoices: TaxInvoiceInput[]; errors: string[]; supplierRegNos: string[]; headerRow: number };
 
-/** Rows of a 홈택스 매출 목록 (title lines first, then one header row, then one row per invoice or per item). */
-export function parseHometaxRows(rows: unknown[][]): ParsedInvoices {
+/**
+ * Rows of a 홈택스 매출 목록 (title lines first, then one header row, then one row per invoice or per item).
+ * A 매입 목록 has the same layout with the roles reversed: the supplier is the counterparty and the buyer is our business.
+ */
+export function parseHometaxRows(rows: unknown[][], direction: "sales" | "purchase" = "sales"): ParsedInvoices {
   const headerRow = rows.findIndex(row => row.some(cell => squash(cell) === "승인번호") && row.some(cell => ["작성일자", "작성일"].includes(squash(cell))));
-  if (headerRow < 0) return { invoices: [], errors: ["홈택스 목록 파일이 아니에요. 「승인번호」와 「작성일자」 칸이 있는 매출 목록을 올려 주세요."], supplierRegNos: [], headerRow: -1 };
+  if (headerRow < 0) return { invoices: [], errors: [`홈택스 목록 파일이 아니에요. 「승인번호」와 「작성일자」 칸이 있는 ${direction === "purchase" ? "매입" : "매출"} 목록을 올려 주세요.`], supplierRegNos: [], headerRow: -1 };
   const header = rows[headerRow].map(squash);
   // The first 상호 column belongs to the supplier, the second to the buyer.
   const at = (names: string[], nth = 0) => header.map((cell, index) => names.map(squash).includes(cell) ? index : -1).filter(index => index >= 0)[nth] ?? -1;
@@ -106,7 +109,10 @@ export function parseHometaxRows(rows: unknown[][]): ParsedInvoices {
   });
   const invoices = [...byApproval.values()];
   const supplierRegNos = [...new Set(invoices.map(row => row.supplier_reg_no).filter(Boolean))];
-  if (supplierRegNos.length > 1) errors.push(`공급자 사업자번호가 ${supplierRegNos.length}개 섞여 있어요. 사업자별로 따로 내려받아 올려 주세요.`);
+  // Our own business must be one: the supplier of a 매출 list, the buyer of a 매입 list (a 매출 list uploaded as 매입 usually trips this).
+  const buyers = new Set(invoices.map(row => row.buyer_reg_no).filter(Boolean)).size;
+  if (direction === "purchase") { if (buyers > 1) errors.push(`공급받는자 사업자번호가 ${buyers}개 섞여 있어요. 매출 목록이 아닌지 확인하고, 사업자별로 따로 내려받아 올려 주세요.`); }
+  else if (supplierRegNos.length > 1) errors.push(`공급자 사업자번호가 ${supplierRegNos.length}개 섞여 있어요. 사업자별로 따로 내려받아 올려 주세요.`);
   return { invoices, errors, supplierRegNos, headerRow };
 }
 
