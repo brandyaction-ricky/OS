@@ -15,7 +15,7 @@ import { normalizeObservedVideo } from "./youtube-observation";
 // are read again each run, because Analytics settles a couple of days late.
 // ponytail: one Analytics call per video per run (~150 a day for this channel); split across runs by the time budget if it grows.
 const KEEP_DAYS = 120, REREAD_DAYS = 7;
-const DAILY = "youtube_analytics_daily";
+export const DAILY = "youtube_analytics_daily";
 const uuid = (parts: unknown[]) => { const hex = createHash("sha256").update(JSON.stringify(parts)).digest("hex"); return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`; };
 export const ytDailyId = (channelId: string, videoId: string, day: string) => uuid(["yt-analytics-day", channelId, videoId, day]);
 export const ytSnapshotId = (videoId: string, snapshot: Snapshot, metric: string) => uuid(["yt-analytics-snapshot", videoId, snapshot, metric]);
@@ -30,7 +30,7 @@ async function google<T>(url: string, token: string): Promise<T> {
 
 type Item = Parameters<typeof normalizeObservedVideo>[0];
 /** Every upload of the channel (the uploads playlist, page by page), with its length for 숏폼 / 롱폼. */
-async function channelUploads(token: string, channelId: string) {
+export async function channelUploads(token: string, channelId: string) {
   const data = "https://www.googleapis.com/youtube/v3";
   const channel = await google<{ items?: Item[] }>(`${data}/channels?${new URLSearchParams({ part: "contentDetails", id: channelId })}`, token);
   const playlistId = channel.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
@@ -97,6 +97,11 @@ export async function syncChannelAnalytics(now = new Date(), budgetMs = 240_000)
             description: "YouTube 분석 하루 기록", metric_current: d.views ?? null, metric_unit: "views", starts_at: `${d.day}T12:00:00Z`,
             metadata: { contentId: video.id, channelId: connection.channel_id, platform: "YouTube", format, metricMode: "daily", dataSource: DAILY, source: "api",
               day: d.day, measuredAt, publishedAt: video.publishedAt, durationSeconds: video.durationSeconds, ...dayFields(d) } }));
+          // 노출 · 클릭률 come from the Reach report job (youtube-channel-reach.ts) into these same rows; a re-read keeps them.
+          for (let i = 0; i < dailyRows.length; i += 200) {
+            const { data: kept } = await db.from("os_records").select("id, impressions:metadata->impressions, ctr:metadata->ctr").in("id", dailyRows.slice(i, i + 200).map((row) => row.id));
+            for (const row of kept ?? []) if (row.impressions != null) Object.assign(dailyRows.find((daily) => daily.id === row.id)!.metadata, { impressions: row.impressions, ctr: row.ctr });
+          }
           for (let i = 0; i < dailyRows.length; i += 200) {
             const { error: writeError } = await db.from("os_records").upsert(dailyRows.slice(i, i + 200), { onConflict: "id" });
             if (writeError) throw new Error("daily metric save failed");

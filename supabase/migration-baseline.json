@@ -1077,6 +1077,15 @@
       "productionApprovedAt": null,
       "appliedEnvironments": [],
       "notes": "Additive: one security-invoker function and two partial indexes on os_records; rows and policies unchanged. The summary route falls back to reading the window rows and adding them up itself (PGRST202) until the function is in. Manual undo: supabase/rollback/20261112230000_content_metric_summary.down.sql. Production only with the owner's approval through the owner-run script. Not applied to DEV."
+    },
+    {
+      "file": "20261113090000_content_metric_summary_reach.sql",
+      "sha256": "49cca919b5b0de79655761f867e16dda886d4e9eb52f2fd59d5489a4473eaf19",
+      "purpose": "노출 · 클릭률: os_content_metric_summary also adds up thumbnail impressions and the impressions-weighted CTR that the YouTube Reporting Reach job puts on the day rows",
+      "requiresApproval": true,
+      "productionApprovedAt": null,
+      "appliedEnvironments": [],
+      "notes": "Replaces the function body only (same signature, grants and indexes as 20261112230000); rows and policies unchanged. Until it is in, the page shows CTR from the route's own sums only when the function is missing, otherwise CTR stays empty. Manual undo: run 20261112230000_content_metric_summary.sql again. Production only with the owner's approval through the owner-run script. Not applied to DEV."
     }
   ],
   "legacyMigrations": [
