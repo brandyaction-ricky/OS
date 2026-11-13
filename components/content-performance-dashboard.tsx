@@ -23,7 +23,7 @@ import { filterContentOrigin, linkedContentOrigin, type ContentOriginFilter as O
 
 // 영상 성과 (2026-11-12 대표: 다른 화면 규칙에 맞추고, 기간을 바로 고르고, 보기·쓰기 편하게).
 // One period row scopes every tab below it; the tabs keep each job on its own page instead of one long scroll.
-const METRICS = [{ key: "views", label: "조회", suffix: "" }, { key: "ctr", label: "클릭률", suffix: "%" }, { key: "retention", label: "시청 지속률", suffix: "%" }, { key: "subscribers", label: "구독자 순증", suffix: "" }, { key: "purchases", label: "구매", suffix: "" }, { key: "revenue", label: "기여 매출", suffix: "원" }] as const;
+const METRICS = [{ key: "views", label: "조회", suffix: "" }, { key: "impressions", label: "노출", suffix: "" }, { key: "ctr", label: "클릭률", suffix: "%" }, { key: "retention", label: "시청 지속률", suffix: "%" }, { key: "subscribers", label: "구독자 순증", suffix: "" }, { key: "purchases", label: "구매", suffix: "" }, { key: "revenue", label: "기여 매출", suffix: "원" }] as const;
 const FIELDS = [{ key: "impressions", label: "노출" }, { key: "views", label: "조회" }, { key: "clicks", label: "클릭" }, { key: "ctr", label: "클릭률(CTR) %" }, { key: "retention", label: "시청지속률 %" }, { key: "subscribers", label: "구독자 순증" }, { key: "purchases", label: "구매" }, { key: "revenue", label: "기여 매출 (원)" }];
 const TABS = [["summary", "요약"], ["videos", "영상별"], ["days", "경과일 비교"], ["sales", "매출"], ["learn", "가설"], ["records", "측정 기록"]] as const;
 type Tab = typeof TABS[number][0];

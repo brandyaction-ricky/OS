@@ -1,0 +1,1 @@
+-- Rollback for 20261113090000: run 20261112230000_content_metric_summary.sql again (the function without impressions).

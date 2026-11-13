@@ -57,3 +57,24 @@ export function ytSnapshot(days: YtDay[], publishedDay: string, snapshot: Snapsh
     averageViewDuration: Math.round(weighted("averageViewDuration")), averageViewPercentage: Math.round(weighted("averageViewPercentage") * 10) / 10,
     subscribersGained: sum("subscribersGained"), subscribersLost: sum("subscribersLost") };
 }
+
+export type ReachDay = { day: string; video: string; impressions: number; ctr: number | null };
+/** One Reach report (channel_reach_basic_a1: date, channel_id, video_id, video_thumbnail_impressions, video_thumbnail_impressions_ctr)
+ *  as rows, its CTR as the API wrote it. Dates come as YYYYMMDD (Pacific days, as Analytics counts them). */
+export function parseReachCsv(text: string): ReachDay[] {
+  const [head = "", ...lines] = text.trim().split(/\r?\n/);
+  const cols = head.split(",").map((name) => name.trim()), at = (name: string) => cols.indexOf(name);
+  const [date, video, impressions, ctr] = [at("date"), at("video_id"), at("video_thumbnail_impressions"), at("video_thumbnail_impressions_ctr")];
+  if (date < 0 || video < 0 || impressions < 0) return [];
+  return lines.map((line) => line.split(",")).map((c) => {
+    const raw = String(c[date] ?? "").trim(), rate = ctr >= 0 && String(c[ctr] ?? "").trim() !== "" ? Number(c[ctr]) : NaN;
+    return { day: /^\d{8}$/.test(raw) ? `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}` : raw, video: String(c[video] ?? "").trim(), impressions: Number(c[impressions]), ctr: Number.isFinite(rate) && rate >= 0 ? rate : null };
+  }).filter((row) => /^\d{4}-\d{2}-\d{2}$/.test(row.day) && row.video && Number.isFinite(row.impressions) && row.impressions >= 0);
+}
+
+/** CTR in percent. The API calls it a percentage without saying the scale, so a run whose CTRs all stay at or under 1 is read as
+ *  fractions (a channel's thumbnails always include some above 1%). ponytail: a channel whose every CTR is under 1% would read ×100. */
+export function reachPercent(rows: ReachDay[]): ReachDay[] {
+  const fraction = rows.every((row) => row.ctr === null || row.ctr <= 1);
+  return rows.map((row) => ({ ...row, ctr: row.ctr === null ? null : Math.round((fraction ? row.ctr * 100 : row.ctr) * 100) / 100 }));
+}

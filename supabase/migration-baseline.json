@@ -1079,6 +1079,15 @@
       "notes": "Additive: one security-invoker function and two partial indexes on os_records; rows and policies unchanged. The summary route falls back to reading the window rows and adding them up itself (PGRST202) until the function is in. Manual undo: supabase/rollback/20261112230000_content_metric_summary.down.sql. Production only with the owner's approval through the owner-run script. Not applied to DEV."
     },
     {
+      "file": "20261113090000_content_metric_summary_reach.sql",
+      "sha256": "49cca919b5b0de79655761f867e16dda886d4e9eb52f2fd59d5489a4473eaf19",
+      "purpose": "노출 · 클릭률: os_content_metric_summary also adds up thumbnail impressions and the impressions-weighted CTR that the YouTube Reporting Reach job puts on the day rows",
+      "requiresApproval": true,
+      "productionApprovedAt": null,
+      "appliedEnvironments": [],
+      "notes": "Replaces the function body only (same signature, grants and indexes as 20261112230000); rows and policies unchanged. Until it is in, the page shows CTR from the route's own sums only when the function is missing, otherwise CTR stays empty. Manual undo: run 20261112230000_content_metric_summary.sql again. Production only with the owner's approval through the owner-run script. Not applied to DEV."
+    },
+    {
       "file": "20261113100000_finance_purchase_invoices.sql",
       "sha256": "44f17c92543b55d4710e4e920b5905a3730e26f2cd6a3ad0428e953ca58a665b",
       "purpose": "재무 2026-11-13: os_fin_purchase_invoices (홈택스 전자(세금)계산서 매입) for the 매입세액 and 예상 납부세액 (매출세액 − 매입세액) reference on 부가세 신고 참고 자료",
