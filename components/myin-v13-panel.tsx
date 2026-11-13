@@ -12,7 +12,7 @@ import { CostTag, useCostConfirm, useCostModels, voiceEstimate } from "./cost-no
 import { MyinSoundEditor } from "./myin-sound-editor";
 import { MyinOurImages } from "./myin-our-images";
 import { MyinScreenCheck } from "./myin-screen-check";
-import { MyinSceneNotes, type SceneSheets } from "./myin-scene-notes";
+import { MyinSceneNotes, sceneSheets, type SceneSheetsReply } from "./myin-scene-notes";
 import { MyinVoiceCheck, type MyinVoiceCheckView, type MyinVoiceFixView } from "./myin-voice-check";
 import { localBlocker, useLocalRender, type DraftPlace } from "./myin-local-render";
 import { lastSettings, MyinMakeSettings, placeName, rememberSettings, SettingsLine, type MakeSettings, type RunSettings } from "./myin-make-settings";
@@ -28,7 +28,7 @@ interface MyinRun { id: string; status: string; stage: string; layout?: "short" 
   words: { words: number; subtitleLines: number; durationSeconds: number } | null; storyboard: Storyboard | null;
   review: { decision: "confirmed" | "revise"; name: string; note: string; at: string } | null;
   assetDecisions: Record<string, { decision: "approved" | "excluded" }>; ctaReady: string | null;
-  prepared: { misses: string[]; sheets: number; credits: string[]; at: string } | null;
+  prepared: { misses: string[]; sheets: number; credits: string[]; at: string; redraw?: "pending" | "drawing" | "failed" | null; redrawnAt?: string | null } | null;
   clips: { name: string; label: string }[] | null; clipsReview: { name: string; note: string; at: string } | null;
   /** 장면 그림 v0 (편집기 3차 요청 11-09): a longform's ③ as each scene's finished picture, on the editor screen. */ stills?: { at: string; files: number } | null;
   screenCheckAuto?: boolean;
@@ -129,10 +129,19 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
   const [error, setError] = useState("");
   const [qc, setQc] = useState("");
   const [note, setNote] = useState("");
-  const [sheets, setSheets] = useState<SceneSheets | null>(null);
+  const [sheets, setSheets] = useState<ReturnType<typeof sceneSheets> | null>(null);
   const [sheetsOpen, setSheetsOpen] = useState(false);
   // New sheets (or another run) are new pictures of a new storyboard: the cut grid and its scene list load again when opened.
   useEffect(() => { setSheets(null); setSheetsOpen(false); }, [run?.id, run?.prepared?.at]);
+  // 바뀐 장면만 다시 그리기 (직원 요청 11-13): the open sheets take the new pictures as soon as the computer is done, and stay open.
+  const redrawKey = `${run?.prepared?.redraw ?? ""}|${run?.prepared?.redrawnAt ?? ""}`;
+  const lastRedraw = useRef(redrawKey);
+  useEffect(() => {
+    if (lastRedraw.current === redrawKey) return;
+    lastRedraw.current = redrawKey;
+    if (!run?.id || !sheetsOpen) { setSheets(null); return; }
+    apiRequest<SceneSheetsReply>(`/api/v1/content/youtube-automation/myin?sheets=${run.id}`, { token: accessToken }).then((got) => setSheets(sceneSheets(got)), () => undefined);
+  }, [redrawKey, run?.id, sheetsOpen, accessToken]);
   const [outputs, setOutputs] = useState<Outputs | null>(null);
   const lastStage = useRef<string | null>(null);
   // The clips' and video's signed addresses are asked for again only when they change or near their 30 minutes: a new address on every
@@ -171,7 +180,8 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
     } catch (reason) { if (reason instanceof ApiRequestError && reason.status === 404) setAvailable(false); }
   }, [accessToken, sourceId, onFinal]);
   useEffect(() => { void load(); }, [load]);
-  const working = Boolean(run && (["breath_pending", "voice_pending", "words_pending", "cta_pending", "prep_pending", "clips_pending", "final_pending"].includes(run.stage) && run.status !== "blocked" || (job?.job && ["backlog", "active"].includes(job.job.status))));
+  const working = Boolean(run && (["breath_pending", "voice_pending", "words_pending", "cta_pending", "prep_pending", "clips_pending", "final_pending"].includes(run.stage) && run.status !== "blocked" || (job?.job && ["backlog", "active"].includes(job.job.status))
+    || (run.prepared?.redraw && run.prepared.redraw !== "failed")));
   // While a step waits on a person, another member may take it from their own account: this screen reads the run again every minute,
   // so a storyboard someone else confirmed does not stay here as 「확인 대기」 (2026-11-04: its button then failed with 「확인을 기다리는
   // 기획표가 없습니다」).
@@ -241,15 +251,14 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
   };
   const showSheets = async () => {
     if (!run) return;
-    try { const got = await apiRequest<{ sheets: string[]; scenes: SceneSheets["scenes"]; storyboardAt: string }>(`/api/v1/content/youtube-automation/myin?sheets=${run.id}`, { token: accessToken });
-      setSheets({ urls: got.sheets, scenes: got.scenes ?? [], storyboardAt: got.storyboardAt ?? "" }); }
+    try { setSheets(sceneSheets(await apiRequest<SceneSheetsReply>(`/api/v1/content/youtube-automation/myin?sheets=${run.id}`, { token: accessToken }))); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "점검 시트를 열지 못했습니다."); }
   };
-  // 화면 자동 검사 › 장면 #n: open the sheets and go to the one that holds the scene.
+  // 화면 자동 검사 › 장면 #n: open the sheets and go to the scene (its first cell; an opening's acts are several).
   const showSheet = async (n: number) => {
     setSheetsOpen(true);
     if (!sheets) await showSheets();
-    window.setTimeout(() => document.getElementById(`yt-sheet-${n}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 300);
+    window.setTimeout(() => document.getElementById(`yt-scene-${n}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 300);
   };
   // [영상 만드는 컴퓨터로 보내기] · [내 컴퓨터로 만들기] while a step waits; at ④ the new place prepares again (its folder draws the video).
   const move = (target: MyinRun, place: DraftPlace) => {
@@ -345,7 +354,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
           <p className="yt-note">{board.reasons.summary}</p></details></>}
         <details className="yt-details"><summary>사진 후보 {board.assets.filter((a) => a.kind !== "bgm").length}개</summary>
           <ul className="yt-list">{board.assets.filter((a) => a.kind !== "bgm").map((a) => <li key={a.file}>{KIND[a.kind] ?? a.kind} · {a.file} · {a.source} · {a.license} — {a.use} <a href={a.url} target="_blank" rel="noreferrer">출처</a></li>)}</ul></details>
-        <MyinOurImages key={run.id} runId={run.id} token={accessToken} open={Boolean(run.waitingPhotos?.length)} onSaved={() => void load()} onScene={(scene) => void showSheet(Math.ceil(scene / 12))} />
+        <MyinOurImages key={run.id} runId={run.id} token={accessToken} open={Boolean(run.waitingPhotos?.length)} onSaved={() => void load()} onScene={(scene) => void showSheet(scene)} />
         {board.fuzzy.length ? <details className="yt-details"><summary>받아쓰기와 비슷한 구간으로만 찾은 문구 {board.fuzzy.length}개</summary>
           <ul className="yt-list">{board.fuzzy.map((f) => <li key={f}>{f}</li>)}</ul></details> : null}
         {board.reading?.length ? <details className="yt-details"><summary>읽을 시간이 짧을 수 있는 장면 {board.reading.length}개 (참고 · 막지 않아요)</summary>
@@ -377,12 +386,13 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
         {run.prepared.misses.length ? <ul className="yt-list">{run.prepared.misses.map((m) => <li key={m}>{m}</li>)}</ul> : null}
       </div> : null}
       {/* ③ and ④ both prepare new sheets; the screen check reads each set, the last chance being before the full video. */}
-      {run?.prepared ? <MyinScreenCheck runId={run.id} preparedAt={run.prepared.at} token={accessToken} onScene={(sheet) => void showSheet(sheet)}
+      {run?.prepared ? <MyinScreenCheck runId={run.id} preparedAt={run.prepared.at} token={accessToken} onScene={(scene) => void showSheet(scene)}
         auto={run.screenCheckAuto !== false} onAuto={(on) => act("screen_auto", () => post("/myin", "PATCH", { action: "screen_check_auto", runId: run.id, on }))} /> : null}
       {/* 점검 시트 장면 의견 (직원 요청 11-12): the sheets cut into scenes with a note box under each; 내 AI sends a 수정안 per scene, applied one by one. */}
       {run ? <MyinSceneNotes projectId={sourceId} runId={run.id} token={accessToken} short={short} storyboardAt={run.storyboard?.at ?? ""} sheetCount={run.prepared?.sheets ?? 0}
         sheets={sheets} open={sheetsOpen} onOpen={(open) => { setSheetsOpen(open); if (open && !sheets) void showSheets(); }} refresh={`${run.review?.at}|${run.storyboard?.at}|${run.prepared?.at}`}
-        canSend={!materials} canApply={!materials && ["storyboard_review", "clips_review"].includes(run.stage)} onChanged={load} /> : null}
+        canSend={!materials} canApply={!materials && ["storyboard_review", "clips_review"].includes(run.stage)} onChanged={load} redraw={run.prepared?.redraw ?? null}
+        onRedraw={() => act("sheets_redraw", () => post("/myin", "PATCH", { action: "sheets_redraw", runId: run.id }))} /> : null}
       {run?.sound?.report ? <details className="yt-details"><summary>자동 선곡표</summary>
         <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, maxHeight: 360, overflow: "auto", margin: 0 }}>{run.sound.report}</pre></details> : null}
       {/* 로건 QA 10/30: 29 full-width players under code names — a folded grid named by scene and diagram. */}

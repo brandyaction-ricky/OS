@@ -5,7 +5,7 @@ import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { safeSecretMatch } from "@/lib/server/auth";
 import { buildYoutubeRenderBrief, claimYoutubeRender, completeYoutubeRender, failYoutubeRender } from "@/lib/server/youtube-render-run";
-import { MYIN_VOICE_PARTS, claimMyinBreath, claimMyinClips, claimMyinCta, claimMyinFinal, claimMyinPrep, claimMyinWords, completeMyinBreath, completeMyinClips, completeMyinCta, completeMyinFinal, completeMyinPrep, completeMyinVoiceBackfill, completeMyinWords, failMyinPrep, failMyinStage, failMyinWords, myinStillsUpload, myinVoiceBackfill, stillFiles, stills } from "@/lib/server/myin-run";
+import { MYIN_VOICE_PARTS, claimMyinBreath, claimMyinClips, claimMyinCta, claimMyinFinal, claimMyinPrep, claimMyinWords, completeMyinBreath, completeMyinClips, completeMyinCta, completeMyinFinal, completeMyinPrep, completeMyinVoiceBackfill, completeMyinWords, failMyinPrep, failMyinStage, failMyinWords, claimMyinRedraw, completeMyinRedraw, failMyinRedraw, redrawResultSchema, myinStillsUpload, myinVoiceBackfill, stillFiles, stills } from "@/lib/server/myin-run";
 import { RENDER_PC_NAME, renderPcSignalSchema, saveRenderPcSignal } from "@/lib/server/youtube-render-pc";
 import { assetsReadySchema, assetsUploadSchema, assetsUploadUrls, engineReadySchema, engineUploadSchema, engineUploadUrls, saveAssetsManifest, saveEngineManifest } from "@/lib/server/render-engine";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
@@ -53,6 +53,10 @@ const inputSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("myin_prep_claim"), short: z.literal(true).optional(), pc }).strict(),
   z.object({ action: z.literal("myin_prep_complete"), runId: z.string().uuid(), lease: z.string().uuid() }).strict(),
   z.object({ action: z.literal("myin_prep_fail"), runId: z.string().uuid(), lease: z.string().uuid(), code: z.string().max(80) }).strict(),
+  // 바뀐 장면만 다시 그리기 (직원 요청 11-13): the ③ sheets again after a 장면 수정안, on the PC holding the video's folder.
+  z.object({ action: z.literal("myin_redraw_claim"), short: z.literal(true).optional(), pc }).strict(),
+  z.object({ action: z.literal("myin_redraw_complete"), runId: z.string().uuid(), lease: z.string().uuid(), ...redrawResultSchema }).strict(),
+  z.object({ action: z.literal("myin_redraw_fail"), runId: z.string().uuid(), lease: z.string().uuid(), code: z.string().max(80) }).strict(),
   // Stage 4: Logan's clips, then the full render, mix and handouts.
   // stills: this worker's engine draws a longform's scene pictures (장면 그림 v0, 2026-11-09) in place of the clips.
   z.object({ action: z.literal("myin_clips_claim"), short: z.literal(true).optional(), pc, stills: z.literal(true).optional() }).strict(),
@@ -104,6 +108,9 @@ export async function POST(request: Request) {
       : input.action === "myin_prep_claim" ? await claimMyinPrep(undefined, undefined, Boolean(input.short), input.pc)
       : input.action === "myin_prep_complete" ? await completeMyinPrep(input)
       : input.action === "myin_prep_fail" ? await failMyinPrep(input)
+      : input.action === "myin_redraw_claim" ? await claimMyinRedraw(undefined, undefined, Boolean(input.short), input.pc)
+      : input.action === "myin_redraw_complete" ? await completeMyinRedraw(input)
+      : input.action === "myin_redraw_fail" ? await failMyinRedraw(input)
       : input.action === "myin_clips_claim" ? await claimMyinClips(undefined, undefined, Boolean(input.short), input.pc, Boolean(input.stills))
       : input.action === "myin_stills_upload" ? await myinStillsUpload(input)
       : input.action === "myin_clips_complete" ? await completeMyinClips(input)

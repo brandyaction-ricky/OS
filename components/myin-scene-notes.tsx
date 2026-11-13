@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest, ApiRequestError } from "@/lib/api-client";
-import { noteKey, SCENE_NOTE_STATE, sceneNow, sceneNoteState, sceneWords, type SceneNotePin, type SceneNoteState, type SceneProposal } from "@/lib/myin-scene-notes";
+import { noteKey, SCENE_NOTE_STATE, sceneNow, sceneNoteState, sceneWords, sheetCells, type SceneNotePin, type SceneNoteState, type SceneProposal } from "@/lib/myin-scene-notes";
 import { useSession } from "./session-provider";
 
 /** Scenes per 점검 시트 (the engine's preview(): 3 columns × 4 rows of equal cells, numbered in order). */
@@ -9,7 +9,13 @@ const PER_SHEET = 12;
 interface SceneNote { id: string; version: number; text: string; who: string; whoId: string; at: string; status: string; deleted: boolean; declinedWhy: string;
   scene: SceneNotePin | null; sent: { at: string; name: string; jobId?: string } | null; proposal: SceneProposal | null }
 interface Job { id: string; status: string; failReason: string | null; notes: string[] | null }
-export interface SceneSheets { urls: string[]; scenes: { type: string; at: string }[]; storyboardAt: string }
+type Redraw = "pending" | "drawing" | "failed";
+/** GET myin?sheets= : the signed sheets, the scenes of the storyboard they show, each cell's storyboard number (sheets our drawing made)
+ *  and the last 바뀐 장면만 다시 그리기. */
+export interface SceneSheetsReply { sheets: string[]; scenes?: { type: string; at: string }[]; storyboardAt?: string; cells?: number[] | null;
+  redraw?: { state: Redraw; code: string | null } | null; drawn?: { at: string; scenes: number[]; lines: string[] } | null }
+export const sceneSheets = (got: SceneSheetsReply) => ({ urls: got.sheets, scenes: got.scenes ?? [], storyboardAt: got.storyboardAt ?? "", cells: got.cells ?? null, drawn: got.drawn ?? null });
+export type SceneSheets = ReturnType<typeof sceneSheets>;
 const when = (value: string) => new Date(value).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
 
 /**
@@ -18,9 +24,10 @@ const when = (value: string) => new Date(value).toLocaleString("ko-KR", { month:
  * and applied one by one while the sheets stay open. A sheet is one frame per scene — movement, voice and sound are checked in the
  * 미리보기 · 완성 영상.
  */
-export function MyinSceneNotes({ projectId, runId, token, short, storyboardAt, sheetCount, sheets, open, onOpen, canSend, canApply, onChanged, refresh }: {
+export function MyinSceneNotes({ projectId, runId, token, short, storyboardAt, sheetCount, sheets, open, onOpen, canSend, canApply, onChanged, refresh, redraw, onRedraw }: {
   projectId: string; runId: string; token: string | null; short: boolean; storyboardAt: string; sheetCount: number; sheets: SceneSheets | null;
-  open: boolean; onOpen: (open: boolean) => void; canSend: boolean; canApply: boolean; onChanged: () => Promise<void>; refresh: string }) {
+  open: boolean; onOpen: (open: boolean) => void; canSend: boolean; canApply: boolean; onChanged: () => Promise<void>; refresh: string;
+  redraw: Redraw | null; onRedraw: () => Promise<void> }) {
   const { profile } = useSession();
   const [notes, setNotes] = useState<SceneNote[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -47,6 +54,7 @@ export function MyinSceneNotes({ projectId, runId, token, short, storyboardAt, s
   const closed = new Set(jobs.filter((job) => !["backlog", "active"].includes(job.status)).map((job) => job.id));
   const failWhy = (note: SceneNote) => jobs.find((job) => job.id === note.sent?.jobId)?.failReason ?? "";
   const sheetAt = sheets?.storyboardAt ?? storyboardAt;
+  const cells = sheets ? sheetCells(sheets) : [];
   const where = (note: SceneNote) => note.scene ? sheets ? sceneNow(note.scene, sheets.scenes, sheets.storyboardAt) : note.scene.storyboardAt === sheetAt ? note.scene.n : undefined : null;
   const rows = notes.map((note) => ({ note, n: where(note), state: sceneNoteState(note, storyboardAt, closed) }))
     .sort((a, b) => (a.n ?? 999) - (b.n ?? 999) || a.note.at.localeCompare(b.note.at));
@@ -156,13 +164,20 @@ export function MyinSceneNotes({ projectId, runId, token, short, storyboardAt, s
         {picked.length ? <strong>장면 {rows.filter((row) => picked.includes(row.note.id)).map((row) => row.n ? `#${row.n}` : "?").join(" · ")}</strong> : null}
         <small>의견마다 그 장면만 고친 수정안이 와요. 앞에 보낸 요청이 아직 고치는 중이어도 이어서 보낼 수 있어요. 기획표는 「반영」을 누를 때만 바뀌어요.</small>
       </div> : null}
-      {count("check") ? <p className="yt-note">수정안이 온 의견은 아래 점검 시트의 그 장면에서 수정 전 · 후를 보고 「반영」을 눌러요. 반영한 뒤 미리보기를 다시 만들면 새 시트에서 확인할 수 있어요.</p> : null}
+      {count("check") ? <p className="yt-note">수정안이 온 의견은 아래 점검 시트의 그 장면에서 수정 전 · 후를 보고 「반영」을 눌러요. 반영하면 바뀐 장면만 시트에 다시 그려져요.</p> : null}
       {error && !open ? <p className="yt-note yt-warn" role="alert">{error}</p> : null}
     </div> : null}
     {sheetCount ? <details className="yt-details" open={open} onToggle={(event) => onOpen((event.target as HTMLDetailsElement).open)}>
       <summary>점검 시트 {sheetCount}장 보기 · 장면마다 의견 남기기</summary>
-      <p className="yt-note">장면마다 한 순간(한 컷)만 보여요. 움직임 · 전환 · 음성 · 효과음은 장면 미리보기와 완성 영상에서 따로 확인해요. 쇼릴 뒤부터는 컷 시각이 조금 앞당겨져 보이니(점검 기능의 특성), 문구 확인은 위 개수로 합니다.</p>
-      {sheets && sheets.storyboardAt ? <p className="yt-note">{when(sheets.storyboardAt)} 기획표로 그린 시트예요.{sheets.storyboardAt !== storyboardAt ? " 그 뒤 반영한 수정이 있어요 — 미리보기를 다시 만들면 새 시트가 나와요." : ""}</p> : null}
+      <p className="yt-note">장면마다 한 순간(한 컷)만 보여요. 움직임 · 전환 · 음성 · 효과음은 장면 미리보기와 완성 영상에서 따로 확인해요.{sheets?.cells
+        ? " 칸마다 그 장면이 다 나온 모습이에요. 오프닝처럼 여러 칸인 장면은 같은 번호예요."
+        : " 이 시트는 칸 번호가 기획표와 어긋날 수 있고, 구독 요청 뒤 칸에는 앞 장면이 보일 수 있어요. 「시트 다시 그리기」를 누르면 기획표 번호대로 다시 그려요."}</p>
+      {sheets && sheets.storyboardAt ? <p className="yt-note">{when(sheets.storyboardAt)} 기획표로 그린 시트예요.{redraw === "pending" || redraw === "drawing"
+        ? " 반영한 장면을 영상 만드는 컴퓨터가 다시 그리는 중이에요. 끝나면 이 시트가 바로 바뀌어요."
+        : redraw === "failed" ? " 바뀐 장면을 다시 그리지 못했어요." : sheets.storyboardAt !== storyboardAt ? " 그 뒤 반영한 수정이 있어요." : ""}
+        {canApply && (redraw === "failed" || (!redraw && (!sheets.cells || sheets.storyboardAt !== storyboardAt)))
+          ? <> <button type="button" className="secondary-button compact" onClick={() => void onRedraw()}>{redraw === "failed" ? "다시 그리기" : "시트 다시 그리기"}</button></> : null}</p> : null}
+      {sheets?.drawn?.lines.length ? <p className="yt-note yt-warn">다시 그릴 때 걸린 곳: {sheets.drawn.lines.join(" / ")}</p> : null}
       {sheets?.urls.length ? <div className="yt-actions"><button type="button" className="secondary-button compact" aria-pressed={multi} onClick={() => { setMulti(!multi); setChosen([]); setShown(null); }}>
         {multi ? "여러 장면 고르기 끝" : "여러 장면에 같은 의견 쓰기"}</button></div> : null}
       {multi ? <div className="yt-note yt-scene-common">
@@ -176,11 +191,16 @@ export function MyinSceneNotes({ projectId, runId, token, short, storyboardAt, s
       </div> : null}
       {error ? <p className="yt-note yt-warn" role="alert">{error}</p> : null}
       {sheets?.urls.map((url, sheet) => <div key={url} id={`yt-sheet-${sheet + 1}`} className="yt-scene-grid">
-        {Array.from({ length: Math.min(PER_SHEET, Math.max(0, (sheets.scenes.length || sheets.urls.length * PER_SHEET) - sheet * PER_SHEET)) }, (_, j) => {
-          const n = sheet * PER_SHEET + j + 1, here = rows.filter((row) => row.n === n);
-          return <figure key={n} id={`yt-scene-${n}`} className="yt-scene">
+        {cells.slice(sheet * PER_SHEET, (sheet + 1) * PER_SHEET).map((n, j) => {
+          const here = rows.filter((row) => row.n === n), cell = sheet * PER_SHEET + j;
+          const image = <div className={`yt-scene-cell${short ? " yt-tall" : ""}`} data-col={j % 3} data-row={Math.floor(j / 3)}>
             {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed URLs from private storage; one sheet image cut by CSS */}
-            <div className={`yt-scene-cell${short ? " yt-tall" : ""}`} data-col={j % 3} data-row={Math.floor(j / 3)}><img src={url} alt={`장면 #${n}`} loading="lazy" /></div>
+            <img src={url} alt={`장면 #${n}`} loading="lazy" /></div>;
+          // An opening's later acts: the same scene, so its notes stay under its first cell.
+          if (cell > 0 && cells[cell - 1] === n) return <figure key={`c${cell}`} className="yt-scene">{image}<small>#{n} 이어서</small></figure>;
+          return <figure key={`c${cell}`} id={`yt-scene-${n}`} className="yt-scene">
+            {image}
+            {sheets.drawn?.scenes.includes(n) ? <small className="yt-chip">다시 그린 장면</small> : null}
             {multi ? <label className={`yt-scene-btn${chosen.includes(n) ? " yt-has" : ""}`}><input type="checkbox" checked={chosen.includes(n)}
               onChange={(event) => setChosen((now) => event.target.checked ? [...now, n] : now.filter((x) => x !== n))} /> #{n} 고르기</label>
               : <button type="button" className={`yt-scene-btn${here.length ? " yt-has" : ""}`} aria-expanded={shown === n} onClick={() => { setShown(shown === n ? null : n); setDraft(""); }}>

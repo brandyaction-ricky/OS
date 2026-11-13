@@ -586,9 +586,9 @@ export function writeSubtitles(videoDir, ass) {
  * Returns the storyboard file name for STORY.
  */
 export const STYLE_THEME = "os_channel";
-export function styleStoryboard(videoDir, myinDir, style) {
-  if (!style) return "myin_storyboard.json";
-  const story = JSON.parse(readFileSync(path.join(videoDir, "myin_storyboard.json"), "utf8"));
+export function styleStoryboard(videoDir, myinDir, style, file = "myin_storyboard.json") {
+  if (!style) return file;
+  const story = JSON.parse(readFileSync(path.join(videoDir, file), "utf8"));
   if (style.tone && existsSync(path.join(myinDir, "myin_tone.py"))) {
     const toneFile = path.join(myinDir, "톤앤매너.json");
     let tones = {};
@@ -598,8 +598,9 @@ export function styleStoryboard(videoDir, myinDir, style) {
   }
   if (style.ending && story.ending === undefined) story.ending = style.ending;
   if (typeof style.logo === "boolean" && story.logo === undefined) story.logo = style.logo ? "on" : "off";
-  writeFileSync(path.join(videoDir, "myin_storyboard_styled.json"), JSON.stringify(story, null, 1));
-  return "myin_storyboard_styled.json";
+  const styled = file.replace(/\.json$/, "_styled.json");
+  writeFileSync(path.join(videoDir, styled), JSON.stringify(story, null, 1));
+  return styled;
 }
 
 /** Process one v13 words job; returns false when there is none (or this PC has no v13 package). */
@@ -784,12 +785,6 @@ export async function processMyinPrep() {
     const storyFile = path.join(videoDir, "myin_storyboard.json");
     writeFileSync(storyFile, JSON.stringify(job.storyboard, null, 1));
     writeSubtitles(videoDir, job.subtitlesAss);
-    for (const spot of job.placeholders ?? []) {
-      const file = path.join(work, "assets", spot.kind, spot.file);
-      if (existsSync(file)) continue;
-      mkdirSync(path.dirname(file), { recursive: true });
-      execFileSync(myinPython, ["-c", PLACEHOLDER_PY, file, spot.file, path.join(work, "assets", "fonts")], { env });
-    }
     // ③: Logan's music match writes 곡·앰비언스 keys into the storyboard; it and his report go back for the ④ editor. A package without
     // it (older run copies) or a failed match keeps the storyboard's own music. A 숏폼 has no music (pilots A1–A3: the voice alone).
     let soundReport;
@@ -802,19 +797,7 @@ export async function processMyinPrep() {
         writeFileSync(storyFile, JSON.stringify(job.storyboard, null, 1));
       }
     }
-    // 11-09 request: what ③ already fetched on this computer is not fetched again at ④ — the same file from the same place (a signed address
-    // without its token: a new upload is a new path). A 「사진 자리」 was never fetched, so it is.
-    const fetchedFile = path.join(videoDir, "photos-fetched.json");
-    let fetched = {};
-    try { fetched = JSON.parse(readFileSync(fetchedFile, "utf8")); } catch { fetched = {}; }
-    for (const asset of job.assets) {
-      const file = path.join(work, "assets", asset.kind, asset.file), from = String(asset.url).split("?")[0];
-      mkdirSync(path.dirname(file), { recursive: true });
-      if (fetched[`${asset.kind}/${asset.file}`] === from && existsSync(file)) continue;
-      try { await fetchTo(asset.url, file); fetched[`${asset.kind}/${asset.file}`] = from; }
-      catch (error) { if (!job.draft) throw error; console.error(`myin draft photo kept as 사진 자리: ${asset.file}: ${error.message}`); }   // ③ goes on
-    }
-    writeFileSync(fetchedFile, JSON.stringify(fetched));
+    await fetchPhotos(job, work, videoDir, env);
     const bgmDir = path.join(work, "assets", "bgm");
     mkdirSync(bgmDir, { recursive: true });
     if (existsSync(path.join(myinLibrary, "bgm"))) for (const name of readdirSync(path.join(myinLibrary, "bgm")).filter((n) => n.endsWith(".mp3")))
@@ -842,9 +825,8 @@ export async function processMyinPrep() {
     if (job.siteCapture) await runAsync(myinPython, ["capture_site.py"], { cwd: myinDir, env });
     current.step = "drawing";
     const previewEnv = { ...env, STORY: styleStoryboard(videoDir, myinDir, job.style) };
-    const log = await runCapture(myinPython, ["render_myin.py", "os_myin", "preview"], { cwd: myinDir, env: previewEnv });
+    const { log, cells, sheets } = await drawSheets(myinDir, videoDir, previewEnv, job.sheetUploadUrls.length);
     const misses = [...missingMusic, ...log.split("\n").filter((line) => line.includes("못 찾음")), ...await blankScenes(myinDir, videoDir, previewEnv)];
-    const sheets = readdirSync(videoDir).filter((name) => /^preview_\d+\.png$/.test(name)).sort().slice(0, job.sheetUploadUrls.length);
     current.step = "upload";
     for (const [i, name] of sheets.entries()) await upload(job.sheetUploadUrls[i], path.join(videoDir, name), "image/png");
     const bundle = path.join(videoDir, "myin-prep.json");
@@ -852,7 +834,7 @@ export async function processMyinPrep() {
     const creditLines = [path.join(bgmDir, "CREDITS.md"), path.join(myinLibrary, "bgm", "CREDITS.md")].filter(existsSync)
       .flatMap((file) => readFileSync(file, "utf8").split("\n")).map((line) => line.replace(/^-\s*/, "").trim());
     const musicCredits = [...new Set(music)].map((file) => creditLines.find((line) => line.startsWith(`${file} `)) ?? `${file} — 출처 기록 없음`);
-    writeFileSync(bundle, JSON.stringify({ misses, sheets: sheets.length, musicCredits, log: log.slice(-20_000),
+    writeFileSync(bundle, JSON.stringify({ misses, sheets: sheets.length, cells, musicCredits, log: log.slice(-20_000),
       ...(soundReport !== undefined ? { storyboard: JSON.parse(readFileSync(storyFile, "utf8")), soundReport } : {}) }));
     await upload(job.bundleUploadUrl, bundle, "application/json");
     await call({ action: "myin_prep_complete", ...lease });
@@ -860,6 +842,93 @@ export async function processMyinPrep() {
   } catch (error) {
     console.error(`myin prep failed: ${job.runId}: ${error.message}${error.cause ? ` · cause: ${error.cause.code ?? error.cause.message}` : ""}`);
     await call({ action: "myin_prep_fail", ...lease, code: String(error.code ?? "WORKER_MYIN_FAILED") }).catch(() => {});
+  } finally {
+    current = null;
+  }
+  return true;
+}
+
+/** The photos a ③/④ job names: 「사진 자리」 where none can be fetched (③), then each photo — what this computer already fetched from the same
+ *  place is not fetched again (11-09 request; a signed address without its token: a new upload is a new path). */
+async function fetchPhotos(job, work, videoDir, env) {
+  for (const spot of job.placeholders ?? []) {
+    const file = path.join(work, "assets", spot.kind, spot.file);
+    if (existsSync(file)) continue;
+    mkdirSync(path.dirname(file), { recursive: true });
+    execFileSync(myinPython, ["-c", PLACEHOLDER_PY, file, spot.file, path.join(work, "assets", "fonts")], { env });
+  }
+  const fetchedFile = path.join(videoDir, "photos-fetched.json");
+  let fetched = {};
+  try { fetched = JSON.parse(readFileSync(fetchedFile, "utf8")); } catch { fetched = {}; }
+  for (const asset of job.assets) {
+    const file = path.join(work, "assets", asset.kind, asset.file), from = String(asset.url).split("?")[0];
+    mkdirSync(path.dirname(file), { recursive: true });
+    if (fetched[`${asset.kind}/${asset.file}`] === from && existsSync(file)) continue;
+    try { await fetchTo(asset.url, file); fetched[`${asset.kind}/${asset.file}`] = from; }
+    catch (error) { if (job.draft === false) throw error; console.error(`myin draft photo kept as 사진 자리: ${asset.file}: ${error.message}`); }   // ③ goes on
+  }
+  writeFileSync(fetchedFile, JSON.stringify(fetched));
+}
+
+/**
+ * 점검 시트 (직원 요청 2026-11-13): drawn by tools/myin_redraw.py with his engine — each cell on the video's clock, numbered by the storyboard
+ * (his preview() showed an earlier scene past the 구독 대사 holds and numbered his own scenes). For a redraw, `old` = the storyboard file and
+ * sheets folder of the sheets now (["-", "-"]: draw all). At the preparation, where our drawing fails his preview() draws them as before.
+ */
+const redrawScript = path.join(path.dirname(fileURLToPath(import.meta.url)), "myin_redraw.py");
+export async function drawSheets(myinDir, out, env, most, old) {
+  mkdirSync(out, { recursive: true });
+  for (const name of readdirSync(out).filter((n) => /^preview_\d+\.png$/.test(n))) rmSync(path.join(out, name));
+  try {
+    const log = await runCapture(myinPython, [redrawScript, "os_myin", ...(old ?? ["-", "-"]), out], { cwd: myinDir, env });
+    const report = JSON.parse(readFileSync(path.join(out, "redraw.json"), "utf8"));
+    const sheets = Array.from({ length: Math.min(most, Math.ceil(report.scenes / 12)) }, (_, i) => `preview_${String(i + 1).padStart(2, "0")}.png`);
+    return { log, cells: report.cells ?? null, drawn: report.drawn ?? [], errors: report.errors ?? [], sheets };
+  } catch (error) {
+    if (old) throw error;   // a redraw: the sheets stay as they are
+    console.error(`myin sheets: our drawing failed, his preview draws them: ${error.message}`);
+    const log = await runCapture(myinPython, ["render_myin.py", "os_myin", "preview"], { cwd: myinDir, env });
+    return { log, cells: null, drawn: [], errors: [], sheets: readdirSync(out).filter((name) => /^preview_\d+\.png$/.test(name)).sort().slice(0, most) };
+  }
+}
+
+/**
+ * 바뀐 장면만 다시 그리기 (직원 요청 2026-11-13): after a 장면 수정안 is applied at ③, this video's sheets again in the folder ③ was made in —
+ * only the changed scenes when the sheets are ours (they have cells), all of them once for sheets his preview() drew.
+ */
+export async function processMyinRedraw() {
+  if (!myinPkg || !existsSync(redrawScript)) return false;
+  // An OS without this step (or one that fails to answer) never holds up the preparation after it; a changed engine still stops here.
+  const job = await call({ action: "myin_redraw_claim", ...(local ? { engine: engine() } : { ...shortClaim, ...pcField }) })
+    .catch((error) => { if (error.code === "MYIN_ENGINE_DIFFERENT") throw error; console.error(`myin sheets redraw claim: ${error.message}`); return { idle: true }; });
+  if (job.idle) return false;
+  current = { step: "drawing" };
+  const lease = { runId: job.runId, lease: job.lease };
+  try {
+    const { work, videoDir, myinDir } = myinDirs(job.runId);
+    const env = layoutEnv(myinEnv(), job.layout);
+    writeFileSync(path.join(videoDir, "myin_storyboard.json"), JSON.stringify(job.storyboard, null, 1));
+    writeSubtitles(videoDir, job.subtitlesAss);
+    await fetchPhotos(job, work, videoDir, env);
+    let old = ["-", "-"];
+    if (job.previous) {
+      const dir = path.join(videoDir, "sheets-old");
+      rmSync(dir, { recursive: true, force: true }); mkdirSync(dir, { recursive: true });
+      for (const [i, url] of job.sheets.entries()) await fetchTo(url, path.join(dir, `preview_${String(i + 1).padStart(2, "0")}.png`));
+      writeFileSync(path.join(videoDir, "myin_storyboard_sheets.json"), JSON.stringify(job.previous, null, 1));
+      old = [styleStoryboard(videoDir, myinDir, job.style, "myin_storyboard_sheets.json"), dir];
+    }
+    const out = path.join(videoDir, "sheets-new");
+    const drawEnv = { ...env, STORY: styleStoryboard(videoDir, myinDir, job.style) };
+    const { log, cells, drawn, errors, sheets } = await drawSheets(myinDir, out, drawEnv, job.sheetUploadUrls.length, old);
+    current.step = "upload";
+    for (const [i, name] of sheets.entries()) await upload(job.sheetUploadUrls[i], path.join(out, name), "image/png");
+    const lines = [...log.split("\n").filter((line) => line.includes("못 찾음")), ...errors].map((line) => line.slice(0, 300)).slice(0, 60);
+    await call({ action: "myin_redraw_complete", ...lease, sheets: sheets.length, cells, drawn, lines });
+    console.log(`myin sheets drawn again: ${job.runId} (${drawn.length} scenes)`);
+  } catch (error) {
+    console.error(`myin sheets redraw failed: ${job.runId}: ${error.message}`);
+    await call({ action: "myin_redraw_fail", ...lease, code: String(error.code ?? "WORKER_MYIN_FAILED") }).catch(() => {});
   } finally {
     current = null;
   }
@@ -1087,7 +1156,7 @@ async function runLocal() {
   void heartbeat();
   setInterval(() => void heartbeat(), 60_000).unref();
   do {
-    const worked = await processMyinPrep().then((done) => done || processMyinClips()).then((done) => done || processMyinFinal()).then((done) => done || processImageAds()).catch((error) => {
+    const worked = await processMyinRedraw().then((done) => done || processMyinPrep()).then((done) => done || processMyinClips()).then((done) => done || processMyinFinal()).then((done) => done || processImageAds()).catch((error) => {
       // The render PC moved to another engine: exit 3 between jobs, so the runner (public/myin-local) installs it and starts again.
       if (error.code === "MYIN_ENGINE_DIFFERENT") { console.error(`${error.message} (engine ${engine()})`); process.exit(3); }
       console.error(error.message);
@@ -1150,7 +1219,7 @@ else if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).h
   setInterval(() => void reportSoundCatalog(), 60 * 60_000).unref();
   do {
     // No render ready? Advance the voice queue one step (review or one paragraph) so no separate scheduler is needed.
-    const worked = held ? false : await (shortsOnly?processShortform():processOne().then((rendered) => rendered || processMyinBreath()).then((rendered) => rendered || processShortRefs()).then((rendered) => rendered || processMyinWords()).then((rendered) => rendered || processMyinSay()).then((rendered) => rendered || processMyinCta()).then((rendered) => rendered || processMyinPrep())
+    const worked = held ? false : await (shortsOnly?processShortform():processOne().then((rendered) => rendered || processMyinBreath()).then((rendered) => rendered || processShortRefs()).then((rendered) => rendered || processMyinWords()).then((rendered) => rendered || processMyinSay()).then((rendered) => rendered || processMyinCta()).then((rendered) => rendered || processMyinRedraw()).then((rendered) => rendered || processMyinPrep())
       .then((rendered) => rendered || processMyinClips()).then((rendered) => rendered || processMyinFinal()).then((rendered) => rendered || (current = { step: "voice" }, call(runId ? { runId } : {}, "worker")).then((step) => {
       if (step.processed) console.log(`voice step: ${JSON.stringify(step).slice(0, 300)}`);
       return step.processed;

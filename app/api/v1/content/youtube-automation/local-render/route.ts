@@ -3,7 +3,7 @@ import { imageMacActions, imageMacWork, isImageMacAction } from "@/lib/server/im
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
-import { claimMyinClips, claimMyinFinal, claimMyinPrep, completeMyinClips, completeMyinFinal, completeMyinPrep, failMyinPrep, failMyinStage, myinStillsUpload, stillFiles, stills } from "@/lib/server/myin-run";
+import { claimMyinClips, claimMyinFinal, claimMyinPrep, claimMyinRedraw, completeMyinClips, completeMyinFinal, completeMyinPrep, completeMyinRedraw, failMyinPrep, failMyinRedraw, failMyinStage, myinStillsUpload, redrawResultSchema, stillFiles, stills } from "@/lib/server/myin-run";
 import { assertLocalEngine, renderPcEngine, renderPcSignalSchema, saveLocalRenderSignal } from "@/lib/server/youtube-render-pc";
 import { currentEngineDownload } from "@/lib/server/render-engine";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
@@ -23,6 +23,10 @@ const inputSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("myin_prep_claim"), engine }).strict(),
   z.object({ action: z.literal("myin_prep_complete"), ...lease }).strict(),
   z.object({ action: z.literal("myin_prep_fail"), ...lease, code: z.string().max(80) }).strict(),
+  // 바뀐 장면만 다시 그리기 (직원 요청 11-13): the sheets of a video this computer made ③ for.
+  z.object({ action: z.literal("myin_redraw_claim"), engine }).strict(),
+  z.object({ action: z.literal("myin_redraw_complete"), ...lease, ...redrawResultSchema }).strict(),
+  z.object({ action: z.literal("myin_redraw_fail"), ...lease, code: z.string().max(80) }).strict(),
   z.object({ action: z.literal("myin_clips_claim"), engine, stills: z.literal(true).optional() }).strict(),
   z.object({ action: z.literal("myin_stills_upload"), ...lease, files: stillFiles }).strict(),
   z.object({ action: z.literal("myin_clips_complete"), ...lease, names: z.array(z.string().max(40)).max(201).optional(), stills }).strict(),
@@ -44,13 +48,16 @@ export async function POST(request: Request) {
     const actor = await authenticateRequest(request, { allowAgent: true, requiredAgentScope: "records.write" });
     if (actor.type !== "agent") throw new ApiError(403, "LOCAL_RENDER_KEY_REQUIRED", "「내 컴퓨터 연결」 키로만 쓸 수 있어요.");
     const input = inputSchema.parse(await parseJson(request, 32_000));
-    if (input.action === "myin_prep_claim" || input.action === "myin_clips_claim" || input.action === "myin_final_claim") await assertLocalEngine(input.engine);
+    if (input.action === "myin_prep_claim" || input.action === "myin_clips_claim" || input.action === "myin_final_claim" || input.action === "myin_redraw_claim") await assertLocalEngine(input.engine);
     const result = isImageMacAction(input) ? await imageMacWork({target:"local",ownerId:actor.ownerId},input)
       : input.action === "heartbeat" ? await saveLocalRenderSignal(actor.ownerId, input)
       : input.action === "engine" ? await currentEngineDownload(await renderPcEngine(), Boolean(input.split))
       : input.action === "myin_prep_claim" ? await claimMyinPrep(undefined, actor.ownerId)
       : input.action === "myin_prep_complete" ? await completeMyinPrep(input)
       : input.action === "myin_prep_fail" ? await failMyinPrep(input)
+      : input.action === "myin_redraw_claim" ? await claimMyinRedraw(undefined, actor.ownerId)
+      : input.action === "myin_redraw_complete" ? await completeMyinRedraw(input)
+      : input.action === "myin_redraw_fail" ? await failMyinRedraw(input)
       : input.action === "myin_clips_claim" ? await claimMyinClips(undefined, actor.ownerId, false, undefined, Boolean(input.stills))
       : input.action === "myin_stills_upload" ? await myinStillsUpload(input)
       : input.action === "myin_clips_complete" ? await completeMyinClips(input)

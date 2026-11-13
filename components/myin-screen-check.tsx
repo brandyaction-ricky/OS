@@ -7,11 +7,8 @@ import type { YpScreenCheck } from "@/lib/youtube-process/stages";
 import { groupScreenIssues } from "@/lib/youtube-screen-check";
 import { CostTag, tokenEstimate, useCostConfirm } from "./cost-notice";
 
-/** Scenes per 점검 시트 (Logan's preview(): 3 × 4). */
-const PER_SHEET = 12;
-
 /** ③ 미리보기 › 화면 자동 검사 (owner 2026-10-29): GPT's look at the 점검 시트, which starts by itself when new sheets come in. */
-export function MyinScreenCheck({ runId, preparedAt, token, onScene, auto = true, onAuto }: { runId: string; preparedAt: string; token: string | null; onScene: (sheet: number) => void;
+export function MyinScreenCheck({ runId, preparedAt, token, onScene, auto = true, onAuto }: { runId: string; preparedAt: string; token: string | null; onScene: (scene: number) => void;
   /** GPT 화면 검사 끄기 (11-09): off = new sheets wait for [검사하기]. */ auto?: boolean; onAuto?: (on: boolean) => void }) {
   const [check, setCheck] = useState<YpScreenCheck | null>(null);
   const [busy, setBusy] = useState(false);
@@ -53,7 +50,7 @@ export function MyinScreenCheck({ runId, preparedAt, token, onScene, auto = true
     {groups.length ? <ul className="yt-list">{groups.map((group, index) => <li key={index}>
       <b>{group.kind}</b> · {group.issue}{group.scenes.length > 1 ? ` (${group.scenes.length}곳)` : ""}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 4, margin: "4px 0 0" }}>{group.scenes.slice(0, 6).map((scene) =>
-        <button key={scene} type="button" className="secondary-button compact" onClick={() => onScene(Math.ceil(scene / PER_SHEET))}>장면 #{scene}</button>)}
+        <button key={scene} type="button" className="secondary-button compact" onClick={() => onScene(scene)}>장면 #{scene}</button>)}
         {group.scenes.length > 6 ? <small style={{ alignSelf: "center" }}>외 {group.scenes.length - 6}곳</small> : null}</div>
       {group.fix ? <div className="yt-note" style={{ margin: "2px 0 0" }}>→ {group.fix}</div> : null}</li>)}</ul> : null}
     {current?.state === "done" && current.note ? <p className="yt-note">{current.note}</p> : null}
