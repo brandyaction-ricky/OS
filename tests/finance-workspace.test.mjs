@@ -170,8 +170,9 @@ test("XLSX reads locally, rejects formulas and unsupported/oversized files", asy
     /5MB/,
   );
   await assert.rejects(
-    () => readImportFile({ size: 100, name: "legacy.xls" }),
+    () => readImportFile(new File([new Uint8Array(100)], "legacy.xls")),
     /xlsx/,
+    "a .xls that is not a real Excel file (tests/finance-xls-reader.test.mjs covers the real ones)",
   );
   assert.throws(() => checkXlsxZip(new ArrayBuffer(30)), /XLSX/);
 });
