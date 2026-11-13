@@ -1068,6 +1068,15 @@
       "productionApprovedAt": null,
       "appliedEnvironments": [],
       "notes": "Additive: one new security-invoker function with the same grants as v1; v1, rows and policies unchanged. The route falls back to v1 (PGRST202) until v2 is in, so deploy order does not matter. Checked on temp tables (window 2 rows without snapshots, 1 snapshot published in the window, latest cumulative kept). Manual undo: supabase/rollback/20261112220000_content_metric_window_v2.down.sql. Production only with the owner's approval through the owner-run script (auto mode blocks production database access). Not applied to DEV."
+    },
+    {
+      "file": "20261112230000_content_metric_summary.sql",
+      "sha256": "2bd0cb9a00cf818ca99a9f41c0bbbb861991fdc2a71c74184fda59386b52208d",
+      "purpose": "영상 성과 under a second: os_content_metric_summary adds up the YouTube Analytics day rows per day and per video in the database and returns the window's other rows (hourly tracked-channel rows only when asked), with two partial indexes",
+      "requiresApproval": true,
+      "productionApprovedAt": null,
+      "appliedEnvironments": [],
+      "notes": "Additive: one security-invoker function and two partial indexes on os_records; rows and policies unchanged. The summary route falls back to reading the window rows and adding them up itself (PGRST202) until the function is in. Manual undo: supabase/rollback/20261112230000_content_metric_summary.down.sql. Production only with the owner's approval through the owner-run script. Not applied to DEV."
     }
   ],
   "legacyMigrations": [

@@ -8,7 +8,7 @@ test("performance screens read metrics per date window, never every hourly obser
     assert.doesNotMatch(source, /listAllRecordsOfType\(accessToken, "content_metric"\)|recentAllRecordsOfType\(accessToken, "content_metric"\)/, file);
     assert.match(source, /listMetricWindow\(accessToken/, file);
   }
-  const route = readFileSync("app/api/v1/content/metrics/route.ts", "utf8");
+  const route = readFileSync("app/api/v1/content/metrics/route.ts", "utf8") + readFileSync("lib/server/metric-window.ts", "utf8");
   assert.match(route, /await authenticateRequest\(request\)/);
   assert.match(route, /actor\.supabase\.rpc\("os_content_metric_window"/, "runs with the caller's row policies");
   const sql = readFileSync("supabase/migrations/20261029100000_content_metric_window.sql", "utf8");
@@ -19,7 +19,7 @@ test("performance screens read metrics per date window, never every hourly obser
 });
 
 test("channel snapshots leave the window read and come only with ?snapshots=1, for posts published in the dates", () => {
-  const route = readFileSync("app/api/v1/content/metrics/route.ts", "utf8");
+  const route = readFileSync("lib/server/metric-window.ts", "utf8");
   assert.match(route, /actor\.supabase\.rpc\("os_content_metric_window_v2", \{ \.\.\.window, p_snapshots: snapshots \}\)/);
   assert.match(route, /if \(error\?\.code === "PGRST202"\)/, "until the migration is in, v1 answers and the split happens in the route");
   const sql = readFileSync("supabase/migrations/20261112220000_content_metric_window_v2.sql", "utf8");

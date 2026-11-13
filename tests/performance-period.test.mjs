@@ -55,7 +55,7 @@ test("the screen keeps the period and tab in the address and every tab reads the
   assert.match(page, /router\.replace\(next\.size \? `\$\{pathname\}\?\$\{next\}` : pathname, \{ scroll: false \}\)/);
   assert.match(page, /PERIODS\.map\(\(item\) => <button type="button" key=\{item\.id\} className="os-chip" aria-pressed=\{period\.id === item\.id\}/);
   assert.match(page, /className="page-tab" aria-selected=\{tab === id\}/);
-  assert.match(page, /listMetricWindow\(accessToken, prev\.from, prev\.to\)/, "the span before is read for 「직전 n일보다」");
+  assert.match(page, /listMetricSummary\(accessToken, prev\.from, prev\.to, observed\)/, "the span before is read for 「직전 n일보다」");
   assert.match(page, /youtubeFormat\(item\.metadata\) === format/);
   assert.match(read("lib/api-client.ts"), /return periodRange\(DEFAULT_PERIOD, kstDay\(new Date\(now\)\)\)!;/, "the early read asks for the period the screen opens on");
   assert.doesNotMatch(read("components/performance-daily-chart.tsx"), /style=\{\{/);

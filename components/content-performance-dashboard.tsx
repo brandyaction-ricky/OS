@@ -12,7 +12,8 @@ import { PerformanceDailyChart } from "./performance-daily-chart";
 import { VideoSalesPanel, useVideoSales } from "./video-sales-panel";
 import { ContentOriginFilter } from "./content-origin-filter";
 import { useSession } from "./session-provider";
-import { archiveRecord, createDocument, createRecord, listAllRecordsOfType, listMetricWindow, recentAllRecordsOfType, recentMetricWindow, updateRecord } from "@/lib/api-client";
+import { archiveRecord, createDocument, createRecord, listAllRecordsOfType, listMetricSummary, listMetricWindow, recentAllRecordsOfType, recentMetricSummary, updateRecord } from "@/lib/api-client";
+import { summarizeDayRows, videoRows, viewsByDay, type MetricSummary, type SummaryDay } from "@/lib/content-metric-summary";
 import { dedupeMetricSnapshots, fixedWeek, groupMetricDimension, metricDisplay, metricValue, summarizeMetrics } from "@/lib/content-metrics";
 import { isYoutubeMetricPlatform } from "@/lib/channel-metrics";
 import { demoMetricWindow } from "@/lib/content-performance-demo";
@@ -49,7 +50,7 @@ export function ContentPerformanceDashboard({ youtubeOnly = false }: { youtubeOn
   const choosePeriod = (id: PeriodId) => setAddress(id === "custom" ? { period: "custom", from, to } : { period: id === DEFAULT_PERIOD ? null : id, from: null, to: null });
   const chooseTab = (id: Tab) => setAddress({ tab: id === "summary" ? null : id });
 
-  const [records, setRecords] = useState<OsRecord[]>([]), [before, setBefore] = useState<OsRecord[]>([]), [snapshots, setSnapshots] = useState<OsRecord[] | null>(null);
+  const [records, setRecords] = useState<OsRecord[]>([]), [before, setBefore] = useState<OsRecord[]>([]), [snapshots, setSnapshots] = useState<OsRecord[] | null>(null), [days, setDays] = useState<SummaryDay[]>([]);
   const [hypotheses, setHypotheses] = useState<OsRecord[]>([]), [allSources, setSources] = useState<OsRecord[]>([]), [loading, setLoading] = useState(!demo);
   const [origin, setOrigin] = useState<OriginFilter>("own"), [format, setFormat] = useState<Format>("all");
   const [brand, setBrand] = useState("all"), [hierarchy, setHierarchy] = useState("all"), [localSourceId, setLocalSourceId] = useState("all");
@@ -76,20 +77,24 @@ export function ContentPerformanceDashboard({ youtubeOnly = false }: { youtubeOn
     apply(decisions, topics);
   }, [accessToken, demo, youtubeOnly]);
   useEffect(() => { load().catch((reason) => setError(reason.message)); }, [load]);
-  // The chosen days, and the same number of days right before them for 「직전 7일보다」. Metrics come per date window
-  // (latest snapshot per video + daily rows), not as every hourly observation.
+  // The chosen days, and the same number of days right before them for 「직전 7일보다」, each as one small answer: YouTube
+  // Analytics days and videos added up on the server (one record per video here), plus the window's other rows. The hourly
+  // tracked-channel rows come only for 시장 레퍼런스 · 전체 — they are the slow part.
+  const observed = origin !== "own";
+  const summaryRecords = (summary: MetricSummary) => [...daily(summary.rows), ...videoRows(summary.videos, profile?.id)];
+  const demoSummary = (start: string, end: string): MetricSummary => ({ ...summarizeDayRows(demoMetricWindow(start, end)), rows: [] });
   useEffect(() => {
     const prev = previousRange(from, to);
-    if (demo) { setRecords(daily(demoMetricWindow(from, to))); setBefore(daily(demoMetricWindow(prev.from, prev.to))); setLoading(false); return; }
+    if (demo) { const now = demoSummary(from, to); setRecords(summaryRecords(now)); setDays(now.days); setBefore(summaryRecords(demoSummary(prev.from, prev.to))); setLoading(false); return; }
     let active = true;
-    const apply = (metrics: OsRecord[]) => setRecords(daily(metrics));
-    const recent = recentMetricWindow(accessToken, from, to);
+    const apply = (summary: MetricSummary) => { setRecords(summaryRecords(summary)); setDays(summary.days); };
+    const recent = recentMetricSummary(accessToken, from, to, observed);
     if (recent) { apply(recent); setLoading(false); } else setLoading(true);
-    listMetricWindow(accessToken, from, to).then((metrics) => { if (active) apply(metrics); }).catch((reason) => { if (active) setError(reason.message); }).finally(() => { if (active) setLoading(false); });
-    listMetricWindow(accessToken, prev.from, prev.to).then((metrics) => { if (active) setBefore(daily(metrics)); }).catch(() => { if (active) setBefore([]); });
+    listMetricSummary(accessToken, from, to, observed).then((summary) => { if (active) apply(summary); }).catch((reason) => { if (active) setError(reason.message); }).finally(() => { if (active) setLoading(false); });
+    listMetricSummary(accessToken, prev.from, prev.to, observed).then((summary) => { if (active) setBefore(summaryRecords(summary)); }).catch(() => { if (active) setBefore([]); });
     return () => { active = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- daily() is visibleMetrics() plus a fixed filter
-  }, [accessToken, demo, from, to, reload, visibleMetrics]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- summaryRecords() is visibleMetrics() plus fixed shaping
+  }, [accessToken, demo, from, to, reload, visibleMetrics, observed]);
   // 경과일 비교 reads, only when opened, the D1 · D7 · D28 rows of posts published in the period (they are taken later,
   // so the window is the publish dates). The other tabs never carry them.
   useEffect(() => {
@@ -103,11 +108,11 @@ export function ContentPerformanceDashboard({ youtubeOnly = false }: { youtubeOn
     let active = true;
     for (const start of [weekA, weekB]) {
       const week = fixedWeek(start);
-      if (week) void listMetricWindow(accessToken, week.start, week.end).then((metrics) => { if (active) setWeekRecords((current) => ({ ...current, [start]: daily(metrics) })); }).catch((reason) => { if (active) setError(reason.message); });
+      if (week) void listMetricSummary(accessToken, week.start, week.end, observed).then((summary) => { if (active) setWeekRecords((current) => ({ ...current, [start]: summaryRecords(summary) })); }).catch((reason) => { if (active) setError(reason.message); });
     }
     return () => { active = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- daily() is visibleMetrics() plus a fixed filter
-  }, [accessToken, demo, tab, weekA, weekB, reload, visibleMetrics]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- summaryRecords() is visibleMetrics() plus fixed shaping
+  }, [accessToken, demo, tab, weekA, weekB, reload, visibleMetrics, observed]);
 
   const perform = async (action: () => Promise<unknown>) => { setBusy(true); setError(""); try { await action(); setReload((value) => value + 1); await load(); } catch (reason) { setError(reason instanceof Error ? reason.message : "저장하지 못했습니다."); } finally { setBusy(false); } };
   const inScope = useCallback((item: OsRecord) => (origin === "all" || linkedContentOrigin(item, allSources) === origin) && (sourceId === "all" || item.parent_id === sourceId)
@@ -119,11 +124,14 @@ export function ContentPerformanceDashboard({ youtubeOnly = false }: { youtubeOn
   // A period's figures add up day rows only: an hourly row carries a video's running total, which is not what the chosen days gained.
   const dayRows = useMemo(() => filtered.filter((row) => row.metadata.metricMode !== "cumulative"), [filtered]);
   const totals = summarizeMetrics(dayRows), previousTotals = summarizeMetrics(previous.filter((row) => row.metadata.metricMode !== "cumulative"));
+  // The chart adds the server's per-day sums (our channel's YouTube Analytics days, so only when the filters keep them) and any
+  // other day rows of the window by their own date.
+  const daysInScope = (origin === "own" || origin === "all") && sourceId === "all" && (brand === "all" || brand === "브랜디액션") && hierarchy === "all";
   const dailyViews = useMemo(() => {
-    const byDay = new Map<string, number>();
-    for (const row of filtered) if (row.metadata.metricMode !== "cumulative") { const value = metricValue(row, "views"); if (value !== null) byDay.set(dayOf(row), (byDay.get(dayOf(row)) ?? 0) + value); }
+    const byDay = daysInScope ? viewsByDay(days, format) : new Map<string, number>();
+    for (const row of filtered) if (row.metadata.metricMode !== "cumulative" && !row.metadata.summary) { const value = metricValue(row, "views"); if (value !== null) byDay.set(dayOf(row), (byDay.get(dayOf(row)) ?? 0) + value); }
     return Array.from({ length: spanDays(from, to) }, (_, index) => { const day = addDays(from, index); return { day, views: byDay.get(day) ?? null }; });
-  }, [filtered, from, to]);
+  }, [filtered, from, to, days, format, daysInScope]);
   const recentGap = to >= addDays(today, -1) && dailyViews.slice(-2).some((day) => day.views === null);
   const groups = useMemo(() => {
     const rows = groupMetricDimension(filtered, dimension).filter((group) => !find.trim() || group.title.toLowerCase().includes(find.trim().toLowerCase()));
@@ -266,8 +274,8 @@ export function ContentPerformanceDashboard({ youtubeOnly = false }: { youtubeOn
       {tab === "records" ? <section className="panel perf-panel" aria-label="측정 기록">
         <div className="card-head"><span className="card-title">측정 기록 <span className="os-count">{filtered.length}</span></span><button type="button" className="secondary-button compact" onClick={() => { setEditing(null); setOpen(true); }}>성과 기록</button></div>
         {filtered.length ? <div className="perf-table-wrap"><table className="data-table is-compact"><thead><tr><th>영상</th><th>기준일</th><th>출처</th><th>측정 방식</th><th>관리</th></tr></thead>
-          <tbody>{[...filtered].sort((a, b) => dayOf(b).localeCompare(dayOf(a))).map((item) => <tr key={item.id}><td className="cell-title">{item.title}</td><td>{dayOf(item)}</td><td>{SOURCES[String(item.metadata.dataSource)] ?? String(item.metadata.dataSource ?? "출처 미입력")}</td><td>{item.metadata.metricMode === "cumulative" ? "누적" : "당일"}</td>
-            <td><span className="perf-row-actions"><button type="button" className="secondary-button compact" onClick={() => { setEditing(item); setOpen(true); }}>수정</button><button type="button" className="secondary-button compact" disabled={busy} onClick={() => void perform(() => archiveRecord(accessToken, item.id))}>휴지통</button></span></td></tr>)}</tbody></table></div>
+          <tbody>{[...filtered].sort((a, b) => dayOf(b).localeCompare(dayOf(a))).map((item) => <tr key={item.id}><td className="cell-title">{item.title}</td><td>{item.metadata.summary ? `${dayOf(item)}까지` : dayOf(item)}</td><td>{SOURCES[String(item.metadata.dataSource)] ?? String(item.metadata.dataSource ?? "출처 미입력")}</td><td>{item.metadata.summary ? `${Number(item.metadata.days) || 0}일 합계` : item.metadata.metricMode === "cumulative" ? "누적" : "당일"}</td>
+            <td>{item.metadata.summary ? <span className="section-meta">자동 수집</span> : <span className="perf-row-actions"><button type="button" className="secondary-button compact" onClick={() => { setEditing(item); setOpen(true); }}>수정</button><button type="button" className="secondary-button compact" disabled={busy} onClick={() => void perform(() => archiveRecord(accessToken, item.id))}>휴지통</button></span>}</td></tr>)}</tbody></table></div>
           : <div className="empty-state">이 기간에 측정 기록이 없어요.</div>}
       </section> : null}
     </div>
