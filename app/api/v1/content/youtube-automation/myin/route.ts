@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
-import { checkMyinVoice, confirmMyinClips, createMyinRun, latestMyinRun, myinVoiceCheck, myinVoiceFixPlan, myinVoiceFixSchema, myinVoiceOnRenderPc, requestMyinVoiceFix, myinDownloads, myinEarlierStyles, myinRecord, myinSubtitles, myinSubtitleChangeSchema, saveMyinSubtitles, myinOurImageUpload, myinOutputs, myinPhotos, myinPreviewSheets, myinSoundState, myinWordsReport, reopenMyinMaterials, reviewMyinStoryboard, saveMyinOurImage, saveMyinSound, separateMyinPhoto, setMyinDraftPlace, setMyinSettings, setMyinScreenCheck, startMyinFinal, startMyinPrep } from "@/lib/server/myin-run";
+import { checkMyinVoice, confirmMyinClips, createMyinRun, latestMyinRun, myinVoiceCheck, myinVoiceFixPlan, myinVoiceFixSchema, myinVoiceOnRenderPc, requestMyinVoiceFix, myinDownloads, myinEarlierStyles, myinRecord, myinSubtitles, myinSubtitleChangeSchema, saveMyinSubtitles, myinOurImageUpload, myinOutputs, myinPhotos, myinPreviewSheets, myinSoundState, requestMyinRedraw, myinWordsReport, reopenMyinMaterials, reviewMyinStoryboard, saveMyinOurImage, saveMyinSound, separateMyinPhoto, setMyinDraftPlace, setMyinSettings, setMyinScreenCheck, startMyinFinal, startMyinPrep } from "@/lib/server/myin-run";
 import { findMyinPhotoCandidates, applyMyinPhotoCandidate } from "@/lib/server/myin-photo-candidates";
 import { readLocalRenderStatus } from "@/lib/server/youtube-render-pc";
 import { checkMyinScreens, myinScreenCheck } from "@/lib/server/myin-screen-check";
@@ -72,6 +72,8 @@ const patchSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("prepare"), runId: z.string().uuid() }),
   // 점검 시트 장면 의견 › 반영 (직원 요청 11-12): one 수정안 into the storyboard; force after the person saw the scene had changed.
   z.object({ action: z.literal("scene_apply"), runId: z.string().uuid(), noteId: z.string().uuid(), force: z.boolean().default(false) }),
+  // 점검 시트 다시 그리기 (직원 요청 11-13): sheets his preview() drew, or a drawing that failed, drawn again on the video's computer.
+  z.object({ action: z.literal("sheets_redraw"), runId: z.string().uuid() }),
   // 우리 이미지 올리기: an upload address for one storyboard photo file, then the upload kept for it.
   z.object({ action: z.literal("our_image_url"), runId: z.string().uuid(), file: z.string().min(1).max(200), type: z.string().max(40) }),
   z.object({ action: z.literal("our_image"), runId: z.string().uuid(), file: z.string().min(1).max(200), path: z.string().min(1).max(400) }),
@@ -102,6 +104,7 @@ export async function PATCH(request: Request) {
     const input = patchSchema.parse(await parseJson(request, 60_000));
     const result = input.action === "review" ? { run: await reviewMyinStoryboard(actor, input.runId, input.decision, input.note, input.place, input.screenCheck) }
       : input.action === "scene_apply" ? { run: await applySceneNote(actor, input.runId, input.noteId, input.force) }
+      : input.action === "sheets_redraw" ? { run: await requestMyinRedraw(actor, input.runId) }
       : input.action === "screen_check_auto" ? { run: await setMyinScreenCheck(actor, input.runId, input.on) }
       : input.action === "place" ? { run: await setMyinDraftPlace(actor, input.runId, input.place) }
       : input.action === "settings" ? { run: await setMyinSettings(actor, input.runId, { place: input.place, screenCheck: input.screenCheck }) }

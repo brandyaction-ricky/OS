@@ -49,11 +49,11 @@ test("the render PC draws a styled copy; the storyboard it keeps and sends back 
 test("the OS pins the style at the voice's start and hands it to every drawing step", async () => {
   const run = await readFile(new URL("../lib/server/myin-run.ts", import.meta.url), "utf8");
   assert.match(run, /\.\.\.\(picked \? \{ style: pinStyle\(picked\) \} : \{\}\)/);
-  assert.equal(run.match(/\.\.\.styleFor\(run\)/g)?.length, 4, "prep, clips, scene pictures and the full video");
+  assert.equal(run.match(/\.\.\.styleFor\(run\)/g)?.length, 5, "prep, sheets drawn again, clips, scene pictures and the full video");
   const runKey = run.slice(run.indexOf("const runKey = digestVoiceValue("), run.indexOf("const id = voiceRunId(runKey)"));
   assert.doesNotMatch(runKey, /style/, "a style never makes a new voice");
   const worker = await readFile(new URL("../tools/youtube-media-worker.mjs", import.meta.url), "utf8");
-  assert.equal(worker.match(/STORY: styleStoryboard\(videoDir, myinDir, job\.style\)/g)?.length, 3);
+  assert.equal(worker.match(/STORY: styleStoryboard\(videoDir, myinDir, job\.style\)/g)?.length, 4);
 });
 
 // 다채널 1단계 (2026-11-07, OS 문서 「다채널 콘텐츠 운영 설계」): the same list is the 채널 카드; the first card is the 기본 채널.

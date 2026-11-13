@@ -129,8 +129,14 @@ const runSchema = z.object({
   // `pc`: a line the render PC made with Logan's stage_cta for a member's own computer (a finished file, used as it is).
   cta: z.array(z.object({ index: z.number().int().min(0), textHash: hex, status: z.enum(["pending", "ready"]), path: z.string().optional(), pc: z.literal(true).optional() }).strict()).optional(),
   // storyboardPath: the storyboard file the sheets show, kept once a 장면 수정안 changes the storyboard under them (직원 요청 11-12).
+  // 점검 시트 (직원 요청 11-13): cells = each cell's storyboard number (sheets drawn by tools/myin_redraw.py; his preview() numbered his
+  // own scenes, and an opening's acts are several); after 바뀐 장면만 다시 그리기 the sheets show storyAt, drawn = what that drawing did,
+  // redraw = one waiting for (or on) the computer that holds the video's folder.
   prepared: z.object({ path: z.string(), misses: z.array(z.string()), sheets: z.array(z.string()), credits: z.array(z.string()), at: z.string().datetime(), used: materialsSchema.optional(), engine: engineFp.optional(),
-    storyboardPath: z.string().optional() }).strict().optional(),
+    storyboardPath: z.string().optional(), cells: z.array(z.number().int().min(1).max(400)).max(600).optional(), storyAt: z.string().max(40).optional(),
+    drawn: z.object({ at: z.string().datetime(), scenes: z.array(z.number().int().min(1).max(400)).max(600), lines: z.array(z.string().max(300)).max(60) }).strict().optional(),
+    redraw: z.object({ state: z.enum(["pending", "drawing", "failed"]), at: z.string().datetime(), attempts: z.number().int().min(0).max(20), token: z.string().uuid().optional(),
+      expiresAt: z.string().datetime().optional(), storyboardAt: z.string().max(40).optional(), path: z.string().optional(), code: z.string().max(80).optional() }).strict().optional() }).strict().optional(),
   // Stage 4: Logan's 720p clips (opening + reel, each metaphor), his OK, then the full render, mix and handouts.
   clips: z.object({ items: z.array(z.object({ name: z.string(), label: z.string(), path: z.string() }).strict()), at: z.string().datetime(), used: materialsSchema.optional(),
     engine: engineFp.optional() }).strict().optional(),
@@ -216,7 +222,8 @@ export function presentMyinRun(record: OsRecord) {
     storyboard: run.storyboard ? { ...run.storyboard, path: undefined } : null, review: run.review ?? null,
     assetDecisions: Object.fromEntries(Object.entries(run.assets ?? {}).map(([file, value]) => [file, { decision: value.decision }])),
     ctaReady: run.cta ? `${run.cta.filter((c) => c.status === "ready").length}/${run.cta.length}` : null,
-    prepared: run.prepared ? { misses: run.prepared.misses, sheets: run.prepared.sheets.length, credits: run.prepared.credits, at: run.prepared.at } : null,
+    prepared: run.prepared ? { misses: run.prepared.misses, sheets: run.prepared.sheets.length, credits: run.prepared.credits, at: run.prepared.at,
+      redraw: run.prepared.redraw?.state ?? null, redrawnAt: run.prepared.drawn?.at ?? null } : null,
     clips: run.clips ? run.clips.items.map(({ name, label }) => ({ name, label })) : null, clipsReview: run.clipsReview ?? null, sound: run.sound ?? null,
     stills: run.stills ? { at: run.stills.at, files: run.stills.files } : null, screenCheckAuto: !run.screenCheckOff,
     final: run.final ? { bytes: run.final.bytes, durationSeconds: run.final.durationSeconds, lufs: run.final.lufs, peak: run.final.peak, at: run.final.at } : null,
@@ -754,7 +761,7 @@ export async function storyboardJson(service: Service, run: MyinRun) {
 }
 /** The storyboard the ③ sheets were drawn from and its version (at): the one now, unless a 장면 수정안 changed it since (storyboardPath). */
 export async function sheetsStory(service: Service, run: MyinRun) {
-  const at = run.prepared?.used?.storyboard || run.storyboard?.at || "";
+  const at = run.prepared?.storyAt || run.prepared?.used?.storyboard || run.storyboard?.at || "";
   const path = run.prepared?.storyboardPath ?? (at === run.storyboard?.at ? run.storyboard?.path : undefined);
   if (!path) throw new ApiError(409, "MYIN_SHEETS_STORY_MISSING", "점검 시트를 그린 기획표를 찾지 못했어요. 미리보기를 다시 만들어 주세요.");
   const story = await storyboardJson(service, { ...run, storyboard: { ...run.storyboard!, path } });
@@ -767,8 +774,11 @@ export async function sheetsStory(service: Service, run: MyinRun) {
  */
 export async function saveMyinSceneEdit(service: Service, record: OsRecord, run: MyinRun, story: Record<string, unknown>) {
   const { path } = await putStoryboard(service, record, run, story);
-  const prepared = run.prepared && !run.prepared.storyboardPath && (run.prepared.used?.storyboard ?? run.storyboard?.at) === run.storyboard?.at
+  const kept = run.prepared && !run.prepared.storyboardPath && (run.prepared.used?.storyboard ?? run.storyboard?.at) === run.storyboard?.at
     ? { ...run.prepared, storyboardPath: run.storyboard!.path } : run.prepared;
+  // 바뀐 장면만 다시 그리기 (직원 요청 11-13): the computer with the video's folder draws the changed scenes into the sheets. One already
+  // drawing finishes and goes again (completeMyinRedraw sees the newer storyboard).
+  const prepared = kept?.sheets.length && kept.redraw?.state !== "drawing" ? { ...kept, redraw: { state: "pending" as const, at: new Date().toISOString(), attempts: 0 } } : kept;
   const next: MyinRun = { ...run, ...(prepared ? { prepared } : {}), storyboard: { ...run.storyboard!, ...storyboardFields(story), path, at: new Date().toISOString() } };
   return save(service, record, record.status ?? "done", record.stage ?? "", next);
 }
@@ -1108,7 +1118,7 @@ export async function completeMyinPrep(input: { runId: string; lease: string }, 
   const { data } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).download(prepBundlePath(record, run, input.lease));
   if (!data) throw new ApiError(409, "MYIN_BUNDLE_MISSING", "준비 결과 파일을 찾지 못했습니다.");
   const bundle = z.object({ misses: z.array(z.string()), sheets: z.number().int().min(0), musicCredits: z.array(z.string()).default([]),
-    storyboard: z.record(z.unknown()).optional(), soundReport: z.string().optional() }).passthrough().parse(JSON.parse(await data.text()));
+    storyboard: z.record(z.unknown()).optional(), soundReport: z.string().optional(), cells: z.array(z.number().int().min(1).max(400)).max(600).nullish() }).passthrough().parse(JSON.parse(await data.text()));
   const draft = !run.clipsReview;
   let { storyboard, sound } = run;
   if (draft && bundle.storyboard) {
@@ -1126,7 +1136,8 @@ export async function completeMyinPrep(input: { runId: string; lease: string }, 
     ...Object.entries(run.ours ?? {}).flatMap(([file, image]) => image.credit ? [`${file} — ${image.credit.source} · ${image.credit.license} · ${image.credit.url}`] : []),
     ...bundle.musicCredits.slice(0, 30)];
   const next: MyinRun = { ...run, storyboard, sound, attempts: 0, prepared: { path: prepBundlePath(record, run, input.lease), misses: bundle.misses.slice(0, 60),
-    sheets: Array.from({ length: bundle.sheets }, (_, i) => sheetPath(record, run, input.lease, i + 1)), credits, at: new Date().toISOString(), ...drewWith(run) } };
+    sheets: Array.from({ length: bundle.sheets }, (_, i) => sheetPath(record, run, input.lease, i + 1)), credits, at: new Date().toISOString(), ...drewWith(run),
+    ...(bundle.cells ? { cells: bundle.cells } : {}) } };
   next.prepared!.used = materials(next);
   delete next.lease; delete next.lastError;
   if (draft) { delete next.clips; delete next.stills; delete next.clipsReview; retireFinal(next); }
@@ -1164,7 +1175,7 @@ export async function failMyinPrep(input: { runId: string; lease: string; code: 
 export async function myinSheetSources(service: Service, runId: string) {
   const { record, run } = await runRecord(service, runId);
   const paths = run.prepared?.sheets ?? [];
-  const story = paths.length && run.storyboard ? await storyboardJson(service, run).catch(() => null) : null;
+  const story = paths.length && run.storyboard ? await sheetsStory(service, run).catch(() => null) : null;
   return { record, run, sheetsAt: run.prepared?.at ?? "", urls: await Promise.all(paths.map((path) => sign(service, SHEET_BUCKET, path))),
     scenes: story?.scenes ?? [], short: run.layout === "short" };
 }
@@ -1175,8 +1186,100 @@ export async function myinPreviewSheets(actor: RequestActor, runId: string) {
   const service = createServiceSupabase();
   // 점검 시트 장면 의견: each cell's scene (its 시작 문구 and kind) in the storyboard the sheets were drawn from (not the one now, after a 수정안).
   const story = run.prepared?.sheets.length ? await sheetsStory(service, run).catch(() => null) : null;
+  const { redraw, drawn, cells } = run.prepared ?? {};
   return { sheets: await Promise.all((run.prepared?.sheets ?? []).map((path) => sign(service, SHEET_BUCKET, path))),
-    scenes: (story?.scenes ?? []).map((scene) => ({ type: String(scene.type ?? ""), at: String(scene.at ?? "") })), storyboardAt: story?.at ?? "" };
+    scenes: (story?.scenes ?? []).map((scene) => ({ type: String(scene.type ?? ""), at: String(scene.at ?? "") })), storyboardAt: story?.at ?? "",
+    cells: cells ?? null, redraw: redraw ? { state: redraw.state, code: redraw.code ?? null } : null, drawn: drawn ?? null };
+}
+
+// ── 바뀐 장면만 다시 그리기 (직원 요청 2026-11-13): the ③ sheets again for the storyboard now, on the computer with the video's folder ──
+const REDRAW_STAGES = ["storyboard_review", "clips_review"];
+const REDRAW_LEASE_MS = 10 * 60_000;
+const redrawOpen = (record: OsRecord, run: MyinRun) => REDRAW_STAGES.includes(record.stage ?? "") && !run.clipsReview && Boolean(run.storyboard && run.prepared?.sheets.length);
+
+/** 「시트 다시 그리기」: sheets his preview() drew (numbered by his scenes) or a drawing that failed, again. */
+export async function requestMyinRedraw(actor: RequestActor, runId: string) {
+  const { record, run } = await visibleRun(actor, runId);
+  if (!redrawOpen(record, run)) throw new ApiError(409, "MYIN_REDRAW_CLOSED", "③ 미리보기를 확인하는 동안 점검 시트를 다시 그릴 수 있어요.");
+  if (run.prepared!.redraw && run.prepared!.redraw.state !== "failed") return presentMyinRun(record);
+  const next: MyinRun = { ...run, prepared: { ...run.prepared!, redraw: { state: "pending", at: new Date().toISOString(), attempts: 0 } } };
+  return presentMyinRun(await save(createServiceSupabase(), record, record.status, record.stage ?? "", next));
+}
+
+/**
+ * Render PC (or, with `owner`, that member's own computer — the one that made ③): a video whose sheets wait to be drawn again. Only the
+ * scenes resolved differently are drawn when the sheets have their cells (ours); sheets his preview() drew are drawn whole once.
+ */
+export async function claimMyinRedraw(service: Service = createServiceSupabase(), owner?: string, short = false, pc?: string) {
+  const { data } = await service.from("os_records").select("*").eq("record_type", "ai_job").eq("metadata->>kind", MYIN_RUN_KIND).in("stage", REDRAW_STAGES)
+    .not("metadata->prepared->redraw", "is", null).is("archived_at", null).order("updated_at").limit(10);
+  for (const candidate of (data ?? []) as OsRecord[]) {
+    let run: MyinRun; try { run = parse(candidate); } catch { continue; }
+    const wait = run.prepared?.redraw;
+    if (!wait || wait.state === "failed" || (wait.state === "drawing" && Date.parse(wait.expiresAt ?? "") > Date.now())) continue;
+    if (!redrawOpen(candidate, run) || !placeFilter(owner)(run) || !fits(short)(run) || (!owner && pinnedElsewhere(run, pc))) continue;
+    if (wait.attempts >= 3) {
+      await save(service, candidate, candidate.status, candidate.stage ?? "", { ...run, prepared: { ...run.prepared!, redraw: { ...wait, state: "failed" } } }).catch(() => null);
+      continue;
+    }
+    const token = randomUUID();
+    const redraw = { state: "drawing" as const, at: wait.at, attempts: wait.attempts + 1, token, expiresAt: new Date(Date.now() + REDRAW_LEASE_MS).toISOString(),
+      storyboardAt: run.storyboard!.at, path: run.storyboard!.path };
+    const saved = await save(service, candidate, candidate.status, candidate.stage ?? "", { ...run, prepared: { ...run.prepared!, redraw } }).catch(() => null);
+    if (!saved) continue;
+    try {
+      const story = await storyboardJson(service, run);
+      const previous = run.prepared!.cells ? await sheetsStory(service, run) : null;
+      // ③ (no drafts confirmed): every photo the storyboard names is fetched, a gray 「사진 자리」 where one cannot be (as the drafts).
+      const folders = myinPhotoFolders(story);
+      const ours = Object.fromEntries(await Promise.all(Object.entries(run.ours ?? {}).filter(([file]) => folders.has(file))
+        .map(async ([file, image]) => [file, await sign(service, OUTPUT_BUCKET, image.path)] as const)));
+      const sheetUploadUrls = [];
+      for (let n = 1; n <= Math.ceil(story.scenes.length / 12) + 2; n++) {
+        const { data: upload } = await service.storage.from(SHEET_BUCKET).createSignedUploadUrl(sheetPath(candidate, run, token, n), { upsert: true });
+        if (upload) sheetUploadUrls.push(upload.signedUrl);
+      }
+      return { runId: candidate.id, lease: token, ...(run.layout ? { layout: run.layout } : {}), storyboard: await renderStory(story),
+        ...(previous ? { previous: await renderStory(previous), sheets: await Promise.all(run.prepared!.sheets.map((path) => sign(service, SHEET_BUCKET, path))) } : {}),
+        placeholders: [...folders].flatMap(([file, kinds]) => kinds.map((kind) => ({ kind, file }))), assets: myinPrepPhotos(folders, run.storyboard?.assets ?? [], () => true, ours),
+        sheetUploadUrls, ...await subtitlesFor(service, run), ...styleFor(run) };
+    } catch (error) {
+      await failMyinRedraw({ runId: candidate.id, lease: token, code: error instanceof ApiError ? error.code : "MYIN_REDRAW_CLAIM_FAILED" }, service).catch(() => null);
+      throw error;
+    }
+  }
+  return { idle: true as const };
+}
+
+const redrawLease = async (service: Service, runId: string, token: string) => {
+  const { record, run } = await runRecord(service, runId);
+  const redraw = run.prepared?.redraw;
+  if (!redraw || redraw.state !== "drawing" || redraw.token !== token || Date.parse(redraw.expiresAt ?? "") < Date.now())
+    throw new ApiError(409, "MYIN_LEASE_LOST", "점검 시트를 다시 그리는 권한이 만료됐습니다.");
+  return { record, run, prepared: run.prepared!, redraw };
+};
+
+export const redrawResultSchema = { sheets: z.number().int().min(1).max(60), cells: z.array(z.number().int().min(1).max(400)).max(600).nullish(),
+  drawn: z.array(z.number().int().min(1).max(400)).max(600), lines: z.array(z.string().max(300)).max(60) };
+
+/** The sheets are up: they now show the storyboard the drawing was given (and go again if it changed meanwhile). */
+export async function completeMyinRedraw(input: { runId: string; lease: string; sheets: number; cells?: number[] | null; drawn: number[]; lines: string[] }, service: Service = createServiceSupabase()) {
+  const { record, run, prepared, redraw } = await redrawLease(service, input.runId, input.lease);
+  const at = new Date().toISOString();
+  const next: MyinRun["prepared"] = { ...prepared, sheets: Array.from({ length: input.sheets }, (_, i) => sheetPath(record, run, input.lease, i + 1)),
+    storyboardPath: redraw.path, storyAt: redraw.storyboardAt, drawn: { at, scenes: input.drawn, lines: input.lines } };
+  if (input.cells) next.cells = input.cells; else delete next.cells;
+  if (run.storyboard?.at !== redraw.storyboardAt) next.redraw = { state: "pending", at, attempts: 0 }; else delete next.redraw;
+  await save(service, record, record.status, record.stage ?? "", { ...run, prepared: next });
+  return { runId: record.id, sheets: input.sheets, again: Boolean(next.redraw) };
+}
+
+export async function failMyinRedraw(input: { runId: string; lease: string; code: string }, service: Service = createServiceSupabase()) {
+  const { record, run, prepared, redraw } = await redrawLease(service, input.runId, input.lease);
+  const code = input.code.replace(/[^A-Z0-9_]/g, "").slice(0, 60) || "MYIN_REDRAW_FAILED";
+  const next = { state: redraw.attempts >= 3 ? "failed" as const : "pending" as const, at: redraw.at, attempts: redraw.attempts, code };
+  await save(service, record, record.status, record.stage ?? "", { ...run, prepared: { ...prepared, redraw: next } });
+  return { runId: record.id, retry: next.state === "pending" };
 }
 
 // ── 우리 이미지 올리기 (2026-10-28 대표 · 로건): our own photo for a file name the storyboard uses, until the full video starts ──

@@ -44,8 +44,8 @@ test("the render PC writes the sent subtitles before it draws, and the OS sends 
   worker.writeSubtitles(dir, ASS);
   assert.equal(readFileSync(path.join(dir, "subs_myin.ass"), "utf8"), ASS);
   const source = await readFile(new URL("../tools/youtube-media-worker.mjs", import.meta.url), "utf8");
-  assert.equal(source.match(/writeSubtitles\(videoDir, job\.subtitlesAss\)/g)?.length, 3, "prep, clips and the full video");
+  assert.equal(source.match(/writeSubtitles\(videoDir, job\.subtitlesAss\)/g)?.length, 4, "prep, sheets drawn again, clips and the full video");
   const run = await readFile(new URL("../lib/server/myin-run.ts", import.meta.url), "utf8");
-  assert.equal(run.match(/\.\.\.await subtitlesFor\(service, run\)/g)?.length, 5, "the three claims, the scene pictures and the downloads");
+  assert.equal(run.match(/\.\.\.await subtitlesFor\(service, run\)/g)?.length, 6, "the three claims, the sheets drawn again, the scene pictures and the downloads");
   assert.match(run, /"final_pending"\]\.includes\(record\.stage/, "no edits while the full video is drawn");
 });

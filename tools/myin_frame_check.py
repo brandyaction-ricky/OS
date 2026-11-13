@@ -81,6 +81,16 @@ def align(scenes, plan):
     return out
 
 
+def numbers(scenes, st, written):
+    """Each drawn scene's storyboard number, in the order the 점검 시트 lays its cells (preview() draws every scene the engine made): the
+    decks an opening's acts became count as the opening (1). None when the drawn scenes cannot be matched to the storyboard."""
+    plan = st.get("scenes") or []
+    idx = align(scenes, plan)
+    if not idx: return None
+    decks = max(0, len(plan) - written) if written else 0
+    return [1 if j <= decks else j - decks + 1 for j in idx]
+
+
 def timing(scenes, plan, idx, words, end, out_time, decks):
     """덱 배치 v2 timing problems [(storyboard entry, kind, text)]; plan[idx[i]] is the entry the engine drew as scenes[i], and entries up to
     `decks` are the opening and the decks the engine made from its acts."""

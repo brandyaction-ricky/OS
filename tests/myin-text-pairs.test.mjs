@@ -18,7 +18,7 @@ test("a {text, cue} slot written as words is wrapped as the 도식 창고 exampl
 
 test("every render job gets the fixed story, and the music match compares against it", () => {
   const run = readFileSync(new URL("../lib/server/myin-run.ts", import.meta.url), "utf8");
-  assert.equal(run.match(/storyboard: await renderStory\(/g)?.length, 3, "구독 대사 · 미리보기 · 완성");
+  assert.equal(run.match(/storyboard: await renderStory\(/g)?.length, 4, "구독 대사 · 미리보기 · 점검 시트 다시 그리기 · 완성");
   assert.doesNotMatch(run, /storyboard: myinDriftPairs\(/);
   assert.match(run, /myinOnlySoundChanged\(bundle\.storyboard, await renderStory\(await storyboardJson\(service, run\)\)\)/);
 });

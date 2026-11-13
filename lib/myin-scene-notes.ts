@@ -64,3 +64,8 @@ export function sameNotes<T extends { text: string; n: number }>(notes: T[]) {
   for (const note of [...notes].sort((a, b) => a.n - b.n)) groups.set(noteKey(note.text), [...(groups.get(noteKey(note.text)) ?? []), note]);
   return [...groups.values()];
 }
+
+/** Each 점검 시트 cell's storyboard number: the drawing's (an opening's acts are several cells, all #1; 직원 요청 11-13), else the cell's
+ *  place, as his preview() laid one cell per scene of his own (3 × 4 a sheet). */
+export const sheetCells = (sheets: { cells: number[] | null; scenes: unknown[]; urls: unknown[] }) =>
+  sheets.cells ?? Array.from({ length: Math.min(sheets.scenes.length || sheets.urls.length * 12, sheets.urls.length * 12) }, (_, i) => i + 1);
