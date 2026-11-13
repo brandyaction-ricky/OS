@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiRequest } from "@/lib/api-client";
-import { readImportFile } from "@/lib/finance/import-file.mjs";
+import { readImportRows } from "@/lib/finance/import-file.mjs";
 import { parseHometaxRows, TAX_BIZ, type Biz, type MatchState, type ParsedInvoices, type TaxInvoiceInput } from "@/lib/finance/tax-invoices";
 import { vatCsv } from "@/lib/finance/vat";
 
@@ -57,7 +57,7 @@ export async function readRows(file: File): Promise<string[][]> {
     const doc = new DOMParser().parseFromString(text, "text/html");
     return [...doc.querySelectorAll("tr")].map(tr => [...tr.querySelectorAll("th,td")].map(cell => (cell.textContent ?? "").trim()));
   }
-  return (await readImportFile(file)) as string[][];
+  return readImportRows(file);
 }
 
 export function TaxInvoicePanel({ token, mode }: { token: string | null; mode: "sales" | "deposits" }) {
