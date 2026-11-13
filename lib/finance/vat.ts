@@ -1,6 +1,12 @@
 // 부가세 신고 참고 자료 (재무 요청 a5310134): 월·신고기간별로 결제·취소를 증빙별로 묶는다. 신고서가 아니라 참고 자료다.
 // Pure, so the screen, the download and the tests agree.
-import type { RevenueLink } from "./tax-invoices.ts";
+import { TAX_BIZ, type Biz, type RevenueLink } from "./tax-invoices.ts";
+
+/** 회사 전체: 사업자등록번호가 하나라 부가세 신고는 사업을 나누지 않고 한 번에 한다 — every business, and spending that belongs to none. */
+export const COMPANY = "all";
+export type VatScope = Biz | typeof COMPANY;
+export const scopeLabel = (scope: VatScope) => scope === COMPANY ? "회사 전체" : TAX_BIZ[scope];
+const inScope = (scope: string, biz: string | null | undefined) => scope === COMPANY || biz === scope;
 
 export type VatPeriodKind = "month" | "quarter" | "half";
 export type VatPeriod = { kind: VatPeriodKind; key: string; label: string; from: string; to: string };
@@ -58,7 +64,7 @@ export type VatLine = { evidence: Evidence; label: string; basis: string; count:
 const inRange = (date: string | null, from: string, to: string) => Boolean(date && date >= from && date <= to);
 
 /**
- * Rows for one business and period. A payment or external sale confirmed as the same sale as a tax invoice is reported
+ * Rows for one business (or 회사 전체) and period. A payment or external sale confirmed as the same sale as a tax invoice is reported
  * under the invoice (and left out of its own line), so one sale is never counted twice.
  */
 export function vatRows(input: { biz: string; from: string; to: string; payments: VatPayment[]; cancels: VatCancel[]; invoices: VatInvoice[]; externals: VatExternal[]; links: RevenueLink[] }): VatRow[] {
@@ -66,7 +72,7 @@ export function vatRows(input: { biz: string; from: string; to: string; payments
   const confirmed = input.links.filter(link => link.state === "confirmed");
   const invoiced = new Set(confirmed.filter(link => link.target_type !== "bank_tx").map(link => `${link.target_type}:${link.target_ref}`));
   const rows: VatRow[] = [];
-  const mine = input.payments.filter(row => row.biz === biz);
+  const mine = input.payments.filter(row => inScope(biz, row.biz));
   const byKey = new Map(mine.map(row => [row.payment_key, row]));
   for (const payment of mine) {
     if (!inRange(payment.paid_date, from, to)) continue;
@@ -84,13 +90,13 @@ export function vatRows(input: { biz: string; from: string; to: string; payments
       supply: linked ? 0 : -supply, tax: linked ? 0 : -tax, total: linked ? 0 : -cancel.cancel_amount, note: linked ? "세금계산서와 같은 매출 · 취소분은 수정세금계산서로 반영" : payment.paid_date && payment.paid_date < from ? "이전 기간 결제의 취소" : "" });
   }
   for (const invoice of input.invoices) {
-    if (invoice.biz !== biz || !inRange(invoice.written_date, from, to)) continue;
+    if (!inScope(biz, invoice.biz) || !inRange(invoice.written_date, from, to)) continue;
     rows.push({ evidence: invoice.invoice_class === "exempt" ? "exempt_invoice" : "tax_invoice", kind: invoice.is_modified ? "수정" : "발급", date: invoice.written_date, basis: "작성일자", source: "홈택스",
       title: invoice.buyer_name || "공급받는자 미기재", ref: invoice.approval_no, supply: invoice.supply_amount, tax: invoice.tax_amount, total: invoice.total_amount,
       note: invoice.issued_date && invoice.issued_date.slice(0, 7) !== invoice.written_date.slice(0, 7) ? `발급일 ${invoice.issued_date}` : "" });
   }
   for (const external of input.externals) {
-    if (external.biz !== biz || !inRange(external.revenue_date, from, to) || invoiced.has(`external_revenue:${external.id}`)) continue;
+    if (!inScope(biz, external.biz) || !inRange(external.revenue_date, from, to) || invoiced.has(`external_revenue:${external.id}`)) continue;
     const supply = external.supply ?? 0, tax = external.vat ?? 0;
     rows.push({ evidence: "external", kind: "매출", date: external.revenue_date, basis: "매출일", source: "직접 입력", title: external.title, ref: external.id, supply, tax, total: supply + tax, note: "세금계산서와 연결되지 않은 외부 매출 · 증빙 확인 필요" });
   }

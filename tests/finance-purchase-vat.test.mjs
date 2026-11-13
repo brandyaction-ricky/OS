@@ -83,6 +83,21 @@ test("card 매입세액: round(합계 / 11) only for 공제 예상 of this busin
   assert.deepEqual(result.unassigned, { count: 1, amount: 22000 }, "공통 공제 예상 is reported, not added");
 });
 
+test("회사 전체 매입세액: every business's invoices and every 공제 예상 card use count, shared ones included — nothing is left unassigned", () => {
+  const input = { from: period.from, to: period.to, rules: [],
+    invoices: [invoice("ba", "2026-10-01", 100000), invoice("edu", "2026-10-02", 20000), invoice("myin", "2026-11-03", 3000), invoice("ba", "2026-09-30", 999), invoice("ba", "2026-10-04", 999, { archived_at: "2026-11-01T00:00:00Z" })],
+    cards: [card(1, "2026-10-02", 110000), card(2, "2026-10-03", 22000, { manual_biz: "myin" }), card(3, "2026-10-04", 33000, { manual_biz: "common" }), card(4, "2026-10-05", 44000, { manual_biz: null }),
+      card(5, "2026-10-06", 55000, { manual_biz: "hm", manual_vat: "판단 필요" }), card(6, "2026-10-07", 66000, { manual_vat: "불공제 예상" })] };
+  const company = vatPurchase({ ...input, biz: "all" });
+  assert.deepEqual(company.invoice, { count: 3, tax: 123000 });
+  assert.deepEqual(company.card, { count: 4, amount: 209000, tax: 10000 + 2000 + 3000 + 4000 });
+  assert.equal(company.inputTax, 142000);
+  assert.deepEqual(company.undecided, { count: 1, amount: 55000 });
+  assert.deepEqual(company.unassigned, { count: 0, amount: 0 });
+  const edu = vatPurchase({ ...input, biz: "edu" });
+  assert.deepEqual([edu.invoice.tax, edu.card.tax, edu.unassigned], [20000, 10000, { count: 2, amount: 77000 }], "one business alone still leaves shared uses out");
+});
+
 test("예상 납부세액 = 매출세액 − 매입세액; below zero is a refund", () => {
   const purchase = vatPurchase({ ...period, invoices: [invoice("edu", "2026-10-01", 300000)], cards: [card(1, "2026-10-02", 110000)], rules: [] });
   assert.equal(purchase.inputTax, 310000);
@@ -113,7 +128,7 @@ const schema = load("lib/finance/schema.ts");
 const finance = load("lib/server/finance.ts", { "./auth": {}, "@/lib/finance/schema": schema, "@/lib/finance/domain.mjs": domain, "@/lib/finance/access": load("lib/finance/access.ts") });
 const tax = load("lib/server/finance-tax.ts", { "./finance": finance, "@/lib/finance/tax-invoices": taxInvoices, "@/lib/finance/vat": vat });
 const reference = { period: { kind: "quarter", key: "2026-Q4", label: "2026년 2기 확정 (10~12월)", from: "2026-10-01", to: "2026-12-31" }, lines: [{ evidence: "card", tax: 700000 }, { evidence: "tax_invoice", tax: 300000 }], rows: [{ ref: "r" }], review: 2 };
-const purchaseApi = load("lib/server/finance-purchase.ts", { "./finance": finance, "./finance-tax": { ...tax, vatReference: async () => structuredClone(reference) }, "@/lib/finance/vat-payable": payable });
+const purchaseApi = load("lib/server/finance-purchase.ts", { "./finance": finance, "./finance-tax": { ...tax, vatReference: async () => structuredClone(reference) }, "@/lib/finance/vat": vat, "@/lib/finance/vat-payable": payable });
 
 /** A caller's Supabase client: `tables[name]` is its rows or `{ error }`; every read and write is recorded. */
 function actorFor(tables) {
@@ -172,6 +187,23 @@ test("with the table: 매입세액 from the period's invoices and 공제 예상 
   assert.deepEqual(read.filters, [["is", "archived_at", null], ["gte", "written_date", "2026-10-01"], ["lte", "written_date", "2026-12-31"], ["eq", "biz", "edu"]]);
   const cards = calls.find(call => call.table === "os_fin_card_transactions");
   assert.deepEqual(cards.filters, [["is", "archived_at", null], ["eq", "canceled", false], ["gte", "used_date", "2026-10-01"], ["lte", "used_date", "2026-12-31"]]);
+});
+
+test("회사 전체 on the server: 「all」 is a valid 사업자, and the purchase read drops the business filter", async () => {
+  assert.equal(tax.vatQuery.safeParse({ period: "2026-Q4", biz: "all" }).success, true);
+  assert.equal(tax.vatQuery.safeParse({ period: "2026-Q4", biz: "everyone" }).success, false);
+  const { actor, calls } = actorFor({
+    [TABLE]: [invoice("ba", "2026-10-05", 250000), invoice("edu", "2026-11-05", 50000)],
+    os_fin_card_transactions: [card(1, "2026-10-02", 110000), card(2, "2026-10-03", 33000, { manual_biz: "common" })],
+    os_fin_card_rules: [],
+  });
+  const result = plain(await purchaseApi.vatWithPurchase(actor, { period: "2026-Q4", biz: "all" }));
+  assert.deepEqual(result.purchase, { available: true, invoice: { count: 2, tax: 300000 }, card: { count: 2, amount: 143000, tax: 13000 }, inputTax: 313000, undecided: { count: 0, amount: 0 }, unassigned: { count: 0, amount: 0 } });
+  assert.equal(result.payable, 1000000 - 313000);
+  assert.deepEqual(calls.find(call => call.table === TABLE).filters, [["is", "archived_at", null], ["gte", "written_date", "2026-10-01"], ["lte", "written_date", "2026-12-31"]]);
+  // Saving still needs one real business: a file uploaded from 회사 전체 goes in as 브랜디액션.
+  assert.equal(purchaseApi.purchaseImportSchema.safeParse({ action: "import", biz: "all", invoices: [good("P1")] }).success, false);
+  assert.match(readFileSync(new URL("../components/finance/purchase-invoice-panel.tsx", import.meta.url), "utf8"), /const saveAs: Biz = biz === COMPANY \? "ba" : biz;/);
 });
 
 const good = (approval, extra = {}) => ({ approval_no: approval, invoice_class: "tax", is_modified: false, kind_label: "일반", written_date: "2026-10-05", issued_date: null, sent_date: null, supplier_reg_no: "1112233333", supplier_name: "거래처",
