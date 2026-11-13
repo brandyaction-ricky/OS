@@ -25,6 +25,6 @@ test("the observer marks each row with its channel kind, connections last", () =
   const source = readFileSync("lib/server/youtube-observation.ts", "utf8");
   assert.match(source, /origin: "market" as const \}\)\),\n.*\n\s*\.\.\.\(connections \?\? \[\]\)\.map\(.*origin: "own" as const/);
   assert.match(source, /channelTitle: video\.channelTitle \|\| channel\.title, origin: channel\.origin,/);
-  const route = readFileSync("app/api/v1/content/metrics/route.ts", "utf8");
+  const route = readFileSync("lib/server/metric-window.ts", "utf8");
   assert.match(route, /records\.map\(\(record\) => withObservedOrigin\(record, ownChannelIds\)\)/);
 });
