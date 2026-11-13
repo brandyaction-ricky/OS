@@ -825,7 +825,7 @@
       "purpose": "Toss ledger sync per business store: p_biz ('edu' default) picks or creates the 마이인 or 브랜디에듀 store and rows carry the run's store biz instead of the literal 'edu'; used by the daily sync cron",
       "requiresApproval": true,
       "productionApprovedAt": "2026-10-25",
-      "appliedEnvironments": ["production"],
+      "appliedEnvironments": ["development", "production"],
       "notes": "Owner request 2026-10-25 (마이인 sales also come in through Toss); owner approved Production the same day. DEV and Production os_fin_toss_sync matched before the change. Rollback-only DEV test (tests/toss-sync-by-business.sql with this migration) 5 checks, 0 failures; not applied to DEV. Production: live function re-checked unchanged; a rollback-only run confirmed one 10-argument function and the existing edu store and 120 payments untouched; then applied, recorded in schema history and read back (authenticated still has no execute)."
     },
     {
@@ -834,7 +834,7 @@
       "purpose": "os_team_archive_meeting: the meeting owner or an admin moves a meeting and its meeting page to the trash (archived_at / archived_from_status kept, event logged); refused while live decisions or tasks hang off it",
       "requiresApproval": true,
       "productionApprovedAt": "2026-10-25",
-      "appliedEnvironments": ["production"],
+      "appliedEnvironments": ["development", "production"],
       "notes": "Owner request 2026-10-25 (test meeting 'ㅋㅋ' and an empty weekly meeting could not be removed: the knowledge meeting guard blocks plain archive); owner approved Production the same day. Rollback-only test (tests/team-meeting-archive.sql with this migration) 9 checks, 0 failures on DEV and on Production; not applied to DEV. Production: function absent before; applied, recorded in schema history and read back (security definer, authenticated execute, anon none)."
     },
     {
@@ -844,6 +844,7 @@
       "requiresApproval": true,
       "productionApprovedAt": "2026-10-26",
       "appliedEnvironments": [
+        "development",
         "production"
       ],
       "notes": "Owner request 2026-10-26 (fix every failing call); owner approved Production the same day. Evidence: live documents with ~170-1,240 headings failed indexing after 9-12s while others finished in 3s or less; service_role had no role setting. Applied to Production, recorded in schema history and read back (service_role statement_timeout=60s; authenticated 8s and authenticator unchanged). Not applied to DEV."
@@ -855,6 +856,7 @@
       "requiresApproval": true,
       "productionApprovedAt": "2026-10-28",
       "appliedEnvironments": [
+        "development",
         "production"
       ],
       "notes": "Owner decisions 2026-10-27: Logan's engine may be installed on staff PCs (유쓰, 로건) and the bundle should be kept in the OS. Additive: a new private bucket only. Owner approved Production on 2026-10-28 (\"1~3 진행해\"). Production: the bucket was absent and schema history ended at 20261026090000; applied in one SQL Editor transaction with its schema history row, then read back (private, 47185920 bytes, application/octet-stream, 0 objects). Not applied to DEV."
@@ -866,6 +868,7 @@
       "requiresApproval": true,
       "productionApprovedAt": "2026-10-28",
       "appliedEnvironments": [
+        "development",
         "production"
       ],
       "notes": "Owner request 2026-10-28 (OS_링크관리_UTM생성_기능요청서). Additive: two new tables with RLS on and access revoked from anon/authenticated; the API checks staff and admin. Owner approved Production on 2026-10-28 (\"반영해\", then \"진행해\"). A rollback-only run on DEV and Production passed 9/9 (code/label/inactive duplicates refused, same code across kinds allowed, one row per requestId, brand check, no authenticated/anon access). Applied to Production in one transaction with its schema history row and read back (RLS on, 3 indexes each, history 1). Not applied to DEV."
@@ -877,6 +880,7 @@
       "requiresApproval": true,
       "productionApprovedAt": "2026-10-28",
       "appliedEnvironments": [
+        "development",
         "production"
       ],
       "notes": "Staff request 2026-10-28 ([링크관리] utm_content 대소문자). Widens one check constraint; no row changes. A rollback-only run on DEV passed (case-only different content codes stored apart, upper case refused for source/campaign, bad characters refused, name/code duplicates refused). Owner approved Production on 2026-10-28 (\"반영해\"). Applied to Production in one transaction with its schema history row and read back (new check in place, history 1, 9 existing choices unchanged). Not applied to DEV."
@@ -888,6 +892,7 @@
       "requiresApproval": true,
       "productionApprovedAt": "2026-10-29",
       "appliedEnvironments": [
+        "development",
         "production"
       ],
       "notes": "Staff request b7a80741 (2026-10-28). Replaces os_development_comment_guard only; insert checks unchanged, a reply to a deleted comment is refused. Checked on an in-memory Postgres (PGlite) with a stub auth.uid(): author edit keeps history the client cannot rewrite, other keys/columns refused, other users and no-session refused, delete keeps text, deleted stays deleted, no hard delete. Owner approved Production on 2026-10-28/29 (\"추천대로 해\", \"307도 진행해\"). Applied to Production in one transaction with its schema history row (statements = pg_get_functiondef) and read back: function body equals this file, history 1, trigger in place, 94 existing comments untouched. Not applied to DEV."
@@ -898,6 +903,7 @@
       "purpose": "Official Threads API dispatch for reviewed personal text chains: server-only run/checkpoint records, atomic claim/completion RPCs, and source edit guard. No live activation.",
       "requiresApproval": true,
       "appliedEnvironments": [
+        "development",
         "production"
       ],
       "notes": "Owner separately approved the production DB addition and preparation switch on 2026-10-29. Applied this exact SQL only in one transaction with its history row and privilege checks. Readback: history 1, RLS enabled, public/authenticated access denied, service-only invoker RPCs 3, source guard 1, publication state rows 0. The recorded SQL matches this file. No existing data moved, external post made, or DEV migration applied. Local PostgreSQL fixture checks are separate from real Meta integration.",
@@ -910,6 +916,7 @@
       "requiresApproval": true,
       "productionApprovedAt": "2026-10-29",
       "appliedEnvironments": [
+        "development",
         "production"
       ],
       "notes": "Speed request 2026-10-29. Rewrites workspace_documents_read and os_documents_select with identical logic; adds os_my_reader_documents(). Rollback-only run on DEV: all 11 users see exactly the same documents before and after. Read-only check on Production: old vs new rule identical for all 10 users over 60,950 user-document pairs. Owner approved Production on 2026-10-29 (\"DB 반영해\"). Applied to Production in one transaction with its schema history row and read back (both policies use the reader array, no policy calls os_workspace_document_row_read, history 1). Owner-scoped scans of every document went from ~0.76-1.16 s to ~25 ms. Not applied to DEV."
@@ -921,6 +928,7 @@
       "requiresApproval": true,
       "productionApprovedAt": "2026-10-29",
       "appliedEnvironments": [
+        "development",
         "production"
       ],
       "notes": "Speed request 2026-10-29. Additive: one security-invoker function and one partial index. Rollback-only run on DEV with sample rows: window picks the latest cumulative row per video, keeps daily rows and channel snapshots, drops rows outside the window. Read-only timing on Production of the same query for 30 days: ~0.32 s warm, 104 rows instead of 33,500. Owner approved Production on 2026-10-29 (\"둘 다 반영해\"). Applied to Production in one transaction with its schema history row and read back (function security invoker, index present, history 1); the function took ~0.36 s for 30 days under the owner's row policies. Not applied to DEV."
@@ -932,6 +940,7 @@
       "requiresApproval": true,
       "productionApprovedAt": "2026-10-29",
       "appliedEnvironments": [
+        "development",
         "production"
       ],
       "notes": "Speed request 2026-10-29. Additive indexes only. Production read-only EXPLAIN: newest 300 rows scanned whole tables (record events ~38,000 rows, ~0.74 s cold; agent logs 0.28 s; document events 0.15 s). Owner approved Production on 2026-10-29 (\"둘 다 반영해\"). Applied to Production in one transaction with its schema history row and read back (3 indexes, history 1); newest-300 reads now ~2 ms. Not applied to DEV."
@@ -943,6 +952,7 @@
       "requiresApproval": true,
       "productionApprovedAt": "2026-10-29",
       "appliedEnvironments": [
+        "development",
         "production"
       ],
       "notes": "Additive: two tables with the os_fin_* finance-access policies; os_fin_log_action view list widened (body otherwise identical; the live body was checked to be the original before replacing). Rollback-only run on DEV: duplicate approval number, total mismatch, tax on an exempt invoice and a second confirmed partner refused; a member without finance access cannot read or write; anon cannot read; download log accepts vat and refuses an unknown view. Owner approved Production on 2026-10-29 (\"재무 반영해\"). Applied to Production in one transaction with its schema history row and read back (RLS on both tables, 6 policies, no anon/public grants, log accepts tax_invoices/vat, history 1). Not applied to DEV."
@@ -954,6 +964,7 @@
       "requiresApproval": true,
       "productionApprovedAt": "2026-10-30",
       "appliedEnvironments": [
+        "development",
         "production"
       ],
       "notes": "Owner approved Production on 2026-10-30 (\"둘다 반영해\"). Applied in one transaction with its schema history row and read back (five finance_read policies are active-member only, bank accounts still finance-only, staff check in os_fin_before_write, history 1). Not applied to DEV. Replaces finance_read on five tables, finance_update on card_transactions/recurring_overrides, finance_insert on recurring_overrides and the two finance-receipts storage policies; os_fin_before_write/os_fin_commit/os_fin_log_action are the live bodies (md5 checked on Production) plus staff lines. Rollback-only run on DEV: staff read card uses (bank/payments 0), save purpose+category through os_fin_commit, and are refused amount change, archive, insert, card edit, bank rule, bank CSV log; finance member still edits amounts; anon has no grant."
@@ -965,6 +976,7 @@
       "requiresApproval": true,
       "productionApprovedAt": "2026-10-30",
       "appliedEnvironments": [
+        "development",
         "production"
       ],
       "notes": "Additive: one nullable text column (myin/edu/company) on a service-role table; existing chats stay off. Owner approved Production on 2026-10-30 (\"DB 반영하고 349 반영해\"); applied in one transaction with its schema history row, and the owner's routing set in the same transaction (액션팀 업무 소통방 = myin, 마케팅 업무 소통방 = edu), then read back. DEV rollback-only run passed. Not applied to DEV."
@@ -976,6 +988,7 @@
       "requiresApproval": true,
       "productionApprovedAt": "2026-10-31",
       "appliedEnvironments": [
+        "development",
         "production"
       ],
       "notes": "Read-only Production checks 2026-10-31: search through row rules did not finish in 58 s (owner role); without row rules 6.7 s, keyword part 3.3 s at 0.3 vs 0.6 s at 0.5. Visibility: for all 10 active members over 17,936 readable documents the two old per-row functions hid 0, so the new rule shows exactly the same chunks. Manual undo: supabase/rollback/20261031090000_knowledge_search_speed.down.sql. Owner approved Production on 2026-10-31 (\"운영에 적용\"); applied in one transaction with its schema history row and read back (history 1). After: owner-role search 13.6 s (was over 58 s), still above the app's 4 s: under row rules the keyword step skips the trigram index (<% is not leakproof) and reads every chunk (6.4 s). Not applied to DEV."
@@ -987,6 +1000,7 @@
       "requiresApproval": true,
       "productionApprovedAt": "2026-10-31",
       "appliedEnvironments": [
+        "development",
         "production"
       ],
       "notes": "Bucket settings only (no tables, rows or policies). Read-only Production check 2026-10-31: bucket 10 MB with 5 types, 8 files; storage 7.19 GB in all. Manual undo: supabase/rollback/20261031120000_company_files_folders.down.sql. Owner approved Production on 2026-10-31 (\"재무관리 서류함 올리고\"); applied in one transaction with its schema history row and read back (limit 524288000, 17 types incl. application/x-hwp and application/octet-stream, history 1, the 8 stored files untouched). Not applied to DEV."
@@ -998,6 +1012,7 @@
       "requiresApproval": true,
       "productionApprovedAt": "2026-11-03",
       "appliedEnvironments": [
+        "development",
         "production"
       ],
       "notes": "Speed request 2026-11-03; owner approved Production in chat (\"응 진행해\"). Additive: one partial index, no function, row or policy change. Manual undo: supabase/rollback/20261103100000_content_metric_snapshot_index.down.sql. The session's auto mode blocks production database access, so the owner ran the prepared script on 2026-11-03: read-only timing under the owner's row policies, then the index and its schema history row in one transaction, read back (index present, 8 kB, history 1). Same 30-day window before/after: 108 rows with the same id md5; os_content_metric_window 423-548 ms -> 377-393 ms; the channel-snapshot branch scanned 46,227 rows (62.9 ms, 14,320 buffers) -> index scan, 0.14 ms, 1 buffer, 0 rows. Not applied to DEV."
@@ -1008,7 +1023,7 @@
       "purpose": "AI 문서 수정 (대표 2026-11-04): the designated approver's AI key edits the approver's own team / review documents in place instead of moving them back to 내 노트",
       "requiresApproval": true,
       "productionApprovedAt": "2026-11-04",
-      "appliedEnvironments": ["production"],
+      "appliedEnvironments": ["development", "production"],
       "notes": "Replaces os_agent_update_document (sets os.agent_shared_edit_ok only for the approver's key on the owner's own team/review/reviewed document) and os_workspace_guard_document (lets that one update through while the status stays). No table, row or policy change; other keys, other people's documents, notes, 정본 and status changes keep their rules. Manual undo: supabase/rollback/20261104120000_approver_agent_shared_document_edit.down.sql. Owner approved Production in chat on 2026-11-04 (\"SQL 화면 내가 조작하지 않고 할 수 있게 진행해줘\"). Read-only check first: both production function bodies matched the repository originals (md5 6c84fd2b…, 910582e8…) and the guard trigger was present. The session filled the SQL Editor; auto mode blocked its Run, so the owner pressed Run once: both functions and the schema history row in one transaction, read back (bodies md5 7101bf47…, 91ec998a… = this file; history 1). End to end: the owner's AI key edited the team document 웹툰형 캐릭터 설정 in place (status team, v4 → v5). Not applied to DEV."
     },
     {
@@ -1018,7 +1033,7 @@
       "requiresApproval": true,
       "developmentApprovedAt": null,
       "productionApprovedAt": "2026-11-10",
-      "appliedEnvironments": ["production"],
+      "appliedEnvironments": ["development", "production"],
       "notes": "Add application/zip to the existing private media bucket MIME list only. No table, access policy or existing content changes. Owner approved Production in chat on 2026-11-10 (\"DB 적용하고 운영 반영해\"). Read-only check first: ZIP not allowed, 22 MIME types, history 0. Applied in the SQL Editor in one transaction with 20261110140000 and both schema history rows, read back (ZIP allowed, 23 MIME types, history 2). Not applied to DEV."
     },
     {
@@ -1027,7 +1042,7 @@
       "purpose": "다채널 2단계 (대표 2026-11-07): one person may connect several YouTube channels — the connection key becomes (owner_id, channel_id); channel_id stays unique across the OS",
       "requiresApproval": true,
       "productionApprovedAt": "2026-11-07",
-      "appliedEnvironments": ["production"],
+      "appliedEnvironments": ["development", "production"],
       "notes": "Changes only os_youtube_connections' primary key (owner_id → owner_id, channel_id); no column, row, function or policy change. Safe before the new code: while each person has one row every owner_id lookup still finds one. Manual undo: supabase/rollback/20261107120000_youtube_connections_per_channel.down.sql (needs one connection per person first). Owner approved Production in chat on 2026-11-07 (\"반영해\"). Read-only check first: key PRIMARY KEY (owner_id), 3 connections, none with an empty channel_id, history 0. The session filled the SQL Editor; auto mode blocked its Run, so the owner pressed Run once: the key change and the schema history row in one transaction, read back (key PRIMARY KEY (owner_id, channel_id), 3 connections, history 1). Code (#519) was deployed just before. Not applied to DEV."
     },
     {
@@ -1036,7 +1051,7 @@
       "purpose": "다채널 2단계 (대표 2026-11-07): one person may connect several Instagram and Threads accounts — the connection key becomes (owner_id, platform, external_account_id); the Threads publication claim reads the account it is given",
       "requiresApproval": true,
       "productionApprovedAt": "2026-11-08",
-      "appliedEnvironments": ["production"],
+      "appliedEnvironments": ["development", "production"],
       "notes": "Changes os_meta_connections' primary key (owner_id, platform → owner_id, platform, external_account_id) and replaces os_threads_publication_claim with the 20261029052357 body plus an external_account_id filter on its connection lookup; no column, row, policy or grant change. Safe before the new code while each person has one account a platform. Manual undo: supabase/rollback/20261107150000_meta_connections_per_account.down.sql (needs one account per person and platform first). Owner approved Production in chat on 2026-11-08 (\"반영해\"). Read-only check first: key PRIMARY KEY (owner_id, platform), claim body md5 57cbc68a… = the repository original, 0 Instagram/Threads connections, none repeated, history 0. The session filled the SQL Editor (text sha256 = the prepared script); auto mode blocked its Run, so the owner pressed Run once: key change, function and schema history row in one transaction, read back (key PRIMARY KEY (owner_id, platform, external_account_id), claim body md5 76c7fb1b… = this file, 0 connections, history 1). Not applied to DEV."
     },
     {
@@ -1046,6 +1061,7 @@
       "requiresApproval": true,
       "productionApprovedAt": "2026-11-08",
       "appliedEnvironments": [
+        "development",
         "production"
       ],
       "notes": "Owner approved Production on 2026-11-08 (\"DB 반영하고 531 반영해\"); applied in one transaction with its schema history row and read back (column default false, 0 notes on, both triggers, setter service_role only). Additive: one column (default false), guard triggers on os_documents and os_note_access_grants, one service-role setter. Rollback-only run on DEV (after the 20261029 RLS it lacks): admin cannot see, audit-open, edit or delete a 나만 보기 note; owner reads and edits; a named reader reads; turning it on removes a live audit grant; child pages follow; other notes keep the audit route. Not applied to DEV."
@@ -1057,7 +1073,7 @@
       "requiresApproval": true,
       "developmentApprovedAt": null,
       "productionApprovedAt": "2026-11-10",
-      "appliedEnvironments": ["production"],
+      "appliedEnvironments": ["development", "production"],
       "notes": "Restrictive authenticated INSERT, UPDATE (old and new values) and DELETE policies only for image_creative_v1 projects and image-creative staff AI jobs. Existing reads and other record kinds keep their prior policies. Domain writes use service_role after owner/version/approval validation. Owner approved Production in chat on 2026-11-10 (\"DB 적용하고 운영 반영해\"). Read-only check first: 0 image policies, 11 os_records policies, 0 image rows, history 0. Applied in one transaction with 20261106120000 and both schema history rows before the code (#539) was deployed, read back (3 image policies, 14 os_records policies, history 2). Not applied to DEV."
     },
     {
@@ -1066,7 +1082,7 @@
       "purpose": "영상 성과: os_content_metric_window_v2 leaves channel snapshots out of the window read (or returns only those of posts published in the window), after the first YouTube Analytics run made one 30-day read 22k rows / 27 MB",
       "requiresApproval": true,
       "productionApprovedAt": null,
-      "appliedEnvironments": [],
+      "appliedEnvironments": ["development"],
       "notes": "Additive: one new security-invoker function with the same grants as v1; v1, rows and policies unchanged. The route falls back to v1 (PGRST202) until v2 is in, so deploy order does not matter. Checked on temp tables (window 2 rows without snapshots, 1 snapshot published in the window, latest cumulative kept). Manual undo: supabase/rollback/20261112220000_content_metric_window_v2.down.sql. Production only with the owner's approval through the owner-run script (auto mode blocks production database access). Not applied to DEV."
     },
     {
@@ -1075,7 +1091,7 @@
       "purpose": "영상 성과 under a second: os_content_metric_summary adds up the YouTube Analytics day rows per day and per video in the database and returns the window's other rows (hourly tracked-channel rows only when asked), with two partial indexes",
       "requiresApproval": true,
       "productionApprovedAt": null,
-      "appliedEnvironments": [],
+      "appliedEnvironments": ["development"],
       "notes": "Additive: one security-invoker function and two partial indexes on os_records; rows and policies unchanged. The summary route falls back to reading the window rows and adding them up itself (PGRST202) until the function is in. Manual undo: supabase/rollback/20261112230000_content_metric_summary.down.sql. Production only with the owner's approval through the owner-run script. Not applied to DEV."
     },
     {
@@ -1084,7 +1100,7 @@
       "purpose": "노출 · 클릭률: os_content_metric_summary also adds up thumbnail impressions and the impressions-weighted CTR that the YouTube Reporting Reach job puts on the day rows",
       "requiresApproval": true,
       "productionApprovedAt": null,
-      "appliedEnvironments": [],
+      "appliedEnvironments": ["development"],
       "notes": "Replaces the function body only (same signature, grants and indexes as 20261112230000); rows and policies unchanged. Until it is in, the page shows CTR from the route's own sums only when the function is missing, otherwise CTR stays empty. Manual undo: run 20261112230000_content_metric_summary.sql again. Production only with the owner's approval through the owner-run script. Not applied to DEV."
     },
     {
