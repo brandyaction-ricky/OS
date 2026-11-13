@@ -25,11 +25,11 @@ const claudeRow = (value: Credits["claude"]): Row => {
 
 /**
  * 왼쪽 아래 프로필 위 (owner request 2026-11-02 — the 작동 상태 panel was too hidden): the GPT credit left and spent this cycle
- * and the Claude API spend, for admins. Asked once when the shell opens and every 10 minutes while the window is visible.
+ * and the Claude API spend, for every signed-in member (all staff since 2026-11-13, so they can pace their AI use). Asked once when the shell opens and every 10 minutes while the window is visible.
  */
 export function ApiCreditChips() {
   const { accessToken, demo, profile } = useSession();
-  const shown = demo || profile?.role === "admin";
+  const shown = demo || Boolean(profile);
   const [credits, setCredits] = useState<Credits>({ gpt: null, claude: null });
   useEffect(() => {
     if (!shown) return;

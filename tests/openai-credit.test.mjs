@@ -96,3 +96,14 @@ test("Claude's cost analytics: one total row, cents as a decimal string with six
   assert.equal(anthropicTotal({ data: [] }), 0);
   assert.equal(anthropicTotal(null), 0);
 });
+
+test("every signed-in member sees the AI spend, so staff can pace their own use (owner 2026-11-13)", async () => {
+  const { readFile } = await import("node:fs/promises");
+  for (const route of ["openai-credit", "anthropic-cost"]) {
+    const source = await readFile(new URL(`../app/api/v1/connections/${route}/route.ts`, import.meta.url), "utf8");
+    assert.match(source, /await authenticateRequest\(request\);/);
+    assert.doesNotMatch(source, /ADMIN_REQUIRED|role !== "admin"/);
+  }
+  const chips = await readFile(new URL("../components/api-credit-chips.tsx", import.meta.url), "utf8");
+  assert.match(chips, /const shown = demo \|\| Boolean\(profile\);/);
+});
