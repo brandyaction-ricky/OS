@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { sceneNow, sceneNoteState, sceneWords, spliceScene } from "../lib/myin-scene-notes.ts";
+import { sameNotes, sceneNow, sceneNoteState, sceneWords, spliceScene } from "../lib/myin-scene-notes.ts";
 
 // 점검 시트 장면 의견 (직원 요청 2026-11-12) and its follow-up: a 수정안 per scene, applied one by one while the sheets stay open.
 const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
@@ -58,4 +58,17 @@ test("scene-notes jobs wait in turn, a 수정안 is checked like a storyboard an
   assert.match(apply, /if \(!force && JSON\.stringify\(story\.scenes\[n - 1\]\) !== JSON\.stringify\(proposal\.base\.scene\)\)/);
   const run = read("lib/server/myin-run.ts");
   assert.match(run, /storyboardPath: run\.storyboard!\.path/);
+});
+
+test("여러 장면에 같은 의견 (11-13): the same words read as one comment, in scene order, and go to 내 AI once with their scenes", () => {
+  const notes = [{ id: "c", n: 4, text: "강조 자막을 줄이고  이미지 위주로" }, { id: "a", n: 1, text: "강조 자막을 줄이고 이미지 위주로" }, { id: "b", n: 2, text: "다른 의견" }];
+  assert.deepEqual(sameNotes(notes).map((group) => group.map((note) => note.id)), [["a", "c"], ["b"]]);
+  const card = read("lib/server/myin-scene-notes.ts");
+  assert.match(card, /\$\{sameNotes\(input\.notes\)\.map\(\(group\) => `- 의견: \$\{group\[0\]\.text\}/);
+  assert.match(card, /\.min\(1\)\.max\(20\) \}\)\.strict\(\);/);
+  assert.match(read("lib/server/youtube-ai-jobs.ts"), /task: z\.literal\("scene-notes"\), sourceId: z\.string\(\)\.uuid\(\), notes: z\.array\(z\.string\(\)\.uuid\(\)\)\.min\(1\)\.max\(20\)/);
+  // Each picked scene keeps its own note (its own state and 수정안); the list folds the same words into one line.
+  const screen = read("components/myin-scene-notes.tsx");
+  assert.match(screen, /for \(const n of order\) ids\.push\(/);
+  assert.match(screen, /group\.length === 1 \? listRow\(group\[0\]\) :/);
 });

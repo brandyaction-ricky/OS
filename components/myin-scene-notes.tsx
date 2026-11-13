@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest, ApiRequestError } from "@/lib/api-client";
-import { SCENE_NOTE_STATE, sceneNow, sceneNoteState, sceneWords, type SceneNotePin, type SceneNoteState, type SceneProposal } from "@/lib/myin-scene-notes";
+import { noteKey, SCENE_NOTE_STATE, sceneNow, sceneNoteState, sceneWords, type SceneNotePin, type SceneNoteState, type SceneProposal } from "@/lib/myin-scene-notes";
 import { useSession } from "./session-provider";
 
 /** Scenes per 점검 시트 (the engine's preview(): 3 columns × 4 rows of equal cells, numbered in order). */
@@ -28,6 +28,10 @@ export function MyinSceneNotes({ projectId, runId, token, short, storyboardAt, s
   const [draft, setDraft] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
   const [saving, setSaving] = useState("");
+  // 여러 장면에 같은 의견 (직원 요청 11-13): scenes picked on the sheets, one comment saved under each of them.
+  const [multi, setMulti] = useState(false);
+  const [chosen, setChosen] = useState<number[]>([]);
+  const [common, setCommon] = useState("");
   const [error, setError] = useState("");
   const base = `/api/v1/content/youtube/projects/${projectId}/feedback`;
   const load = useCallback(async () => {
@@ -87,6 +91,23 @@ export function MyinSceneNotes({ projectId, runId, token, short, storyboardAt, s
   };
   const count = (kind: SceneNoteState) => rows.filter((row) => row.state === kind).length;
   const sendable = rows.filter((row) => row.state === "waiting" || row.state === "failed" || row.state === "check");
+  const canPick = (id: string) => sendable.some((row) => row.note.id === id);
+  // The same words on several scenes read as one line (each scene keeps its own note, state and 수정안).
+  const groups = [...rows.reduce((map, row) => map.set(noteKey(row.note.text), [...(map.get(noteKey(row.note.text)) ?? []), row]), new Map<string, typeof rows>()).values()];
+  const order = [...chosen].sort((a, b) => a - b);
+  const writeCommon = async (andSend: boolean) => {
+    if (!order.length || !common.trim()) return;
+    if (andSend && order.length > 20) { setError("내 AI에는 한 번에 20장면까지 보낼 수 있어요. 나눠서 보내 주세요."); return; }
+    setSaving("common"); setError("");
+    const ids: string[] = [];
+    try {
+      for (const n of order) ids.push((await apiRequest<{ item: { id: string } }>(base, { method: "POST", token,
+        body: JSON.stringify({ target: "scene", scene: { runId, n, storyboardAt: sheetAt }, ver: 1, text: common }) })).item.id);
+      if (andSend) await apiRequest("/api/v1/content/youtube-automation/ai-jobs", { method: "POST", token, body: JSON.stringify({ task: "scene-notes", sourceId: projectId, notes: ids }) });
+      setCommon(""); setChosen([]); setMulti(false);
+    } catch (reason) { setError(`${ids.length ? `장면 ${ids.length}개에는 저장했어요. ` : ""}${reason instanceof Error ? reason.message : "저장하지 못했어요."}`); }
+    finally { setSaving(""); await load(); }
+  };
 
   const proposalBox = (note: SceneNote) => note.proposal ? <div className="yt-scene-proposal">
     <span><b>수정 전</b> {sceneWords(note.proposal.base.scene)}</span>
@@ -108,19 +129,31 @@ export function MyinSceneNotes({ projectId, runId, token, short, storyboardAt, s
     </span>
   </li>;
 
+  const listRow = ({ note, n, state }: (typeof rows)[number]) => <li key={note.id}>
+    <input type="checkbox" aria-label="내 AI에 보낼 의견" disabled={!canSend || !canPick(note.id)} checked={picked.includes(note.id)}
+      onChange={(event) => setPicked((now) => event.target.checked ? [...now, note.id] : now.filter((id) => id !== note.id))} />
+    {n ? <button type="button" className="yt-scene-jump" onClick={() => go(n)}>#{n}</button>
+      : <span className="yt-chip" title="기획표가 바뀌어 이 의견의 장면을 찾지 못했어요. 장면을 보고 다시 써 주세요.">{n === null ? "장면 못 찾음" : `#${note.scene?.n} (이전 시트)`}</span>}
+    <span className="yt-scene-text"><b>{note.who}</b> {note.text}</span>
+    <span className="yt-chip">{SCENE_NOTE_STATE[state]}</span>
+  </li>;
+
   return <>
     {rows.length ? <div className="yt-note yt-scene-summary">
       <strong>장면 의견 {rows.length}개 · 대기 {count("waiting")} · 고치는 중 {count("fixing")} · 확인 필요 {count("check")} · 반영 {count("done")}</strong>
-      <ul className="yt-scene-list">{rows.map(({ note, n, state }) => <li key={note.id}>
-        <input type="checkbox" aria-label="내 AI에 보낼 의견" disabled={!canSend || !sendable.some((row) => row.note.id === note.id)} checked={picked.includes(note.id)}
-          onChange={(event) => setPicked((now) => event.target.checked ? [...now, note.id] : now.filter((id) => id !== note.id))} />
-        {n ? <button type="button" className="yt-scene-jump" onClick={() => go(n)}>#{n}</button>
-          : <span className="yt-chip" title="기획표가 바뀌어 이 의견의 장면을 찾지 못했어요. 장면을 보고 다시 써 주세요.">{n === null ? "장면 못 찾음" : `#${note.scene?.n} (이전 시트)`}</span>}
-        <span className="yt-scene-text"><b>{note.who}</b> {note.text}</span>
-        <span className="yt-chip">{SCENE_NOTE_STATE[state]}</span>
+      <ul className="yt-scene-list">{groups.map((group) => group.length === 1 ? listRow(group[0]) : <li key={group[0].note.id} className="yt-scene-group">
+        <input type="checkbox" aria-label="같은 의견 모두 고르기" disabled={!canSend || !group.some((row) => canPick(row.note.id))}
+          checked={group.some((row) => canPick(row.note.id)) && group.filter((row) => canPick(row.note.id)).every((row) => picked.includes(row.note.id))}
+          onChange={(event) => { const ids = group.filter((row) => canPick(row.note.id)).map((row) => row.note.id);
+            setPicked((now) => event.target.checked ? [...new Set([...now, ...ids])] : now.filter((id) => !ids.includes(id))); }} />
+        {group.map(({ note, n }) => n ? <button key={note.id} type="button" className="yt-scene-jump" onClick={() => go(n)}>#{n}</button> : <span key={note.id} className="yt-chip">장면 못 찾음</span>)}
+        <span className="yt-scene-text"><b>{[...new Set(group.map((row) => row.note.who))].join(", ")}</b> {group[0].note.text}</span>
+        <span className="yt-chip">같은 의견 {group.length}개 · {[...new Set(group.map((row) => row.state))].map((state) => `${SCENE_NOTE_STATE[state]} ${group.filter((row) => row.state === state).length}`).join(" · ")}</span>
+        <details className="yt-scene-more"><summary>장면별로 보기</summary><ul className="yt-scene-list">{group.map(listRow)}</ul></details>
       </li>)}</ul>
       {canSend && sendable.length ? <div className="yt-actions">
         <button type="button" className="primary-button" disabled={Boolean(saving) || !picked.length} onClick={() => void send(picked)}>{saving === "send" ? "보내는 중…" : `고른 의견 ${picked.length}개 내 AI에 수정 요청`}</button>
+        {picked.length ? <strong>장면 {rows.filter((row) => picked.includes(row.note.id)).map((row) => row.n ? `#${row.n}` : "?").join(" · ")}</strong> : null}
         <small>의견마다 그 장면만 고친 수정안이 와요. 앞에 보낸 요청이 아직 고치는 중이어도 이어서 보낼 수 있어요. 기획표는 「반영」을 누를 때만 바뀌어요.</small>
       </div> : null}
       {count("check") ? <p className="yt-note">수정안이 온 의견은 아래 점검 시트의 그 장면에서 수정 전 · 후를 보고 「반영」을 눌러요. 반영한 뒤 미리보기를 다시 만들면 새 시트에서 확인할 수 있어요.</p> : null}
@@ -130,6 +163,17 @@ export function MyinSceneNotes({ projectId, runId, token, short, storyboardAt, s
       <summary>점검 시트 {sheetCount}장 보기 · 장면마다 의견 남기기</summary>
       <p className="yt-note">장면마다 한 순간(한 컷)만 보여요. 움직임 · 전환 · 음성 · 효과음은 장면 미리보기와 완성 영상에서 따로 확인해요. 쇼릴 뒤부터는 컷 시각이 조금 앞당겨져 보이니(점검 기능의 특성), 문구 확인은 위 개수로 합니다.</p>
       {sheets && sheets.storyboardAt ? <p className="yt-note">{when(sheets.storyboardAt)} 기획표로 그린 시트예요.{sheets.storyboardAt !== storyboardAt ? " 그 뒤 반영한 수정이 있어요 — 미리보기를 다시 만들면 새 시트가 나와요." : ""}</p> : null}
+      {sheets?.urls.length ? <div className="yt-actions"><button type="button" className="secondary-button compact" aria-pressed={multi} onClick={() => { setMulti(!multi); setChosen([]); setShown(null); }}>
+        {multi ? "여러 장면 고르기 끝" : "여러 장면에 같은 의견 쓰기"}</button></div> : null}
+      {multi ? <div className="yt-note yt-scene-common">
+        <strong>{order.length ? `고른 장면 ${order.map((n) => `#${n}`).join(" · ")} (${order.length}개)` : "아래에서 장면을 골라 주세요"}</strong>
+        <textarea rows={2} value={common} maxLength={2000} onChange={(event) => setCommon(event.target.value)} placeholder="예) 강조 자막을 줄이고 이미지 · 도식 위주로" />
+        <div className="yt-actions">
+          <button type="button" className="secondary-button compact" disabled={Boolean(saving) || !order.length || !common.trim()} onClick={() => void writeCommon(false)}>{saving === "common" ? "저장 중…" : "의견 저장"}</button>
+          {canSend ? <button type="button" className="primary-button compact" disabled={Boolean(saving) || !order.length || !common.trim()} onClick={() => void writeCommon(true)}>저장하고 내 AI에 수정 요청</button> : null}
+          <small>고른 장면마다 같은 의견이 하나씩 저장돼요. 내 AI는 의견 한 번과 장면 목록을 받아 장면마다 수정안을 따로 만들어요.</small>
+        </div>
+      </div> : null}
       {error ? <p className="yt-note yt-warn" role="alert">{error}</p> : null}
       {sheets?.urls.map((url, sheet) => <div key={url} id={`yt-sheet-${sheet + 1}`} className="yt-scene-grid">
         {Array.from({ length: Math.min(PER_SHEET, Math.max(0, (sheets.scenes.length || sheets.urls.length * PER_SHEET) - sheet * PER_SHEET)) }, (_, j) => {
@@ -137,9 +181,11 @@ export function MyinSceneNotes({ projectId, runId, token, short, storyboardAt, s
           return <figure key={n} id={`yt-scene-${n}`} className="yt-scene">
             {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed URLs from private storage; one sheet image cut by CSS */}
             <div className={`yt-scene-cell${short ? " yt-tall" : ""}`} data-col={j % 3} data-row={Math.floor(j / 3)}><img src={url} alt={`장면 #${n}`} loading="lazy" /></div>
-            <button type="button" className={`yt-scene-btn${here.length ? " yt-has" : ""}`} aria-expanded={shown === n} onClick={() => { setShown(shown === n ? null : n); setDraft(""); }}>
-              #{n} · {here.length ? `의견 ${here.length}${here.some((row) => row.state === "check") ? " · 수정안 왔어요" : ""}` : "의견 남기기"}</button>
-            {shown === n ? <div className="yt-scene-notes">
+            {multi ? <label className={`yt-scene-btn${chosen.includes(n) ? " yt-has" : ""}`}><input type="checkbox" checked={chosen.includes(n)}
+              onChange={(event) => setChosen((now) => event.target.checked ? [...now, n] : now.filter((x) => x !== n))} /> #{n} 고르기</label>
+              : <button type="button" className={`yt-scene-btn${here.length ? " yt-has" : ""}`} aria-expanded={shown === n} onClick={() => { setShown(shown === n ? null : n); setDraft(""); }}>
+              #{n} · {here.length ? `의견 ${here.length}${here.some((row) => row.state === "check") ? " · 수정안 왔어요" : ""}` : "의견 남기기"}</button>}
+            {!multi && shown === n ? <div className="yt-scene-notes">
               {here.length ? <ul className="yt-scene-list">{here.map((row) => noteRow(row.note, row.state))}</ul> : null}
               <form onSubmit={(event) => { event.preventDefault(); if (draft.trim()) void add(n); }}>
                 <textarea rows={2} value={draft} maxLength={2000} onChange={(event) => setDraft(event.target.value)} placeholder="예) 글자가 칸을 넘어요 · 사진 대신 비교 도식으로" />

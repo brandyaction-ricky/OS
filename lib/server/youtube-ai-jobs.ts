@@ -99,7 +99,7 @@ export const staffJobRequestSchema = z.discriminatedUnion("task", [
   // 구간 의견 → 수정안: the chosen comments on the 원고, one replacement each.
   z.object({ task: z.literal("script-notes"), sourceId: z.string().uuid(), notes: z.array(z.string().min(1).max(40)).min(1).max(10) }).strict(),
   // ③ 점검 시트 장면 의견 → 수정안: the chosen notes (feedback item ids), one replacement scene each; several such jobs may wait in turn.
-  z.object({ task: z.literal("scene-notes"), sourceId: z.string().uuid(), notes: z.array(z.string().uuid()).min(1).max(10) }).strict(),
+  z.object({ task: z.literal("scene-notes"), sourceId: z.string().uuid(), notes: z.array(z.string().uuid()).min(1).max(20) }).strict(),
   // ⑦ 유튜브 관리 발행키트, from the script approved at gate 2 (and the v13 final's subtitles for the chapters).
   z.object({ task: z.literal("kit"), sourceId: z.string().uuid() }).strict(),
   // 유튜브 공정 v1 기획안, before the 기획안 컨펌; query = the 기획실 레퍼런스 검색어 (default: the project's name).
