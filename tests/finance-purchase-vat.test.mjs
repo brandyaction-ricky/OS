@@ -260,3 +260,17 @@ test("the purchase routes stay behind finance access and the 부가세 page show
   const demo = page.slice(page.indexOf("export function VatReferenceDemo"), page.indexOf("export function VatReference("));
   assert.ok(demo.includes("VatPayableSummary") && !/apiRequest|fetch\(/.test(demo));
 });
+
+// ---- 올린 파일 → 표 ---------------------------------------------------------------------------------------------------
+
+test("홈택스 목록 .xlsx · .csv: the shared reader hands the parser every row, the title row included", async () => {
+  const { readImportRows } = await import("../lib/finance/import-file.mjs");
+  const { default: ExcelJS } = await import("exceljs");
+  const book = new ExcelJS.Workbook(), sheet = book.addWorksheet("목록");
+  for (const row of [["전자세금계산서 목록조회"], [], header, line("X1", "2026-11-10", 110000, 100000, 10000), line("X2", "2026-11-11", 55000, 50000, 5000, { supplierNo: "222-33-44444" })]) sheet.addRow(row);
+  const fromXlsx = parseHometaxRows(await readImportRows(new File([await book.xlsx.writeBuffer()], "매입.xlsx")), "purchase");
+  assert.deepEqual([fromXlsx.errors, fromXlsx.invoices.map(row => [row.approval_no, row.total_amount])], [[], [["X1", 110000], ["X2", 55000]]]);
+  const csv = [header, line("C1", "2026-11-10", 110000, 100000, 10000)].map(row => row.join(",")).join("\n");
+  const fromCsv = parseHometaxRows(await readImportRows(new File([csv], "매출.csv")));
+  assert.deepEqual([fromCsv.errors, fromCsv.invoices.map(row => row.approval_no)], [[], ["C1"]]);
+});

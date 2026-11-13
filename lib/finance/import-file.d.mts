@@ -1,8 +1,10 @@
 export const IMPORT_LIMITS: { bytes: number; rows: number; columns: number; [key: string]: number };
-export function parseCsv(text: string): string[][];
+export function parseCsv(text: string): { headers: string[]; rows: string[][] };
 export function checkXlsxZip(buffer: ArrayBuffer): void;
-/** .csv (UTF-8 or EUC-KR) or .xlsx (first sheet) → rows of cell text. */
-export function readImportFile(file: File): Promise<string[][]>;
+/** .csv (UTF-8 or EUC-KR) or .xlsx (first sheet) → the first row as headers and the rest as rows of cell text. */
+export function readImportFile(file: File): Promise<{ headers: string[]; rows: string[][] }>;
+/** The same file as plain rows, the first row included. */
+export function readImportRows(file: File): Promise<string[][]>;
 export const IMPORT_FIELDS: Record<string, unknown>;
 export function inferMapping(headers: string[], kind: string): Record<string, unknown>;
 export function importDate(value: unknown): string | null;
