@@ -14,14 +14,14 @@ test("content automation is implemented as internal OS routes", () => {
 });
 
 test("all full-screen routes have explicit styling without changing their URLs", () => {
-  // 스타일 점검 P2: 내 노트 · 회사 정본 · 휴지통 · 회의록 (53 → 57); 재무 서류함 · 부가세 (57 → 59); 이미지 광고 (59 → 60).
-  assert.equal(Object.keys(FULLSCREEN_ROUTES).filter(path=>!path.startsWith("/hr")).length, 60);
+  // 스타일 점검 P2: 내 노트 · 회사 정본 · 휴지통 · 회의록 (53 → 57); 재무 서류함 · 부가세 (57 → 59); 이미지 광고 (59 → 60); 손익 현황 (60 → 61).
+  assert.equal(Object.keys(FULLSCREEN_ROUTES).filter(path=>!path.startsWith("/hr")).length, 61);
   assert.equal(fullscreenScreen("/knowledge/notes"), "notes");
   assert.equal(fullscreenScreen("/content/video"), "video");
   assert.equal(fullscreenScreen("/content/images"), "image-creatives");
   assert.equal(fullscreenScreen("/organization/people"), "people");
   assert.equal(fullscreenScreen("/knowledge/vault"), "vault");
-  for (const name of ["overview", "sales", "settlements", "bank", "cards", "recurring", "budget", "vat", "documents"]) {
+  for (const name of ["overview", "pnl", "sales", "settlements", "bank", "cards", "recurring", "budget", "vat", "documents"]) {
     assert.equal(fullscreenScreen("/finance/" + name), "finance-" + name);
   }
   assert.equal(fullscreenScreen("/knowledge", "canon"), "canon");

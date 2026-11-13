@@ -43,6 +43,12 @@ test("menu selection preserves role/data boundaries and always-available destina
   assert.equal(access.canOpenMenu({ ...member, isActive: false }, "/finance/cards", null), false);
   assert.equal(access.canOpenMenu(member, "/finance/sales", ["/finance/sales"]), false);
   assert.equal(access.canOpenMenu(member, "/finance/vat", null), false);
+  // 손익 현황 (2026-11-13) is finance-only and has no alias: a restricted finance member sees it only once an admin ticks it.
+  assert.equal(access.canOpenMenu(member, "/finance/pnl", null), false);
+  assert.equal(access.canOpenMenu({ ...member, financeAccess: true }, "/finance/pnl", null), true);
+  assert.equal(access.canOpenMenu({ ...member, financeAccess: true }, "/finance/pnl", ["/finance/overview", "/finance/sales", "/finance/budget"]), false);
+  assert.equal(access.canOpenMenu({ ...member, financeAccess: true }, "/finance/pnl", ["/finance/pnl"]), true);
+  assert.equal(access.canOpenMenu({ ...member, role: "admin" }, "/finance/pnl", []), true);
   assert.equal(access.canOpenMenu({ ...member, financeAccess: true }, "/finance/cards", ["/finance/cards"]), true);
   assert.equal(access.canOpenMenu({ ...member, role: "admin" }, "/settings/access", []), true);
   assert.equal(access.canOpenMenu({ ...member, role: "admin", isActive: false }, "/settings/access", null), false);
@@ -115,9 +121,9 @@ test("admin cannot restrict administrators, inactive accounts, or elevate financ
   }
 });
 
-test("existing finance eligibility permits saving all nine finance menu choices", async () => {
+test("existing finance eligibility permits saving all ten finance menu choices", async () => {
   const financeMenus = navigation.NAV_STAGES.find(stage => stage.id === "finance").pages.map(page => page.href);
-  assert.equal(financeMenus.length, 9);
+  assert.equal(financeMenus.length, 10);
   const route = api({ finance: true });
   const response = await route.PATCH(patch({ allowedMenus: financeMenus }));
   assert.equal(response.status, 200);

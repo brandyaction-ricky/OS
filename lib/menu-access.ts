@@ -28,6 +28,8 @@ const AUTOMATION_PERMISSION_ALIASES: Record<string, string[]> = {
   "/finance/vat": ["/finance/sales"],
   // 서류함 (2026-10-31) opens for anyone already allowed the finance 개요.
   "/finance/documents": ["/finance/overview"],
+  // 손익 현황 (2026-11-13) deliberately has no alias: it lists payroll and bank rows, so a member whose finance menus an admin
+  // narrowed does not gain it through another menu. Admins and finance members without a narrowed list see it at once.
 };
 // 유튜브 공정 v1 screens open for anyone allowed any existing YouTube process screen (지시서 5-3).
 // Moving the image-ad menu must not revoke navigation access granted under its previous group.

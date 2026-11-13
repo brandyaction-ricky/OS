@@ -106,12 +106,12 @@ export function CompanyDocuments({ token, demo }: { token: string | null; demo: 
       </header>
       {error ? <p className="inline-alert" role="alert">{error}</p> : null}
       <section className="panel company-documents">
-      <div className="document-folder-toolbar">
-        <button className={category === "all" ? "active" : ""} onClick={() => pick("all")}>전체 서류 <b>{documents.length}</b></button>
+      <div className="document-folder-toolbar finance-doc-pick">
+        <button className={category === "all" ? "active" : ""} aria-pressed={category === "all"} onClick={() => pick("all")}>전체 서류 <b>{documents.length}</b></button>
       </div>
-      <div className="document-folders">
+      <div className="document-folders finance-doc-pick">
         {CATEGORIES.map(item => (
-          <button key={item.id} className={category === item.id ? "active" : ""} onClick={() => pick(item.id)}>
+          <button key={item.id} className={category === item.id ? "active" : ""} aria-pressed={category === item.id} onClick={() => pick(item.id)}>
             <span className="document-folder-icon">{item.sensitive ? <LockKeyhole size={17} /> : <FolderClosed size={17} />}</span>
             <span><strong>{item.id}</strong><small>{item.description}</small></span>
             <em>{documents.filter(document => categoryOf(document) === item.id).length}</em>

@@ -2,31 +2,33 @@ import { apiRequest, ApiRequestError } from "@/lib/api-client";
 import { READ_RESOURCES, type FinanceData, type FinanceRow } from "./schema";
 import { createLedgerProjection, workspaceFromLedger, type WorkspaceData } from "./ledger-adapter.mjs";
 
+/** Reads the whole ledger once: one batched response, or resource by resource when that would exceed the hosting limit. */
+export async function loadLedger(getToken:()=>string|null,signal:AbortSignal):Promise<FinanceData> {
+  const request=<T>(path:string)=>apiRequest<T>(`/api/v1/finance/${path}`,{token:getToken(),method:"GET",signal,body:undefined});
+  try{
+    return (await request<{data:FinanceData}>("workspace?batch=1")).data;
+  }catch(error){
+    if(!(error instanceof ApiRequestError)||error.code!=="FINANCE_WORKSPACE_PAGED")throw error;
+  }
+  // Preserve large-ledger support when one response would exceed the hosting limit.
+  const next:FinanceData={};
+  const resources=READ_RESOURCES.filter(r=>r!=="events");
+  for(let i=0;i<resources.length;i+=4)await Promise.all(resources.slice(i,i+4).map(async resource=>{
+    const rows:FinanceRow[]=[];
+    for(let offset=0;offset<100000;offset+=1000){
+      const page=await request<{rows:FinanceRow[];nextOffset:number|null}>(`workspace?resource=${resource}&offset=${offset}`);
+      rows.push(...page.rows);if(page.nextOffset===null){next[resource]=rows;return;}
+    }
+    throw new Error("조회할 내역이 너무 많습니다. 관리자에게 기간별 보관을 요청해 주세요.");
+  }));
+  return next;
+}
+
 export async function connectFinance(getToken:()=>string|null,signal:AbortSignal) {
   let data:FinanceData={};
   const today=()=>new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Seoul"});
   const request=<T>(path:string,method="GET",body?:unknown)=>apiRequest<T>(`/api/v1/finance/${path}`,{token:getToken(),method,signal,body:body===undefined?undefined:JSON.stringify(body)});
-  const load=async()=>{
-    try{
-      const result=await request<{data:FinanceData}>("workspace?batch=1");
-      data=result.data;
-      return;
-    }catch(error){
-      if(!(error instanceof ApiRequestError)||error.code!=="FINANCE_WORKSPACE_PAGED")throw error;
-    }
-    // Preserve large-ledger support when one response would exceed the hosting limit.
-    const next:FinanceData={};
-    const resources=READ_RESOURCES.filter(r=>r!=="events");
-    for(let i=0;i<resources.length;i+=4)await Promise.all(resources.slice(i,i+4).map(async resource=>{
-      const rows:FinanceRow[]=[];
-      for(let offset=0;offset<100000;offset+=1000){
-        const page=await request<{rows:FinanceRow[];nextOffset:number|null}>(`workspace?resource=${resource}&offset=${offset}`);
-        rows.push(...page.rows);if(page.nextOffset===null){next[resource]=rows;return;}
-      }
-      throw new Error("조회할 내역이 너무 많습니다. 관리자에게 기간별 보관을 요청해 주세요.");
-    }));
-    data=next;
-  };
+  const load=async()=>{data=await loadLedger(getToken,signal);};
   await load();
   let projection=createLedgerProjection(data);
   const workspace=()=>workspaceFromLedger(data,today());

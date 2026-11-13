@@ -34,6 +34,7 @@ import {
   Landmark,
   Repeat,
   Receipt,
+  TrendingUp,
 } from "lucide-react";
 import { STAFF_FINANCE_MENUS } from "./finance/access.ts";
 import { CARD_CANON_PAGE, COLUMN_CANON_PAGE, OVERVIEW_PAGE, SCRIPT_CANON_PAGE, SHORT_CANON_PAGE, THREADS_CANON_PAGE, YOUTUBE_V1_CEO_STAGE, YOUTUBE_V1_CONFIRM_PAGE, YOUTUBE_V1_HREFS, YOUTUBE_V1_PAGES, YOUTUBE_V1_STEP_PAGES } from "./youtube-process/navigation.ts";
@@ -108,6 +109,7 @@ export const NAV_STAGES: NavStage[] = [
   ] },
   { id: "finance", label: "재무관리", icon: Wallet, href: "/finance/overview", requiresFinance: true, pages: [
     { label: "개요", href: "/finance/overview", icon: LayoutDashboard, aliases: ["재무 요약", "순수익"], ready: true },
+    { label: "손익 현황", href: "/finance/pnl", icon: TrendingUp, aliases: ["손익", "손익계산서", "월별 손익", "매출·비용", "P&L"], ready: true },
     { label: "매출내역", href: "/finance/sales", icon: Receipt, aliases: ["토스 결제", "외부 매출"], ready: true },
     { label: "정산입금", href: "/finance/settlements", icon: ListChecks, aliases: ["지급", "입금 대조"], ready: true },
     { label: "통장 내역", href: "/finance/bank", icon: Landmark, aliases: ["계좌", "입출금"], ready: true },
