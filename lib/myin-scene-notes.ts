@@ -55,3 +55,12 @@ export function sceneWords(scene: Record<string, unknown>) {
   walk(scene);
   return `${String(scene.type ?? "")} · ${out.join(" / ")}`.slice(0, 400);
 }
+
+/** One comment written for several scenes reads as one: notes with the same words (spacing aside). */
+export const noteKey = (text: string) => text.replace(/\s+/g, " ").trim();
+/** Notes grouped by their words, each group in scene order, groups in order of their first scene. */
+export function sameNotes<T extends { text: string; n: number }>(notes: T[]) {
+  const groups = new Map<string, T[]>();
+  for (const note of [...notes].sort((a, b) => a.n - b.n)) groups.set(noteKey(note.text), [...(groups.get(noteKey(note.text)) ?? []), note]);
+  return [...groups.values()];
+}
