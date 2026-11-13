@@ -18,7 +18,7 @@ export const MYIN_STOPS: Record<string, Stop> = {
   MYIN_WORK_MISSING: { why: "이 영상을 시작한 작업 폴더가 그 컴퓨터에 없어요.", again: false },
   MYIN_LOUDNESS_UNKNOWN: { why: "완성 영상의 음량 검사가 돌지 않았어요.", again: true },
   MYIN_OUR_IMAGE_NEEDED: { why: "「우리 이미지」로 올려야 하는 사진이 아직 없어요.", again: false,
-    next: "아래 「장면 그림 바꾸기 (우리 이미지)」에서 「받을 곳 없음」 사진을 올리면 자료 준비가 저절로 다시 시작돼요." },
+    next: "아래 「장면 그림 바꾸기 (우리 이미지 · 사진 후보)」에서 「받을 곳 없음」 사진마다 직접 올리거나 「후보 찾기」로 고르면, 마지막 사진이 채워질 때 자료 준비가 저절로 다시 시작돼요." },
   MYIN_PREP_ASSETS: { why: "자동으로 받을 수 없는 사진이 있어요. 「우리 이미지」로 올리거나 기획표를 수정 요청해 주세요.", again: false },
   MYIN_STORYBOARD_MISSING: { why: "기획표 파일을 찾지 못했어요. 기획표를 다시 받아 주세요.", again: false },
   MYIN_VOICE_FAILED: { why: "목소리를 만드는 곳(Fish)에서 실패했어요.", again: true },

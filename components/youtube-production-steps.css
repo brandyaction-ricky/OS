@@ -84,7 +84,10 @@
 
 /* Run status, voice segments, video. */
 .linear-shell .ui-v2 .yt-run { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--panel-2); }
-.linear-shell .ui-v2 .yt-run-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.linear-shell .ui-v2 .yt-run-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+/* A stop note (with up to 30 photo names) takes its own full-width line under the pill, so neither the pill nor 「구독 대사 3/3」 is squeezed. */
+.linear-shell .ui-v2 .yt-run-head > .status-pill { flex: none; }
+.linear-shell .ui-v2 .yt-run-head > .yt-stop { order: 3; flex: 1 1 100%; overflow-wrap: anywhere; }
 .linear-shell .ui-v2 .yt-run progress { width: 100%; height: 8px; accent-color: var(--accent); }
 .linear-shell .ui-v2 .yt-segments { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 .linear-shell .ui-v2 .yt-steps audio { width: 100%; max-width: 480px; }
