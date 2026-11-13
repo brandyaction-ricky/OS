@@ -16,6 +16,8 @@ export async function GET(request: Request) {
     if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") return NextResponse.json({ enabled: false });
     const { settings } = await readContentAutomationSettings();
     if (!settings.autoCollect || !settings.enabledChannels.includes("youtube")) return NextResponse.json({ enabled: true, skipped: "자동 수집이 꺼져 있습니다." });
-    return NextResponse.json({ enabled: true, ...await syncChannelReach(new Date()) });
+    const result = await syncChannelReach(new Date());
+    console.log("channel-reach", JSON.stringify(result)); // counts only: no tokens, no rows
+    return NextResponse.json({ enabled: true, ...result });
   } catch (error) { return apiErrorResponse(error); }
 }
