@@ -244,7 +244,7 @@ test("the purchase table mirrors os_fin_tax_invoices: same columns, checks, gran
   assert.match(purchase.split("\n").slice(0, 6).join("\n"), /Additive[\s\S]*REVIEW ONLY/);
   assert.match(readFileSync("supabase/rollback/20261113100000_finance_purchase_invoices.down.sql", "utf8"), /drop table if exists public\.os_fin_purchase_invoices;/);
   const entry = JSON.parse(readFileSync("supabase/migration-baseline.json", "utf8")).forwardMigrations.at(-1);
-  assert.deepEqual([entry.file, entry.requiresApproval, entry.productionApprovedAt, entry.appliedEnvironments], ["20261113100000_finance_purchase_invoices.sql", true, null, []]);
+  assert.deepEqual([entry.file, entry.requiresApproval, entry.productionApprovedAt, entry.appliedEnvironments], ["20261113100000_finance_purchase_invoices.sql", true, null, ["development"]]);
 });
 
 test("the purchase routes stay behind finance access and the 부가세 page shows the assumptions it makes", () => {
