@@ -25,7 +25,7 @@ export async function syncChannelReach(now = new Date(), budgetMs = 240_000) {
   const started = Date.now(), db = createServiceSupabase(), measuredAt = now.toISOString();
   const { data, error } = await db.from("os_youtube_connections").select("*");
   if (error) throw new ApiError(503, "YOUTUBE_CONNECTIONS_UNAVAILABLE", "YouTube 연결을 읽지 못했습니다.");
-  const counts = { channels: 0, jobsCreated: 0, reports: 0, days: 0, newRows: 0, reconnectRequired: 0, laterForTime: 0, failures: 0 };
+  const counts: { channels: number; jobsCreated: number; reports: number; days: number; newRows: number; reconnectRequired: number; laterForTime: number; failures: number; firstError?: string } = { channels: 0, jobsCreated: 0, reports: 0, days: 0, newRows: 0, reconnectRequired: 0, laterForTime: 0, failures: 0 };
   for (const connection of (data ?? []) as YoutubeStoredConnection[]) {
     if (!youtubeAnalyticsConnected(connection)) { counts.reconnectRequired++; continue; }
     if (Date.now() - started > budgetMs) { counts.laterForTime++; continue; }
@@ -79,7 +79,11 @@ export async function syncChannelReach(now = new Date(), budgetMs = 240_000) {
         if (writeError) throw new Error("reach save failed");
       }
       counts.days += writes.length;
-    } catch (reason) { if (reason instanceof ApiError && reason.code === "YOUTUBE_ANALYTICS_SCOPE_REQUIRED") counts.reconnectRequired++; else counts.failures++; }
+    } catch (reason) {
+      if (reason instanceof ApiError && reason.code === "YOUTUBE_ANALYTICS_SCOPE_REQUIRED") counts.reconnectRequired++; else counts.failures++;
+      // Google's own reason (API turned off, scope missing, …) — the cron's only trace, since a failed channel never fails the run.
+      counts.firstError ??= reason instanceof ApiError ? `${reason.code}: ${String(reason.details ?? reason.message)}`.slice(0, 300) : String(reason).slice(0, 300);
+    }
   }
   return counts;
 }
