@@ -3,7 +3,7 @@ import { ApiError } from "@/lib/http";
 import type { RequestActor } from "./auth";
 import { financeDbError } from "./finance";
 import { matchDeposit, matchInvoices, revenueBySource, type RevenueLink, type TaxInvoiceInput } from "@/lib/finance/tax-invoices";
-import { vatLines, vatPeriod, vatRows, type VatCancel, type VatExternal, type VatInvoice, type VatPayment } from "@/lib/finance/vat";
+import { COMPANY, vatLines, vatPeriod, vatRows, type VatCancel, type VatExternal, type VatInvoice, type VatPayment } from "@/lib/finance/vat";
 
 // 재무 요청 a5310134: 세금계산서 목록·같은 매출 짝·입금 확인, 그리고 부가세 참고 자료. Every read and write goes through the
 // caller's own client, so the os_fin_* finance-access policies decide what is visible.
@@ -119,13 +119,13 @@ export async function decideLink(actor: RequestActor, input: z.infer<typeof link
   return { ok: true };
 }
 
-export const vatQuery = z.object({ period: z.string(), biz: BIZ });
+export const vatQuery = z.object({ period: z.string(), biz: z.union([BIZ, z.literal(COMPANY)]) });
 
-/** 부가세 신고 참고 자료 for one business and one month / 예정·확정 quarter / half. */
+/** 부가세 신고 참고 자료 for one business (or 회사 전체) and one month / 예정·확정 quarter / half. */
 export async function vatReference(actor: RequestActor, input: z.infer<typeof vatQuery>) {
   const period = vatPeriod(input.period);
   if (!period) throw new ApiError(400, "VAT_PERIOD_INVALID", "기간을 확인해 주세요.");
-  const { invoices, payments, externals, links } = await readWindow(actor, period.from, period.to, input.biz);
+  const { invoices, payments, externals, links } = await readWindow(actor, period.from, period.to, input.biz === COMPANY ? undefined : input.biz);
   // A cancel in this period may belong to a payment from an earlier one.
   const cancels = await all<{ payment_id: string; cancel_amount: number; cancel_date: string }>((a, b) => actor.supabase.from("os_fin_payment_cancels").select("payment_id,cancel_amount,cancel_date").gte("cancel_date", period.from).lte("cancel_date", period.to).order("id").range(a, b));
   const missing = [...new Set(cancels.map(row => row.payment_id))].filter(id => !payments.some(row => row.id === id));

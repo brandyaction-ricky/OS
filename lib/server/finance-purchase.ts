@@ -4,6 +4,7 @@ import type { RequestActor } from "./auth";
 import { financeDbError } from "./finance";
 import { all, BIZ, invoiceSchema, vatReference, type listQuery, type vatQuery } from "./finance-tax";
 import type { TaxInvoiceInput } from "@/lib/finance/tax-invoices";
+import { COMPANY } from "@/lib/finance/vat";
 import { vatPayable, vatPurchase } from "@/lib/finance/vat-payable";
 
 // 재무 2026-11-13: 홈택스 매입 계산서 목록·올리기, 그리고 부가세 참고 자료의 매입세액 · 예상 납부세액. Every read and write goes
@@ -64,7 +65,7 @@ export async function vatWithPurchase(actor: RequestActor, input: z.infer<typeof
   const reference = await vatReference(actor, input);
   const { from, to } = reference.period;
   const salesTax = reference.lines.reduce((sum, line) => sum + line.tax, 0);
-  const listed = await listPurchaseInvoices(actor, { from, to, biz: input.biz }).catch(error => { if (error instanceof ApiError && error.code === PURCHASE_NOT_READY) return null; throw error; });
+  const listed = await listPurchaseInvoices(actor, { from, to, biz: input.biz === COMPANY ? undefined : input.biz }).catch(error => { if (error instanceof ApiError && error.code === PURCHASE_NOT_READY) return null; throw error; });
   if (!listed) return { ...reference, salesTax, purchase: { available: false as const }, payable: null };
   const db = actor.supabase;
   const [cards, rules] = await Promise.all([

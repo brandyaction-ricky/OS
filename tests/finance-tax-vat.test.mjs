@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { hometaxDate, hometaxWon, matchDeposit, matchInvoices, parseHometaxRows, revenueBySource } from "../lib/finance/tax-invoices.ts";
-import { paymentEvidence, splitVat, vatCsv, vatLines, vatPeriod, vatRows } from "../lib/finance/vat.ts";
+import { COMPANY, paymentEvidence, scopeLabel, splitVat, vatCsv, vatLines, vatPeriod, vatRows } from "../lib/finance/vat.ts";
 
 const header = ["작성일자", "승인번호", "발급일자", "전송일자", "공급자사업자등록번호", "종사업장번호", "상호", "대표자명", "주소", "공급받는자사업자등록번호", "종사업장번호", "상호", "대표자명", "주소", "합계금액", "공급가액", "세액", "전자세금계산서분류", "전자세금계산서종류", "발급유형", "비고", "영수/청구 구분", "공급자 이메일", "공급받는자 이메일1", "공급받는자 이메일2", "품목일자", "품목명"];
 const row = (approval, written, total, supply, tax, options = {}) => [written, approval, options.issued ?? written, written, "123-45-67890", "", "브랜디액션", "대표", "주소", options.buyerNo ?? "222-33-44444", "", options.buyer ?? "고객사", "", "", total, supply, tax, options.cls ?? "세금계산서", "일반", "", "", "청구", "", "a@b.c", "", written, options.item ?? "강의"];
@@ -122,6 +122,30 @@ test("VAT rows: payments and cancels by their own dates, an invoiced payment cou
   assert.ok(csv.startsWith("﻿증빙,"));
   assert.match(csv, /'=HYPERLINK\(1\)/);
   assert.match(csv, /"a,b"/);
+});
+
+test("회사 전체: one 사업자등록번호 files one return — every business's payments, cancels, invoices and external sales in one set of lines", () => {
+  const input = { from: "2026-10-01", to: "2026-12-31",
+    payments: [
+      { payment_key: "e", biz: "edu", method: "카드", amount: 110000, paid_date: "2026-10-02" },
+      { payment_key: "m", biz: "myin", method: "카드", amount: 22000, paid_date: "2026-10-03" },
+      { payment_key: "h", biz: "hm", method: "가상계좌", amount: 33000, paid_date: "2026-11-04" },
+    ],
+    cancels: [{ payment_key: "m", cancel_amount: 11000, cancel_date: "2026-10-09" }],
+    invoices: [
+      { id: "t1", biz: "ba", approval_no: "T1", invoice_class: "tax", is_modified: false, written_date: "2026-10-05", issued_date: null, buyer_name: "회사", supply_amount: 300000, tax_amount: 30000, total_amount: 330000 },
+      { id: "t2", biz: "edu", approval_no: "T2", invoice_class: "tax", is_modified: false, written_date: "2026-10-06", issued_date: null, buyer_name: "학원", supply_amount: 100000, tax_amount: 10000, total_amount: 110000 },
+    ],
+    externals: [{ id: "x1", biz: "hm", title: "외주", revenue_date: "2026-10-10", supply: 50000, vat: 5000 }],
+    links: [],
+  };
+  const tax = scope => vatLines(vatRows({ ...input, biz: scope })).reduce((sum, line) => sum + line.tax, 0);
+  const each = ["ba", "edu", "myin", "hm"].map(tax);
+  assert.deepEqual(each, [30000, 10000 + 10000, 2000 - 1000, 3000 + 5000]);
+  assert.equal(tax(COMPANY), each.reduce((sum, value) => sum + value, 0), "회사 전체 is the businesses added up, nothing counted twice");
+  const lines = Object.fromEntries(vatLines(vatRows({ ...input, biz: COMPANY })).map(line => [line.evidence, line]));
+  assert.deepEqual([lines.card.total, lines.card.cancelCount, lines.cash.total, lines.tax_invoice.total, lines.external.total], [110000 + 22000 - 11000, 1, 33000, 440000, 55000]);
+  assert.deepEqual([scopeLabel(COMPANY), scopeLabel("edu")], ["회사 전체", "브랜디액션 에듀"]);
 });
 
 test("tax invoice tables and routes stay behind finance access; Aside never handles 홈택스 sign-in", async () => {

@@ -139,7 +139,7 @@ export function TaxInvoicePanel({ token, mode }: { token: string | null; mode: "
       <p><b>{preview.file}</b> · 계산서 {preview.invoices.length}건 · 합계 {won(totalOf(preview.invoices as Invoice[]))}{preview.invoices.some(row => row.is_modified) ? ` · 수정계산서 ${preview.invoices.filter(row => row.is_modified).length}건` : ""}</p>
       {preview.errors.length ? <ul className="fin-callout fin-bad">{preview.errors.slice(0, 8).map(item => <li key={item}>{item}</li>)}{preview.errors.length > 8 ? <li>외 {preview.errors.length - 8}건</li> : null}</ul> : null}
       <div className="fin-ph-a">
-        <button type="button" className="primary-button compact" disabled={busy || !uploadBiz || !preview.invoices.length || preview.supplierRegNos.length > 1} onClick={() => void save()}>{busy ? "저장하는 중…" : uploadBiz ? `${TAX_BIZ[uploadBiz]}로 저장` : "사업자를 먼저 고르세요"}</button>
+        <button type="button" className="primary-button compact" disabled={busy || !uploadBiz || !preview.invoices.length || preview.supplierRegNos.length > 1} onClick={() => void save()}>{busy ? "저장하는 중…" : uploadBiz ? `${TAX_BIZ[uploadBiz]} 몫으로 저장` : "사업자를 먼저 고르세요"}</button>
         <button type="button" className="secondary-button compact fin-ghost" onClick={() => setPreview(null)}>취소</button>
       </div>
     </div> : null}

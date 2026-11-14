@@ -4,17 +4,18 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { apiRequest } from "@/lib/api-client";
 import { TAX_BIZ, type Biz } from "@/lib/finance/tax-invoices";
-import { EVIDENCE_LABEL, vatCsv, type VatLine, type VatPeriod, type VatRow } from "@/lib/finance/vat";
+import { COMPANY, EVIDENCE_LABEL, scopeLabel, vatCsv, type VatLine, type VatPeriod, type VatRow, type VatScope } from "@/lib/finance/vat";
 import { payableLabel, type VatPurchase } from "@/lib/finance/vat-payable";
 import { PurchaseInvoicePanel, PurchaseNotReady } from "./purchase-invoice-panel";
 
 // 부가세 신고 참고 자료 (재무 요청 a5310134): 월·신고기간별로 결제·취소를 증빙별로 묶어 보고 내려받는다. 신고서가 아니다.
 // 2026-11-13: 매입 세금계산서와 공제 예상 카드로 매입세액을 더해 예상 납부세액 (매출세액 − 매입세액)을 보여 준다.
+// 2026-11-13: 사업자등록번호가 하나라 신고는 회사 전체로 한다 — 「회사 전체」가 기본이고, 사업별 보기는 안에서 나눠 볼 때 쓴다.
 
 type Purchase = { available: false } | ({ available: true } & VatPurchase);
 type Result = { period: VatPeriod; lines: VatLine[]; rows: VatRow[]; review: number; salesTax: number; purchase: Purchase; payable: number | null };
 const won = (value: number) => value.toLocaleString("ko-KR");
-const BIZ_KEYS = Object.keys(TAX_BIZ) as Biz[];
+const SCOPES: VatScope[] = [COMPANY, ...(Object.keys(TAX_BIZ) as Biz[])];
 
 function periodOptions() {
   const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
@@ -65,7 +66,7 @@ export function VatReferenceDemo() {
 export function VatReference({ token }: { token: string | null }) {
   const options = periodOptions();
   const [period, setPeriod] = useState(options.quarters[0]);
-  const [biz, setBiz] = useState<Biz>("edu");
+  const [biz, setBiz] = useState<VatScope>(COMPANY);
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -81,7 +82,7 @@ export function VatReference({ token }: { token: string | null }) {
     return () => controller.abort();
   }, [period, biz, token, revision]);
 
-  const fileName = `부가세참고_${TAX_BIZ[biz]}_${period}`;
+  const fileName = `부가세참고_${scopeLabel(biz)}_${period}`;
   const log = () => void apiRequest("/api/v1/finance/events", { token, method: "POST", body: JSON.stringify({ kind: "csv_export", view: "vat", ids: [] }) }).catch(() => undefined);
   const saveBlob = (blob: Blob, name: string) => { const url = URL.createObjectURL(blob); Object.assign(document.createElement("a"), { href: url, download: name }).click(); URL.revokeObjectURL(url); };
   const csv = () => { if (!result) return; saveBlob(new Blob([vatCsv(result.rows)], { type: "text/csv;charset=utf-8" }), `${fileName}.csv`); log(); };
@@ -92,7 +93,7 @@ export function VatReference({ token }: { token: string | null }) {
       const { default: ExcelJS } = await import("exceljs");
       const book = new ExcelJS.Workbook();
       const summary = book.addWorksheet("요약");
-      summary.addRow([`${TAX_BIZ[biz]} · ${result.period.label} · 부가세 신고 참고 자료 (신고서가 아닙니다)`]);
+      summary.addRow([`${scopeLabel(biz)} · ${result.period.label} · 부가세 신고 참고 자료 (신고서가 아닙니다)`]);
       summary.addRow(["증빙", "기준일", "건수", "결제·발급", "취소·수정", "공급가액", "세액", "합계"]);
       for (const line of result.lines) summary.addRow([line.label, line.basis, line.count, line.payCount, line.cancelCount, line.supply, line.tax, line.total]);
       const detail = book.addWorksheet("상세");
@@ -118,7 +119,7 @@ export function VatReference({ token }: { token: string | null }) {
         <button type="button" className="primary-button compact" disabled={!result?.rows.length || busy} onClick={() => void excel()}>{busy ? "만드는 중…" : "엑셀 내려받기"}</button>
       </div></div>
     <div className="os-toolbar">
-      <label className="fin-pick"><span>사업자</span><select className="fin-sel" value={biz} onChange={event => setBiz(event.target.value as Biz)}>{BIZ_KEYS.map(key => <option key={key} value={key}>{TAX_BIZ[key]}</option>)}</select></label>
+      <label className="fin-pick"><span>사업자</span><select className="fin-sel" value={biz} onChange={event => setBiz(event.target.value as VatScope)}>{SCOPES.map(key => <option key={key} value={key}>{scopeLabel(key)}</option>)}</select></label>
       <label className="fin-pick"><span>기간</span><select className="fin-sel" value={period} onChange={event => setPeriod(event.target.value)}>
         <optgroup label="신고기간 (예정·확정)">{options.quarters.map(key => <option key={key} value={key}>{labelOf(key)}</option>)}</optgroup>
         <optgroup label="반기 (개인사업자 확정)">{options.halves.map(key => <option key={key} value={key}>{labelOf(key)}</option>)}</optgroup>
@@ -126,6 +127,7 @@ export function VatReference({ token }: { token: string | null }) {
       </select></label>
       {result ? <span className="fin-small fin-muted fin-num">{result.period.from} ~ {result.period.to}</span> : null}
     </div>
+    <p className="fin-small fin-muted">{biz === COMPANY ? "사업자등록번호가 하나라 부가세 신고는 회사 전체로 해요. 사업별 숫자는 「사업자」에서 골라 볼 수 있어요." : `${scopeLabel(biz)} 몫만 나눠 본 숫자예요. 신고에 쓸 합계는 「회사 전체」에서 확인해 주세요.`}</p>
     {error ? <p className="fin-callout fin-bad" role="alert">{error}</p> : null}
     {!result && !error ? <p className="fin-small fin-muted" role="status">자료를 모으는 중이에요…</p> : null}
     {result ? <>

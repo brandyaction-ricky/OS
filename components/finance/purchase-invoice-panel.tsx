@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { apiRequest, ApiRequestError } from "@/lib/api-client";
 import { parseHometaxRows, TAX_BIZ, type Biz, type ParsedInvoices, type TaxInvoiceInput } from "@/lib/finance/tax-invoices";
+import { COMPANY, scopeLabel, type VatScope } from "@/lib/finance/vat";
 import { readRows } from "./tax-invoice-panel";
 
 // 재무 2026-11-13. 부가세 참고 자료: 홈택스 매입 계산서 올리기 · 고른 기간에 저장된 매입 계산서. 매입세액 계산의 바탕이다.
@@ -16,7 +17,9 @@ export function PurchaseNotReady() {
   return <p className="fin-callout fin-info fin-mt14" role="status">매입 세금계산서 저장 공간이 아직 준비되지 않았어요. 관리자 승인 후 사용할 수 있어요. 그때까지는 매출 쪽 자료만 보여 드려요.</p>;
 }
 
-export function PurchaseInvoicePanel({ token, from, to, biz, onSaved }: { token: string | null; from: string; to: string; biz: Biz; onSaved: () => void }) {
+/** 회사 전체 lists every business's invoices; a file uploaded there is saved as 브랜디액션, the company itself. */
+export function PurchaseInvoicePanel({ token, from, to, biz, onSaved }: { token: string | null; from: string; to: string; biz: VatScope; onSaved: () => void }) {
+  const saveAs: Biz = biz === COMPANY ? "ba" : biz;
   const [rows, setRows] = useState<Row[] | null>(null);
   const [notReady, setNotReady] = useState(false);
   const [error, setError] = useState("");
@@ -27,7 +30,7 @@ export function PurchaseInvoicePanel({ token, from, to, biz, onSaved }: { token:
   useEffect(() => {
     const controller = new AbortController();
     setRows(null); setError("");
-    apiRequest<{ invoices: Row[] }>(`/api/v1/finance/purchase-invoices?${new URLSearchParams({ from, to, biz })}`, { token, signal: controller.signal }).then(result => setRows(result.invoices))
+    apiRequest<{ invoices: Row[] }>(`/api/v1/finance/purchase-invoices?${new URLSearchParams(biz === COMPANY ? { from, to } : { from, to, biz })}`, { token, signal: controller.signal }).then(result => setRows(result.invoices))
       .catch(reason => {
         if (controller.signal.aborted) return;
         if (reason instanceof ApiRequestError && reason.code === "FINANCE_PURCHASE_NOT_READY") setNotReady(true);
@@ -46,7 +49,7 @@ export function PurchaseInvoicePanel({ token, from, to, biz, onSaved }: { token:
     if (!preview?.invoices.length) return;
     setBusy(true); setError(""); setNote("");
     try {
-      const result = await apiRequest<{ saved: number; skipped: number }>("/api/v1/finance/purchase-invoices", { token, method: "POST", body: JSON.stringify({ action: "import", biz, invoices: preview.invoices }) });
+      const result = await apiRequest<{ saved: number; skipped: number }>("/api/v1/finance/purchase-invoices", { token, method: "POST", body: JSON.stringify({ action: "import", biz: saveAs, invoices: preview.invoices }) });
       const outside = preview.invoices.filter(row => row.written_date < from || row.written_date > to).length;
       setNote(`${result.saved}건 저장했어요${result.skipped ? ` · 이미 올린 ${result.skipped}건은 건너뛰었어요` : ""}${outside ? ` · ${outside}건은 지금 보는 기간 밖이라 아래 목록에는 없어요` : ""}.`);
       setPreview(null); setRevision(value => value + 1); onSaved();
@@ -61,19 +64,19 @@ export function PurchaseInvoicePanel({ token, from, to, biz, onSaved }: { token:
   return <div className="fin-card fin-mt14">
     <div className="fin-card-h"><div>
       <h2>매입 세금계산서 (홈택스)</h2>
-      <p className="fin-small fin-muted">{from} ~ {to} · {TAX_BIZ[biz]} · 위에서 고른 사업자와 기간 · 계산서 작성일자 기준</p>
+      <p className="fin-small fin-muted">{from} ~ {to} · {scopeLabel(biz)} · 위에서 고른 사업자와 기간 · 계산서 작성일자 기준</p>
     </div></div>
     <div className="fin-upload">
       <b>매입 계산서 올리기</b>
       <label className="primary-button compact">홈택스 매입 엑셀 올리기<input type="file" accept=".xlsx,.xls,.csv" hidden onChange={event => { void pick(event.target.files?.[0]); event.target.value = ""; }} /></label>
-      <span className="fin-small fin-muted">홈택스 › 전자세금계산서 › 목록조회에서 「매입」으로 내려받은 파일을 {TAX_BIZ[biz]} 몫으로 저장해요.</span>
+      <span className="fin-small fin-muted">홈택스 › 전자세금계산서 › 목록조회에서 「매입」으로 내려받은 파일을 {TAX_BIZ[saveAs]} 몫으로 저장해요.</span>
     </div>
     {preview ? <div className="fin-card fin-flat fin-preview" role="status">
       <p><b>{preview.file}</b> · 계산서 {preview.invoices.length}건 · 공급가액 {won(sum(preview.invoices, "supply_amount"))} · 세액 {won(sum(preview.invoices, "tax_amount"))} · 합계 {won(sum(preview.invoices, "total_amount"))}
         {preview.invoices.some(row => row.is_modified) ? ` · 수정계산서 ${preview.invoices.filter(row => row.is_modified).length}건` : ""}{buyers.length === 1 ? ` · 공급받는자 ${preview.invoices[0].buyer_name || buyers[0]}` : ""}</p>
       {preview.errors.length ? <ul className="fin-callout fin-bad">{preview.errors.slice(0, 8).map(item => <li key={item}>{item}</li>)}{preview.errors.length > 8 ? <li>외 {preview.errors.length - 8}건</li> : null}</ul> : null}
       <div className="fin-ph-a">
-        <button type="button" className="primary-button compact" disabled={busy || !preview.invoices.length || buyers.length > 1} onClick={() => void save()}>{busy ? "저장하는 중…" : `${TAX_BIZ[biz]}로 저장`}</button>
+        <button type="button" className="primary-button compact" disabled={busy || !preview.invoices.length || buyers.length > 1} onClick={() => void save()}>{busy ? "저장하는 중…" : `${TAX_BIZ[saveAs]} 몫으로 저장`}</button>
         <button type="button" className="secondary-button compact fin-ghost" onClick={() => setPreview(null)}>취소</button>
       </div>
     </div> : null}
@@ -85,7 +88,7 @@ export function PurchaseInvoicePanel({ token, from, to, biz, onSaved }: { token:
       <thead><tr><th>작성일자</th><th>거래처</th><th className="fin-r">공급가액</th><th className="fin-r">세액</th><th className="fin-r">합계</th><th>구분</th></tr></thead>
       <tbody>{rows.map(row => <tr key={row.id}>
         <td className="fin-num">{row.written_date}</td>
-        <td>{row.supplier_name || "공급자 미기재"}<span className="fin-sub2">{row.item_summary}</span></td>
+        <td>{row.supplier_name || "공급자 미기재"}<span className="fin-sub2">{biz === COMPANY && row.biz !== "ba" ? `${TAX_BIZ[row.biz]} 몫 · ` : ""}{row.item_summary}</span></td>
         <td className="fin-r">{won(row.supply_amount)}</td><td className="fin-r">{won(row.tax_amount)}</td><td className="fin-r">{won(row.total_amount)}</td>
         <td className="fin-nw">{row.invoice_class === "exempt" ? "계산서 (면세)" : "세금계산서"}{row.is_modified ? <span className="status-pill" data-tone="warn">수정</span> : null}</td>
       </tr>)}</tbody>
