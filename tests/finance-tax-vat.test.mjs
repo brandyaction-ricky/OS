@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { hometaxDate, hometaxWon, matchDeposit, matchInvoices, parseHometaxRows, revenueBySource } from "../lib/finance/tax-invoices.ts";
+import { asideHometaxInstruction, hometaxDate, hometaxWon, matchDeposit, matchInvoices, parseHometaxRows, revenueBySource } from "../lib/finance/tax-invoices.ts";
 import { COMPANY, paymentEvidence, scopeLabel, splitVat, vatCsv, vatLines, vatPeriod, vatRows } from "../lib/finance/vat.ts";
 
 const header = ["작성일자", "승인번호", "발급일자", "전송일자", "공급자사업자등록번호", "종사업장번호", "상호", "대표자명", "주소", "공급받는자사업자등록번호", "종사업장번호", "상호", "대표자명", "주소", "합계금액", "공급가액", "세액", "전자세금계산서분류", "전자세금계산서종류", "발급유형", "비고", "영수/청구 구분", "공급자 이메일", "공급받는자 이메일1", "공급받는자 이메일2", "품목일자", "품목명"];
@@ -157,7 +157,10 @@ test("tax invoice tables and routes stay behind finance access; Aside never hand
   assert.match(sql, /approval_no text not null unique/);
   assert.match(sql, /os_fin_revenue_links_one_sale/);
   for (const route of ["app/api/v1/finance/tax-invoices/route.ts", "app/api/v1/finance/vat/route.ts"]) assert.match(readFileSync(route, "utf8"), /await financeActor\(request\)/, route);
-  const panel = readFileSync("components/finance/tax-invoice-panel.tsx", "utf8");
-  assert.match(panel, /로그인 정보·인증서는 묻거나 입력하지 마세요/);
-  assert.match(panel, /담당자가 「저장」을 누르게 합니다/);
+  for (const direction of ["sales", "purchase"]) {
+    const text = asideHometaxInstruction("2026-10-01", "2026-10-31", direction);
+    assert.match(text, /로그인 정보·인증서는 묻거나 입력하지 마세요/);
+    assert.match(text, /담당자가 「저장」을 누르게 합니다/);
+  }
+  for (const panel of ["tax-invoice-panel", "purchase-invoice-panel"]) assert.match(readFileSync(`components/finance/${panel}.tsx`, "utf8"), /asideHometaxInstruction\(from, to/, panel);
 });

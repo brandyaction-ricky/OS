@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { apiRequest, ApiRequestError } from "@/lib/api-client";
-import { parseHometaxRows, TAX_BIZ, type Biz, type ParsedInvoices, type TaxInvoiceInput } from "@/lib/finance/tax-invoices";
+import { asideHometaxInstruction, parseHometaxRows, TAX_BIZ, type Biz, type ParsedInvoices, type TaxInvoiceInput } from "@/lib/finance/tax-invoices";
 import { COMPANY, scopeLabel, type VatScope } from "@/lib/finance/vat";
 import { readRows } from "./tax-invoice-panel";
 
@@ -59,6 +59,12 @@ export function PurchaseInvoicePanel({ token, from, to, biz, onSaved }: { token:
     } finally { setBusy(false); }
   };
 
+  const copyAside = async () => {
+    setError("");
+    try { await navigator.clipboard.writeText(asideHometaxInstruction(from, to, "purchase")); setNote("Aside 지침을 복사했어요. Aside에 붙여 넣고, 홈택스 로그인은 직접 해 주세요."); }
+    catch { setError("복사하지 못했어요. 브라우저의 클립보드 권한을 확인해 주세요."); }
+  };
+
   if (notReady) return <PurchaseNotReady />;
   const buyers = [...new Set((preview?.invoices ?? []).map(row => row.buyer_reg_no).filter(Boolean))];
   return <div className="fin-card fin-mt14">
@@ -69,6 +75,7 @@ export function PurchaseInvoicePanel({ token, from, to, biz, onSaved }: { token:
     <div className="fin-upload">
       <b>매입 계산서 올리기</b>
       <label className="primary-button compact">홈택스 매입 엑셀 올리기<input type="file" accept=".xlsx,.xls,.csv" hidden onChange={event => { void pick(event.target.files?.[0]); event.target.value = ""; }} /></label>
+      <button type="button" className="secondary-button compact" onClick={() => void copyAside()}>Aside에 맡기기 (지침 복사)</button>
       <span className="fin-small fin-muted">홈택스 › 전자세금계산서 › 목록조회에서 「매입」으로 내려받은 파일을 {TAX_BIZ[saveAs]} 몫으로 저장해요.</span>
     </div>
     {preview ? <div className="fin-card fin-flat fin-preview" role="status">

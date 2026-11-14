@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiRequest } from "@/lib/api-client";
 import { readImportRows } from "@/lib/finance/import-file.mjs";
-import { parseHometaxRows, TAX_BIZ, type Biz, type MatchState, type ParsedInvoices, type TaxInvoiceInput } from "@/lib/finance/tax-invoices";
+import { asideHometaxInstruction, parseHometaxRows, TAX_BIZ, type Biz, type MatchState, type ParsedInvoices, type TaxInvoiceInput } from "@/lib/finance/tax-invoices";
 import { vatCsv } from "@/lib/finance/vat";
 
 // 재무 요청 a5310134. 매출내역: 홈택스 계산서 올리기 · 출처별 합계 · 같은 매출 확인. 정산입금: 계산서별 실제 입금 확인.
@@ -33,21 +33,6 @@ export function periodFromUrl(params: { get(name: string): string | null }, now 
 }
 const STATE_LABEL: Record<MatchState["state"], string> = { linked: "같은 매출 확인됨", suspect: "같은 매출 의심", review: "검토 필요", single: "계산서로만 잡힌 매출" };
 const DEPOSIT_LABEL: Record<Deposit["state"], string> = { confirmed: "입금 확인", likely: "입금 추정", unclear: "같은 금액 입금 여럿", none: "입금 못 찾음" };
-
-/** The instructions staff paste into Aside: they sign in to 홈택스 themselves; Aside does the rest. */
-export function asideHometaxInstruction(from: string, to: string) {
-  return [
-    "[홈택스 매출 계산서 → 브랜디 OS 올리기]",
-    "0. 홈택스 로그인은 담당자가 직접 합니다. 로그인 정보·인증서는 묻거나 입력하지 마세요.",
-    "1. 홈택스 › 조회/발급 › 전자세금계산서 › 목록조회 를 엽니다.",
-    `2. 「매출」을 고르고, 작성일자 ${from} ~ ${to} 로 조회합니다.`,
-    "3. 결과 아래 「내려받기」(엑셀)로 파일을 저장합니다.",
-    "4. 면세 매출이 있으면 조회/발급 › 전자계산서 › 목록조회 에서 같은 기간 「매출」을 한 번 더 내려받습니다.",
-    "5. 브랜디 OS › 재무관리 › 매출내역 › 세금계산서(홈택스) 칸에서 사업자를 고르고 「홈택스 엑셀 올리기」로 파일을 올립니다.",
-    "6. 미리보기에 나온 건수·합계와 오류 줄을 담당자에게 보여 주고, 담당자가 「저장」을 누르게 합니다.",
-    "※ 사업자가 여러 개면 사업자마다 1~6을 반복합니다. 같은 파일을 다시 올려도 이미 올린 계산서는 건너뜁니다.",
-  ].join("\n");
-}
 
 /** A 홈택스 .xls is a real Excel file or an HTML table saved under that name: the table is read here, everything else by the shared reader. */
 export async function readRows(file: File): Promise<string[][]> {
