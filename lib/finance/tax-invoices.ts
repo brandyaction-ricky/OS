@@ -116,6 +116,31 @@ export function parseHometaxRows(rows: unknown[][], direction: "sales" | "purcha
   return { invoices, errors, supplierRegNos, headerRow };
 }
 
+/**
+ * The instructions staff paste into Aside: they sign in to 홈택스 themselves; Aside does the rest.
+ * 매출 goes in through 매출내역, 매입 through 부가세 신고 참고 자료 (saved as the company's own, under 회사 전체).
+ */
+export function asideHometaxInstruction(from: string, to: string, direction: "sales" | "purchase" = "sales") {
+  const side = direction === "purchase" ? "매입" : "매출";
+  return [
+    `[홈택스 ${side} 계산서 → 브랜디 OS 올리기]`,
+    "0. 홈택스 로그인은 담당자가 직접 합니다. 로그인 정보·인증서는 묻거나 입력하지 마세요.",
+    "1. 홈택스 › 조회/발급 › 전자세금계산서 › 목록조회 를 엽니다.",
+    `2. 「${side}」을 고르고, 작성일자 ${from} ~ ${to} 로 조회합니다.`,
+    "3. 결과 아래 「내려받기」(엑셀)로 파일을 저장합니다. 받은 파일(.xls)은 다시 저장하지 않고 그대로 씁니다.",
+    ...(direction === "purchase" ? [
+      "4. 브랜디 OS › 재무관리 › 부가세 신고 참고 자료 에서 사업자를 「회사 전체」로 두고, 아래쪽 「홈택스 매입 엑셀 올리기」로 파일을 올립니다.",
+      "5. 미리보기에 나온 건수·합계와 오류 줄을 담당자에게 보여 주고, 담당자가 「저장」을 누르게 합니다.",
+      "※ 같은 파일을 다시 올려도 이미 올린 계산서는 건너뜁니다.",
+    ] : [
+      "4. 면세 매출이 있으면 조회/발급 › 전자계산서 › 목록조회 에서 같은 기간 「매출」을 한 번 더 내려받습니다.",
+      "5. 브랜디 OS › 재무관리 › 매출내역 › 세금계산서(홈택스) 칸에서 사업자를 고르고 (담당자가 따로 정하지 않았으면 「브랜디액션」) 「홈택스 엑셀 올리기」로 파일을 올립니다.",
+      "6. 미리보기에 나온 건수·합계와 오류 줄을 담당자에게 보여 주고, 담당자가 「저장」을 누르게 합니다.",
+      "※ 같은 파일을 다시 올려도 이미 올린 계산서는 건너뜁니다.",
+    ]),
+  ].join("\n");
+}
+
 // ---- 같은 매출 찾기 -------------------------------------------------------------------------------------------------
 
 export type MatchInvoice = { id: string; biz: string; written_date: string; total_amount: number; supply_amount: number; is_modified: boolean };
