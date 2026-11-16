@@ -1,4 +1,8 @@
+import { referenceUsesBlackWeight } from "@/lib/image-creative/reference-layout";
 import { readImageAdProducts } from "./image-ad-products";
+import { readImageAdReferences } from "./image-ad-references";
+import { referenceSnapshot } from "@/lib/image-creative/reference-canon";
+import { imageBriefMatchesProduct, onlyImageProductVersionChanged } from "@/lib/image-creative/products";
 import { resolvePlacement } from "@/lib/image-creative/placement";
 import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -13,7 +17,7 @@ import { createServiceSupabase } from "@/lib/supabase/server";
 import { storedZip } from "@/lib/cardnews/zip";
 import { IMAGE_FORMATS, IMAGE_FORMAT_IDS, isImageFormat, isWarehouseFormat } from "@/lib/image-creative/formats";
 
-import { canSaveImageBrief, confirmReferenceCopy, createImageBatch, emptyImageCreative, sameImageBrief, productionBrief, imageBriefProblems, imageVariantProblems, imageCreativePrompt, ImageCreativeError, normalizeImageRequest, reviseImageDesign, isImageDesign,
+import { isReferenceLayout, type ReferenceLayout, canSaveImageBrief, confirmReferenceCopy, saveReferenceCopyDraft, createImageBatch, emptyImageCreative, sameImageBrief, productionBrief, imageBriefProblems, imageVariantProblems, imageCreativePrompt, ImageCreativeError, normalizeImageRequest, reviseImageDesign, isImageDesign,
   imageExperimentSummary, recordImageWinner, selectedImageResults, approveImageFormat, startImageCopyBatch, formatApprovalKey, reviewImageBatch, returnImageReview, type ApprovalStamp,
   type ImageBrief, type ImageDesign, type ImageFormatPlan, type ImageCreativeState, type ImageAsset, type ImageBatchRequest, type ImageBatchResult, type CreativeVariant } from "@/lib/image-creative/model";
 import { imageBriefSchema, imageDirectionSchema, appealsPrompt, parseAppealOptions, selectedReferencePlan, conceptsPrompt, parseConcepts, sceneFormatCatalog, scenePlanPrompt, parseScenePlan, formatItemsSchema, appealSchema } from "@/lib/image-creative/direction";
@@ -38,22 +42,23 @@ export interface ImageMeta { renders?: ImageMacRun[]; space: "personal"; kind: t
 export { imageBriefSchema } from "@/lib/image-creative/direction";
 export const imageRequestSchema = z.object({ mode: z.enum(["initial", "appeal", "copy", "image", "standalone"]), count: z.number().int().min(1).max(20),
   baseId: z.string().max(100).optional(), formatIds: z.array(z.string().max(50)).max(20).optional(), copyFields: z.array(z.enum(["headline", "body", "cta"])).max(3).optional(),
-  compareFormats: z.literal(true).optional(), size: z.enum(["square", "portrait", "story"]).optional(), assetPaths: z.array(z.string().max(200)).max(20).optional() }).strict();
+  referenceLayout: z.custom<ReferenceLayout>(isReferenceLayout).optional(), detailAssetPath: z.string().max(200).optional(), compareFormats: z.literal(true).optional(), size: z.enum(["square", "portrait", "story"]).optional(), assetPaths: z.array(z.string().max(200)).max(20).optional() }).strict();
 const formatPlan = z.object({ mode: z.enum(["standalone","appeal","initial"]), count: z.number().int().min(1).max(20), size: z.enum(["square","portrait","story"]), appealFirst: z.literal(true).optional(), conceptFirst: z.literal(true).optional() });
 export const imageJobRequestSchema = z.union([imageRequestSchema, z.object({ phase: z.literal("formats") }).strict()]);
 type ImageJobRequest = z.infer<typeof imageJobRequestSchema>;
 export const imageCreateSchema = z.object({ experiment: z.literal(true).optional(), title: z.string().trim().min(1).max(200), brief: imageBriefSchema }).strict();
 const version = z.number().int().positive();
 const referencePlan = z.object({version, brief:imageBriefSchema, mode:z.enum(["standalone","appeal"]), size:z.enum(["square","portrait","story"])});
+const referenceCopies = z.array(z.object({headline:z.string().max(100),body:z.string().max(200),cta:z.string().max(100)}).strict()).min(1).max(20);
 export const imagePatchSchema = z.discriminatedUnion("action", [
-  referencePlan.extend({action:z.literal("recommend-appeals"),count:z.number().int().min(1).max(20)}).strict(),
   referencePlan.extend({action:z.literal("select-appeals"),appeals:z.array(appealSchema).min(1).max(20)}).strict(),
-  z.object({action:z.literal("confirm-reference-copy"),version,batchId:z.string().min(1).max(100),
-    copies:z.array(z.object({headline:z.string().max(100),body:z.string().max(200),cta:z.string().max(100)}).strict()).min(1).max(20)}).strict(),
+  z.object({action:z.literal("save-reference-copy-draft"),version,copies:referenceCopies}).strict(),
+  z.object({action:z.literal("confirm-reference-copy"),version,batchId:z.string().min(1).max(100),copies:referenceCopies}).strict(),
   formatPlan.extend({ action: z.literal("recommend-formats"), version, brief: imageBriefSchema }).strict(),
   z.object({ action: z.literal("plan-scene"), version, direction:imageDirectionSchema, replan:z.literal(true).optional() }).strict(),
   z.object({ action: z.literal("approve-and-generate"), version, request: imageRequestSchema }).strict(),
-  z.object({ action: z.literal("approve-format"), version, request: imageRequestSchema.optional(), batchId: z.string().min(1).max(100).optional() }).strict(),
+  z.object({ action: z.literal("approve-format"), version, request: imageRequestSchema.optional(), batchId: z.string().min(1).max(100).optional(),
+    referenceSource: z.object({documentId:z.string().uuid(), version:z.number().int().positive()}).strict().optional() }).strict(),
   z.object({ action: z.literal("approve-copy"), version, batchId: z.string().min(1).max(100) }).strict(),
   z.object({ action: z.literal("confirm-preview"), version, batchId: z.string().min(1).max(100), target: renderTarget }).strict(),
   z.object({ action: z.literal("approve-final"), version, batchId: z.string().min(1).max(100), runId: z.string().uuid() }).strict(),
@@ -185,10 +190,8 @@ async function verifyProductBrief(actor: RequestActor, brief: ImageBrief) {
   if (!ref) return;
   const products = await readImageAdProducts(actor);
   const row = products.find(product => product.id === ref.productId);
-  if (!row || row.source.id !== ref.source.id || row.source.version !== ref.source.version ||
-      row.audienceSource?.id !== ref.audienceSource?.id || row.audienceSource?.version !== ref.audienceSource?.version ||
-      row.product !== brief.product || row.audience !== brief.audience || row.offer !== brief.offer || (row.brand ?? "") !== (brief.brand ?? ""))
-    throw new ApiError(409, "IMAGE_PRODUCT_CHANGED", "상품 정본을 다시 선택해 현재 타겟과 제공 내용을 확인해 주세요.");
+  if (!imageBriefMatchesProduct(brief,row))
+    throw new ApiError(409, "IMAGE_PRODUCT_CHANGED", "상품 정본이 바뀌었어요. 페이지를 새로고침해 최신 상품 정보를 확인해 주세요.");
 }
 export async function createImageProject(actor: RequestActor, input: z.infer<typeof imageCreateSchema>) {
   await verifyProductBrief(actor, input.brief);
@@ -212,8 +215,17 @@ function validImageRequest(record: OsRecord, request: ImageBatchRequest) {
   const data = imageMeta(record), req = normalizeImageRequest(data.state, request);
   const issue = imageBriefProblems(data.state.brief, data.state.formatRecommendation?.appealFirst)[0];
   if (issue) throw new ApiError(422, "IMAGE_BRIEF_REQUIRED", issue);
-  for (const path of request.assetPaths ?? []) if (!data.assets.some(row => row.path === path) || !ownsImageAsset(record.id, path))
+  const selectedPaths = req.detailAssetPath ? [...req.assetPaths,req.detailAssetPath] : req.assetPaths;
+  for (const path of selectedPaths) if (!data.assets.some(row => row.path === path) || !ownsImageAsset(record.id, path))
     throw new ApiError(422, "IMAGE_ASSET_NOT_OWNED", "이 작업에 실제로 올린 이미지를 골라 주세요.");
+  if (req.referenceLayout) {
+    const {path,w,h} = req.referenceLayout.source;
+    const source = data.assets.find(row => row.path === path && row.w === w && row.h === h);
+    if (!source || !ownsImageAsset(record.id, path))
+      throw new ApiError(422,"IMAGE_ASSET_NOT_OWNED","이 프로젝트의 원본 레퍼런스와 크기를 확인해 주세요.");
+    if (source.sha256 && data.assets.some(row => selectedPaths.includes(row.path) && row.sha256 === source.sha256))
+      throw new ApiError(422,"IMAGE_DUPLICATE_FILE","레퍼런스와 다른 사진을 선택해 주세요.");
+  }
   return req;
 }
 export function checkedImageRequest(record: OsRecord, request: ImageBatchRequest) {
@@ -328,12 +340,16 @@ process_youtube_ai_job(action=complete, job_id, lease, model, result)에 ${outpu
   }
   const {state,assets} = imageMeta(record);
   const req = normalizeImageRequest(state, request);
+  if (textOnly && state.formatRecommendation?.referenceFirst && !state.variants.length)
+    return imageCreativePrompt(state,request,true) + "\n연결된 구독 AI를 사용하고 process_youtube_ai_job(action=complete, job_id, lease, model, result)로 카피 결과를 제출하세요.";
   const thumbnail = req.formatIds.includes("thumbnail_subject");
   const referenceArtwork = state.formatRecommendation?.referenceFirst && req.formatIds.some(id=>IMAGE_FORMATS[id].assetRequired);
   const direction = state.formatRecommendation?.direction;
   const generateArtwork = (thumbnail || direction || referenceArtwork) && !textOnly && !req.assetPaths.length && (!req.baseId || req.mode === "image");
-  const photos = textOnly || thumbnail || direction || referenceArtwork ? assets.filter(asset => req.assetPaths.includes(asset.path) ||
-    (!textOnly && jobId && asset.upload?.jobId === jobId)) : assets;
+  const photos = req.referenceLayout
+    ? assets.filter(asset => req.assetPaths.includes(asset.path))
+    : textOnly || thumbnail || direction || referenceArtwork ? assets.filter(asset => req.assetPaths.includes(asset.path) ||
+      (!textOnly && jobId && asset.upload?.jobId === jobId)) : assets;
   let artDirection = "";
   if (direction) {
     artDirection = `\n이번에 선택한 제작 방향: ${JSON.stringify({direction, scene:state.formatRecommendation?.scene})}\n`;
@@ -366,7 +382,8 @@ process_youtube_ai_job(action=complete, job_id, lease, model, result)에 ${outpu
     }
   }
   return imageCreativePrompt(state, request) + artDirection + `\n\n## 쓸 수 있는 실제 이미지\n${JSON.stringify(photos.map(({ path, w, h }) => ({ path, w, h })))}\n\n` +
-    (textOnly ? "이 요청은 카피 작성만 합니다. 사진이 지정되었으면 해당 경로와 실제 크기를 그대로 쓰고, 이미지 없이 받는 포맷은 asset을 생략하세요. " :
+    (req.referenceLayout ? "서버가 승인된 레퍼런스 배치를 결과에 적용합니다. 지정된 교체 사진과 허용된 카피 필드만 사용하세요. " :
+      textOnly ? "이 요청은 카피 작성만 합니다. 사진이 지정되었으면 해당 경로와 실제 크기를 그대로 쓰고, 이미지 없이 받는 포맷은 asset을 생략하세요. " :
       (thumbnail || direction) && !generateArtwork ? "" : "이미지가 더 필요하면 구독 도구로 글자 없는 원본 이미지를 만든 뒤 image_creative_asset의 prepare → 반환 주소로 파일 업로드 → commit 순서로 이 작업에 넣습니다. ") +
     "참고 원본을 무단 복제하거나 존재하지 않는 경로를 만들지 않습니다. 유료 AI API·광고 매체 호출은 하지 않습니다. " +
     "처리할 수 없으면 fail로 이유를 남깁니다. 결과만 준비하고 사용자의 선택이나 승인을 대신하지 않습니다.\n" +
@@ -381,6 +398,7 @@ export async function importImageResults(db: Db, record: OsRecord, request: Imag
   const batch = state.batches.at(-1)!;
   const previousPhotoBoxes = new Map<string, SubjectBox>();
   for (const variant of state.variants.filter(row => batch.variantIds.includes(row.id))) {
+    if (variant.detailAsset) ownedPhoto(record,variant.detailAsset);
     if (!variant.asset) continue;
     const { path, w, h } = variant.asset;
     const registered = meta.assets.find(asset => asset.path === path && asset.w === w && asset.h === h);
@@ -415,7 +433,13 @@ export async function importImageResults(db: Db, record: OsRecord, request: Imag
 export async function patchImageProject(actor: RequestActor, record: OsRecord, input: Exclude<z.infer<typeof imagePatchSchema>, { action: "generate" }>) {
   if (record.owner_id !== actor.ownerId) throw new ApiError(403,"IMAGE_PROJECT_OWNER","본인의 작업을 열어 주세요.");
   const meta = imageMeta(record);
-  if (input.action === "recommend-appeals" || input.action === "select-appeals") {
+  if (input.action === "save-reference-copy-draft") {
+    const state = saveReferenceCopyDraft(meta.state,input.copies);
+    if (state === meta.state) return record;
+    if (record.version !== input.version) throw new ApiError(409,"IMAGE_VERSION_CONFLICT","다른 곳에서 바뀌었어요. 새로 불러와 주세요.");
+    return saveImageMeta(createServiceSupabase(),record,{...meta,state});
+  }
+  if (input.action === "select-appeals") {
     if (actor.type !== "user" || actor.id !== record.owner_id) throw new ApiError(403,"IMAGE_HUMAN_REQUIRED","작업 소유자가 상품과 소구점을 선택해 주세요.");
     if (meta.state.variants.length || meta.state.formatApproval) throw new ApiError(409,"IMAGE_BRIEF_LOCKED","이미 선택한 레퍼런스와 작성한 카피는 보존합니다. 새 작업에서 시작해 주세요.");
     if (Boolean(meta.state.experiment) !== (input.mode === "appeal")) throw new ApiError(409,"IMAGE_EXPERIMENT_ORDER","이 프로젝트의 제작 방식을 확인해 주세요.");
@@ -425,14 +449,10 @@ export async function patchImageProject(actor: RequestActor, record: OsRecord, i
     if (issue) throw new ApiError(422,"IMAGE_BRIEF_REQUIRED",issue);
     const prior = meta.state.formatRecommendation;
     const same = prior?.referenceFirst && sameImageBrief(meta.state.brief,brief) && prior.mode === input.mode && prior.size === input.size;
-    const count = input.mode === "standalone" ? 1 : input.action === "recommend-appeals" ? input.count : input.appeals.length;
-    if (same && input.action === "recommend-appeals" && prior.count === count && (!prior.appeals || prior.appealOptions)) return record;
-    const plan = input.action === "select-appeals"
-      ? selectedReferencePlan(brief,input.mode,input.size,input.appeals,same ? prior.appealOptions : undefined)
-      : {mode:input.mode,size:input.size,count,referenceFirst:true as const,appealFirst:true as const};
-    if (same && input.action === "select-appeals" && JSON.stringify(prior.appeals) === JSON.stringify(input.appeals)) return record;
-    if (record.version !== input.version) throw new ApiError(409,"IMAGE_VERSION_CONFLICT","다른 곳에서 바뀌었어요. 새로 불러와 주세요.");
     await verifyProductBrief(actor,brief);
+    const plan = selectedReferencePlan(brief,input.mode,input.size,input.appeals,same ? prior.appealOptions : undefined);
+    if (same && JSON.stringify(prior.appeals) === JSON.stringify(input.appeals)) return record;
+    if (record.version !== input.version) throw new ApiError(409,"IMAGE_VERSION_CONFLICT","다른 곳에서 바뀌었어요. 새로 불러와 주세요.");
     return saveImageMeta(createServiceSupabase(),record,{...meta,state:{...meta.state,brief,formatRecommendation:plan}});
   }
   if (input.action === "recommend-formats") {
@@ -448,7 +468,10 @@ export async function patchImageProject(actor: RequestActor, record: OsRecord, i
     const plan: ImageFormatPlan = {mode: input.mode, count: input.count, size: input.size, ...(input.appealFirst && {appealFirst:true}), ...(input.conceptFirst && {conceptFirst:true})};
     const prior = meta.state.formatRecommendation;
     const sameBrief = sameImageBrief(brief, meta.state.brief);
-    if (sameBrief && prior?.mode === plan.mode && prior.size === plan.size && prior.count === plan.count && prior.appealFirst === plan.appealFirst && prior.conceptFirst === plan.conceptFirst) return record;
+    if (sameBrief && prior?.mode === plan.mode && prior.size === plan.size && prior.count === plan.count && prior.appealFirst === plan.appealFirst && prior.conceptFirst === plan.conceptFirst) {
+      if (!meta.state.formatApproval) await verifyProductBrief(actor,brief);
+      return record;
+    }
     if (record.version !== input.version) throw new ApiError(409, "IMAGE_VERSION_CONFLICT", "다른 곳에서 바뀌었어요. 새로 불러온 뒤 다시 해 주세요.");
     await verifyProductBrief(actor, brief);
     return saveImageMeta(createServiceSupabase(), record, {...meta, state:{...meta.state, brief, formatRecommendation:{...plan, hasPhoto:meta.assets.length > 0}, formatApproval:undefined}});
@@ -458,6 +481,7 @@ export async function patchImageProject(actor: RequestActor, record: OsRecord, i
     if (actor.type !== "user" || actor.id !== record.owner_id) throw new ApiError(403,"IMAGE_HUMAN_REQUIRED","작업 소유자가 컨셉과 표현 방식을 골라 주세요.");
     if (!plan?.conceptFirst || !plan.concepts?.length || plan.appeals?.length !== plan.count || meta.state.formatApproval || meta.state.variants.length)
       throw new ApiError(409,"IMAGE_DIRECTION_UNAVAILABLE","승인 전인 소구점 제안을 먼저 확인해 주세요.");
+    await verifyProductBrief(actor,meta.state.brief);
     const same = plan.direction?.concept === input.direction.concept && plan.direction?.medium === input.direction.medium;
     if (same && (!input.replan || !plan.scene)) return record;
     if (record.version !== input.version) throw new ApiError(409,"IMAGE_VERSION_CONFLICT","다른 곳에서 기획이 바뀌었어요. 다시 불러와 주세요.");
@@ -519,7 +543,17 @@ export async function patchImageProject(actor: RequestActor, record: OsRecord, i
         if (Boolean(input.request) === Boolean(input.batchId)) throw new ApiError(422,"IMAGE_FORMAT_REQUEST","포맷 요청 또는 기존 묶음 하나를 골라 주세요.");
         if (input.request) {
           validImageRequest(record, input.request);
-          next = {...meta, state:approveImageFormat(meta.state,input.request,stamp)};
+          if (!input.request.baseId && !meta.state.formatApproval && !meta.state.variants.length)
+            await verifyProductBrief(actor,meta.state.brief);
+          const id = input.request.formatIds?.[0];
+          let reference;
+          if (isWarehouseFormat(id) && meta.state.formatRecommendation?.referenceFirst && !input.request.baseId && !meta.state.variants.length) {
+            const row = (await readImageAdReferences(actor)).entries.find(entry => entry.id === id);
+            if (!row || row.documentId !== input.referenceSource?.documentId || row.version !== input.referenceSource.version)
+              throw new ApiError(409, "IMAGE_REFERENCE_CHANGED", "포맷 창고가 바뀌었어요. 페이지를 새로고침해 최신 레퍼런스를 확인해 주세요.");
+            reference = referenceSnapshot(row);
+          }
+          next = {...meta, state:approveImageFormat(meta.state,input.request,stamp,reference)};
         } else next = {...meta,state:reviewImageBatch(meta.state,input.batchId!,"format",stamp)};
         break;
       }
@@ -569,6 +603,10 @@ export async function patchImageProject(actor: RequestActor, record: OsRecord, i
     throw new ApiError(409, "IMAGE_BRIEF_LOCKED", "소재가 만들어진 작업의 조건은 보존해요. 목표·상품을 바꾸려면 새 작업으로 시작해 주세요.");
   if (sameImageBrief(input.brief, meta.state.brief)) return record;
   await verifyProductBrief(actor, input.brief);
+  if (onlyImageProductVersionChanged(meta.state.brief,input.brief)) {
+    if (meta.state.formatApproval || meta.state.variants.length) throw new ApiError(409,"IMAGE_BRIEF_LOCKED","승인한 기획에는 당시의 상품 정본을 보존합니다.");
+    return saveImageMeta(createServiceSupabase(),record,{...meta,state:{...meta.state,brief:input.brief}});
+  }
   const completedPlan = meta.state.variants.length && meta.state.formatRecommendation?.appealFirst ? meta.state.formatRecommendation : undefined;
   return saveImageMeta(createServiceSupabase(), record, { ...meta, state: { ...meta.state, brief: input.brief, formatApproval: undefined, formatRecommendation: completedPlan } });
 }
@@ -629,9 +667,9 @@ let fonts: Promise<{ name: string; data: Buffer; weight: 400 | 500 | 600; style:
 const loadFonts = () => fonts ??= Promise.all(([400,500,600] as const).map(async weight => ({ name: "Pretendard", data: await readFile(join(process.cwd(), "lib/cardnews/fonts", `Pretendard-${weight}.woff`)), weight, style: "normal" as const })));
 const extraFonts = new Map<string, Promise<Buffer>>();
 let blackFont: Promise<Buffer> | undefined;
-async function renderFonts(design: ImageDesign | undefined, thumbnail: boolean) {
+async function renderFonts(design: ImageDesign | undefined, useBlackWeight: boolean) {
   const base = await loadFonts();
-  const primary = thumbnail ? [...base, { name: "Pretendard", weight: 900 as const, style: "normal" as const,
+  const primary = useBlackWeight ? [...base, { name: "Pretendard", weight: 900 as const, style: "normal" as const,
     data: await (blackFont ??= readFile(join(process.cwd(), "lib/cardnews/fonts/Pretendard-900.otf")).catch(error => { blackFont = undefined; throw error; })) }] : base;
   if (!design || design.font === "original" || design.font === "sans") return primary;
   const name = design.font;
@@ -643,18 +681,21 @@ async function renderFonts(design: ImageDesign | undefined, thumbnail: boolean) 
   }
   return [...primary,{ name: "Ad-" + name, data: await file, weight: 600 as const, style: "normal" as const }];
 }
-export async function imagePng(variant: CreativeVariant, assetUrl?: string) {
+export async function imagePng(variant: CreativeVariant, assetUrl?: string, referenceUrl?: string, detailUrl?: string) {
   if (isWarehouseFormat(variant.formatId)) throw new ApiError(422, "IMAGE_BROWSER_RENDER", "이 포맷은 작업 화면에서 표시한 PNG로 내보내세요.");
   const problem = imageVariantProblems(variant)[0];
   if (problem) throw new ApiError(422, "IMAGE_RENDER_INVALID", problem);
   if (variant.asset && !assetUrl) throw new ApiError(422, "IMAGE_ASSET_MISSING", "이미지 원본을 확인한 뒤 내보내 주세요.");
   const { width, height } = resolvePlacement(variant.size, variant.design?.placement, variant.design?.outputWidth);
-  const response = new ImageResponse(createElement(ImageCreativeView, { variant, assetUrl }), { width, height, fonts: await renderFonts(variant.design, variant.formatId === "thumbnail_subject") });
+  if (variant.referenceLayout && !referenceUrl) throw new ApiError(422, "IMAGE_REFERENCE_MISSING", "레퍼런스 원본을 확인해 주세요.");
+  if (Boolean(variant.detailAsset) !== Boolean(detailUrl)) throw new ApiError(422, "IMAGE_ASSET_MISSING", "등록한 디테일 이미지를 확인해 주세요.");
+  const useBlackWeight = variant.formatId === "thumbnail_subject" ||
+    (referenceUsesBlackWeight(variant.referenceLayout) && ["original", "sans"].includes(variant.design?.font ?? "original"));
+  const response = new ImageResponse(createElement(ImageCreativeView, { variant, assetUrl, referenceUrl, detailUrl }), { width, height, fonts: await renderFonts(variant.design, useBlackWeight) });
   return new Uint8Array(await response.arrayBuffer());
 }
-function ownedPhoto(record: OsRecord, variant: CreativeVariant) {
-  if (!variant.asset) return undefined;
-  const photo = variant.asset;
+function ownedPhoto(record: OsRecord, photo: CreativeVariant["asset"]) {
+  if (!photo) return undefined;
   const known = imageMeta(record).assets.find(a => a.path === photo.path && a.w === photo.w && a.h === photo.h);
   if (!known || !ownsImageAsset(record.id, photo.path)) throw new ApiError(403, "IMAGE_ASSET_NOT_OWNED", "등록된 이미지가 아니에요.");
   return known;
@@ -668,12 +709,15 @@ async function normalizedPhoto(path: string) {
   return getSharp(undefined)(await downloadPhoto(path), {failOn:"warning",limitInputPixels:20_000_000}).rotate().png().toBuffer();
 }
 async function renderProjectPng(record: OsRecord, variant: CreativeVariant) {
-  const asset = ownedPhoto(record, variant);
-  const src = asset ? "data:image/png;base64," + (await normalizedPhoto(asset.path)).toString("base64") : undefined;
-  return imagePng(variant, src);
+  async function dataUrl(photo: CreativeVariant["asset"]) {
+    const asset = ownedPhoto(record, photo);
+    return asset ? "data:image/png;base64," + (await normalizedPhoto(asset.path)).toString("base64") : undefined;
+  }
+  const [photo, reference, detail] = await Promise.all([dataUrl(variant.asset), dataUrl(variant.referenceLayout?.source), dataUrl(variant.detailAsset)]);
+  return imagePng(variant, photo, reference, detail);
 }
-export async function macPhotoUrl(record: OsRecord, variant: CreativeVariant) {
-  const asset = ownedPhoto(record, variant);
+export async function macPhotoUrl(record: OsRecord, variant: CreativeVariant, image = variant.asset) {
+  const asset = ownedPhoto(record, image);
   if (!asset) return undefined;
   const bucket = createServiceSupabase().storage.from(MEDIA_BUCKET);
   let path = asset.path;

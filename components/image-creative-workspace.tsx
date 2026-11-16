@@ -24,6 +24,7 @@ export type ImageProjectBundle = {
   renders?: MachineRender[]; rendered?: Record<string, string>; reviewable?: Record<string,string>;
 };
 const jobLabels: Record<string, string> = { backlog: "AI 작업 대기", active: "AI 작업 중", done: "시안 준비 완료", blocked: "AI 작업 중단" };
+const jobReadError = "작업 상태를 불러오지 못했어요. 상태 새로고침으로 다시 확인해 주세요.";
 type Mode = ImageBatchRequest["mode"];
 const modes: { id: Mode; title: string; hint: string }[] = [
   { id: "initial", title: "포맷부터 시작", hint: "포맷 추천과 첫 시안" },
@@ -116,7 +117,7 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
     setFormatIds(ids);
     if (ids.length && ids.every(isWarehouseFormat)) { setFixFormatInputs(ids.length > 1); setCount(ids.length); }
   };
-  const applyBundle=(next:ImageProjectBundle)=>{
+  const applyBundle=(next:ImageProjectBundle,expectedVersion?:number)=>{
     if (next.project.id !== bundle?.project.id) {
       rememberProject(next.project.id);
       setTarget("render-pc"); setShowConnect(false); setFormatIds([]); setMode("initial"); setSize("portrait"); setCount(5); setResult("");
@@ -130,6 +131,8 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
     if (demo) {
       const stored = loadDemo();
       const previous = stored.find(item=>item.project.id===next.project.id);
+      if (expectedVersion!==undefined && previous?.project.version!==expectedVersion)
+        throw new Error("다른 창에서 기획을 수정했어요. 프로젝트를 다시 열어 주세요.");
       if (!previous || previous.project.version!==next.project.version || previous.assets.length!==next.assets.length) {
         next = {...next,project:{...next.project,updatedAt:new Date().toISOString()}};
       }
@@ -186,24 +189,33 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
       document.getElementById("image-creative-results")?.scrollIntoView();
   }, [bundle?.project.id]);
   const projectId = bundle?.project.id;
+  const missingAppealResult = saved?.formatRecommendation?.referenceFirst && !saved.formatRecommendation.appeals?.length && !saved.formatRecommendation.appealOptions?.length
+    ? bundle?.jobs.find(job => job.currentInput !== false && job.phase === "formats") : undefined;
+  // The project read can precede the worker's commit while the subsequent job lookup already sees completion.
+  const completedWithoutOptions = missingAppealResult?.status === "done" ? missingAppealResult.id : undefined;
   const waiting = bundle?.jobs.some(job => (showTools || job.currentInput !== false) && ["backlog", "active"].includes(job.status)) ||
     bundle?.renders?.some(render => ["queued", "active"].includes(render.status));
   useEffect(() => {
-    if (demo || !accessToken || !projectId || !waiting) return;
+    if (demo || !accessToken || !projectId || (!waiting && !completedWithoutOptions)) return;
     const controller = new AbortController();
     let pending = false;
-    const timer = window.setInterval(async () => {
+    const refreshJob = async () => {
       if (pending) return;
       pending = true;
       try {
         const next = await apiRequest<ImageProjectBundle>(`/api/v1/content/image-creatives/${encodeURIComponent(projectId)}`, { token: accessToken, signal: controller.signal });
         if (!controller.signal.aborted) setBundle(current =>
           current?.project.id === projectId && current.project.version <= next.project.version ? next : current);
-      } catch { /* The manual refresh reports failures; the next poll will retry. */ }
+        if (!controller.signal.aborted) setError(previous => previous === jobReadError ? "" : previous);
+      } catch {
+        if (!controller.signal.aborted) setError(previous => previous || jobReadError);
+      }
       finally { pending = false; }
-    }, 15_000);
+    };
+    const timer = waiting ? window.setInterval(refreshJob, 15_000) : undefined;
+    if (!waiting) void refreshJob();
     return () => { controller.abort(); window.clearInterval(timer); };
-  }, [demo, accessToken, projectId, waiting]);
+  }, [demo, accessToken, projectId, waiting, completedWithoutOptions]);
   const refresh=()=>void run(async()=>{if(!bundle)return;if(demo){setBundle(loadDemo().find(x=>x.project.id===bundle.project.id)||bundle);return;}const next=await apiRequest<ImageProjectBundle>(`/api/v1/content/image-creatives/${encodeURIComponent(bundle.project.id)}`,{token:accessToken});setBundle(current=>current?.project.id===next.project.id && current.project.version<=next.project.version ? next : current);});
   const outputNote = " 전체 문구를 확인하고 카피를 승인해 주세요.";
   const patch=async(body:Record<string,unknown>, current=bundle)=>{
@@ -336,7 +348,7 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
     setMessage(`시안 ${variants.length}장을 작업에 저장했어요.` + outputNote);
   });
   const queue=()=>void run(async()=>{if(!bundle)return;if(demo)throw new Error("체험 모드에서는 실제 AI 작업을 보내지 않아요. 요청문을 복사하고 결과를 가져와 주세요.");applyBundle(await patch({action:"generate",request}));setMessage("구독 AI에 카피 후보를 요청했어요. 도착하면 전체 문구를 검토해 주세요.");});
-  const upload = (file: File | null) => void run(async () => {
+  const upload = (file: File | null, onReferenceUploaded?: (asset: Asset) => void | Promise<void>) => run(async () => {
     if (!bundle || !file) return;
     if (!["image/png","image/jpeg"].includes(file.type)) throw new Error("PNG 또는 JPG 이미지를 선택해 주세요.");
     if (file.size > 5*1024*1024) throw new Error("5MB 이하 이미지를 선택해 주세요.");
@@ -358,8 +370,10 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
           reader.readAsDataURL(file);
         });
         const path = `youtube/${bundle.project.id}/image-creative/${crypto.randomUUID()}.${file.type === "image/png" ? "png" : "jpg"}`;
-        applyBundle({...bundle,assets:[...bundle.assets,{path,w,h,url,subjectBox}]});
-        setAssetPaths(old=>[...old,path]);
+        const uploaded = {path,w,h,url,subjectBox};
+        applyBundle({...bundle,assets:[...bundle.assets,uploaded]});
+        if (onReferenceUploaded) await onReferenceUploaded(uploaded);
+        else setAssetPaths(old=>[...old,path]);
       } finally { bitmap.close(); }
       return;
     }
@@ -373,7 +387,8 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
     applyBundle(next);
     const uploaded = next.assets.find(asset=>asset.path===prepared.path);
     if (!uploaded) throw new Error("등록된 이미지를 확인하지 못했어요. 작업을 새로고침해 주세요.");
-    setAssetPaths(old=>old.includes(uploaded.path)?old:[...old,uploaded.path]);
+    if (onReferenceUploaded) await onReferenceUploaded(uploaded);
+    else setAssetPaths(old=>old.includes(uploaded.path)?old:[...old,uploaded.path]);
   });
   async function storedExport(id: string, kind: "variant" | "batch") {
     if (!bundle || !accessToken) throw new Error("로그인 후 내보낼 수 있어요.");
@@ -439,7 +454,7 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
     </>}
     {showTools && <>
     <section className="panel panel-pad-lg ic-panel"><h2>작업 선택</h2><div className="ic-row"><label className="ic-field">기존 작업<select className="field" aria-label="기존 작업" disabled={busy} value={bundle?.project.id||""} onChange={e=>{if(e.target.value)open(e.target.value);}}><option value="">작업을 선택하세요</option>{projects.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select></label><label className="ic-field">새 작업 이름<input className="field" value={title} onChange={e=>setTitle(e.target.value)} placeholder="예: 무료 진단 첫 소재" /></label><button className="primary-button" disabled={busy} onClick={create}>새 작업 만들기</button></div></section>
-    <ImageFormatLibrary selected={formatIds} onSelect={bundle ? toggleFormat : undefined} />
+    <ImageFormatLibrary selected={formatIds} onSelect={bundle ? toggleFormat : undefined} local={localDirectionPlanner} />
     <div id="image-format-compare" className="ic-actions"><button className="secondary-button" onClick={startFormatComparison}>포맷만 비교하기</button></div>
     {saved?.formatTests?.length ? <details className="ic-details"><summary>이전에 저장한 포맷 비교</summary>
       {saved.formatTests.map((item,index)=><section key={item.id}><h3>{index+1}번째 비교 · {item.copy.headline}</h3>
@@ -476,7 +491,7 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
       {(!demo || !refFlow) && (showTools || saved?.batches.some(batch=>batch.review?.copy && !batch.review.final && (!batch.review.preview || bundle.renders?.some(row=>row.id===batch.review?.preview?.runId && row.status==="failed")))) && machinePicker}
       <section id="image-creative-results" className="panel panel-pad-lg ic-panel" aria-labelledby="creative-results-title"><h2 id="creative-results-title">{showTools ? "4. 시안 비교·선택" : refReview ? refReview.preview ? "확정" : refReview.copy ? "디자인 수정" : "카피 작성" : "광고 시안 검토"}</h2>
         {editing && <ImageDesignEditor key={editing.id} projectId={bundle.project.id} base={editing}
-          assetUrl={bundle.assets.find(a => a.path === editing.asset?.path)?.url}
+          assetUrl={bundle.assets.find(a => a.path === editing.asset?.path)?.url} referenceUrl={bundle.assets.find(a => a.path === editing.referenceLayout?.source.path)?.url} detailUrl={bundle.assets.find(a => a.path === editing.detailAsset?.path)?.url}
           onSave={saveDesign} onClose={() => setEditingId("")}/>}
         {saved?.batches.some(batch=>batch.review?.copy) && <label className="ic-check ic-guide-switch"><input type="checkbox" checked={showSafeZone}
           onChange={event => setShowSafeZone(event.target.checked)}/> 결과에 세이프 존 표시</label>}

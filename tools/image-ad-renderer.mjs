@@ -9,7 +9,10 @@ import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
 const run = promisify(execFile);
-const modules = ["formats.ts", "placement.ts", "view.tsx", "thumbnail-ad.tsx", "safe-artwork.mjs", "format-test-renderer.mjs", "format-test-renderer-v1.mjs", "format-test-fonts.json"];
+const referenceModules = ["reference-view.tsx", "reference-layout.ts"];
+const compositionModules = ["reference-composition.ts", "reference-composition-view.tsx"];
+const modules = ["formats.ts", "placement.ts", "view.tsx", ...referenceModules, ...compositionModules, "thumbnail-ad.tsx", "safe-artwork.mjs", "format-test-renderer.mjs", "format-test-renderer-v1.mjs", "format-test-fonts.json"];
+const compiledName = name => name.replace(/\.tsx?$/, ".mjs");
 const thumbModules = ["thumb-frame.tsx", "thumb-style.ts"];
 const thumbnailFiles = ["thumbnail-ad.mjs", ...thumbModules.map(name => "youtube-process/" + name.replace(/\.tsx?$/, ".mjs")), "fonts/Pretendard-900.otf"];
 const bodyFonts = [400, 500, 600];
@@ -28,7 +31,10 @@ function runtimeFiles(root) {
   const require = createRequire(path.join(root, "package.json"));
   const ogDir = path.dirname(require.resolve("next/dist/compiled/@vercel/og"));
   const reactDir = path.dirname(require.resolve("react/package.json"));
-  const rows = modules.map(f => [path.join(root, "lib/image-creative", f), f.replace(/\.tsx?$/, ".mjs")]);
+  const source = path.join(root, "lib/image-creative");
+  const hasComposition = compositionModules.some(name => existsSync(path.join(source, name)));
+  const rows = modules.filter(name => hasComposition || !compositionModules.includes(name))
+    .map(name => [path.join(source, name), compiledName(name)]);
   for (const file of thumbModules) rows.push([path.join(root, "lib/youtube-process", file), "youtube-process/" + file.replace(/\.tsx?$/, ".mjs")]);
   for (const [src,dest] of staticFiles) rows.push([path.join(root,src),dest]);
   for (const name of displayFonts) rows.push([path.join(root,"public/image-format-test/fonts",name+"-OFL.txt"),"fonts/"+name+"-OFL.txt"]);
@@ -58,13 +64,17 @@ export function buildAdRuntime(root,out) {
   const installed = path.join(root,"image-renderer");
   if (existsSync(path.join(installed,"FINGERPRINT")) && readFileSync(path.join(installed,"FINGERPRINT"),"utf8").trim()===adRuntimeDigest(root)) {
     if (path.resolve(out) !== path.resolve(installed)) {
-      const files = ["package.json", "FINGERPRINT", ...modules.map(f => f.replace(/\.tsx?$/, ".mjs")),
+      const files = ["package.json", "FINGERPRINT", ...modules.map(compiledName),
         ...thumbModules.map(f => "youtube-process/" + f.replace(/\.tsx?$/, ".mjs")),
         ...staticFiles.map(([,name]) => name), ...displayFonts.map(f => "fonts/" + f + "-OFL.txt"),
         ...ogFiles.map(f => "og/" + f), ...reactFiles.map(f => "node_modules/react/" + f)];
       const hasThumbnails = existsSync(path.join(installed, "thumbnail-ad.mjs"));
+      const missing = [referenceModules, compositionModules].flatMap(group => {
+        const names = group.map(compiledName);
+        return names.some(name => existsSync(path.join(installed, name))) ? [] : names;
+      });
       for (const name of files) {
-        if (!hasThumbnails && thumbnailFiles.includes(name)) continue;
+        if ((!hasThumbnails && thumbnailFiles.includes(name)) || missing.includes(name)) continue;
         const dest = path.join(out, name);
         mkdirSync(path.dirname(dest), { recursive: true });
         cpSync(path.join(installed, name), dest);
@@ -140,6 +150,25 @@ export async function renderAdPng(dir,variant,photoDataUrl,options={}) {
   const {width,height}=resolvePlacement(variant.size,variant.design?.placement,variant.design?.outputWidth);
   if (Boolean(variant.asset)!==Boolean(photoDataUrl) || (photoDataUrl && !/^data:image\/(?:png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(photoDataUrl))) throw new Error("작업에 등록한 원본 사진을 확인해 주세요.");
   if (variant.asset && !IMAGE_FORMATS[variant.formatId]?.supportsAsset) throw new Error("선택한 컴퓨터의 이미지 광고 렌더러를 업데이트해 주세요.");
+  const referenceUrl = options.referenceDataUrl;
+  if ((variant.formatId === "reference_image") !== Boolean(referenceUrl) ||
+      (referenceUrl && !/^data:image\/(?:png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(referenceUrl)))
+    throw new Error("이번 작업에 등록한 레퍼런스 원본을 확인해 주세요.");
+  const detailUrl = options.detailDataUrl;
+  const layout = variant.referenceLayout;
+  const master = layout?.master;
+  const layoutEngine = master && existsSync(path.join(dir,"reference-layout.mjs")) && await import(fileUrl(dir,"reference-layout.mjs"));
+  const needsDetail = !!layoutEngine?.usesReferenceDetailAsset?.(layout);
+  if (needsDetail !== Boolean(variant.detailAsset) || needsDetail !== Boolean(detailUrl) ||
+      (detailUrl && !/^data:image\/(?:png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(detailUrl)))
+    throw new Error("작업에 등록한 디테일 이미지를 확인해 주세요.");
+  if (master && (layoutEngine?.referenceMasterVersion !== 1 ||
+      (layoutEngine.referencePhotoFitVersion !== 1 && (master.base || master.photoFit || master.headlineAccent)) ||
+      (layoutEngine.referenceDetailVersion !== 1 && (master.detailSlots?.length ||
+        [layout.headline,layout.body,layout.cta,master.bodyContinuation,...(master.brandSlots ?? [])].some(box => box?.weight)))))
+    throw new Error("원본 디자인 교체를 지원하는 이미지 엔진으로 업데이트해 주세요.");
+  if (variant.referenceLayout?.composition && !compositionModules.every(name => existsSync(path.join(dir,compiledName(name)))))
+    throw new Error("선택한 컴퓨터의 이미지 광고 렌더러를 업데이트해 주세요.");
   const selected=variant.design?.font||"original";
   if (!["original","sans",...displayFonts].includes(selected)) throw new Error("허용한 글꼴을 선택해 주세요.");
   if (isWarehouseFormat(variant.formatId)) {
@@ -155,12 +184,13 @@ export async function renderAdPng(dir,variant,photoDataUrl,options={}) {
   const { ImageCreativeView }=await import(fileUrl(dir,"view.mjs"));
   const { ImageResponse }=await import(fileUrl(dir,"og/index.node.js"));
   const fonts=bodyFonts.map(weight=>({name:"Pretendard",data:font(dir,`Pretendard-${weight}.woff`),style:"normal",weight}));
-  if (variant.formatId === "thumbnail_subject") {
-    if (!photoDataUrl) throw new Error("썸네일형 소재에는 원본 사진이 필요해요.");
+  if (variant.formatId === "thumbnail_subject" && !photoDataUrl) throw new Error("썸네일형 소재에는 원본 사진이 필요해요.");
+  const blackWeight = layoutEngine?.referenceUsesBlackWeight?.(layout) ?? (layout?.composition || master?.headlineWeight === 900);
+  if (variant.formatId === "thumbnail_subject" || (blackWeight && ["original","sans"].includes(selected))) {
     fonts.push({name:"Pretendard",data:font(dir,"Pretendard-900.otf"),style:"normal",weight:900});
   }
   if (displayFonts.includes(selected)) fonts.push({name:"Ad-"+selected,data:font(dir,selected+".woff"),style:"normal",weight:600});
-  return Buffer.from(await new ImageResponse(ImageCreativeView({variant,assetUrl:photoDataUrl}),{width,height,fonts}).arrayBuffer());
+  return Buffer.from(await new ImageResponse(ImageCreativeView({variant,assetUrl:photoDataUrl,referenceUrl,detailUrl}),{width,height,fonts}).arrayBuffer());
 }
 
 function storageUrl(raw,upload=false) {
@@ -184,19 +214,27 @@ async function scenePhoto(url) {
 }
 
 const advertisedVersions = new Map();
-function rendererVersion(root) {
+async function rendererVersion(root) {
   if (advertisedVersions.has(root)) return advertisedVersions.get(root);
   // A separately updated worker may still have the previous video bundle installed.
   const dir = existsSync(path.join(root, "lib/image-creative/view.tsx"))
     ? installedAdRuntime(root) : path.join(root, "image-renderer");
-  const version = thumbnailFiles.every(file => existsSync(path.join(dir, file))) ? 3 : 2;
+  const supportsThumbnail = thumbnailFiles.every(file => existsSync(path.join(dir, file)));
+  const has = group => group.every(name => existsSync(path.join(dir,compiledName(name))));
+  let version = supportsThumbnail ? 3 : 2;
+  if (supportsThumbnail && has(referenceModules)) version = has(compositionModules) ? 5 : 4;
+  if (version === 5) {
+    const layout = await import(fileUrl(dir,"reference-layout.mjs"));
+    if (layout.referenceMasterVersion === 1) version = layout.referenceDetailVersion === 1 ? 7 : 6;
+    if (version === 7 && layout.referencePhotoFitVersion === 1) version = 8;
+  }
   advertisedVersions.set(root, version);
   return version;
 }
 
 export async function processAdRender(call,root,progress=()=>{}) {
   let job;
-  for (let version = rendererVersion(root); version >= 1; version--) {
+  for (let version = await rendererVersion(root); version >= 1; version--) {
     try { job = await call({action:"image_creative_claim",rendererVersion:version}); break; }
     catch (error) {
       // Only a schema rejection is safe to retry: it happens before the server takes a lease.
@@ -216,10 +254,14 @@ export async function processAdRender(call,root,progress=()=>{}) {
       progress("download");
       const scene=await call({action:"image_creative_scene",...lease,variantId});
       if (scene.variant?.id!==variantId) throw new Error("variant mismatch");
-      const photo=scene.photoUrl ? await scenePhoto(scene.photoUrl) : undefined;
+      const [photo, referenceDataUrl, detailDataUrl] = await Promise.all([
+        scene.photoUrl ? scenePhoto(scene.photoUrl) : undefined,
+        scene.referenceUrl ? scenePhoto(scene.referenceUrl) : undefined,
+        scene.detailUrl ? scenePhoto(scene.detailUrl) : undefined,
+      ]);
       reason="선택한 컴퓨터에서 광고 PNG를 만들지 못했어요. 설치된 Chrome과 영상 엔진을 확인해 주세요.";
       progress("drawing");
-      const png=await renderAdPng(runtime,scene.variant,photo);
+      const png=await renderAdPng(runtime,scene.variant,photo,{referenceDataUrl,detailDataUrl});
       if (png.length<33 || png.length>20*1024*1024 || !png.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])) || png.readUInt32BE(16)!==scene.width || png.readUInt32BE(20)!==scene.height) throw new Error("invalid PNG");
       progress("upload");
       reason="완성된 광고 파일을 작업에 저장하지 못했어요.";

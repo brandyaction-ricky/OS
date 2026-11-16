@@ -21,6 +21,15 @@ async function signInFixture(page: Page, owner: string) {
   }, { owner, token, expires });
 }
 
+async function idleAndReturnToTab(page: Page) {
+  await page.clock.fastForward(60_000);
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event("focus"));
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.waitForLoadState("networkidle");
+}
+
 test("요청한 Mac에서 출력한 파일만 내려받고 실패한 묶음은 다른 Mac으로 다시 보낸다", async ({ page }) => {
   const owner = "00000000-0000-4000-8000-000000000001";
   const project = { id: "00000000-0000-4000-8000-000000000002", title: "테스트 광고", version: 4 };
@@ -132,6 +141,8 @@ test("기존 컨셉 프로젝트를 다시 열어 장면을 기획하고 카피 
   test.setTimeout(65_000);
   await page.setViewportSize({width:1440,height:960});
   const productCanon = {id:"00000000-0000-4000-8000-000000000113",title:"도자기 상품 목록",version:4};
+  let canonVersion = productCanon.version;
+  let productReads = 0;
   const why = "예약할 때 망설이는 이유를 한 문장으로 대조하기 좋습니다.";
   const stamp = { by: owner, at: "2026-11-10T03:00:00Z" };
   const headlines = ["나한테 딱 맞는 컵", "내 손으로 완성", "퇴근 후 손으로", "내가 만든 선물", "흙부터 배워 보기"];
@@ -151,12 +162,17 @@ test("기존 컨셉 프로젝트를 다시 열어 장면을 기획하고 카피 
     appeals:meanings.map((meaning,i)=>({id:"angle-"+i,meaning})),concepts:["손으로 고르는 크기에는 이유가 있다.","취향은 내가 고른 손잡이에 남는다."]};
   const bundle = () => ({ project, state, jobs, assets: [{...photo,url:"/image-format-test/master.jpg"}], renders: [], rendered: {}, reviewable: {} });
   await signInFixture(page, owner);
+  await page.clock.install();
   await page.route("**/*", async route => {
     const req = route.request(), url = new URL(req.url());
     if (url.hostname === "image-ui-test.supabase.co" && url.pathname === "/rest/v1/os_profiles")
       return route.fulfill({json:{id:owner,role:"admin",display_name:"직원",email:"fixture@example.test",is_active:true}});
     if (url.hostname !== "127.0.0.1") return route.abort();
     if (!url.pathname.startsWith("/api/")) return route.continue();
+    if (url.pathname.endsWith("/image-creatives/products")) {
+      productReads++;
+      return route.fulfill({json:{products:[{...state.brief,id:"mug",source:{...productCanon,version:canonVersion}}]}});
+    }
     if (url.pathname === "/api/v1/content/image-creatives") {
       expect(req.method()).toBe("GET"); return route.fulfill({json:{projects:[project]}});
     }
@@ -164,7 +180,11 @@ test("기존 컨셉 프로젝트를 다시 열어 장면을 기획하고 카피 
       if (req.method() === "PATCH") {
         const body = req.postDataJSON();
         actions.push(body.action);
-        if (body.action === "plan-scene") {
+        if (body.action === "save-brief") {
+          expect(body.brief.productSource.source.version).toBe(5);
+          expect(body.brief.objective).toBe("예약");
+          state.brief = body.brief;
+        } else if (body.action === "plan-scene") {
           expect(body.direction).toEqual({concept:customConcept,medium:"photo"});
           const repeat=actions.filter(a=>a==="plan-scene").length>1;
           if(repeat) expect(body.replan).toBe(true);
@@ -187,6 +207,22 @@ test("기존 컨셉 프로젝트를 다시 열어 장면을 기획하고 카피 
   await page.goto("/content/images?view=tests&project="+project.id);
   const angles = page.getByRole("heading",{name:"AI 소구점 제안 5개"});
   await expect(angles).toBeVisible();
+  await expect.poll(()=>productReads).toBe(1);
+  canonVersion++;
+  await idleAndReturnToTab(page);
+  expect(productReads).toBe(1);
+  await expect(page.getByText("상품 v4 → v5",{exact:true})).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByText("상품 v4 → v5",{exact:true})).toBeVisible();
+  expect(productReads).toBe(2);
+  const retainPlan = page.getByRole("button",{name:"기획 유지 · 정본 버전 반영",exact:true});
+  await expect(retainPlan).toBeVisible();
+  expect(state.brief.productSource?.source.version).toBe(4);
+  expect(actions).toEqual([]);
+  await retainPlan.click();
+  await expect(retainPlan).toHaveCount(0);
+  expect(state.brief.productSource?.source.version).toBe(5);
+  expect(state.formatRecommendation?.appeals?.map(a=>a.meaning)).toEqual(meanings);
   for (const text of meanings) await expect(page.getByText(text,{exact:true})).toBeVisible();
   await expect(page.getByRole("button",{name:"포맷 승인 · 카피 5개 만들기",exact:true})).toHaveCount(0);
   await expect(page.getByRole("button",{name:"카피 승인",exact:true})).toHaveCount(0);
@@ -220,7 +256,7 @@ test("기존 컨셉 프로젝트를 다시 열어 장면을 기획하고 카피 
   await card.click();
   await page.getByRole("radio",{name:"사진 1",exact:true}).check();
   await page.getByRole("button",{name:"포맷 승인 · 카피 5개 만들기",exact:true}).click();
-  const expectedActions=["plan-scene","plan-scene","approve-and-generate"];
+  const expectedActions=["save-brief","plan-scene","plan-scene","approve-and-generate"];
   await expect.poll(()=>actions).toEqual(expectedActions);
   const batchRequest = state.formatApproval!.request;
   const variants = meanings.map((meaning,i)=>({formatId:"photo_headline",formatVersion:1,size:"portrait",asset:photo,
@@ -444,30 +480,42 @@ test("A/B 목록에서 같은 프로젝트를 재개해 소구·카피·이미�
   await page.locator(".ic-page").screenshot({path:testInfo.outputPath("ab-results.png")});
 });
 
-test("A/B 프로젝트에서 추천 소구점을 직접 골라 공통 레퍼런스와 카피를 저장한다",async ({page})=>{
+test("A/B 프로젝트에서 소구점을 직접 입력해 공통 레퍼런스와 카피를 저장한다",async ({page})=>{
   const owner=crypto.randomUUID(), project={id:crypto.randomUUID(),title:"",version:1};
   const product={id:"mug",product:"도자기 수업",brand:"공방",audience:"도예 입문자",offer:"직접 빚은 컵 한 개",objective:"수업 예약",funnel:"예약",
     source:{id:crypto.randomUUID(),title:"수업 안내",version:1}};
   let currentProduct=product;
-  const options=["퇴근 후 흙을 만지며 쉰다","친구와 컵을 만든다","손에 맞는 컵을 만든다","직접 만든 선물","취미부터 체험한다"].map((meaning,i)=>({id:"angle-"+i,meaning}));
+  const reads={products:0,references:0};
+  let reference={id:"M01",name:"처음 읽은 연출",group:"시험 창고",keep:"처음 장면",slots:"질문 한 줄",
+    source:"https://example.org/ad",thumbnail:"",documentId:crypto.randomUUID(),version:1};
+  const motives=["퇴근 후 흙을 만지며 쉰다","친구와 컵을 만든다"];
   const stamp={by:owner,at:"2026-11-12T04:00:00Z"}, actions:string[]=[];
   let state=emptyImageCreative();
-  const bundle=()=>({project,state,jobs:[],assets:[],renders:[],reviewable:{},rendered:{}});
+  let copyJob:{id:string;phase:"copy";currentInput:boolean;status:"backlog"}|undefined;
+  const bundle=()=>({project,state,jobs:copyJob?[copyJob]:[],assets:[],renders:[],reviewable:{},rendered:{}});
   await signInFixture(page,owner);
+  await page.clock.install();
   await page.route("**/*",async route=>{
     const req=route.request(), url=new URL(req.url());
     if(url.hostname==="image-ui-test.supabase.co" && url.pathname==="/rest/v1/os_profiles")
       return route.fulfill({json:{id:owner,role:"admin",display_name:"직원",is_active:true}});
     if(url.hostname!=="127.0.0.1")return route.abort();
     if(!url.pathname.startsWith("/api/"))return route.continue();
-    if(url.pathname.endsWith("/image-creatives/products"))return route.fulfill({json:{products:[currentProduct]}});
+    if(url.pathname.endsWith("/image-creatives/products")){
+      reads.products++;
+      return route.fulfill({json:{products:[currentProduct]}});
+    }
+    if(url.pathname.endsWith("/image-creatives/references")){
+      reads.references++;
+      return route.fulfill({json:{entries:[reference]}});
+    }
     if(url.pathname.endsWith("/image-creatives")){
       if(req.method()==="POST"){
         const body=req.postDataJSON();
         expect(body.experiment).toBe(true);
         if(currentProduct===product){
           currentProduct={...product,offer:"직접 빚은 컵과 작품 수령 안내",source:{...product.source,version:2}};
-          return route.fulfill({status:409,json:{error:{code:"IMAGE_PRODUCT_CHANGED",message:"상품 정본을 다시 선택해 주세요."}}});
+          return route.fulfill({status:409,json:{error:{code:"IMAGE_PRODUCT_CHANGED",message:"상품 정본이 바뀌었어요. 페이지를 새로고침해 최신 상품 정보를 확인해 주세요."}}});
         }
         expect(body.brief.productSource.source.version).toBe(2);
         state.experiment=true; state.brief=body.brief; project.title=body.title; actions.push("create");
@@ -477,16 +525,21 @@ test("A/B 프로젝트에서 추천 소구점을 직접 골라 공통 레퍼런�
     }
     if(!url.pathname.endsWith("/"+project.id))return route.fulfill({json:{}});
     if(req.method()==="PATCH"){
-      const body=req.postDataJSON(); actions.push(body.action);
+      const body=req.postDataJSON();
+      if(body.action==="approve-format" && state.brief.productSource?.source.version!==currentProduct.source.version) {
+        expect(body.referenceSource).toEqual({documentId:reference.documentId,version:reference.version});
+        return route.fulfill({status:409,json:{error:{code:"IMAGE_PRODUCT_CHANGED",message:"상품 정본이 바뀌었어요. 페이지를 새로고침해 최신 상품 정보를 확인해 주세요."}}});
+      }
+      actions.push(body.action);
       expect(body.version).toBe(project.version);
       switch (body.action) {
-        case "recommend-appeals":
-          expect(body).toMatchObject({mode:"appeal",count:5,brief:{product:product.product,audience:product.audience,offer:currentProduct.offer}});
-          state.formatRecommendation={mode:"appeal",size:"portrait",count:5,referenceFirst:true,appealFirst:true,appealOptions:options};
-          break;
         case "select-appeals":
-          expect(body.appeals).toHaveLength(2);
-          state.formatRecommendation=selectedReferencePlan(body.brief,body.mode,body.size,body.appeals,options);
+          expect(body.appeals.map((a:CreativeVariant["appeal"])=>a.meaning)).toEqual(motives);
+          state.formatRecommendation=selectedReferencePlan(body.brief,body.mode,body.size,body.appeals);
+          break;
+        case "generate":
+          expect(body.request).toMatchObject({mode:"appeal",count:2,formatIds:["typography"]});
+          copyJob={id:crypto.randomUUID(),phase:"copy",currentInput:true,status:"backlog"};
           break;
         case "approve-format":
           expect(body.request).toMatchObject({mode:"appeal",count:2,formatIds:["typography"]});
@@ -509,27 +562,60 @@ test("A/B 프로젝트에서 추천 소구점을 직접 골라 공통 레퍼런�
   await page.getByRole("combobox",{name:"상품 선택",exact:true}).selectOption("mug");
   await page.getByRole("button",{name:"소구점 선택하기",exact:true}).click();
   expect(actions.filter(v=>v==="recommend-appeals")).toHaveLength(0);
-  await page.getByRole("button",{name:"AI에게 추천받기",exact:true}).click();
-  await expect(page.getByRole("alert").filter({hasText:"상품 정본"})).toBeVisible();
-  if (!(await page.getByRole("heading",{name:"상품 선택",exact:true}).isVisible())) {
-    await page.getByRole("button",{name:"상품 변경",exact:true}).click();
-  }
-  await page.getByRole("button",{name:"최신 정본 적용",exact:true}).click();
-  await expect(page.getByText(currentProduct.offer,{exact:true})).toBeVisible();
-  await page.getByRole("button",{name:"소구점 선택하기",exact:true}).click();
-  await page.getByRole("button",{name:"AI에게 추천받기",exact:true}).click();
-  await expect(page.getByRole("checkbox",{name:options[0].meaning,exact:true})).toBeVisible();
-  for (const [index,option] of options.entries())
-    await page.getByRole("checkbox",{name:option.meaning,exact:true}).setChecked(index<2);
+  await expect(page.getByRole("button",{name:"AI에게 추천받기",exact:true})).toHaveCount(0);
+  await page.getByLabel("소구점 직접 작성",{exact:true}).fill(motives.join("\n"));
   await page.getByRole("button",{name:"레퍼런스 선택하기",exact:true}).click();
+  await expect(page.getByRole("alert").filter({hasText:"페이지를 새로고침"})).toBeVisible();
+  expect(reads.products).toBe(1);
   await page.reload();
-  const card=page.getByRole("button",{name:"짧은 문장 포스터",exact:true});
-  await card.click();
+  await page.getByRole("button",{name:"새 테스트 프로젝트",exact:true}).click();
+  await page.getByRole("combobox",{name:"상품 선택",exact:true}).selectOption("mug");
+  await expect(page.getByText(currentProduct.offer,{exact:true})).toBeVisible();
+  const productsOnEntry=reads.products;
+  await page.getByRole("button",{name:"소구점 선택하기",exact:true}).click();
+  await expect(page.getByRole("button",{name:/AI에게 추천받기|소구점 다시 요청/})).toHaveCount(0);
+  await page.getByLabel("소구점 직접 작성",{exact:true}).fill(motives.join("\n"));
+  await page.getByRole("button",{name:"레퍼런스 선택하기",exact:true}).click();
+  await expect(page.getByRole("button",{name:reference.name,exact:true})).toBeVisible();
+  expect(reads.products).toBe(productsOnEntry);
+  await page.reload();
+  await page.getByRole("button",{name:reference.name,exact:true}).click();
+  await expect(page.getByRole("link",{name:"창고 원문 · v1"})).toBeVisible();
+  const entryReads={...reads};
+  reference={...reference,name:"수정해서 읽은 연출",keep:"새 장면",slots:"대사 한 줄",version:2};
+  await idleAndReturnToTab(page);
+  expect(reads).toEqual(entryReads);
+  await expect(page.getByRole("link",{name:"창고 원문 · v1"})).toBeVisible();
+  await page.reload();
+  await page.getByRole("button",{name:reference.name,exact:true}).click();
+  await expect(page.getByRole("button",{name:reference.name,exact:true})).toContainText(reference.keep);
+  await expect(page.getByText("바꿀 요소 · 대사 한 줄",{exact:true})).toBeVisible();
+  await expect(page.getByRole("link",{name:"창고 원문 · v2"})).toBeVisible();
+  expect(reads).toEqual({products:entryReads.products+1,references:entryReads.references+1});
+  const readsBeforeApproval={...reads};
+  const selectedProduct=currentProduct;
+  currentProduct={...selectedProduct,audience:"처음 공방을 방문하는 대학생",source:{...product.source,version:3}};
+  await page.getByRole("button",{name:"카피 작성하기",exact:true}).click();
+  await expect(page.getByRole("alert").filter({hasText:"페이지를 새로고침"})).toBeVisible();
+  expect(reads).toEqual(readsBeforeApproval);
+  expect(state.brief.productSource?.source.version).toBe(2);
+  expect(actions).not.toContain("approve-format");
+  // The signed route also rejects races. Use the original offer again to exercise the saved reference through final copy review.
+  currentProduct=selectedProduct;
+  await page.reload();
+  await page.getByRole("button",{name:"짧은 문장 포스터",exact:true}).click();
   await page.getByRole("button",{name:"카피 작성하기",exact:true}).click();
   await expect(page.getByRole("heading",{name:"카피 작성",exact:true})).toBeVisible();
+  expect(actions).toEqual(["create","select-appeals","approve-format"]);
+  await page.getByRole("button",{name:"AI 카피 초안 받기",exact:true}).click();
+  await expect(page.getByText(/구독 AI가 초안을 준비하고 있어요/)).toBeVisible();
+  // The copy queue is independent of manually entered appeals. Resume the editor after the fixture job disappears.
+  copyJob=undefined;
+  await page.getByRole("button",{name:"상태 새로고침",exact:true}).click();
+  const copyReads={...reads};
   const headlines=["퇴근 후 흙 한 줌","함께 빚는 컵 한 쌍"];
   for (const [index,title] of headlines.entries()){
-    const entry = page.getByRole("group",{name:options[index].meaning,exact:true});
+    const entry = page.getByRole("group",{name:motives[index],exact:true});
     await entry.getByRole("textbox",{name:"제목",exact:true}).fill(title);
     await entry.getByRole("textbox",{name:"본문",exact:true}).fill("한 시간 도자기 수업");
   }
@@ -537,8 +623,9 @@ test("A/B 프로젝트에서 추천 소구점을 직접 골라 공통 레퍼런�
   await page.getByRole("button",{name:"카피 확정 · 디자인 수정하기",exact:true}).click();
   const group=page.getByRole("region",{name:"1번째 묶음 검토",exact:true});
   await expect(group.getByRole("heading",{name:headlines[0],exact:true})).toBeVisible();
-  expect(actions.filter(action=>action!=="create")).toEqual(["recommend-appeals","select-appeals","approve-format","import","confirm-reference-copy"]);
-  expect(state.variants.map(v=>v.appeal)).toEqual(options.slice(0,2));
+  expect(reads).toEqual(copyReads);
+  expect(actions.filter(action=>action!=="create")).toEqual(["select-appeals","approve-format","generate","import","confirm-reference-copy"]);
+  expect(state.variants.map(v=>v.appeal.meaning)).toEqual(motives);
   expect(state.variants.map(v=>v.copy.headline)).toEqual(headlines);
   expect(state.variants.every(v=>v.formatId==="typography" && v.copy.cta==="예약하기")).toBe(true);
   expect(state.batches[0].review?.final).toBeUndefined();

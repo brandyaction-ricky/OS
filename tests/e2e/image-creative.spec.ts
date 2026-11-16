@@ -1,8 +1,32 @@
 import { openWorkTools, approveFormat, finishDemoBatch } from "./image-approval-steps";
 import { test, expect } from "@playwright/test";
 import { mkdirSync } from "node:fs";
+import { getSharp } from "next/dist/server/image-optimizer";
 
 mkdirSync("validation/ui", { recursive: true });
+
+test("5MB 미만 대형 PNG의 미리보기를 출력하고 잘못된 인코딩·크기는 거절한다", async ({ request }) => {
+  test.slow();
+  const width = 1080;
+  const image = await getSharp(1)({ create: { width, height: width, channels: 3, background: "#334455" } })
+    .png({ compressionLevel: 0 }).toBuffer();
+  expect(image.length).toBeGreaterThan(3 * 1024 * 1024);
+  const variant = {
+    formatId: "photo_headline", formatVersion: 1, size: "square",
+    asset: { path: "image-creatives/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222.png", w: width, h: width },
+    appeal: { id: "a", meaning: "진단 안내" }, copy: { headline: "직업 찾기", body: "무료 진단", cta: "알아보기" },
+  };
+  const preview = (encoded: string) => request.post("/api/v1/content/image-creatives/demo/preview", {
+    data: { variant, photo: "data:image/png;base64," + encoded },
+  });
+  const response = await preview(image.toString("base64"));
+  expect(response.status()).toBe(200);
+  expect((await getSharp(1)(await response.body()).metadata()).format).toBe("png");
+  for (const invalid of ["abc!", "a=bc", "abcde==="]) {
+    expect((await preview(invalid)).status()).toBe(422);
+  }
+  expect((await preview(Buffer.alloc(5 * 1024 * 1024 + 1).toString("base64"))).status()).toBe(413);
+});
 
 test("체험 모드에서 결과를 가져오고 새로고침 후 기준 소재를 보존한다", async ({ page }) => {
   await openWorkTools(page);

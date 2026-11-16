@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import { ImageSubscriptionHelp } from "./image-subscription-help";
 import { apiRequest, ApiRequestError } from "@/lib/api-client";
 import { CREATIVE_SIZES, IMAGE_FORMAT_IDS, IMAGE_FORMATS, isImageFormat, isWarehouseFormat, type ImageFormatId } from "@/lib/image-creative/formats";
 import { activeImageWinner, imageExperimentSummary, latestImageExperimentBatch, approveImageFormat, createImageBatch, selectedImageResults, startImageCopyBatch, imageBriefProblems, type FormatRecommendation, type ImageBatchRequest, type ImageBrief, type ImageFormatPlan } from "@/lib/image-creative/model";
 import type { ImageAdProduct } from "@/lib/image-creative/products";
 import { ReferenceImageCreation } from "./reference-image-creation";
-import { ImageProductFields } from "./image-product-fields";
+import { ImageProductFields, ProductCanonNotice } from "./image-product-fields";
+import { useImageProductCatalog } from "./use-image-product-catalog";
 import { WinnerArtwork } from "./image-approval-batch";
 import { ImageFormatPicker } from "./image-format-choice";
 import type { ImageProjectBundle, ImageProjectRow } from "./image-creative-workspace";
@@ -15,12 +16,12 @@ import type { ImageProjectBundle, ImageProjectRow } from "./image-creative-works
 export type ImagePreviewProduct = ImageAdProduct & { appealPreview?: FormatRecommendation["appeals"] };
 export type GuidedImageProps = {
   bundle: ImageProjectBundle | null; brief: ImageBrief; setBrief: (brief: ImageBrief) => void;
-  previewProducts?: ImagePreviewProduct[]; localDirectionPlanner?: boolean; demo: boolean; busy: boolean; receive: (next: ImageProjectBundle) => void;
+  previewProducts?: ImagePreviewProduct[]; localDirectionPlanner?: boolean; demo: boolean; busy: boolean; receive: (next: ImageProjectBundle, expectedVersion?:number) => void;
   projects: ImageProjectRow[]; listReady:boolean; experimentList:boolean; reloadList:()=>void; openProject:(id:string)=>void;
   createProject: (name: string, brief: ImageBrief, experiment?:true) => Promise<ImageProjectBundle>;
   patch: (body: Record<string, unknown>, current: ImageProjectBundle) => Promise<ImageProjectBundle>;
   run: (fn: () => Promise<void>) => Promise<void>; refresh: () => void;
-  assetPaths: string[]; setAssetPaths: (paths: string[]) => void; upload: (file: File | null) => void;
+  assetPaths: string[]; setAssetPaths: (paths: string[]) => void; upload: (file: File | null, onReferenceUploaded?: (asset: ImageProjectBundle["assets"][number]) => void | Promise<void>) => Promise<void>;
   leave: () => void; openTools: () => void;
 };
 const single: ImageFormatPlan = {mode:"standalone",count:1,size:"portrait",referenceFirst:true};
@@ -60,24 +61,36 @@ function DirectionFields({concepts, value, busy, onPlan, onCancel}: {
 export function GuidedImageCreative({projects,listReady,experimentList,reloadList,openProject,bundle,brief,setBrief,previewProducts,localDirectionPlanner,demo,busy,createProject,patch,receive,run,refresh,
   assetPaths,setAssetPaths,upload,leave,openTools}:GuidedImageProps) {
   const [draft, setDraft] = useState<ImageFormatPlan | null>(null);
-  const [projectName,setProjectName] = useState("");
   const [selection, setSelection] = useState<{ id: ImageFormatId; proposal: string } | null>(null);
   const [generatePhotoFor, setGeneratePhotoFor] = useState<string>();
   const [copiedJob, setCopiedJob] = useState<string>();
   const [editing, setEditing] = useState(false);
   const [formatStepFor, setFormatStepFor] = useState<string>();
   const [editingDirectionFor,setEditingDirectionFor] = useState<string>();
-  const [catalogRevision, setCatalogRevision] = useState(0);
   const [followupKey, setFollowupKey] = useState<string>();
   const [nextCount, setNextCount] = useState(5);
   const [copyField, setCopyField] = useState<"headline"|"body"|"cta">("headline");
   const state = bundle?.state;
   const recommendation = state?.formatRecommendation;
-  const proposal = JSON.stringify([bundle?.project.id, state?.brief, recommendation]);
+  // Keep an employee's selected format and unfinished scene edit when only a document revision changes.
+  const selectedSource = state?.brief.productSource;
+  const proposal = JSON.stringify([bundle?.project.id,{...state?.brief,productSource:selectedSource &&
+    [selectedSource.productId,selectedSource.source.id,selectedSource.audienceSource?.id]}, recommendation]);
   const picked = selection?.proposal === proposal ? selection.id : null;
   const approved = state?.formatApproval?.request;
   const experiment = state && imageExperimentSummary(state);
   const plan = (editing ? draft : recommendation) ?? draft ?? (experiment && !recommendation ? appeals : null);
+  const catalog = useImageProductCatalog(Boolean(localDirectionPlanner),previewProducts,Boolean(plan));
+  const sample = demo && !localDirectionPlanner && !previewProducts;
+  const recheckProduct = bundle && !approved && !state?.variants.length &&
+    !bundle.jobs.some(job=>job.currentInput!==false && ["backlog","active"].includes(job.status)) ? (nextBrief:ImageBrief)=>{
+      void run(async()=>{
+        await catalog.verify(nextBrief);
+        const next = demo ? {...bundle,project:{...bundle.project,version:bundle.project.version+1},state:{...bundle.state,brief:nextBrief}}
+          : await patch({action:"save-brief",brief:nextBrief},bundle);
+        receive(next,bundle.project.version);
+      });
+    } : undefined;
   const newest = experiment && state ? latestImageExperimentBatch(state) : state?.batches.at(-1);
   const measured = newest && activeImageWinner(newest,state);
   const winner = state?.variants.find(row => row.id === (experiment ? measured?.variantId : state.selectedId));
@@ -93,41 +106,26 @@ export function GuidedImageCreative({projects,listReady,experimentList,reloadLis
     setDraft(null); setSelection(null); setEditing(false); setFollowupKey(undefined); leave();
   }
   function recommend(nextBrief?: ImageBrief) {
-    if (!plan) return;
+    if (!plan || plan.appealFirst) return;
     const input = {...(nextBrief ?? (!editing && state?.formatRecommendation ? state.brief : brief))};
-    if (plan.appealFirst) delete input.mainMessage;
     void run(async () => {
-      if (!plan.appealFirst && !input.mainMessage?.trim()) throw new Error("광고에서 전할 메인 메시지를 적어 주세요.");
+      if (!input.mainMessage?.trim()) throw new Error("광고에서 전할 메인 메시지를 적어 주세요.");
       if (!Number.isInteger(plan.count) || plan.count < 1 || plan.count > 20) throw new Error("후보 수는 1~20개로 정해 주세요.");
-      const issue = imageBriefProblems(input,plan.appealFirst)[0];
+      const issue = imageBriefProblems(input)[0];
       if (issue) throw new Error(issue);
-      const {mode,count,size,appealFirst} = plan;
-      const request = {mode,count,size,...(appealFirst ? {appealFirst} : {}),
-        ...(appealFirst && (!demo || localDirectionPlanner) ? {conceptFirst:true as const} : {})};
+      const {mode,count,size} = plan;
+      const request = {mode,count,size};
       try {
-        const fallbackTitle = mode === "appeal" ? `${input.product} · A/B 테스트` : `${input.product} · 광고 한 장`;
-        const current = bundle ?? await createProject((projectName.trim() || fallbackTitle).slice(0,120),input,appealFirst);
-        const ref = input.productSource;
-        const example = demo && !localDirectionPlanner && appealFirst && ref ? previewProducts?.find(row=>
-          row.id === ref.productId && row.source.id === ref.source.id && row.source.version === ref.source.version &&
-          row.audienceSource?.id === ref.audienceSource?.id && row.audienceSource?.version === ref.audienceSource?.version &&
-          row.product === input.product && row.audience === input.audience && row.offer === input.offer &&
-          row.brand === input.brand && (row.objective ?? "") === input.objective && (row.funnel ?? "") === input.funnel &&
-          row.appealPreview?.length === count) : undefined;
-        const proposals = demo && localDirectionPlanner && appealFirst
-          ? await apiRequest<Pick<FormatRecommendation,"appeals"|"concepts">>("/api/dev/image-ad-direction",{
-            method:"POST",body:JSON.stringify({phase:"concepts",brief:input,count}),
-          }) : undefined;
-        if (demo && localDirectionPlanner && appealFirst && (proposals?.appeals?.length!==count || !proposals?.concepts?.length))
-          throw new Error("소구점과 컨셉 제안을 받지 못했어요.");
+        await catalog.verify(input);
+        const title = input.product + (mode === "appeal" ? " · A/B 테스트" : " · 광고 한 장");
+        const current = bundle ?? await createProject(title.slice(0,120),input);
         const next = demo
-          ? {...current, project:{...current.project,version:current.project.version+1}, state:{...current.state,brief:input,formatRecommendation:{
-              ...request,...(proposals ?? {items:[],...(example ? {appeals:example.appealPreview} : {})})}}}
+          ? {...current, project:{...current.project,version:current.project.version+1}, state:{...current.state,brief:input,formatRecommendation:{...request,items:[]}}}
           : await patch({action:"recommend-formats",brief:input,...request},current);
         setEditing(false); setSelection(null); setFormatStepFor(undefined); receive(next);
       } catch (error) {
         if (error instanceof ApiRequestError && error.code === "IMAGE_PRODUCT_CHANGED") {
-          setDraft({...plan}); setEditing(true); setCatalogRevision(n=>n+1);
+          setDraft({...plan}); setEditing(true);
         }
         throw error;
       }
@@ -136,6 +134,7 @@ export function GuidedImageCreative({projects,listReady,experimentList,reloadLis
   function planScene(direction:Direction, replan=false) {
     if (!bundle || !recommendation?.conceptFirst || !recommendation.appeals?.length) return;
     void run(async()=>{
+      await catalog.verify(bundle.state.brief);
       let next: ImageProjectBundle;
       if (demo) {
         if (!localDirectionPlanner) throw new Error("새 장면을 기획하려면 구독 AI가 연결된 OS에서 이 단계를 진행해 주세요.");
@@ -154,6 +153,7 @@ export function GuidedImageCreative({projects,listReady,experimentList,reloadLis
   function approve(request: ImageBatchRequest) {
     if (!bundle) return;
     void run(async () => {
+      if (!request.baseId && !approved && !bundle.state.variants.length) await catalog.verify(bundle.state.brief);
       let next;
       if (demo) {
         const now = new Date().toISOString(), by = "브라우저 체험";
@@ -205,6 +205,8 @@ export function GuidedImageCreative({projects,listReady,experimentList,reloadLis
       {phase==="formats" && direction && <p>{direction.concept} · {mediumNames[direction.medium]}</p>}
       {working ? <p>{current.status==="backlog" ? "연결된 개인 AI가 요청을 받으면 시작합니다. " : ""}완료되면 이 작업에 표시됩니다.</p>
         : <p>{current?.failReason || "연결된 개인 AI에서 작업을 이어갈 수 있습니다."}</p>}
+      {working && phase === "formats" && plan?.appealFirst && !recommendation?.appeals?.length &&
+        <button type="button" className="primary-button" disabled={busy} onClick={editPlan}>소구점 직접 작성</button>}
       {working ? <button className="secondary-button" disabled={busy} onClick={refresh}>상태 새로고침</button>
         : <button className="primary-button" disabled={busy} onClick={()=> {
           if (phase === "formats" && direction) planScene(direction);
@@ -219,12 +221,7 @@ export function GuidedImageCreative({projects,listReady,experimentList,reloadLis
           await navigator.clipboard.writeText(photoRequest!); setCopiedJob(current.id);
         })}>{copiedJob === current.id ? "요청문 복사됨" : "요청문 복사"}</button>
       </div>}
-      {current?.status !== "active" && <details className="ic-details"><summary>AI 연결 확인</summary>
-        {!newPhoto && <p>연결한 Claude나 Codex에 “OS의 내 이미지 광고 작업을 처리해 줘”라고 요청할 수 있어요.</p>}
-        <Link href="/settings/access">내 AI 연결 설정</Link>
-        {!newPhoto && <><p>Claude Code에 구독으로 로그인한 Mac에서 자동 수신하려면 실행 파일을 다운로드 폴더에 받고 터미널에서 아래 명령을 실행해 두세요.</p>
-        <a href="/myin-local/image-ad-subscription.mjs" download>자동 수신 실행 파일 받기</a>
-        <pre><code>node ~/Downloads/image-ad-subscription.mjs</code></pre></>}</details>}
+      {current?.status !== "active" && <ImageSubscriptionHelp jobId={current?.status==="backlog" ? current.id : undefined} needsImage={newPhoto}/>}
     </section>;
   }
   function chooseImages(multiple:boolean, allowNewPhoto = false) {
@@ -251,17 +248,23 @@ export function GuidedImageCreative({projects,listReady,experimentList,reloadLis
     const status = {preparing:"준비 중",review:"시안 검토 중",awaiting_result:"집행 결과 대기",winner_recorded:"승리 소재 기록됨",complete:"완료"}[summary.status];
     return `${stage} · ${status}`;
   };
-  const projectTitle = bundle && <header className="ic-row ic-guided-actions">
+  const firstBatch = state?.batches[0];
+  const legacyAppeals = recommendation?.appealFirst && !recommendation.referenceFirst && !approved && !firstBatch;
+  const waitingForAppeals = ["backlog","active"].includes(job("formats")?.status ?? "");
+  const writeLegacyAppeals = legacyAppeals && (editing || (!recommendation.appeals?.length && !waitingForAppeals));
+  const referenceFlow = writeLegacyAppeals || Boolean((recommendation?.referenceFirst || (!recommendation && plan?.referenceFirst)) &&
+    (!firstBatch || (state?.batches.length === 1 && !firstBatch.review?.copy && !firstBatch.review?.history.some(h=>h.step==="copy" && h.decision==="approved") && !approved?.baseId)));
+  const projectTitle = bundle && <><header className="ic-row ic-guided-actions">
     <div><strong>{bundle.project.title}</strong>{experiment && <p className="ic-muted">{statusLabel(experiment)}</p>}</div>
     {experiment ? <a href={listHref} className="secondary-button" role="button">프로젝트 목록</a>
       : <button type="button" className="secondary-button" disabled={busy} onClick={restart}>다른 작업</button>}
-  </header>;
-  const firstBatch = state?.batches[0];
-  if ((recommendation?.referenceFirst || (!recommendation && plan?.referenceFirst)) &&
-      (!firstBatch || (state?.batches.length === 1 && !firstBatch.review?.copy && !firstBatch.review?.history.some(h=>h.step==="copy" && h.decision==="approved") && !approved?.baseId))) {
+  </header>{!editing && !referenceFlow && state?.brief.productSource &&
+    <ProductCanonNotice brief={state.brief} catalog={catalog} disabled={busy}
+      onRecheck={recheckProduct} onReview={!approved && !state.variants.length ? editPlan : undefined}/>}</>;
+  if (referenceFlow) {
     return <>{projectTitle}<ReferenceImageCreation plan={plan!} brief={brief} setBrief={setBrief} bundle={bundle}
-      previewProducts={previewProducts} localDirectionPlanner={localDirectionPlanner} demo={demo} busy={busy}
-      createProject={createProject} patch={patch} receive={receive} run={run} refresh={refresh}
+      catalog={catalog} sample={sample} recheckProduct={recheckProduct} localDirectionPlanner={localDirectionPlanner} demo={demo} busy={busy}
+      createProject={createProject} patch={patch} receive={next=>{setEditing(false);receive(next);}} run={run} refresh={refresh}
       assetPaths={assetPaths} setAssetPaths={setAssetPaths} upload={upload} leave={restart}/></>;
   }
   if (approved && bundle) return <>{projectTitle}{demo ? <section className="panel panel-pad-lg ic-panel"><h2>포맷을 승인했어요</h2>
@@ -279,7 +282,7 @@ export function GuidedImageCreative({projects,listReady,experimentList,reloadLis
     return <>{projectTitle}<section className="panel panel-pad-lg ic-panel">
       <h2>{modeName(followup)} 테스트</h2><p>기준 시안 · <strong>{winner.copy.headline}</strong></p>
       {experiment && <div className="ic-winner-thumb"><WinnerArtwork variant={winner} projectId={bundle.project.id} url={bundle.rendered?.[winner.id]}
-        demo={demo} photo={bundle.assets.find(a=>a.path===winner.asset?.path)?.url}/></div>}
+        demo={demo} photo={bundle.assets.find(a=>a.path===winner.asset?.path)?.url} referenceUrl={bundle.assets.find(a=>a.path===winner.referenceLayout?.source.path)?.url} detailUrl={bundle.assets.find(a=>a.path===winner.detailAsset?.path)?.url}/></div>}
       {experiment && <p className="ic-muted">{followup==="copy" ? "승리한 소구점과 이미지를 유지하고 선택한 문구를 바꿉니다." : "승리한 소구점과 카피를 유지하고 사진을 바꿉니다."}</p>}
       {followup === "image" ? chooseImages(true) : <label className="ic-field">후보 수<input className="field" type="number" min={1} max={20}
         value={nextCount} onChange={e=>setNextCount(Math.max(1,Math.min(20,Number(e.target.value)||1)))}/></label>}
@@ -327,23 +330,16 @@ export function GuidedImageCreative({projects,listReady,experimentList,reloadLis
     </details>;
     return <>{projectTitle}<form className="panel panel-pad-lg ic-panel ic-guided-brief" onSubmit={event=>{event.preventDefault();recommend(brief);}}>
       <h2>{plan.mode === "standalone" ? "광고 한 장 만들기" : "소구점 테스트"}</h2>
-      {plan.appealFirst && !bundle && <label className="ic-field">프로젝트 이름 (선택)<input className="field" value={projectName} maxLength={120} onChange={e=>setProjectName(e.target.value)} placeholder="예: 무료 진단 · 11월 신규 고객"/></label>}
-      {plan.appealFirst && <><p>상품을 고르면 AI가 타겟과 제공 내용을 보고 서로 다른 소구점을 제안합니다.</p>{settings}</>}
-      {demo && localDirectionPlanner && plan.appealFirst && busy && <p role="status">구독 AI가 이 상품의 소구점과 컨셉을 기획하고 있어요.</p>}
-      <ImageProductFields brief={brief} setBrief={setBrief} previewProducts={previewProducts} revision={catalogRevision} disabled={busy}
-        onProductChosen={plan.appealFirst ? recommend : undefined}/>
-      {!plan.appealFirst && <><label className="ic-field">메인 메시지<textarea className="field" required rows={2} maxLength={2000} value={brief.mainMessage ?? ""}
-        onChange={e=>setBrief({...brief,mainMessage:e.target.value})} placeholder="고객에게 꼭 전하고 싶은 한 가지를 적어 주세요."/></label>{settings}</>}
-      <div className="ic-row ic-guided-actions">{(!plan.appealFirst || brief.product || brief.audience || brief.offer) && <button className="primary-button" disabled={busy} type="submit">
-        {plan.appealFirst ? `소구점 ${plan.count}개 제안받기` : demo?"기획 저장 · 포맷 보기":"AI 포맷 추천받기"}</button>}
+      <ImageProductFields brief={brief} setBrief={setBrief} catalog={catalog} sample={sample} disabled={busy}/>
+      <label className="ic-field">메인 메시지<textarea className="field" required rows={2} maxLength={2000} value={brief.mainMessage ?? ""}
+        onChange={e=>setBrief({...brief,mainMessage:e.target.value})} placeholder="고객에게 꼭 전하고 싶은 한 가지를 적어 주세요."/></label>{settings}
+      <div className="ic-row ic-guided-actions"><button className="primary-button" disabled={busy} type="submit">
+        {demo?"기획 저장 · 포맷 보기":"AI 포맷 추천받기"}</button>
         <button className="secondary-button" disabled={busy} type="button" onClick={()=>{
           if (editing && recommendation) {setEditing(false); if (state) setBrief(state.brief);} else restart();
         }}>뒤로</button></div>
     </form></>;
   }
-  if (demo && recommendation.appealFirst && !recommendation.appeals?.length) return <>{projectTitle}<section className="panel panel-pad-lg ic-panel">
-    <h2>직원 AI 연결이 필요해요</h2><p>이 상품과 개수에 맞는 저장된 제안이 없습니다. 로그인한 OS에서 상품을 고르면 내 AI가 소구점을 제안합니다.</p>
-    <button type="button" className="secondary-button" onClick={editPlan}>기획 수정</button></section></>;
   const directed = recommendation.conceptFirst === true;
   const direction = recommendation.direction;
   const showDirection = directed && Boolean(recommendation.appeals?.length) && (!direction || editingDirectionFor===proposal);

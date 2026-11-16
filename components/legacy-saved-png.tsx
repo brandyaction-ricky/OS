@@ -9,12 +9,14 @@ interface Props {
   projectId: string;
   variant: CreativeVariant;
   assetUrl?: string;
+  referenceUrl?: string;
+  detailUrl?: string;
   baseId?: string;
   onReady?: (png: Blob | null) => void;
   onCheck?: (problems: string[]) => void;
 }
 
-export function LegacySavedPng({ projectId, variant, assetUrl, baseId, onReady, onCheck }: Props) {
+export function LegacySavedPng({ projectId, variant, assetUrl, referenceUrl, detailUrl, baseId, onReady, onCheck }: Props) {
   const { demo, accessToken } = useSession();
   const report = useRef({ onReady, onCheck });
   const [url, setUrl] = useState("");
@@ -29,7 +31,11 @@ export function LegacySavedPng({ projectId, variant, assetUrl, baseId, onReady, 
     setUrl(""); setProblem(""); report.current.onReady?.(null); report.current.onCheck?.(["PNG를 준비 중입니다."]);
     void (async () => {
       const payload = JSON.parse(body);
-      if (demo && assetUrl) payload.photo = await readWarehousePhoto(assetUrl);
+      if (demo) {
+        [payload.photo, payload.reference, payload.detail] = await Promise.all([
+          assetUrl && readWarehousePhoto(assetUrl), referenceUrl && readWarehousePhoto(referenceUrl), detailUrl && readWarehousePhoto(detailUrl),
+        ]);
+      }
       const response = await fetch("/api/v1/content/image-creatives/" + encodeURIComponent(demo ? "demo" : projectId) + "/preview", {
         method: "POST", headers: { "content-type":"application/json", ...(accessToken ? { authorization:"Bearer "+accessToken } : {}) },
         body: JSON.stringify(payload), signal: controller.signal, cache: "no-store",
@@ -49,7 +55,7 @@ export function LegacySavedPng({ projectId, variant, assetUrl, baseId, onReady, 
       setProblem(message); report.current.onCheck?.([message]);
     });
     return () => { controller.abort(); if (objectUrl) URL.revokeObjectURL(objectUrl); report.current.onReady?.(null); };
-  },[body, assetUrl, projectId, demo, accessToken]);
+  },[body, assetUrl, referenceUrl, detailUrl, projectId, demo, accessToken]);
   return <div className="ic-preview" data-size={placement.size}>
     {url ? (
       // eslint-disable-next-line @next/next/no-img-element -- preview and download use the same actual PNG

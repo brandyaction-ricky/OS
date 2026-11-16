@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { mcpClient, subscriptionCli, workOne } from "../public/myin-local/image-ad-subscription.mjs";
+import { mcpClient, subscriptionCli, withCodexQueue, workOne } from "../public/myin-local/image-ad-subscription.mjs";
 
 const jobId = "e99c3be1-5e5c-47f7-abe8-6fd6608fd863";
 const lease = "52df8a27-5ff6-4e71-a96f-a47b297bc4cd";
@@ -82,4 +82,74 @@ test("missing model subscription or uncertain submit never consumes a second job
   assert.deepEqual(calls,["list"]); calls.length=0;
   await assert.rejects(workOne({call,model:{check:async()=>{},generate:async()=>({model:"example",text:'{"variants":[{}]}'})}}),/connection lost/);
   assert.deepEqual(calls,["list","claim","complete"]);
+});
+
+test("a targeted Codex receiver uses only the named owner-queue job and isolates the model from OS MCP", async () => {
+  const dir = await mkdtemp(join(tmpdir(),"ad-codex-test-"));
+  const other = "9131f66c-181d-4e77-8c02-eec74121f096";
+  try {
+    const bin = join(dir,"codex");
+    await writeFile(bin,`#!/usr/bin/env node
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const a = process.argv.slice(2);
+const reply = body => console.log(JSON.stringify(body));
+const target = ${JSON.stringify(jobId)}, other = ${JSON.stringify(other)}, lease = ${JSON.stringify(lease)};
+if (a.includes("--help")) { console.log("--ignore-user-config --ignore-rules --ephemeral --sandbox --json"); return; }
+if (a[0] === "login") { console.error(fs.existsSync("no-chatgpt") ? "Logged in using an API key" : "Logged in using ChatGPT"); return; }
+if (a[0] === "exec") {
+  for (const key of ["OPENAI_API_KEY","BRANDY_OS_MCP_URL","BRANDY_OS_MCP_BEARER","OPENAI_BASE_URL"]) assert.equal(process.env[key],undefined);
+  for (const opt of ["--ephemeral","--ignore-user-config","--ignore-rules",'forced_login_method="chatgpt"', 'web_search="disabled"',"shell_tool","unified_exec","apps","plugins"]) assert.ok(a.includes(opt));
+  assert.equal(a[a.indexOf("--sandbox")+1],"read-only");assert.equal(a[a.indexOf("--model")+1],"example-model");
+  const prompt=fs.readFileSync(0,"utf8");
+  assert.ok(prompt.includes("draft from canon"));assert.ok(!prompt.includes(lease));assert.ok(!a.join(" ").includes("draft from canon"));
+  reply({type:"item.completed",item:{type:"agent_message",text:JSON.stringify({appeals:[{id:"one",meaning:"구매 이유"}]})}});
+  reply({type:"turn.completed"}); return;
+}
+assert.equal(a[0],"app-server");assert.ok(a.includes('mcp_servers.brandy-os.enabled_tools=["list_youtube_ai_jobs","process_youtube_ai_job"]'));
+require("node:readline").createInterface({input:process.stdin}).on("line",line=>{
+  const {id,method,params}=JSON.parse(line);
+  if(method==="initialized") return;
+  if(method==="initialize") return reply({id,result:{}});
+  if(method==="thread/start") {assert.equal(params.ephemeral,true);return reply({id,result:{model:"example-model",modelProvider:"openai",thread:{id:"thread"}}});}
+  if(method==="model/list") {
+    assert.equal(params.includeHidden,true);
+    return reply({id,result:{data:fs.existsSync("stale-cli")?[]:[{model:"example-model"}],nextCursor:null}});
+  }
+  assert.equal(method,"mcpServer/tool/call"); assert.equal(params.server,"brandy-os");assert.equal(params.threadId,"thread");
+  const args = params.arguments;
+  const row = id => ({jobId:id,task:"image-creative",imagePhase:"appeal-options"});
+  const ok = data => reply({id,result:{content:[{type:"text",text:JSON.stringify(data)}]}});
+  if (params.tool==="list_youtube_ai_jobs") {assert.deepEqual(args,{image_text_only:true});return ok({jobs:[row(other),row(target)]});}
+  assert.equal(params.tool,"process_youtube_ai_job");assert.equal(args.job_id,target);
+  fs.appendFileSync("actions",args.action+"\\n");
+  if(args.action==="claim") {
+    if(fs.existsSync("denied")) return reply({id,result:{isError:true,structuredContent:{status:403},content:[]}});
+    return ok({...row(target),lease,instructions:"draft from canon"});
+  }
+  assert.equal(args.action,"complete");assert.equal(args.lease,lease);assert.equal(args.model,"example-model");
+  assert.deepEqual(args.result,{appeals:[{id:"one",meaning:"구매 이유"}]});return ok({done:true});
+});
+`,{mode:0o700});
+    const vars = {...process.env,OPENAI_API_KEY:"fixture",OPENAI_BASE_URL:"https://example.invalid",BRANDY_OS_MCP_URL:"private",BRANDY_OS_MCP_BEARER:"private"};
+    await writeFile(join(dir,"stale-cli"),"");
+    let entered = false;
+    await assert.rejects(withCodexQueue(bin,dir,async () => { entered=true; },{vars}),/모델을 지원하지/);
+    assert.equal(entered,false);
+    await rm(join(dir,"stale-cli"));
+    await withCodexQueue(bin,dir,async ({call,model}) => {
+      await assert.rejects(call("get_document",{}),/MCP/);
+      await assert.rejects(workOne({call,model,jobId:"bad"}),/전체 ID/);
+      assert.equal(await workOne({call,model,jobId:"99462b4a-2f7f-4aec-87f4-d8a397601442"}),"idle");
+      await writeFile(join(dir,"no-chatgpt"),"");
+      await assert.rejects(workOne({call,model,jobId}),/ChatGPT/);
+      await assert.rejects(readFile(join(dir,"actions")),{code:"ENOENT"});
+      await rm(join(dir,"no-chatgpt"));
+      await writeFile(join(dir,"denied"),"");
+      await assert.rejects(workOne({call,model,jobId}),/OS에서 작업을 거절/);
+      await rm(join(dir,"denied"));
+      assert.equal(await workOne({call,model,jobId}),"done");
+      assert.equal(await readFile(join(dir,"actions"),"utf8"),"claim\nclaim\ncomplete\n");
+    },{vars});
+  } finally { await rm(dir,{recursive:true,force:true}); }
 });

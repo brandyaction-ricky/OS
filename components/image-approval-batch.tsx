@@ -16,7 +16,7 @@ const renderLabels = { queued: "출력 대기", active: "출력 중", done: "PNG
 export type ReviewStep = "format" | "copy" | "preview" | "final";
 type ReturnStep = Exclude<ReviewStep, "format">;
 
-export function FormatBoard({ id, size }: {id: ImageFormatId; size: CreativeVariant["size"]}) {
+export function FormatBoard({ id, size, referenceUrl }: {id: ImageFormatId; size: CreativeVariant["size"]; referenceUrl?:string}) {
   const f = IMAGE_FORMATS[id];
   const example: CreativeVariant = {
     id: "format-guide", formatId: id, formatVersion: f.version, size,
@@ -25,16 +25,18 @@ export function FormatBoard({ id, size }: {id: ImageFormatId; size: CreativeVari
     ...(f.supportsAsset && !f.backgroundPhoto ? {asset:{path:"guide",w:1536,h:1024}} : {}), at:"", by:"guide",
   };
   return <figure className="ic-card ic-guide-card">
-    {id === "thumbnail_subject" ? <ImageFormatSample id={id} size={size}/> : isWarehouseFormat(id) ? <WarehouseVariantPreview variant={example} assetUrl="/image-format-test/master.jpg"/>
+    {id === "reference_image" ? (referenceUrl &&
+      // eslint-disable-next-line @next/next/no-img-element -- project-specific reference, no generic sample
+      <img className="ic-compare-photo" alt="선택한 디자인 원본" src={referenceUrl}/>) : id === "thumbnail_subject" ? <ImageFormatSample id={id} size={size}/> : isWarehouseFormat(id) ? <WarehouseVariantPreview variant={example} assetUrl="/image-format-test/master.jpg"/>
       : <LegacyPreview variant={example} url="/image-format-test/master.jpg"/>}
     <figcaption className="ic-card-body"><strong>{f.name}</strong><p>{f.when}</p><small>{CREATIVE_SIZES[size].label} · 포맷 구성 견본</small></figcaption>
   </figure>;
 }
 
-export function WinnerArtwork({variant,url,projectId,photo,demo}:{variant:CreativeVariant;url?:string;projectId:string;photo?:string;demo:boolean}) {
+export function WinnerArtwork({variant,url,projectId,photo,referenceUrl,detailUrl,demo}:{variant:CreativeVariant;url?:string;projectId:string;photo?:string;referenceUrl?:string;detailUrl?:string;demo:boolean}) {
   if (demo) return isWarehouseFormat(variant.formatId)
     ? <WarehouseVariantPreview variant={variant} assetUrl={photo}/>
-    : <LegacySavedPng projectId={projectId} variant={variant} assetUrl={photo}/>;
+    : <LegacySavedPng projectId={projectId} variant={variant} assetUrl={photo} referenceUrl={referenceUrl} detailUrl={detailUrl}/>;
   if (!url) return <p role="status">최종 출력본을 다시 불러와 주세요.</p>;
   // eslint-disable-next-line @next/next/no-img-element -- signed URL for the winning, reviewed PNG.
   return <img className="ic-compare-photo" src={url} alt={variant.copy.headline}/>;
@@ -74,7 +76,7 @@ export function ImageApprovalBatch({ batch, index, variants, assets, projectId, 
   return <section className="ic-review-group" aria-label={`${index+1}번째 묶음 검토`}>
     <div className="ic-row"><h3>{index+1}번째 묶음 · {variants.length}장</h3><strong>{stageText}</strong></div>
     {!stages?.format && <div className="ic-preview-grid">{[...new Set(variants.map(v=>v.formatId))].map(id=>
-      <FormatBoard key={id} id={id} size={variants.find(v=>v.formatId===id)!.size}/>)}</div>}
+      <FormatBoard key={id} id={id} size={variants.find(v=>v.formatId===id)!.size} referenceUrl={assets.find(a=>a.path===variants.find(v=>v.formatId===id)?.referenceLayout?.source.path)?.url}/>)}</div>}
     {final && experimentRound && registerWinner && <details className="ic-details"><summary>집행 결과 메모 (선택)</summary>
       <label className="ic-field">결과 메모<input className="field" maxLength={500} value={resultNote} onChange={e=>setResultNote(e.target.value)} placeholder="비교한 기간 또는 승리 판단 근거"/></label>
     </details>}
@@ -82,7 +84,7 @@ export function ImageApprovalBatch({ batch, index, variants, assets, projectId, 
       {recorded.note && <span> · {recorded.note}</span>}</p>}
     <div className="ic-preview-grid">
       {experimentRound && alternateCandidates.map(candidate=><article key={candidate.id} className={`ic-card ${winner?.variantId===candidate.id ? "ic-selected" : ""}`}>
-        <WinnerArtwork variant={candidate} projectId={projectId} url={rendered?.[candidate.id]} demo={demo} photo={assets.find(a=>a.path===candidate.asset?.path)?.url}/>
+        <WinnerArtwork variant={candidate} projectId={projectId} url={rendered?.[candidate.id]} demo={demo} photo={assets.find(a=>a.path===candidate.asset?.path)?.url} referenceUrl={assets.find(a=>a.path===candidate.referenceLayout?.source.path)?.url} detailUrl={assets.find(a=>a.path===candidate.detailAsset?.path)?.url}/>
         <div className="ic-card-body"><strong>{candidate.id===control?.id ? "기존 승리 소재" : "디자인 수정본"}</strong><h3>{candidate.copy.headline}</h3><p>{candidate.copy.body}</p><small>{candidate.copy.cta}</small>
           {final && registerWinner && <p><button type="button" className="secondary-button" disabled={busy} aria-pressed={winner?.variantId===candidate.id}
             onClick={()=>registerWinner(batch.id,candidate.id,resultNote)}>{candidate.id===control?.id ? "기존 소재 승리로 기록" : "승리 소재로 지정"}</button></p>}
@@ -104,7 +106,7 @@ export function ImageApprovalBatch({ batch, index, variants, assets, projectId, 
               onReady={ok=>setFinalReady(old=>old[readyKey]===ok?old:{...old,[readyKey]:ok})}/>
             : !demo && done ? <p role="status">검수용 출력본을 불러오는 중입니다.</p>
             : isWarehouseFormat(v.formatId) ? <WarehouseVariantPreview variant={v} assetUrl={url} onReady={keep} onCheck={onCheck}/>
-            : <LegacySavedPng projectId={projectId} variant={v} assetUrl={url} onReady={keep} onCheck={onCheck}/>}
+            : <LegacySavedPng projectId={projectId} variant={v} assetUrl={url} referenceUrl={assets.find(a=>a.path===v.referenceLayout?.source.path)?.url} detailUrl={assets.find(a=>a.path===v.detailAsset?.path)?.url} onReady={keep} onCheck={onCheck}/>}
           {showGuide && <SafeZoneOverlay size={v.size} design={v.design}/>}
         </div>}
         <div className="ic-card-body"><strong>{IMAGE_FORMATS[v.formatId].name}</strong>
