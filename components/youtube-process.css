@@ -1563,6 +1563,8 @@
 .linear-shell .ui-v2.yp .yp-arc-acts{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .linear-shell .ui-v2.yp .yp-arc-acts .yp-in{min-width:0;font-size:12px}
 .linear-shell .ui-v2.yp .yp-arc-links{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.linear-shell .ui-v2.yp .yp-arc-meeting{display:flex;flex-wrap:wrap;align-items:center;gap:6px;width:100%}
+.linear-shell .ui-v2.yp .yp-arc-meeting .yp-in{flex:1 1 160px;min-width:0;font-size:12px}
 .linear-shell .ui-v2.yp .yp-arc-table{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
 .linear-shell .ui-v2.yp .yp-arc-table table{width:100%;border-collapse:collapse;font-size:13px}
 .linear-shell .ui-v2.yp .yp-arc-table th,.linear-shell .ui-v2.yp .yp-arc-table td{padding:6px 8px;border-bottom:1px solid var(--line-soft);text-align:left;vertical-align:top}
