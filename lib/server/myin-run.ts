@@ -388,7 +388,22 @@ export async function latestMyinRun(actor: RequestActor, sourceId: string) {
   const { data } = await actor.supabase.from("os_records").select("*").eq("parent_id", sourceId).eq("record_type", "ai_job")
     .eq("metadata->>kind", MYIN_RUN_KIND).is("archived_at", null).order("created_at", { ascending: false }).limit(1);
   const record = data?.[0] as OsRecord | undefined;
-  return record ? { ...presentMyinRun(record), scriptChanged: await scriptChanged(actor.supabase, parse(record)) } : null;
+  return record ? { ...presentMyinRun(record), scriptChanged: await scriptChanged(actor.supabase, parse(record)),
+    storyboardJob: record.stage === "words_ready" ? await storyboardJobNow(sourceId, actor.id).catch(() => null) : null } : null;
+}
+
+/**
+ * 로건 11-13 자동 흐름: the storyboard (first one or a 관문 fix) goes to someone's own AI by itself, so whoever opens the video sees whose
+ * AI has it and where it is — not 「내 AI에 보내기」, which would ask their own AI for a second one.
+ */
+async function storyboardJobNow(sourceId: string, viewer: string) {
+  const service = createServiceSupabase();
+  const { data } = await service.from("os_records").select("owner_id,status,metadata").eq("record_type", "ai_job").eq("metadata->>kind", "youtube_staff_ai_v1")
+    .eq("parent_id", sourceId).eq("metadata->>task", "storyboard").in("status", ["backlog", "active"]).is("archived_at", null).order("created_at", { ascending: false }).limit(1);
+  const row = data?.[0] as { owner_id: string | null; status: string; metadata: { claimedAt?: string } } | undefined;
+  if (!row?.owner_id) return null;
+  const { data: profile } = await service.from("os_profiles").select("display_name").eq("id", row.owner_id).maybeSingle();
+  return { name: String(profile?.display_name ?? ""), status: row.status, claimedAt: row.metadata?.claimedAt ?? null, mine: row.owner_id === viewer };
 }
 
 /**
