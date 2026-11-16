@@ -1477,6 +1477,8 @@
 .linear-shell .ui-v2.yp .yp-escreen-bar .yp-sp{flex:1}
 .linear-shell .ui-v2.yp .yp-escreen-made{font-size:12px;white-space:nowrap}
 .linear-shell .ui-v2.yp .yp-escreen iframe{flex:1;width:100%;border:0}
+/* 로건 11-13 「제작 탭 = 편집 화면 하나」: the same screen in the page, tall enough for its timeline; 크게 보기 puts it back over the window. */
+.linear-shell .ui-v2.yp .yp-escreen.yp-escreen-inline{position:relative;inset:auto;z-index:auto;height:min(82vh,900px);min-height:520px;margin-bottom:12px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
 .linear-shell .ui-v2.yp .yp-escreen-wait{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;color:var(--text-2);font-size:14px;text-align:center}
 @media (max-width:520px){.linear-shell .ui-v2.yp .yp-escreen-row{flex-wrap:wrap}.linear-shell .ui-v2.yp .yp-escreen-row .yp-btn{width:100%}.linear-shell .ui-v2.yp .yp-escreen-made{display:none}}
 

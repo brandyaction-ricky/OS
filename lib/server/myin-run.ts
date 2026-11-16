@@ -4,6 +4,7 @@ import { ApiError } from "@/lib/http";
 import { myinBreathText, myinCleanScript, myinRunMatchesScript, myinScriptMarkdown } from "@/lib/myin-script";
 import { localOwner, movePinned, pinnedElsewhere, placeFilter, settingsPlace } from "@/lib/myin-local";
 import { changedMaterials, type MyinMaterials } from "@/lib/myin-materials";
+import { myinStop } from "@/lib/myin-stop";
 import { planVoiceFix } from "@/lib/myin-voice-plan";
 import { applySubtitleEdits, subtitleIssues, subtitleLines, subtitleTextProblem } from "@/lib/myin-subtitles";
 import { applyMyinSoundPlan, MYIN_METAPHOR_TYPES, myinDriftPairs, myinOnlySoundChanged, myinTextPairs, myinPhotoFetchUrl, myinPhotoFolders, myinPrepPhotos, myinSceneStarts, myinSoundIssues, myinSoundPlan, myinStoryboardSchema, type MyinSoundPlan } from "@/lib/myin-storyboard";
@@ -135,6 +136,7 @@ const runSchema = z.object({
   prepared: z.object({ path: z.string(), misses: z.array(z.string()), sheets: z.array(z.string()), credits: z.array(z.string()), at: z.string().datetime(), used: materialsSchema.optional(), engine: engineFp.optional(),
     storyboardPath: z.string().optional(), cells: z.array(z.number().int().min(1).max(400)).max(600).optional(), storyAt: z.string().max(40).optional(),
     /** 우리 이미지 nobody uploaded, drawn as a gray 「사진 자리」 at ④ (로건 11-13): the video goes on and names them as 바꿀 사진. */ standIns: z.array(z.string().max(200)).max(60).optional(),
+    /** 렌더 전 관문 lines still there after MYIN_GATE_ROUNDS fixes: shown on the editor as 「여기서 사람 확인 필요」 (로건 11-13). */ needsPerson: z.array(z.string().max(300)).max(60).optional(),
     drawn: z.object({ at: z.string().datetime(), scenes: z.array(z.number().int().min(1).max(400)).max(600), lines: z.array(z.string().max(300)).max(60) }).strict().optional(),
     redraw: z.object({ state: z.enum(["pending", "drawing", "failed"]), at: z.string().datetime(), attempts: z.number().int().min(0).max(20), token: z.string().uuid().optional(),
       expiresAt: z.string().datetime().optional(), storyboardAt: z.string().max(40).optional(), path: z.string().optional(), code: z.string().max(80).optional() }).strict().optional() }).strict().optional(),
@@ -155,7 +157,12 @@ const runSchema = z.object({
   localFinish: z.object({ by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict().optional(),
   // 제작 설정 (직원 요청 2026-11-05): where every later step is made and whether GPT checks the screens, chosen once when the video starts
   // (or changed later) instead of at each step. 「내 컴퓨터」 is the computer of whoever chose it.
-  settings: z.object({ place: z.enum(["pc", "local"]), screenCheck: z.boolean(), by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict().optional(),
+  // 로건 11-13 (대표 11-16 「자동」): whether the storyboard waits for a person's 확인 or goes on by itself once the OS check passes (기본 자동, 롱폼).
+  settings: z.object({ place: z.enum(["pc", "local"]), screenCheck: z.boolean(), confirm: z.enum(["auto", "person"]).optional(), by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict().optional(),
+  // 로건 11-13: the paid steps (voice, 구독 대사 voice) approved once by a person when the video starts — 「완성」 then asks no more.
+  paidOk: z.object({ by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict().optional(),
+  // 렌더 전 관문 sends at ③ in a row (a person's 수정 요청 resets it); past MYIN_GATE_ROUNDS the video goes on and marks them 사람 확인 필요.
+  gateRounds: z.number().int().min(0).max(50).optional(),
   // 사운드 창고 (2026-10-27): Logan's music match report from the ③ preparation, and who last changed the sound at ④.
   sound: z.object({ report: z.string().max(20_000), at: z.string().datetime(),
     edited: z.object({ by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict().optional() }).strict().optional(),
@@ -224,7 +231,8 @@ export function presentMyinRun(record: OsRecord) {
     assetDecisions: Object.fromEntries(Object.entries(run.assets ?? {}).map(([file, value]) => [file, { decision: value.decision }])),
     ctaReady: run.cta ? `${run.cta.filter((c) => c.status === "ready").length}/${run.cta.length}` : null,
     prepared: run.prepared ? { misses: run.prepared.misses, sheets: run.prepared.sheets.length, credits: run.prepared.credits, at: run.prepared.at,
-      redraw: run.prepared.redraw?.state ?? null, redrawnAt: run.prepared.drawn?.at ?? null, standIns: (run.prepared.standIns ?? []).filter((file) => !run.ours?.[file]) } : null,
+      redraw: run.prepared.redraw?.state ?? null, redrawnAt: run.prepared.drawn?.at ?? null, standIns: (run.prepared.standIns ?? []).filter((file) => !run.ours?.[file]),
+      needsPerson: run.prepared.needsPerson ?? [] } : null,
     clips: run.clips ? run.clips.items.map(({ name, label }) => ({ name, label })) : null, clipsReview: run.clipsReview ?? null, sound: run.sound ?? null,
     stills: run.stills ? { at: run.stills.at, files: run.stills.files } : null, screenCheckAuto: !run.screenCheckOff,
     final: run.final ? { bytes: run.final.bytes, durationSeconds: run.final.durationSeconds, lufs: run.final.lufs, peak: run.final.peak, at: run.final.at } : null,
@@ -233,7 +241,8 @@ export function presentMyinRun(record: OsRecord) {
     style: run.style ? { id: run.style.id, name: run.style.name, version: run.style.version, channel: run.style.channel } : null,
     lastErrorCode: run.lastError?.code ?? null, waitingPhotos: (run.lastError?.files ?? []).filter((file) => !run.ours?.[file]), createdAt: record.created_at, local: run.local ? { by: run.local.by, name: run.local.name } : null,
     localFinish: run.localFinish ? { by: run.localFinish.by, name: run.localFinish.name } : null, clipsStale: previewStale(run),
-    settings: run.settings ? { place: run.settings.place, screenCheck: run.settings.screenCheck, name: run.settings.name } : null,
+    settings: run.settings ? { place: run.settings.place, screenCheck: run.settings.screenCheck, confirm: run.settings.confirm ?? "auto", name: run.settings.name } : null,
+    autoConfirm: autoConfirms(run), paidOk: Boolean(run.paidOk), gateRounds: run.gateRounds ?? 0,
     photoCredits: Object.fromEntries(Object.entries(run.ours ?? {}).map(([file, image]) => [file, image.credit ? { source: image.credit.source, license: image.credit.license, url: image.credit.url }
       : { source: `우리 이미지 · ${image.name}`, license: "", url: null }])), localReady: Boolean(run.words?.voice) && !run.layout,
     // 로건 피드백 10/26-8: when the render PC took this step, so the screen can say how long it has been working.
@@ -275,7 +284,33 @@ export async function saveMyinStoryboard(service: Service, record: OsRecord, run
   const next: MyinRun = { ...run, storyboard: { path, ...storyboardFields(value.storyboard), model: value.model, at: new Date().toISOString(),
     reasons: value.reasons, assets: value.assets, fuzzy: value.fuzzy.slice(0, 60), notes: value.notes, ...(value.reading?.length ? { reading: value.reading.slice(0, 40) } : {}) } };
   delete next.review;
-  return save(service, record, "backlog", "storyboard_review", next);
+  const saved = await save(service, record, "backlog", "storyboard_review", next);
+  return autoConfirms(next) ? confirmByItself(service, saved).catch((error) => {
+    console.error(JSON.stringify({ event: "storyboard_auto_confirm_failed", runId: record.id, message: error instanceof Error ? error.message : String(error) }));
+    return saved;
+  }) : saved;
+}
+
+/** Who confirms a storyboard that went on by itself (the panel and the news name it in place of a person). */
+export const MYIN_AUTO_CONFIRM_NAME = "자동 확인";
+/** 렌더 전 관문 rounds before the video goes on with what is left marked 사람 확인 필요 (로건 11-13: 「3번 넘게 반복되면」). */
+export const MYIN_GATE_ROUNDS = 3;
+/** 기획표 확인 「자동」 (대표 11-16, 기본): a 롱폼 whose 제작 설정 does not ask for a person. A 숏폼 keeps its 확인. */
+export const autoConfirms = (run: Pick<MyinRun, "layout" | "settings">) => !run.layout && run.settings?.confirm !== "person";
+
+/**
+ * 기획표 확인 「자동」: the storyboard the OS check passed is confirmed as a person's 확인 would be — placed by the 제작 설정 and ③ starts.
+ * A changed 원고 or a 「내 컴퓨터」 that cannot make this video leaves it at 확인 대기 for a person.
+ */
+async function confirmByItself(service: Service, record: OsRecord) {
+  const run = parse(record);
+  await assertCurrent(service, run);
+  const by = run.settings?.by ?? record.owner_id ?? record.created_by ?? "";
+  const next: MyinRun = { ...run, review: { decision: "confirmed", by, name: MYIN_AUTO_CONFIRM_NAME, note: "", at: new Date().toISOString() } };
+  placeStep(next, { ownerId: by, name: run.settings?.name ?? "" } as RequestActor);
+  if (run.settings?.screenCheck ?? true) delete next.screenCheckOff; else next.screenCheckOff = true;
+  const saved = await save(service, record, "done", "storyboard_confirmed", next);
+  return beginDraft(service, saved, parse(saved));
 }
 /** What the ③ panel shows of a storyboard: its scene count, metaphor scenes, 구독 대사 and 한 장 정리. */
 function storyboardFields(storyboard: Record<string, unknown>) {
@@ -299,7 +334,7 @@ export async function reviewMyinStoryboard(actor: RequestActor, runId: string, d
   if (decision === "confirmed") await assertCurrent(service, run);
   const next: MyinRun = { ...run, review: { decision, by: actor.id, name: actor.name, note: note.trim().slice(0, 2000), at: new Date().toISOString(), ...(decision === "revise" && scenes?.length ? { scenes } : {}) } };
   if (decision === "confirmed") { placeStep(next, actor, place); if (screenCheck ?? run.settings?.screenCheck ?? true) delete next.screenCheckOff; else next.screenCheckOff = true; }
-  if (decision === "revise") { delete next.prepared; delete next.clips; delete next.stills; delete next.clipsReview; delete next.sound; delete next.lease; return presentMyinRun(await save(service, record, "backlog", "words_ready", next)); }
+  if (decision === "revise") { delete next.prepared; delete next.clips; delete next.stills; delete next.clipsReview; delete next.sound; delete next.lease; delete next.gateRounds; return presentMyinRun(await save(service, record, "backlog", "words_ready", next)); }
   // 2026-10-27 대표: 시안(도식·글자)을 먼저 본다. 사진 허락과 구독 대사 음성은 시안 확인 뒤 ④ 자료 준비에서(2026-10-19의 「확인 = 사진 허락」을 옮김).
   const saved = await save(service, record, "done", "storyboard_confirmed", next);
   return presentMyinRun(await beginDraft(service, saved, parse(saved)));
@@ -320,7 +355,7 @@ function placeStep(run: MyinRun, actor: RequestActor, place?: "pc" | "local") {
 }
 
 /** 제작 설정 바꾸기: steps that start after this follow the new choice; a step already waiting is moved with 만드는 곳 buttons. */
-export async function setMyinSettings(actor: RequestActor, runId: string, choice: { place: "pc" | "local"; screenCheck: boolean }) {
+export async function setMyinSettings(actor: RequestActor, runId: string, choice: { place: "pc" | "local"; screenCheck: boolean; confirm?: "auto" | "person" }) {
   const service = createServiceSupabase();
   const { record, run } = await visibleRun(actor, runId);
   if (run.final && record.stage === "final_ready") throw new ApiError(409, "MYIN_SETTINGS_DONE", "완성된 영상이에요. 다시 만들 때 바꿔 주세요.");
@@ -377,7 +412,7 @@ async function assertOneChannel(sourceId: string, markdownHash: string, channel:
 export const runVoice = (run?: { voiceReference?: string }) => run?.voiceReference || process.env.FISH_VOICE_REFERENCE_ID?.trim() || "";
 
 /** [v13 음성 만들기]: any member who can read the video starts its one run for the approved script (owner decision 2026-10-20: no extra roles). */
-export async function createMyinRun(actor: RequestActor, sourceId: string, styleId?: string, settings?: { place: "pc" | "local"; screenCheck: boolean }) {
+export async function createMyinRun(actor: RequestActor, sourceId: string, styleId?: string, settings?: { place: "pc" | "local"; screenCheck: boolean; confirm?: "auto" | "person" }, paidOk = false) {
   const input = await currentInput(actor.supabase, sourceId);
   const cards = (await readChannelStyles()).styles;
   const picked = styleId ? cards.find((style) => style.id === styleId) : undefined;
@@ -400,6 +435,7 @@ export async function createMyinRun(actor: RequestActor, sourceId: string, style
     voiceModel: MYIN_VOICE_MODEL, voiceReferenceFingerprint: fingerprint, ...(channelVoice ? { voiceReference: channelVoice } : {}), attempts: 0, ...(input.layout ? { layout: input.layout } : {}), ...(onPc ? { voiceOn: "render_pc" as const } : {}),
     ...(picked ? { style: pinStyle(picked) } : {}),
     ...(settings ? { settings: { ...settings, by: actor.ownerId, name: actor.name, at: new Date().toISOString() } } : {}),
+    ...(paidOk && actor.type === "user" ? { paidOk: { by: actor.ownerId, name: actor.name, at: new Date().toISOString() } } : {}),
     paragraphs: input.spoken.map((text, index) => ({ index, textHash: sha(text), status: "pending" })) };
   const { data, error } = await actor.supabase.from("os_records").insert({
     id, record_type: "ai_job", title: `${input.state.source.title} · ${input.layout ? "숏폼 " : ""}v13 음성·받아쓰기`.slice(0, 240),
@@ -602,7 +638,9 @@ const bundleSchema = z.object({
 
 /** Render PC: the bundle is up; the OS reads it back before the run moves on. */
 /** Back at 받아쓰기 끝 with no storyboard: it goes to the AI that wrote the last one (that file imports this one, so it loads here). */
-const resendStoryboard = (sourceId: string, runId: string) => import("./youtube-ai-jobs").then((module) => module.resendStoryboard(sourceId))
+// 로건 11-13 자동 흐름: with 확인 「자동」 the first storyboard too — asked of the AI of whoever started the video.
+const resendStoryboard = (sourceId: string, runId: string, first?: string) => import("./youtube-ai-jobs")
+  .then(async (module) => await module.resendStoryboard(sourceId) ?? (first ? module.requestFirstStoryboard(sourceId, first) : null))
   .catch((error) => console.error(JSON.stringify({ event: "storyboard_resend_failed", runId, message: error instanceof Error ? error.message : String(error) })));
 
 export async function completeMyinWords(input: { runId: string; lease: string; voice?: { parts: number; bytes: number; sha256: string }; preview?: { bytes: number } }, service: Service = createServiceSupabase()) {
@@ -625,7 +663,7 @@ export async function completeMyinWords(input: { runId: string; lease: string; v
   const stage = run.voiceResume ?? "words_ready";
   if (run.voiceResume) next.voiceChanged = { at: new Date().toISOString(), count: run.voiceFixes?.length ?? 0 };
   await save(service, record, "done", stage, next);
-  if (stage === "words_ready") await resendStoryboard(run.sourceId, record.id);
+  if (stage === "words_ready") await resendStoryboard(run.sourceId, record.id, autoConfirms(run) ? run.settings?.by ?? record.owner_id ?? undefined : undefined);
   // His dictionaries as the render PC left them (new lines from voice_fix, or his starting set): the OS keeps what it does not have.
   await reportVoiceDictionary((bundle.data as { dictionary?: Partial<VoiceDictionaryFiles> }).dictionary, { id: record.owner_id ?? "", team: record.team ?? "" }, service)
     .catch((error) => console.error(JSON.stringify({ event: "voice_dictionary_report_failed", message: error instanceof Error ? error.message : String(error) })));
@@ -1150,8 +1188,12 @@ export async function completeMyinPrep(input: { runId: string; lease: string }, 
   // as its 수정 요청 (the next staff-AI pass gets the list); ④ still stops for a person, who sees the same list.
   // 덱 배치 v2 (2026-11-10): the render PC also times each cut against the voice with the engine's scene times (늦게 바뀜 · 빈 화면 · N초 미만 장면).
   const gate = draft ? bundle.misses.filter((line) => /못 찾음|빈 화면|그리기 오류|늦게 바뀜|초 미만 장면/.test(line)) : [];
-  if (gate.length) {
-    const back: MyinRun = { ...next, review: { decision: "revise", by: record.owner_id ?? run.review?.by ?? record.created_by ?? "", name: MYIN_GATE_NAME,
+  // 로건 11-13: the same problem sent back again and again stops nothing — past MYIN_GATE_ROUNDS it goes on, marked for a person.
+  const rounds = gate.length ? (run.gateRounds ?? 0) + 1 : 0;
+  const goOn = gate.length > 0 && rounds > MYIN_GATE_ROUNDS;
+  if (goOn) next.prepared!.needsPerson = gate.slice(0, 60);
+  if (gate.length && !goOn) {
+    const back: MyinRun = { ...next, gateRounds: rounds, review: { decision: "revise", by: record.owner_id ?? run.review?.by ?? record.created_by ?? "", name: MYIN_GATE_NAME,
       note: `렌더 전 관문에서 걸린 곳 ${gate.length}개를 고쳐 주세요: ${gate.slice(0, 12).join(" / ")}`.slice(0, 2000), at: new Date().toISOString() } };
     delete back.prepared; delete back.clips; delete back.stills; delete back.clipsReview; delete back.sound;
     await save(service, record, "backlog", "words_ready", back);
@@ -1160,7 +1202,8 @@ export async function completeMyinPrep(input: { runId: string; lease: string }, 
   }
   // ③ with nothing missing: the drafts are next, without anyone pressing a button. ④ stops here for the sound and photos check;
   // a 숏폼 has no sound to check (voice only), so its full video starts.
-  const stage = bundle.misses.length ? "prep_ready" : draft ? "clips_pending" : run.layout || run.resumeFinal ? "final_pending" : "prep_ready";
+  const rest = goOn ? bundle.misses.filter((line) => !gate.includes(line)) : bundle.misses;
+  const stage = rest.length ? "prep_ready" : draft ? "clips_pending" : run.layout || run.resumeFinal ? "final_pending" : "prep_ready";
   delete next.resumeFinal;
   if (stage === "final_pending") retireFinal(next);
   await save(service, record, stage === "prep_ready" ? "done" : "backlog", stage, next);
@@ -1611,8 +1654,10 @@ export async function completeMyinFinal(input: { runId: string; lease: string; b
     at: new Date().toISOString(), ...(subtitles ? { subtitles } : {}), used: materials(run), ...drewWith(run) } };
   delete next.lease; delete next.lastError; delete next.voiceChanged;
   await save(service, record, "done", "final_ready", next);
-  // The first final made from the scene pictures replaces them on the editor screen: from here editing works on finals, as before.
-  if (!run.layout) await import("./myin-edit").then((edit) => edit.dropDraftVersion(service, run.sourceId, record.id)).catch(() => undefined);
+  // A final made from the scene pictures as they were keeps them as its own version on the editor screen (로건 11-13: v1 opens there at once);
+  // one made after anything changed replaces them, and an editing computer puts that final up as its own version, as before.
+  if (!run.layout) await import("./myin-edit").then((edit) => run.stills && (changedSince(run.stills.used, run) ?? ["?"]).length === 0
+    ? edit.linkDraftVersion(service, run.sourceId, record.id, next.final!.at) : edit.dropDraftVersion(service, run.sourceId, record.id)).catch(() => undefined);
   return { runId: record.id, stage: "final_ready" };
 }
 
@@ -1678,6 +1723,33 @@ export async function myinEarlierStyles(actor: RequestActor, sourceId: string) {
   const { data: sources } = await actor.supabase.from("os_records").select("id,title").in("id", [...latest.keys()]).is("archived_at", null);
   const titles = new Map((sources ?? []).map((source) => [source.id as string, String(source.title)]));
   return { videos: [...latest].filter(([id]) => titles.has(id)).map(([id, { at, style }]) => ({ title: titles.get(id)!, at, style: { id: style.id, name: style.name, version: style.version } })) };
+}
+
+/**
+ * 진행 소식 (로건 11-13: 「진행 소식은 AI 채팅에도」): where the newest video stands, as lines for the editor's AI chat news — the start,
+ * the words, the storyboard and its 확인 or 관문, the scene pictures, the finished video and a stop. Read from the run as it is now.
+ */
+export async function myinMakingNews(service: Service, projectId: string) {
+  const { data } = await service.from("os_records").select("*").eq("parent_id", projectId).eq("record_type", "ai_job").eq("metadata->>kind", MYIN_RUN_KIND)
+    .is("archived_at", null).order("created_at", { ascending: false }).limit(1);
+  const record = data?.[0] as OsRecord | undefined;
+  if (!record) return [];
+  const run = parse(record), out: { at: string; kind: string; text: string }[] = [];
+  out.push({ at: record.created_at, kind: "making", text: `영상 만들기를 시작했어요: 음성 ${run.paragraphs.length}문단 · 받아쓰기 · 자막.` });
+  if (run.words) out.push({ at: run.words.at, kind: "making", text: `음성 · 받아쓰기 · 자막이 끝났어요(낭독 ${Math.round(run.words.durationSeconds / 60)}분).${autoConfirms(run) ? " 내 AI가 장면 기획표를 써요." : ""}` });
+  if (run.storyboard) out.push({ at: run.storyboard.at, kind: "making", text: `장면 기획표가 나왔어요(장면 ${run.storyboard.scenes}개).` });
+  const review = run.review;
+  if (review) out.push({ at: review.at, kind: review.decision === "confirmed" ? "making" : "gate", text: review.decision === "confirmed"
+    ? review.name === MYIN_AUTO_CONFIRM_NAME ? "OS 검사를 통과해 기획표를 자동으로 확인했어요. 장면 그림을 만들어요." : `${review.name}님이 기획표를 확인했어요. 장면 그림을 만들어요.`
+    : review.name === MYIN_GATE_NAME ? `렌더 전 관문에서 걸린 곳을 내 AI가 고쳐요(${run.gateRounds ?? 1}회차).` : `${review.name}님이 기획표 수정을 요청했어요: “${review.note.slice(0, 120)}”` });
+  if (run.stills) out.push({ at: run.stills.at, kind: "making", text: "장면 그림이 편집 화면 타임라인에 깔렸어요(v0). 보고 고친 뒤 「완성」을 누르면 움직이는 최종본을 만들어요." });
+  const prepared = run.prepared;
+  if (prepared?.needsPerson?.length) out.push({ at: prepared.at, kind: "person", text: `관문에서 ${MYIN_GATE_ROUNDS}번 넘게 걸린 곳이 있어 여기서 사람 확인이 필요해요: ${prepared.needsPerson.slice(0, 6).join(" / ")}` });
+  const standIns = (prepared?.standIns ?? []).filter((file) => !run.ours?.[file]);
+  if (prepared && standIns.length) out.push({ at: prepared.at, kind: "person", text: `우리 이미지 ${standIns.length}장이 없어 회색 사진 자리로 넣었어요: ${standIns.join(" · ")}. 올리면 다시 만들어요.` });
+  if (run.final) out.push({ at: run.final.at, kind: "making", text: `완성본이 나왔어요(${Math.floor(run.final.durationSeconds / 60)}분 ${Math.round(run.final.durationSeconds % 60)}초).` });
+  if (record.status === "blocked" && run.lastError) out.push({ at: run.lastError.at, kind: "stopped", text: `멈췄어요: ${myinStop(run.lastError.code).why}` });
+  return out;
 }
 
 /** Short-lived addresses of the clips and the finished files for the ③ panel. */

@@ -52,8 +52,9 @@ export interface FeedVersion { at: string; edit: { name: string; pc: string; ord
  * to them — the editor screen itself shows none of it (P10: no version numbers or order lists on the screen).
  */
 export function editFeed(state: { lock: { name: string; pc: string; since: string } | null; orders: FeedOrder[]; versions: FeedVersion[]; uploadedAt: string | null; history?: LockEvent[];
-  waitingFeedback?: { at: string; text: string; who: string }[] }, since: string | null) {
-  const out: { at: string; kind: string; text: string }[] = [];
+  waitingFeedback?: { at: string; text: string; who: string }[]; making?: { at: string; kind: string; text: string }[] }, since: string | null) {
+  // 로건 11-13: how the video is being made (음성 → 기획표 → 관문 → 장면 그림 → 완성본, a stop) comes first-hand in the same news.
+  const out: { at: string; kind: string; text: string }[] = [...(state.making ?? [])];
   // v3 6-6: 최종 검토 feedback no order answers yet — the member's AI reads it and orders it (or says it cannot be done).
   for (const f of state.waitingFeedback ?? []) out.push({ at: f.at, kind: "feedback", text: `${f.who}님 최종 검토 피드백이 들어왔어요: “${f.text}” 아직 편집 주문이 안 됐어요.` });
   // The lock's own record when there is one; a session from before it was kept says only who edits now.

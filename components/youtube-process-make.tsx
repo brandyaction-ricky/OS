@@ -10,7 +10,6 @@ import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
 import { personName, projectName, topicKeywords, stepHref } from "@/lib/youtube-process/project";
 import { finalPair, MAKE_STEPS, SLOTS, thumbsMissing, type YpMake, type YpPlan, type YpSlot } from "@/lib/youtube-process/stages";
 import { MyinV13Panel } from "./myin-v13-panel";
-import { EditorScreenEntry } from "./editor-screen";
 import { FormulaNote, JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
 import { GateBanner, gateSub, md, stepAction, Subject, useYpBundle, YpFrame, YpSection, LockedStep, type YpPage } from "./youtube-process-frame";
 import { ThumbView } from "./youtube-process-media";
@@ -166,10 +165,10 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
           <span>{final.source === "myin" ? "자동 제작" : final.name} · {md(final.at)} · {sizeLabel(final.bytes)}{final.durationSeconds ? ` · ${Math.floor(final.durationSeconds / 60)}분 ${Math.round(final.durationSeconds % 60)}초` : ""}</span></li>)}</ul> : null}
         {auto && page.demo ? <div className="yp-note yp-gray"><div>데모에서는 자동 제작을 하지 않아요.</div></div> : null}
         {auto && !page.demo ? <MyinV13Panel sourceId={project.id} title={projectName(project)} embedded onFinal={onFinal} short={short} channel={project.yp.topic.channel}
+          folded={!short} finals={finals.some(final => final.source === "myin") ? finals.length : 0}
           voiceText={shortScript ? scriptLines(shortScript.text).map(line => line.text).join(" ") : myinCleanScript(myinScriptMarkdown(null, narrationFromMarkdown(bundle.stages.outline.data.script))).spoken.join("\n")}
           finalNote={<p className="yt-note">최종본 v{finals.length || 1} 완성. {short ? "소리를 확인하고 [다음: 최종 검토]를 눌러요." : "소리를 확인하고 최종 썸네일 A · B를 올려요."}</p>} /> : null}
-        {/* 장면 그림 v0 (편집기 3차 요청 11-09): the editor screen opens before the first final too; it shows itself once there is something to edit. */}
-        {auto && !page.demo && !short ? <EditorScreenEntry token={page.accessToken} projectId={project.id} title={projectName(project)} onFinal={onFinal} finals={finals.some(final => final.source === "myin") ? finals.length : 0} /> : null}
+        {/* 로건 11-13 「제작 탭 = 편집 화면 하나」: a 롱폼's editor screen sits inside the panel (folded), above where the video is now. */}
         {progress !== null ? <div className="yp-drop"><Upload size={22} aria-hidden="true" /><b>최종본 v{finals.length + 1} 올리는 중</b><div className="yp-dprog"><i style={{ width: `${progress}%` }} /></div><span style={{ fontSize: 12 }}>{progress}%, 다 올라갈 때까지 화면을 닫지 마세요</span></div>
           : canFinal ? <div className={`yp-drop${finals.length ? " yp-ok" : ""}${dragging ? " yp-drop-on" : ""}`} style={auto ? { marginTop: 10 } : undefined} {...dropFinal}>{finals.length ? <Check size={22} aria-hidden="true" /> : <Film size={22} aria-hidden="true" />}
             <b>{finals.length ? `최종본 v${finals.length} 저장됨` : auto ? "직접 만든 영상이 있으면 올려요" : "영상 파일을 올려 주세요"}</b>

@@ -89,6 +89,16 @@
 .linear-shell .ui-v2 .yt-run-head > .status-pill { flex: none; }
 .linear-shell .ui-v2 .yt-run-head > .yt-stop { order: 3; flex: 1 1 100%; overflow-wrap: anywhere; }
 .linear-shell .ui-v2 .yt-run progress { width: 100%; height: 8px; accent-color: var(--accent); }
+/* 로건 11-13 「제작 탭 = 편집 화면 하나」: where the video is now, its next action and the finished video; the step cards fold under it. */
+.linear-shell .ui-v2 .yt-now h2 { margin: 0 0 10px; font-size: 15px; }
+.linear-shell .ui-v2 .yt-now .panel-pad-lg { display: grid; gap: 10px; }
+.linear-shell .ui-v2 .yt-now-video { width: 100%; aspect-ratio: 16 / 9; border-radius: 8px; background: var(--media-bg); }
+.linear-shell .ui-v2 .yt-steps-fold > summary { font-weight: 600; }
+.linear-shell .ui-v2 .yt-steps-fold > .yt-steps { margin-top: 12px; }
+.linear-shell .ui-v2 .yt-choice { display: grid; gap: 6px; margin: 0; padding: 0; border: 0; font-size: 13px; }
+.linear-shell .ui-v2 .yt-choice legend { padding: 0; margin-bottom: 4px; font-weight: 600; }
+.linear-shell .ui-v2 .yt-choice label { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+.linear-shell .ui-v2 .yt-choice input { width: auto; padding: 0; }
 /* The wait bar takes its own full-width line under the pill and the run's notes. */
 .linear-shell .ui-v2 .yt-wait { order: 3; flex: 1 1 100%; display: grid; gap: 4px; }
 .linear-shell .ui-v2 .yt-segments { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
