@@ -121,7 +121,9 @@ export function withMention(content: string, mention: ArchiveMention) {
 const KEYS: Record<string, keyof ArchiveFields> = { 링크: "link", url: "link", link: "link", 플랫폼: "platform", platform: "platform", 형식: "format", format: "format",
   주제: "topic", 주제폴더: "topic", topic: "topic", 방: "room", room: "room", 올린사람: "who", 올린이: "who", author: "who", 올린시각: "at", at: "at", 시각: "at",
   채널: "channel", channel: "channel", 썸네일: "thumbnail", thumbnail: "thumbnail", 이미지: "image", image: "image", 수집시점조회수: "views", views: "views",
-  수집시점좋아요: "likes", likes: "likes", 추가언급: "mentions", 상태: "state", state: "state" };
+  수집시점좋아요: "likes", likes: "likes", 추가언급: "mentions", 상태: "state", state: "state",
+  // the temporary collection (before the room hook, 2026-11-13): 분류 for 형식 and the day it was posted
+  분류: "format", date: "at" };
 export interface ArchiveFields { link: string; platform: string; format: string; topic: string; room: string; who: string; at: string; channel: string;
   thumbnail: string; image: string; views: string; likes: string; mentions: string; state: string }
 
@@ -135,10 +137,17 @@ export function readArchive(content: string) {
     const key = KEYS[row.slice(0, at).replace(/\s+/g, "").toLowerCase()] ?? KEYS[row.slice(0, at).replace(/\s+/g, "")];
     if (key && !fields[key]) fields[key] = row.slice(at + 1).trim();
   }
-  const note = content.split("\n").filter((row) => row.startsWith(">")).map((row) => row.replace(/^>\s?/, "")).join("\n").trim();
-  return { ...fields, note, state: fields.state || "새로 들어옴", topic: ARCHIVE_TOPICS.includes(fields.topic as ArchiveTopic) ? fields.topic : "미분류",
-    mentions: Number(fields.mentions) || 0 };
+  // The temporary collection wrote its note under 「## 코멘트」, a lower-case 플랫폼 and 「-」 for no link: read as the room hook writes them.
+  const note = content.split("\n").filter((row) => row.startsWith(">")).map((row) => row.replace(/^>\s?/, "")).join("\n").trim()
+    || (content.match(/(?:^|\n)## 코멘트\n([\s\S]*?)(?=\n## |\s*$)/)?.[1] ?? "").trim().replace(/^\(코멘트 없음\)$/, "");
+  const link = /^https?:\/\//.test(fields.link) ? fields.link : "";
+  const known = link ? platformOf(link) : "";
+  return { ...fields, link, note, platform: known || fields.platform, format: link ? formatOf(link) : fields.format || formatOf(null),
+    state: fields.state || "새로 들어옴", topic: ARCHIVE_TOPICS.includes(fields.topic as ArchiveTopic) ? fields.topic : "미분류", mentions: Number(fields.mentions) || 0 };
 }
+
+/** A document title without the temporary collection's 「[레퍼런스]」 prefix. */
+export const cardTitle = (title: unknown) => String(title ?? "").replace(/^\[레퍼런스\]\s*/, "");
 
 /** A new 상태 or 주제: the header line changes and the change is written down with who made it. */
 export function withArchiveChange(content: string, change: { state?: string; topic?: string }, who: string, at: string) {
