@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { archiveChats, archiveDocument, commentOf, formatOf, handleOf, linkKey, messageLinks, normalizeLink, platformOf, readArchive, safeComment, tagTopic, usefulFact, withArchiveChange, withMention } from "../lib/telegram-archive.ts";
+import { archiveChats, archiveDocument, commentOf, formatOf, handleOf, linkKey, messageLinks, cardTitle, normalizeLink, platformOf, readArchive, safeComment, tagTopic, usefulFact, withArchiveChange, withMention } from "../lib/telegram-archive.ts";
 
 // 텔레그램 아카이브 (수정 요청 2026-11-13): links dropped in the archive rooms become OS reference documents.
 const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
@@ -123,4 +123,17 @@ test("회의 안건으로: a card is one line at the end of a chosen upcoming me
     "the database's own rule decides who may change a meeting (attendees · admin, not a finished one)");
   assert.match(add, /agenda\.includes\(card\.link\)/, "a card already on the 안건 is not added twice");
   assert.match(server, /\.in\("status", \["planned", "active"\]\)/, "only meetings not held yet are offered");
+});
+
+test("cards the temporary collection wrote read like the room hook's: link-derived 플랫폼 · 형식, 「-」 is no link, the 「## 코멘트」 note", () => {
+  const legacy = (header, comment) => `---\ndate: 2026-11-13\ntype: 텔레그램 아카이브\n방: 방A\n올린사람: 직원A\n${header}\n상태: 새로 들어옴\n---\n\n# 제목\n\n## 코멘트\n${comment}\n\n## 링크\n- x\n\n## 출처\n- 메시지\n`;
+  const reel = readArchive(legacy("플랫폼: instagram\n분류: 영상\n링크: https://www.instagram.com/reel/AB1/", "첫 줄\n둘째 줄"));
+  assert.deepEqual([reel.platform, reel.format, reel.link, reel.note, reel.at, reel.who], ["Instagram", "숏폼", "https://www.instagram.com/reel/AB1/", "첫 줄\n둘째 줄", "2026-11-13", "직원A"]);
+  const image = readArchive(legacy("플랫폼: 이미지\n분류: 이미지\n링크: -", "(코멘트 없음)"));
+  assert.deepEqual([image.platform, image.format, image.link, image.note], ["이미지", "이미지", "", ""]);
+  const own = archiveDocument({ link: "https://youtube.com/watch?v=AB", platform: "YouTube", format: "롱폼", topic: "미분류", title: "t", channel: "", thumbnail: "",
+    views: null, likes: null, image: "", first: { at: "2026-11-16T01:00:00Z", room: "방A", who: "직원A", comment: "메모", receipt: "telegram:-1:1" } });
+  assert.deepEqual([readArchive(own.content).note, readArchive(own.content).format], ["메모", "롱폼"]);
+  assert.equal(cardTitle("[레퍼런스] instagram.com/reel/AB1"), "instagram.com/reel/AB1");
+  assert.match(read("lib/server/content-archive.ts"), /title: cardTitle\(doc\.title\)/);
 });

@@ -192,6 +192,6 @@ export function YoutubeArchiveScreen() {
         <tbody>{shown.map((card) => <tr key={card.id}><td>{nameOf(card)}{card.mentions ? <small> · 추가 언급 {card.mentions}</small> : null}</td><td>{card.topic}</td><td>{card.format}</td>
           <td>{card.platform}</td><td>{card.who}</td><td>{card.room}</td><td>{day(card.at || card.createdAt)}</td><td>{card.state}</td>
           <td>{card.link ? <a href={card.link} target="_blank" rel="noreferrer">열기</a> : "–"}</td></tr>)}</tbody></table></div>}
-    {list?.truncated ? <p className="yp-hint">최근 500장까지 보여요.</p> : null}
+    {list?.truncated ? <p className="yp-hint">최근 2,000장까지 보여요.</p> : null}
   </div>;
 }

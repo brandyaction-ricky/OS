@@ -4,12 +4,13 @@
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
-import { ARCHIVE_FOLDER, ARCHIVE_STATES, ARCHIVE_TOPICS, readArchive, withArchiveChange } from "@/lib/telegram-archive";
+import { ARCHIVE_FOLDER, ARCHIVE_STATES, ARCHIVE_TOPICS, cardTitle, readArchive, withArchiveChange } from "@/lib/telegram-archive";
 import { parseYoutubeRef } from "@/lib/youtube-process/project";
 import { teamV1Enabled } from "@/lib/team/gate";
 import type { RequestActor } from "./auth";
 
-const LIMIT = 500;
+// ponytail: one page of cards (≈0.4 KB each); a paged list when the rooms pass this.
+const LIMIT = 2_000;
 const SIGN_SECONDS = 1_800;
 
 export async function listArchive(actor: RequestActor) {
@@ -25,7 +26,7 @@ export async function listArchive(actor: RequestActor) {
     const { data: signed } = await service.storage.from("os-content-media").createSignedUrl(path, SIGN_SECONDS);
     return signed?.signedUrl ?? "";
   }));
-  return { cards: rows.map(({ doc, card }, i) => ({ id: doc.id as string, version: doc.current_version as number, title: String(doc.title ?? ""),
+  return { cards: rows.map(({ doc, card }, i) => ({ id: doc.id as string, version: doc.current_version as number, title: cardTitle(doc.title),
     folderTopic: String(doc.folder ?? "").slice(ARCHIVE_FOLDER.length + 1), createdAt: String(doc.created_at ?? ""), ...card, image: images[i] })),
     topics: ARCHIVE_TOPICS, states: ARCHIVE_STATES, truncated: rows.length === LIMIT };
 }
@@ -39,7 +40,7 @@ async function readCard(actor: RequestActor, id: string) {
     .eq("id", id).like("folder", `${ARCHIVE_FOLDER}/%`).neq("status", "archived").maybeSingle();
   if (error) throw new ApiError(500, "ARCHIVE_READ_FAILED", "카드를 읽지 못했어요.");
   if (!data) throw new ApiError(404, "ARCHIVE_CARD_NOT_FOUND", "볼 수 있는 아카이브 카드가 아니에요.");
-  return data;
+  return { ...data, title: cardTitle(data.title) };
 }
 
 export const archiveKeepSchema = z.object({ id: z.string().uuid() }).strict();
