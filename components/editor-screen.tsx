@@ -61,7 +61,7 @@ export function EditorScreenEntry({ token, projectId, title, onFinal, finals = 0
       <div className="yp-escreen-txt">
         <b>편집 화면</b>
         <span className="yp-muted">{draft ? "장면 그림으로 먼저 고쳐요. 「완성」을 누르면 움직이는 첫 최종본(v1)을 만들어요." : ready ? "손으로 자르고 옮긴 뒤 「완성」을 누르면 새 최종본이 돼요."
-          : finals ? `최종본 v${finals}은 위에서 바로 재생돼요. 편집하는 컴퓨터에서 편집기를 켜면 이 버전이 올라와 여기서 열 수 있어요.` : "편집하는 컴퓨터가 편집 재료를 올리면 열 수 있어요."}</span>
+          : finals ? `최종본 v${finals}은 아래 「지금 단계」에서 바로 재생돼요. 편집하는 컴퓨터에서 편집기를 켜면 이 버전이 올라와 여기서 열 수 있어요.` : "편집하는 컴퓨터가 편집 재료를 올리면 열 수 있어요."}</span>
         <div className="yp-escreen-tags"><ScreenTags s={screen} /></div>
       </div>
       <button ref={button} type="button" className="yp-btn yp-pri" disabled={!ready} onClick={() => setOpen(true)}>편집 화면 열기</button>
