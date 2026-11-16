@@ -6,6 +6,7 @@ import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { ARCHIVE_FOLDER, ARCHIVE_STATES, ARCHIVE_TOPICS, readArchive, withArchiveChange } from "@/lib/telegram-archive";
 import { parseYoutubeRef } from "@/lib/youtube-process/project";
+import { teamV1Enabled } from "@/lib/team/gate";
 import type { RequestActor } from "./auth";
 
 const LIMIT = 500;
@@ -71,6 +72,50 @@ export async function keepArchiveVideo(actor: RequestActor, input: z.infer<typeo
   const changed = card.state === "주제 후보" ? { id: doc.id as string, version: doc.current_version as number }
     : await changeArchive(actor, { id: doc.id as string, version: doc.current_version as number, state: "주제 후보" });
   return { recordId, existed: Boolean(kept), ...changed };
+}
+
+// ── 회의 안건으로 (대표 2026-11-16: 「다가오는 회의에서 골라 붙이기」): one line at the end of a chosen meeting's 안건 ──
+const teamOn = () => { if (!teamV1Enabled()) throw new ApiError(404, "TEAM_MENU_DISABLED", "팀 회의 기능이 꺼져 있어요."); };
+
+/** The meetings not held yet (예정 · 진행 중) the member can see, soonest first. */
+export async function upcomingMeetings(actor: RequestActor) {
+  teamOn();
+  const { data, error } = await actor.supabase.from("os_records").select("id,title,brand,status,starts_at,version")
+    .eq("record_type", "meeting").eq("metadata->>workspace", "knowledge").in("status", ["planned", "active"]).is("archived_at", null)
+    .order("starts_at", { ascending: true, nullsFirst: false }).limit(12);
+  if (error) throw new ApiError(500, "ARCHIVE_MEETINGS_READ_FAILED", "다가오는 회의를 읽지 못했어요.");
+  return { meetings: (data ?? []).map((row) => ({ id: row.id as string, title: String(row.title ?? ""), brand: String(row.brand ?? ""), status: String(row.status ?? ""),
+    startsAt: (row.starts_at as string | null) ?? null })) };
+}
+
+/** The 안건 line for a card: what it is, where, who brought it and why. */
+export const agendaLine = (card: { link: string; who: string; note: string }, title: string) =>
+  `- [레퍼런스] ${title.replace(/\s+/g, " ").slice(0, 80)}${card.link ? ` · ${card.link}` : ""} · ${card.who || "구성원"}${card.note ? `: ${card.note.split("\n")[0].slice(0, 120)}` : ""}`;
+
+export const archiveMeetingSchema = z.object({ id: z.string().uuid(), meetingId: z.string().uuid() }).strict();
+/** The card as one line at the end of the meeting's 안건 (what was written stays). The database lets only that meeting's attendees or an
+ *  admin change it, and never a finished one; a card already there is not added twice. */
+export async function addArchiveToMeeting(actor: RequestActor, input: z.infer<typeof archiveMeetingSchema>) {
+  teamOn();
+  const doc = await readCard(actor, input.id);
+  const card = readArchive(String(doc.content_md ?? ""));
+  const { data: meeting, error } = await actor.supabase.from("os_records").select("id,title,version,status,metadata")
+    .eq("id", input.meetingId).eq("record_type", "meeting").is("archived_at", null).maybeSingle();
+  if (error) throw new ApiError(500, "ARCHIVE_MEETINGS_READ_FAILED", "회의를 읽지 못했어요.");
+  if (!meeting) throw new ApiError(404, "ARCHIVE_MEETING_NOT_FOUND", "볼 수 있는 회의가 아니에요.");
+  const agenda = String((meeting.metadata as { agenda?: unknown } | null)?.agenda ?? "");
+  const title = String(doc.title ?? "").trim() && String(doc.title) !== card.platform ? String(doc.title) : card.note.split("\n")[0] || card.link;
+  if (card.link ? agenda.includes(card.link) : agenda.includes(agendaLine(card, title))) return { meetingId: meeting.id as string, added: false };
+  const next = `${agenda.trimEnd()}${agenda.trim() ? "\n" : ""}${agendaLine(card, title)}`;
+  const { error: saveError } = await actor.supabase.rpc("os_team_command", { p: { action: "meeting.save", id: meeting.id, expectedVersion: meeting.version, agenda: next } });
+  if (saveError) {
+    const why = saveError.message ?? "";
+    if (/OS_MEETING_DENIED|OS_MEETING_REVIEW_LOCKED/.test(why)) throw new ApiError(403, "ARCHIVE_MEETING_DENIED", "그 회의의 참석자나 관리자만 안건을 붙일 수 있어요.");
+    if (/OS_MEETING_LOCKED/.test(why)) throw new ApiError(409, "ARCHIVE_MEETING_LOCKED", "이미 끝난 회의예요. 다른 회의를 골라 주세요.");
+    if (/OS_VERSION_CONFLICT/.test(why)) throw new ApiError(409, "ARCHIVE_MEETING_CHANGED", "회의가 방금 바뀌었어요. 다시 붙여 주세요.");
+    throw new ApiError(502, "ARCHIVE_MEETING_SAVE_FAILED", "회의 안건에 붙이지 못했어요.");
+  }
+  return { meetingId: meeting.id as string, added: true };
 }
 
 /** 상태 or 주제 (the folder moves with it — a person moving a card is the answer); stale versions are refused, never overwritten. */

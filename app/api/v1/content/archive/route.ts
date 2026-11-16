@@ -2,14 +2,18 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
-import { archiveChangeSchema, archiveKeepSchema, changeArchive, keepArchiveVideo, listArchive } from "@/lib/server/content-archive";
+import { addArchiveToMeeting, archiveChangeSchema, archiveKeepSchema, archiveMeetingSchema, changeArchive, keepArchiveVideo, listArchive, upcomingMeetings } from "@/lib/server/content-archive";
 
 // 아카이브 (수정 요청 2026-11-13, 2단계): the Telegram reference cards, and their 상태 · 주제.
 export const dynamic = "force-dynamic";
 const headers = { "Cache-Control": "private, no-store" };
 
 export async function GET(request: Request) {
-  try { return NextResponse.json(await listArchive(await authenticateRequest(request)), { headers }); }
+  try {
+    const actor = await authenticateRequest(request);
+    // 회의 안건으로: the meetings a card can be added to.
+    return NextResponse.json(new URL(request.url).searchParams.get("meetings") ? await upcomingMeetings(actor) : await listArchive(actor), { headers });
+  }
   catch (error) { return apiErrorResponse(error); }
 }
 
@@ -22,11 +26,13 @@ export async function PATCH(request: Request) {
   }
 }
 
-/** 3단계: a YouTube video card into 주제 찾기 › 담아 둔 영상 (the card turns 주제 후보). */
+/** 3단계: a YouTube video card into 주제 찾기 › 담아 둔 영상 (the card turns 주제 후보), or a card onto a chosen meeting's 안건. */
 export async function POST(request: Request) {
   try {
     const actor = await authenticateRequest(request);
-    return NextResponse.json(await keepArchiveVideo(actor, archiveKeepSchema.parse(await parseJson(request, 1_000))), { headers });
+    const body = await parseJson(request, 1_000) as Record<string, unknown>;
+    if (body && "meetingId" in body) return NextResponse.json(await addArchiveToMeeting(actor, archiveMeetingSchema.parse(body)), { headers });
+    return NextResponse.json(await keepArchiveVideo(actor, archiveKeepSchema.parse(body)), { headers });
   } catch (error) {
     return apiErrorResponse(error instanceof ZodError ? new ApiError(400, "INVALID_ARCHIVE_KEEP", "담을 카드를 확인해 주세요.") : error);
   }

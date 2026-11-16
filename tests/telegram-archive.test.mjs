@@ -115,3 +115,12 @@ test("3단계: a card goes on — a YouTube video into 담아 둔 영상 once, a
   assert.match(screen, /\/api\/v1\/content\/automation\/topics/);
   assert.match(screen, /platform=\$\{way\}&link=\$\{encodeURIComponent\(card\.link\)\}/);
 });
+
+test("회의 안건으로: a card is one line at the end of a chosen upcoming meeting's 안건, written through the meeting's own command", () => {
+  const server = read("lib/server/content-archive.ts");
+  const add = server.slice(server.indexOf("export async function addArchiveToMeeting"), server.indexOf("/** 상태 or 주제"));
+  assert.match(add, /rpc\("os_team_command", \{ p: \{ action: "meeting\.save", id: meeting\.id, expectedVersion: meeting\.version, agenda: next \} \}\)/,
+    "the database's own rule decides who may change a meeting (attendees · admin, not a finished one)");
+  assert.match(add, /agenda\.includes\(card\.link\)/, "a card already on the 안건 is not added twice");
+  assert.match(server, /\.in\("status", \["planned", "active"\]\)/, "only meetings not held yet are offered");
+});

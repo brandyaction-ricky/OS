@@ -32,6 +32,8 @@ const ALL = "전체";
 const PERIODS = [["all", "전체 기간"], ["7", "지난 7일"], ["30", "지난 30일"]] as const;
 const day = (iso: string) => iso ? new Date(iso).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
 const count = (value: string) => value && Number(value) ? Number(value).toLocaleString("ko-KR") : "";
+interface Meeting { id: string; title: string; brand: string; status: string; startsAt: string | null }
+const DEMO_MEETINGS: Meeting[] = [{ id: "demo-m1", title: "주간 콘텐츠 회의", brand: "브랜디액션", status: "planned", startsAt: "2026-11-18T01:00:00.000Z" }];
 const REFERENCE_PLATFORM: Record<string, ThreadsReferenceItem["platform"]> = { Threads: "threads", Instagram: "instagram", YouTube: "youtube", TikTok: "tiktok" };
 /** A login wall's 「Instagram」 is no title: the note's first line (or the link) names the card instead. */
 const nameOf = (card: ArchiveCard) => card.title && card.title !== card.platform ? card.title : card.note.split("\n")[0] || card.link || "레퍼런스";
@@ -52,6 +54,8 @@ export function YoutubeArchiveScreen() {
   const [period, setPeriod] = useState<(typeof PERIODS)[number][0]>("all");
   const [query, setQuery] = useState("");
   const [sent, setSent] = useState<{ id: string; text: string; href: string } | null>(null);
+  // 회의 안건으로 (대표 2026-11-16): the meetings not held yet, picked on the card.
+  const [meetingFor, setMeetingFor] = useState<{ id: string; meetings: Meeting[] | null; chosen: string } | null>(null);
   const load = useCallback(async () => {
     if (demo) { setList((now) => now ?? DEMO); return; }
     try { setList(await apiRequest<ArchiveList>("/api/v1/content/archive", { token: accessToken })); setError(""); }
@@ -93,6 +97,25 @@ export function YoutubeArchiveScreen() {
     finally { setBusy(""); }
   };
 
+  const pickMeeting = async (card: ArchiveCard) => {
+    setMeetingFor({ id: card.id, meetings: null, chosen: "" }); setError(""); setSent(null);
+    try {
+      const { meetings } = demo ? { meetings: DEMO_MEETINGS } : await apiRequest<{ meetings: Meeting[] }>("/api/v1/content/archive?meetings=1", { token: accessToken });
+      setMeetingFor({ id: card.id, meetings, chosen: meetings[0]?.id ?? "" });
+    } catch (reason) { setMeetingFor(null); setError(reason instanceof Error ? reason.message : "다가오는 회의를 불러오지 못했어요."); }
+  };
+  const addToMeeting = async (card: ArchiveCard) => {
+    const meeting = meetingFor?.meetings?.find((item) => item.id === meetingFor.chosen);
+    if (!meeting) return;
+    setBusy(card.id); setError("");
+    try {
+      const done = demo ? { added: true } : await apiRequest<{ added: boolean }>("/api/v1/content/archive", { method: "POST", token: accessToken, body: JSON.stringify({ id: card.id, meetingId: meeting.id }) });
+      setSent({ id: card.id, text: done.added ? `「${meeting.title}」 안건 끝에 붙였어요.` : `「${meeting.title}」 안건에 이미 있어요.`, href: "" });
+      setMeetingFor(null);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "회의 안건에 붙이지 못했어요."); }
+    finally { setBusy(""); }
+  };
+
   const cards = useMemo(() => list?.cards ?? [], [list]);
   const options = (key: keyof typeof pick) => [...new Set(cards.map((card) => card[key]).filter(Boolean))].sort();
   const since = period === "all" ? 0 : Date.now() - Number(period) * 86_400_000;
@@ -112,13 +135,19 @@ export function YoutubeArchiveScreen() {
   </span>;
   const ways = (card: ArchiveCard) => {
     const video = Boolean(parseYoutubeRef(card.link)) && card.format !== "채널", short = card.format === "숏폼";
-    return card.link ? <span className="yp-arc-links">
+    return <span className="yp-arc-links">
       {video ? <button type="button" className="yp-btn yp-sm" disabled={busy === card.id} onClick={() => void send(card, "kept")}>담아 둔 영상에 담기</button> : null}
       {short ? <button type="button" className="yp-btn yp-sm" disabled={busy === card.id} onClick={() => void send(card, "short")}>숏폼으로 시작</button> : null}
       {short ? <button type="button" className="yp-btn yp-sm" disabled={busy === card.id} onClick={() => void send(card, "ad")}>광고로 시작</button> : null}
       {/^https:\/\//.test(card.link) ? <button type="button" className="yp-btn yp-sm" disabled={busy === card.id} onClick={() => void send(card, "threads")}>스레드 글감으로</button> : null}
-      {sent?.id === card.id ? <span className="yp-hint" role="status">{sent.text} <a href={sent.href}>열기</a></span> : null}
-    </span> : null;
+      <button type="button" className="yp-btn yp-sm" disabled={busy === card.id} aria-expanded={meetingFor?.id === card.id} onClick={() => meetingFor?.id === card.id ? setMeetingFor(null) : void pickMeeting(card)}>회의 안건으로</button>
+      {meetingFor?.id === card.id ? <span className="yp-arc-meeting">{meetingFor.meetings === null ? <span className="yp-hint" role="status">다가오는 회의를 찾는 중…</span>
+        : !meetingFor.meetings.length ? <span className="yp-hint">예정된 회의가 없어요. 회의를 먼저 만들어 주세요.</span>
+        : <><select className="yp-in" aria-label="붙일 회의" value={meetingFor.chosen} onChange={(event) => setMeetingFor({ ...meetingFor, chosen: event.target.value })}>
+            {meetingFor.meetings.map((meeting) => <option key={meeting.id} value={meeting.id}>{meeting.startsAt ? `${day(meeting.startsAt)} · ` : ""}{meeting.brand ? `${meeting.brand} · ` : ""}{meeting.title}{meeting.status === "active" ? " (진행 중)" : ""}</option>)}</select>
+          <button type="button" className="yp-btn yp-sm yp-pri" disabled={busy === card.id || !meetingFor.chosen} onClick={() => void addToMeeting(card)}>붙이기</button></>}</span> : null}
+      {sent?.id === card.id ? <span className="yp-hint" role="status">{sent.text}{sent.href ? <> <a href={sent.href}>열기</a></> : null}</span> : null}
+    </span>;
   };
   const links = (card: ArchiveCard) => <span className="yp-arc-links">
     {card.link ? <a className="yp-btn yp-sm" href={card.link} target="_blank" rel="noreferrer"><ExternalLink size={12} aria-hidden="true" /> 원본</a> : null}
