@@ -67,3 +67,14 @@ test("a final made from v0 as it was keeps v0 as its editor version; the AI chat
   for (const line of ["음성 · 받아쓰기 · 자막이 끝났어요", "OS 검사를 통과해 기획표를 자동으로 확인했어요", "렌더 전 관문에서 걸린 곳을 내 AI가 고쳐요", "장면 그림이 편집 화면 타임라인에 깔렸어요", "사람 확인이 필요해요", "멈췄어요"])
     assert.ok(news.includes(line), line);
 });
+
+// 11-16 first real run: the gate's fix went to Logan's AI by itself, yet another viewer's card offered 「내 AI에 보내기」 (a second request).
+test("whoever opens the video sees whose AI has the storyboard, not a button that asks their own AI for another", () => {
+  const now = between(run, "async function storyboardJobNow", "/**");
+  assert.match(now, /\.in\("status", \["backlog", "active"\]\)/);
+  assert.match(now, /mine: row\.owner_id === viewer/);
+  assert.match(run, /storyboardJob: record\.stage === "words_ready" \? await storyboardJobNow\(sourceId, actor\.id\)\.catch\(\(\) => null\) : null/);
+  const panel = read("components/myin-v13-panel.tsx");
+  assert.match(panel, /const other = run\.storyboardJob && !run\.storyboardJob\.mine \? run\.storyboardJob : null;/);
+  assert.match(panel, /\{other\.name\}님 AI · \{other\.status === "active" \? "쓰는 중" : "가져가기를 기다리는 중"\}/);
+});

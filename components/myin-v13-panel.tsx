@@ -31,6 +31,7 @@ interface MyinRun { id: string; status: string; stage: string; layout?: "short" 
   assetDecisions: Record<string, { decision: "approved" | "excluded" }>; ctaReady: string | null;
   prepared: { misses: string[]; sheets: number; credits: string[]; at: string; redraw?: "pending" | "drawing" | "failed" | null; redrawnAt?: string | null; standIns?: string[]; needsPerson?: string[] } | null;
   /** 로건 11-13 자동 흐름: the storyboard confirms itself; the paid steps were approved at the start; 렌더 전 관문 sends in a row. */ autoConfirm?: boolean; paidOk?: boolean; gateRounds?: number;
+  /** Whose AI has the storyboard now (waiting or at work), while the run is at words_ready. */ storyboardJob?: { name: string; status: string; claimedAt: string | null; mine: boolean } | null;
   clips: { name: string; label: string }[] | null; clipsReview: { name: string; note: string; at: string } | null;
   /** 장면 그림 v0 (편집기 3차 요청 11-09): a longform's ③ as each scene's finished picture, on the editor screen. */ stills?: { at: string; files: number } | null;
   screenCheckAuto?: boolean;
@@ -355,8 +356,11 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       if (run.stage === "storyboard_review") { head = "2/4 기획표 확인 대기 (로건, 유쓰)"; body = look(2, "기획표 보고 확인하기"); }
       else {
         head = gate ? `2/4 렌더 전 관문 · 내 AI가 고치는 중 (${run.gateRounds ?? 1}회차)` : "2/4 장면 기획표 · 내 AI가 써요";
+        const other = run.storyboardJob && !run.storyboardJob.mine ? run.storyboardJob : null;
         body = <>{gate ? <p className="yt-note">{run.review!.note}</p> : null}
-          <StaffDesign status={job} busy={busy === "send"} typical={storyboardMinutes(run)} onSend={() => void act("send", () => post("/ai-jobs", "POST", { task: "storyboard", sourceId }))} /></>;
+          {other ? <div className="yt-run"><div className="yt-run-head"><span className="status-pill" data-status={other.status === "active" ? "scheduled" : "waiting"}>{other.name}님 AI · {other.status === "active" ? "쓰는 중" : "가져가기를 기다리는 중"}</span>
+            {other.status === "active" && other.claimedAt ? <WaitBar minutes={Math.floor((Date.now() - Date.parse(other.claimedAt)) / 60_000)} typical={storyboardMinutes(run)} /> : null}</div></div>
+            : <StaffDesign status={job} busy={busy === "send"} typical={storyboardMinutes(run)} onSend={() => void act("send", () => post("/ai-jobs", "POST", { task: "storyboard", sourceId }))} />}</>;
       }
     } else if (stepNo === 3) {
       if (run.stage === "clips_review" && run.stills) {
