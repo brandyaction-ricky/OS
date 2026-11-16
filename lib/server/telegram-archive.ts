@@ -4,7 +4,7 @@
 import { CLAUDE_FAST_MODEL } from "@/lib/config";
 import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
-import { ARCHIVE_FOLDER, ARCHIVE_TOPICS, archiveDocument, commentOf, formatOf, linkKey, messageLinks, normalizeLink, platformOf, safeComment, tagTopic, withMention,
+import { ARCHIVE_FOLDER, ARCHIVE_TOPICS, archiveDocument, commentOf, formatOf, handleOf, linkKey, messageLinks, normalizeLink, platformOf, safeComment, tagTopic, usefulFact, withMention,
   type ArchiveMention, type ArchiveTopic } from "@/lib/telegram-archive";
 import { generateContentText, hasClaudeKey } from "./content-model";
 
@@ -58,6 +58,11 @@ export async function linkFacts(url: string) {
     facts.channel = decode(meta(html, "og:site_name"));
     facts.thumbnail = decode(meta(html, "og:image"));
   } catch { /* the card keeps the link and the note */ }
+  // A login wall answers 「Instagram」 and its logo for every page (first real card, 11-16): those say nothing, the account name does.
+  const platform = platformOf(url);
+  facts.title = usefulFact(platform, "title", facts.title);
+  facts.channel = usefulFact(platform, "channel", facts.channel) || handleOf(url);
+  facts.thumbnail = usefulFact(platform, "thumbnail", facts.thumbnail);
   return facts;
 }
 
@@ -66,7 +71,8 @@ const TOPIC_SCHEMA = { type: "object", properties: { topic: { type: "string", en
 export async function aiTopic(input: { comment: string; link: string | null; platform: string; format: string; title: string; channel: string; room: string }): Promise<ArchiveTopic> {
   if (!hasClaudeKey()) return "미분류";
   const prompt = `콘텐츠팀이 텔레그램 레퍼런스 방에 올린 것 하나를 주제 폴더 하나로 나눠. 방 이름이 아니라 올린 사람의 코멘트와 링크 내용으로 판단해.
-폴더: 후킹·대본 구조(도입·후킹·말하는 구조) / 썸네일·제목 / 채널·계정 포맷(채널·계정의 운영 방식·시리즈 형식) / 영상 연출·편집 / AI 툴·자동화 / 마케팅·세일즈 사례 / 콘텐츠 주제 소재(다룰 만한 주제·이야깃거리) / 미분류(어느 쪽인지 확실하지 않음)
+폴더: 후킹·대본 구조(도입·후킹·말하는 구조) / 썸네일·제목 / 채널·계정 포맷(채널·계정의 운영 방식·시리즈 형식) / 영상 연출·편집(장면·연출·편집 방식) / AI 툴·자동화 / 마케팅·세일즈 사례 / 콘텐츠 주제 소재(다룰 만한 주제·상황·이야깃거리)
+가장 가까운 폴더 하나를 골라. 코멘트에 다룰 상황이나 아이디어가 있으면 콘텐츠 주제 소재, 보여 주는 방식을 말하면 영상 연출·편집이야. 코멘트도 제목도 거의 없어 판단할 거리가 없을 때만 미분류.
 방: ${input.room}
 코멘트: ${input.comment || "(없음)"}
 링크: ${input.link ?? "(이미지만)"} · ${input.platform} · ${input.format}
@@ -75,7 +81,10 @@ export async function aiTopic(input: { comment: string; link: string | null; pla
     const text = await generateContentText({ prompt, model: CLAUDE_FAST_MODEL, jsonSchema: TOPIC_SCHEMA, maxTokens: 100, timeoutMs: 20_000 });
     const topic = (JSON.parse(text) as { topic?: string }).topic;
     return ARCHIVE_TOPICS.includes(topic as ArchiveTopic) ? topic as ArchiveTopic : "미분류";
-  } catch { return "미분류"; }
+  } catch (error) {
+    console.warn("telegram-archive topic", error instanceof ApiError ? error.code : "AI_TOPIC_FAILED");   // the code only: no note, no key
+    return "미분류";
+  }
 }
 
 /** The message's largest photo, kept in the media bucket (the archive screen signs it); "" when there is none or it cannot be fetched. */
