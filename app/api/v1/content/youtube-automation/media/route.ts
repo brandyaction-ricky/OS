@@ -5,7 +5,7 @@ import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { safeSecretMatch } from "@/lib/server/auth";
 import { buildYoutubeRenderBrief, claimYoutubeRender, completeYoutubeRender, failYoutubeRender } from "@/lib/server/youtube-render-run";
-import { MYIN_VOICE_PARTS, claimMyinBreath, claimMyinClips, claimMyinCta, claimMyinFinal, claimMyinPrep, claimMyinWords, completeMyinBreath, completeMyinClips, completeMyinCta, completeMyinFinal, completeMyinPrep, completeMyinVoiceBackfill, completeMyinWords, failMyinPrep, failMyinStage, failMyinWords, claimMyinRedraw, completeMyinRedraw, failMyinRedraw, redrawResultSchema, myinStillsUpload, myinVoiceBackfill, stillFiles, stills } from "@/lib/server/myin-run";
+import { MYIN_VOICE_PARTS, myinRunReplaced, claimMyinBreath, claimMyinClips, claimMyinCta, claimMyinFinal, claimMyinPrep, claimMyinWords, completeMyinBreath, completeMyinClips, completeMyinCta, completeMyinFinal, completeMyinPrep, completeMyinVoiceBackfill, completeMyinWords, failMyinPrep, failMyinStage, failMyinWords, claimMyinRedraw, completeMyinRedraw, failMyinRedraw, redrawResultSchema, myinStillsUpload, myinVoiceBackfill, stillFiles, stills } from "@/lib/server/myin-run";
 import { RENDER_PC_NAME, renderPcSignalSchema, saveRenderPcSignal } from "@/lib/server/youtube-render-pc";
 import { assetsReadySchema, assetsUploadSchema, assetsUploadUrls, engineReadySchema, engineUploadSchema, engineUploadUrls, saveAssetsManifest, saveEngineManifest } from "@/lib/server/render-engine";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
@@ -84,7 +84,8 @@ export async function POST(request: Request) {
     // A 레퍼런스 받기 result carries up to ten transcripts.
     const input = inputSchema.parse(await parseJson(request, 120_000));
     const result = isImageMacAction(input) ? await imageMacWork({target:"render-pc"},input)
-      : input.action === "heartbeat" ? await saveRenderPcSignal(input)
+      // stopRun: the render PC is working on a run a newer one replaced; it stops it (and the run stops as stale).
+      : input.action === "heartbeat" ? { ...await saveRenderPcSignal(input), ...(input.job?.runId && await myinRunReplaced(input.job.runId) ? { stopRun: input.job.runId } : {}) }
       : input.action === "engine_upload" ? await engineUploadUrls(input)
       : input.action === "engine_ready" ? await saveEngineManifest(input)
       : input.action === "assets_upload" ? await assetsUploadUrls(input)

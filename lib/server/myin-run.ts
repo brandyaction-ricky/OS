@@ -384,6 +384,18 @@ export async function setMyinDraftPlace(actor: RequestActor, runId: string, plac
 }
 
 /** Everyone who can read the video sees its run: 로건 and 유쓰 confirm from their own accounts (RLS decides who reads). */
+/**
+ * 원고를 고쳐 다시 누른 영상 (로건 11-16): a newer run of the same video exists, so the render PC stops this one. The render PC kept
+ * making the old script's voice for an hour while the new one waited behind it.
+ */
+export async function myinRunReplaced(runId: string, service: Service = createServiceSupabase()) {
+  const { data: run } = await service.from("os_records").select("parent_id, created_at").eq("id", runId).eq("record_type", "ai_job").maybeSingle();
+  if (!run?.parent_id) return false;
+  const { data } = await service.from("os_records").select("id").eq("parent_id", run.parent_id).eq("record_type", "ai_job").eq("metadata->>kind", MYIN_RUN_KIND)
+    .is("archived_at", null).gt("created_at", run.created_at).limit(1);
+  return Boolean(data?.length);
+}
+
 export async function latestMyinRun(actor: RequestActor, sourceId: string) {
   const { data } = await actor.supabase.from("os_records").select("*").eq("parent_id", sourceId).eq("record_type", "ai_job")
     .eq("metadata->>kind", MYIN_RUN_KIND).is("archived_at", null).order("created_at", { ascending: false }).limit(1);
