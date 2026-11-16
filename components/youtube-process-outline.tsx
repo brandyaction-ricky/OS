@@ -14,6 +14,29 @@ import { YtCard, YtLookPicker } from "./youtube-process-media";
 import { ScriptReview2 } from "./youtube-process-review2";
 import { ScriptNotes } from "./youtube-script-notes";
 
+/** Each note's passage as a DOM range in the editor: its quote matched with marks and spaces left out, the words before it deciding
+ *  between repeats (none when the 원고 no longer has it). */
+/** Puts a box at its spot in the 원고 column (set on the element: the screens keep no inline styles). */
+const placeAt = (spot: { top: number; left: number }) => (element: HTMLElement | null) => {
+  if (element) { element.style.top = `${spot.top}px`; element.style.left = `${spot.left}px`; }
+};
+
+function noteRangesIn(box: HTMLElement, notes: YpScriptNote[]) {
+  const skip = /[\s*_~`]/, chars: { node: Text; offset: number }[] = []; let text = "";
+  const walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null)
+    for (let index = 0; index < node.data.length; index += 1) if (!skip.test(node.data[index])) { chars.push({ node, offset: index }); text += node.data[index]; }
+  return notes.flatMap(note => {
+    const want = note.quote.replace(/[\s*_~`]/g, ""), lead = note.before.replace(/[\s*_~`]/g, "").slice(-20), hits: number[] = [];
+    for (let at = want ? text.indexOf(want) : -1; at >= 0; at = text.indexOf(want, at + 1)) hits.push(at);
+    const at = hits.length > 1 ? hits.find(hit => text.slice(0, hit).endsWith(lead)) ?? -1 : hits[0] ?? -1;
+    if (at < 0) return [];
+    const range = document.createRange(), end = chars[at + want.length - 1];
+    range.setStart(chars[at].node, chars[at].offset); range.setEnd(end.node, end.offset + 1);
+    return [{ id: note.id, range }];
+  });
+}
+
 const WHY: Record<string, string> = { manual: "", ai: " · 내 AI", make: " · 제작 시작", restore: " · 되돌림" };
 
 /** S4 구성안: 영상 스펙 · 원고 (versions, 예상 길이, 내 AI 원고). No 대표 컨펌; [다음: 제작] moves on (4-5). */
@@ -31,9 +54,15 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
   const [notesOpen, setNotesOpen] = useState(false);
   // 구간 의견 (수정 요청 2026-11-12): 의견 모드 on, the passage just dragged, and the notes on their way to 내 AI.
   const [noteMode, setNoteMode] = useState(false);
-  const [pick, setPick] = useState<{ quote: string; before: string; after: string } | null>(null);
+  // 직원 요청 11-13: the box opens under the passage (not at the top, which lost the place in a long 원고), and a passage with notes
+  // is marked in the 원고 — clicking it shows them there (peek).
+  const [pick, setPick] = useState<{ quote: string; before: string; after: string; top: number; left: number } | null>(null);
   const [pickNote, setPickNote] = useState("");
-  const [pickError, setPickError] = useState("");
+  const [pickError, setPickError] = useState<{ text: string; top: number; left: number } | null>(null);
+  const [peek, setPeek] = useState<{ ids: string[]; top: number; left: number } | null>(null);
+  const noteWrap = useRef<HTMLDivElement>(null);
+  const noteInput = useRef<HTMLTextAreaElement>(null);
+  const noteRanges = useRef<{ id: string; range: Range }[]>([]);
   const [askIds, setAskIds] = useState<string[] | null>(null);
   const [noteBusy, setNoteBusy] = useState(false);
   const editorBox = useRef<HTMLDivElement>(null);
@@ -130,12 +159,12 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
 
   // 의견 모드: U turns it on unless a letter is being typed somewhere (원고, 한글 조합, any input); Esc drops the draft, then the mode.
   const noting = editable && !viewing, noteOn = noteMode && noting;
-  const pickRef = useRef(pick);
-  useEffect(() => { pickRef.current = pick; }, [pick]);
+  const pickRef = useRef<unknown>(null);
+  useEffect(() => { pickRef.current = pick ?? peek ?? pickError; }, [pick, peek, pickError]);
   useEffect(() => {
     if (!noting) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { if (pickRef.current) { setPick(null); setPickError(""); } else setNoteMode(false); return; }
+      if (event.key === "Escape") { if (pickRef.current) { setPick(null); setPeek(null); setPickError(null); } else setNoteMode(false); return; }
       if (event.key !== "u" && event.key !== "U") return;
       if (event.isComposing || event.keyCode === 229 || event.ctrlKey || event.metaKey || event.altKey) return;
       const target = event.target as HTMLElement | null;
@@ -145,19 +174,48 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [noting]);
-  useEffect(() => () => { if (typeof CSS !== "undefined" && "highlights" in CSS) CSS.highlights.delete("yp-note"); }, []);
+  useEffect(() => () => { if (typeof CSS !== "undefined" && "highlights" in CSS) { CSS.highlights.delete("yp-note"); CSS.highlights.delete("yp-notes"); } }, []);
   const editorRoot = () => editorBox.current?.querySelector<HTMLElement>("[contenteditable]") ?? null;
+  /** Where a box opens: just under `rect`, inside the 원고 column (it scrolls with the page, so the place is kept). */
+  const spotUnder = (rect: { bottom: number; left: number }) => {
+    const wrap = noteWrap.current?.getBoundingClientRect();
+    return wrap ? { top: rect.bottom - wrap.top + 6, left: Math.max(0, Math.min(rect.left - wrap.left, wrap.width - 320)) } : { top: 0, left: 0 };
+  };
   const capture = () => {
     const box = editorRoot(), selection = window.getSelection();
     if (!noteOn || !form || !box || !selection || selection.isCollapsed || !selection.rangeCount) return;
     const range = selection.getRangeAt(0);
     if (!box.contains(range.commonAncestorContainer) || !range.toString().trim()) return;
-    if (range.toString().length > 600) { setPickError("의견을 남길 구간은 600자 이내로 골라 주세요."); return; }
+    const spot = spotUnder(range.getBoundingClientRect());
+    setPeek(null);
+    if (range.toString().length > 600) { setPick(null); setPickError({ text: "의견을 남길 구간은 600자 이내로 골라 주세요.", ...spot }); return; }
     const head = document.createRange(); head.setStart(box, 0); head.setEnd(range.startContainer, range.startOffset);
     const found = quoteFromSelection(form.script, range.toString(), head.toString().slice(-80));
-    if ("problem" in found) { setPick(null); setPickError(`${found.problem}.`); return; }
-    setPick(found); setPickError(""); setPickNote("");
+    if ("problem" in found) { setPick(null); setPickError({ text: `${found.problem}.`, ...spot }); return; }
+    setPick({ ...found, ...spot }); setPickError(null); setPickNote("");
   };
+  // The box takes the cursor without scrolling the page (the old box at the top pulled a long 원고 back up when it took the cursor).
+  useEffect(() => { if (pick) noteInput.current?.focus({ preventScroll: true }); }, [pick]);
+  // A click (no drag) on a marked passage opens its notes there; anywhere else closes them.
+  const peekAt = (event: React.MouseEvent) => {
+    const selection = window.getSelection();
+    if (!selection?.isCollapsed || !selection.rangeCount) return capture();
+    const { startContainer, startOffset } = selection.getRangeAt(0);
+    const ids = noteRanges.current.filter(({ range }) => { try { return range.isPointInRange(startContainer, startOffset); } catch { return false; } }).map(({ id }) => id);
+    setPeek(ids.length ? { ids, ...spotUnder({ bottom: event.clientY + 8, left: event.clientX - 20 }) } : null);
+  };
+  // Live notes marked in the 원고 (CSS highlight: the editor's own text is not touched), again after an edit or a new note.
+  useEffect(() => {
+    if (typeof CSS === "undefined" || !("highlights" in CSS)) return;
+    const notes = viewing ? [] : (form?.notes ?? []).filter(note => note.state === "open" || note.state === "proposed");
+    const timer = window.setTimeout(() => {
+      const box = editorBox.current?.querySelector<HTMLElement>("[contenteditable]");
+      noteRanges.current = box ? noteRangesIn(box, notes) : [];
+      if (noteRanges.current.length) CSS.highlights.set("yp-notes", new Highlight(...noteRanges.current.map(({ range }) => range)));
+      else CSS.highlights.delete("yp-notes");
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [form?.notes, form?.script, editorKey, viewing]);
   // Notes save with the 원고 as it is on screen, so a note never points at text the server has not seen.
   const notePatch = async (patch: Record<string, unknown>, remount = false) => {
     if (!form) return false;
@@ -169,7 +227,7 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
     return ok;
   };
   const addNote = async () => {
-    if (pick && pickNote.trim() && await notePatch({ note: { ...pick, text: pickNote.trim() } })) { setPick(null); setPickNote(""); window.getSelection()?.removeAllRanges(); }
+    if (pick && pickNote.trim() && await notePatch({ note: { quote: pick.quote, before: pick.before, after: pick.after, text: pickNote.trim() } })) { setPick(null); setPickNote(""); window.getSelection()?.removeAllRanges(); }
   };
   const applyNote = (note: YpScriptNote) => {
     if (project?.yp.stage !== "outline" && anim && !window.confirm("원고를 고치면 음성을 처음부터 다시 만들어요(음성 비용이 다시 들어요). 그 뒤 받아쓰기 · 자막, 장면 기획표, 미리보기 확인, 완성 영상도 다시 거쳐요. 이미 만든 최종본은 그대로 남아요. 반영할까요?")) return;
@@ -178,21 +236,12 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
   // 모아 보기 → the passage in the editor, marked with the CSS highlight (the editor's own text is not touched).
   const showNote = (note: YpScriptNote) => {
     const box = editorRoot();
-    if (!box) return;
-    const skip = /[\s*_~`]/, want = note.quote.replace(/[\s*_~`]/g, ""), lead = note.before.replace(/[\s*_~`]/g, "").slice(-20);
-    const chars: { node: Text; offset: number }[] = []; let text = "";
-    const walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
-    for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null)
-      for (let index = 0; index < node.data.length; index += 1) if (!skip.test(node.data[index])) { chars.push({ node, offset: index }); text += node.data[index]; }
-    const hits: number[] = [];
-    for (let at = want ? text.indexOf(want) : -1; at >= 0; at = text.indexOf(want, at + 1)) hits.push(at);
-    const at = hits.length > 1 ? hits.find(hit => text.slice(0, hit).endsWith(lead)) ?? -1 : hits[0] ?? -1;
-    if (at < 0) { page.setError("편집기에서 이 구간을 찾지 못했어요. 원고가 바뀌었을 수 있어요."); return; }
-    const range = document.createRange(), end = chars[at + want.length - 1];
-    range.setStart(chars[at].node, chars[at].offset); range.setEnd(end.node, end.offset + 1);
+    const range = box ? noteRangesIn(box, [note])[0]?.range : undefined;
+    if (!range) { page.setError("편집기에서 이 구간을 찾지 못했어요. 원고가 바뀌었을 수 있어요."); return; }
     if ("highlights" in CSS) CSS.highlights.set("yp-note", new Highlight(range));
     range.startContainer.parentElement?.scrollIntoView({ block: "center", behavior: "smooth" });
   };
+  const peeked = peek ? (form?.notes ?? []).filter(note => peek.ids.includes(note.id)) : [];
 
   return <YpFrame page={page} view={2} action={action} header={header} title="구성안" sub={project?.yp.stage === "outline" ? "러닝타임을 정하고 원고를 써요." : "제작이 시작된 원고예요. 고치면 버전이 남아요."} savedAt={savedAt}
     todo={form && project?.yp.stage === "outline" ? [{ label: "러닝타임", done: form.spec.runtimeMin !== null && !runtimeError(form.spec.runtimeMin) }, { label: "원고", done: scriptChars(form.script) > 0 }] : undefined}
@@ -212,7 +261,7 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
           {runtimeError(form.spec.runtimeMin) ? <div className="yp-errline">{runtimeError(form.spec.runtimeMin)}</div> : null}
         </YpSection>
         <YpSection n={2} title="원고" need extra={editable && !viewing ? <span className="yp-sec-acts">
-          <button type="button" className={`yp-btn yp-sm${noteOn ? " yp-on" : ""}`} aria-pressed={noteOn} title="원고에서 글을 드래그해 그 구간에 의견을 남겨요 (U · 끝내기 Esc)" onClick={() => { setNoteMode(on => !on); setPick(null); setPickError(""); }}><MessageSquare size={14} aria-hidden="true" /> {noteOn ? "의견 모드 끝내기" : "의견 모드 (U)"}</button>
+          <button type="button" className={`yp-btn yp-sm${noteOn ? " yp-on" : ""}`} aria-pressed={noteOn} title="원고에서 글을 드래그해 그 구간에 의견을 남겨요 (U · 끝내기 Esc)" onClick={() => { setNoteMode(on => !on); setPick(null); setPeek(null); setPickError(null); }}><MessageSquare size={14} aria-hidden="true" /> {noteOn ? "의견 모드 끝내기" : "의견 모드 (U)"}</button>
           <button type="button" className="yp-btn yp-sm yp-pri" onClick={() => setSend(true)}><Sparkles size={14} /> {form.ai ? "내 AI로 다시 쓰기" : "내 AI로 원고 쓰기"}</button></span> : null}>
           <div className="yp-est"><span className="yp-tag yp-acc"><Clock size={12} aria-hidden="true" /> 예상 길이 {estimate?.label}</span><span className="yp-muted" style={{ fontSize: 12 }} title="공백 · 제목 줄 · 사진 · 표를 빼고 분당 350자로 셈">원고 {estimate?.chars.toLocaleString()}자</span>
             {voiceSec ? <span className="yp-tag" title="영상 만드는 컴퓨터가 만든 음성의 실제 길이">실제 음성 {Math.floor(voiceSec / 60)}분 {Math.round(voiceSec % 60)}초</span> : null}
@@ -231,18 +280,27 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
             {(["샷", "B롤", "인서트"] as ShotKind[]).map(kind => <button key={kind} type="button" className="yp-btn yp-sm" title={`커서 자리에 [${kind}] 줄을 넣어요. 그 줄은 대사 · 길이 계산에서 빠지고 촬영 콘티에 모여요.`}
               onClick={() => editor.current?.insertMarkdown(` [${kind}] `)}>[{kind}]</button>)}</div> : null}
           {noteOn ? <div className="yp-note yp-gray yp-snote-mode" role="status"><MessageSquare size={16} className="yp-i" aria-hidden="true" /><div>
-            <b>의견 모드</b> · 원고에서 고칠 글을 드래그하면 그 구간에 의견을 남겨요. 끝내려면 Esc.
-            {pickError ? <div className="yp-errline" role="alert">{pickError}</div> : null}
-            {pick ? <form className="yp-snote-new" onSubmit={event => { event.preventDefault(); void addNote(); }}>
+            <b>의견 모드</b> · 원고에서 고칠 글을 드래그하면 바로 아래에 의견 칸이 열려요. 의견이 달린 곳은 색으로 표시되고, 누르면 그 의견이 열려요. 끝내려면 Esc.</div></div> : null}
+          <div className="yp-snote-wrap" ref={noteWrap}>
+            <div className={`yp-rte yp-tall${noteOn ? " yp-noting" : ""}`} ref={editorBox} onMouseUp={peekAt} onKeyUp={capture} onBlur={() => { if (dirty) saveNow(); }}>
+              <KnowledgeRichEditor ref={editor} key={`${editorKey}-${viewing?.v ?? "cur"}`} markdown={viewing?.md ?? form.script} accessToken={page.accessToken} disabled={!editable || Boolean(viewing)}
+                onChange={markdown => { if (!viewing && markdown !== form.script) edit({ script: markdown }); }} onError={message => page.setError(message)} />
+            </div>
+            {pickError ? <div className="yp-snote-pop" ref={placeAt(pickError)} role="alert"><span className="yp-errline">{pickError.text}</span>
+              <button type="button" className="yp-btn yp-sm" onClick={() => setPickError(null)}>닫기</button></div> : null}
+            {pick ? <form className="yp-snote-pop yp-snote-new" ref={placeAt(pick)} onSubmit={event => { event.preventDefault(); void addNote(); }}>
               <blockquote>{pick.quote.replace(/[*_~`]/g, "")}</blockquote>
-              <textarea className="yp-in" value={pickNote} maxLength={1000} autoFocus rows={3} aria-label="구간 의견" placeholder="이 구간을 어떻게 고치면 좋을지 적어 주세요"
+              <textarea ref={noteInput} className="yp-in" value={pickNote} maxLength={1000} rows={3} aria-label="구간 의견" placeholder="이 구간을 어떻게 고치면 좋을지 적어 주세요"
                 onChange={event => setPickNote(event.target.value)} onKeyDown={event => { if (event.key === "Escape") { event.stopPropagation(); setPick(null); } }} />
               <span className="yp-row-btns"><button type="submit" className="yp-btn yp-sm yp-pri" disabled={!pickNote.trim() || noteBusy}>{noteBusy ? "저장하는 중…" : "의견 저장"}</button>
                 <button type="button" className="yp-btn yp-sm" onClick={() => setPick(null)}>취소</button></span>
-            </form> : null}</div></div> : null}
-          <div className={`yp-rte yp-tall${noteOn ? " yp-noting" : ""}`} ref={editorBox} onMouseUp={capture} onKeyUp={capture} onBlur={() => { if (dirty) saveNow(); }}>
-            <KnowledgeRichEditor ref={editor} key={`${editorKey}-${viewing?.v ?? "cur"}`} markdown={viewing?.md ?? form.script} accessToken={page.accessToken} disabled={!editable || Boolean(viewing)}
-              onChange={markdown => { if (!viewing && markdown !== form.script) edit({ script: markdown }); }} onError={message => page.setError(message)} />
+            </form> : null}
+            {peeked.length ? <div className="yp-snote-pop" ref={placeAt(peek!)} role="dialog" aria-label="이 구간의 의견">
+              <ul className="yp-snote-list">{peeked.map(note => <li key={note.id} className="yp-snote">
+                <div className="yp-snote-h"><b>{note.by}</b><span className={`yp-tag${note.state === "proposed" ? " yp-acc" : ""}`}>{note.state === "proposed" ? "수정안 도착" : "의견"}</span></div>
+                <p className="yp-snote-t">{note.text}</p><p className="yp-hint yp-snote-m">v{note.v || "–"}에서 · {new Date(note.at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</p></li>)}</ul>
+              <span className="yp-row-btns"><span className="yp-hint">수정안 보기 · 반영은 아래 구간 의견에서 해요.</span><button type="button" className="yp-btn yp-sm" onClick={() => setPeek(null)}>닫기</button></span>
+            </div> : null}
           </div>
           <p className="yp-hint"><Info size={12} aria-hidden="true" /> 마지막 20초는 최종 화면 자리로 비워 둬요.</p>
           {!viewing && (noting || form.notes?.length) ? <>

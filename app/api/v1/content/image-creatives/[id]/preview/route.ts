@@ -11,8 +11,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 const inputSchema = z.object({ variantId: z.string().min(1).max(100), design: z.custom<ImageDesign>(isImageDesign).optional() }).strict();
+const imageInput = z.string().max(Math.ceil(IMAGE_FILE_MAX / 3) * 4 + 100).optional();
 const demoSchema = z.object({ variant: z.custom<CreativeVariant>(v => !imageVariantProblems(v).length),
-  photo: z.string().max(Math.ceil(IMAGE_FILE_MAX / 3) * 4 + 100).optional() }).strict();
+  photo: imageInput, reference: imageInput, detail: imageInput }).strict();
 const headers = { "cache-control": "private, no-store", "content-type": "image/png" };
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -24,17 +25,24 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       ["localhost", "127.0.0.1", "[::1]"].includes(hostname) &&
       (process.env.NEXT_PUBLIC_DEMO_MODE === "true" || !process.env.NEXT_PUBLIC_SUPABASE_URL);
     if (localDemo) {
-      const { variant, photo } = demoSchema.parse(await parseJson(request, Math.ceil(IMAGE_FILE_MAX / 3) * 4 + 16_384));
-      let dataUrl: string | undefined;
-      if (variant.asset || photo) {
-        const match = photo?.match(/^data:image\/(?:jpeg|png);base64,([A-Za-z0-9+/=]+)$/i);
-        if (!variant.asset || !match) throw new ApiError(422, "IMAGE_PREVIEW_ASSET", "작업 사진을 확인해 주세요.");
-        const bytes = Buffer.from(match[1], "base64");
-        if (bytes.length > IMAGE_FILE_MAX) throw new ApiError(413, "IMAGE_PREVIEW_SIZE", "사진 파일이 너무 큽니다.");
-        const png = await getSharp(undefined)(bytes,{ limitInputPixels: 20_000_000, failOn: "warning" }).rotate().png().toBuffer();
-        dataUrl = "data:image/png;base64," + png.toString("base64");
+      const { variant, photo, reference, detail } = demoSchema.parse(await parseJson(request, 3 * Math.ceil(IMAGE_FILE_MAX / 3) * 4 + 16_384));
+      async function normalized(source: CreativeVariant["asset"], value?: string) {
+        if (!source && !value) return undefined;
+        const prefix = value?.match(/^data:image\/(?:jpeg|png);base64,/i)?.[0];
+        if (!source || !value || !prefix) throw new ApiError(422, "IMAGE_PREVIEW_ASSET", "작업에 등록한 원본을 확인해 주세요.");
+        const encoded = value.slice(prefix.length);
+        // Scan for invalid characters, without capturing a multi-megabyte match on the server stack.
+        const padding = encoded.endsWith("==") ? 2 : encoded.endsWith("=") ? 1 : 0;
+        if (!encoded.length || encoded.length % 4 || /[^A-Za-z0-9+/]/.test(encoded.slice(0, encoded.length - padding)))
+          throw new ApiError(422, "IMAGE_PREVIEW_ASSET", "작업에 등록한 원본을 확인해 주세요.");
+        const bytes = Buffer.from(encoded, "base64");
+        if (bytes.length > IMAGE_FILE_MAX) throw new ApiError(413,"IMAGE_PREVIEW_SIZE","사진 파일이 너무 큽니다.");
+        const {data,info} = await getSharp(undefined)(bytes,{limitInputPixels:20_000_000,failOn:"warning"}).rotate().png().toBuffer({resolveWithObject:true});
+        if (info.width !== source.w || info.height !== source.h) throw new ApiError(422,"IMAGE_PREVIEW_ASSET","등록한 원본의 가로·세로 크기를 확인해 주세요.");
+        return "data:image/png;base64," + data.toString("base64");
       }
-      return new Response(new Uint8Array(await imagePng(variant, dataUrl)).buffer, { headers });
+      const [assetUrl, referenceUrl, detailUrl] = await Promise.all([normalized(variant.asset,photo),normalized(variant.referenceLayout?.source,reference),normalized(variant.detailAsset,detail)]);
+      return new Response(new Uint8Array(await imagePng(variant, assetUrl, referenceUrl, detailUrl)).buffer, { headers });
     }
     const actor = await authenticateRequest(request);
     const record = await imageRecord(actor.supabase, actor.ownerId, z.string().uuid().parse(id));

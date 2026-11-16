@@ -8,11 +8,11 @@ import { defaultPlacement, PLACEMENT_IDS, resolvePlacement } from "@/lib/image-c
 import { LegacySavedPng } from "./legacy-saved-png";
 import { WarehouseVariantPreview } from "./warehouse-variant-preview";
 
-export function LegacyPreview({ variant, url, onCheck }: { variant: CreativeVariant; url?: string; onCheck?: (problems:string[])=>void }) {
+export function LegacyPreview({ variant, url, referenceUrl, detailUrl, onCheck }: { variant: CreativeVariant; url?: string; referenceUrl?:string; detailUrl?:string; onCheck?: (problems:string[])=>void }) {
   const placement = resolvePlacement(variant.size, variant.design?.placement, variant.design?.outputWidth);
   const box = useRef<HTMLDivElement>(null); const report=useRef(onCheck);
   useEffect(()=>{report.current=onCheck;},[onCheck]);
-  useLayoutEffect(()=>{let live=true;const check=()=>{if(!live||!box.current)return;const fields=[...box.current.querySelectorAll<HTMLElement>("[data-image-field]")].filter(el=>el.scrollHeight>el.clientHeight+1 || el.scrollWidth>el.clientWidth+1).map(el=>el.dataset.imageField || "문구");const badImage=box.current.querySelector("[data-image-missing]") || [...box.current.querySelectorAll("img")].some(img=>!img.complete || !img.naturalWidth);report.current?.([...new Set(fields)].map(field=>`${field} 영역의 글자가 잘려요.`).concat(badImage?["이미지를 불러오는 중이거나 확인이 필요해요."]:[]));};check();void document.fonts?.ready.then(check);box.current?.addEventListener("load",check,true);box.current?.addEventListener("error",check,true);const target=box.current;return()=>{live=false;target?.removeEventListener("load",check,true);target?.removeEventListener("error",check,true);};},[variant,url]);
+  useLayoutEffect(()=>{let live=true;const check=()=>{if(!live||!box.current)return;const fields=[...box.current.querySelectorAll<HTMLElement>("[data-image-field]")].filter(el=>el.scrollHeight>el.clientHeight+1 || el.scrollWidth>el.clientWidth+1).map(el=>el.dataset.imageField || "문구");const badImage=box.current.querySelector("[data-image-missing]") || [...box.current.querySelectorAll("img")].some(img=>!img.complete || !img.naturalWidth);report.current?.([...new Set(fields)].map(field=>`${field} 영역의 글자가 잘려요.`).concat(badImage?["이미지를 불러오는 중이거나 확인이 필요해요."]:[]));};check();void document.fonts?.ready.then(check);box.current?.addEventListener("load",check,true);box.current?.addEventListener("error",check,true);const target=box.current;return()=>{live=false;target?.removeEventListener("load",check,true);target?.removeEventListener("error",check,true);};},[variant,url,referenceUrl,detailUrl]);
   useLayoutEffect(() => {
     const element = box.current;
     if (!element) return;
@@ -22,7 +22,7 @@ export function LegacyPreview({ variant, url, onCheck }: { variant: CreativeVari
     const ro = new ResizeObserver(measure); ro.observe(element); measure();
     return () => ro.disconnect();
   }, [placement.width, placement.height]);
-  return <div ref={box} className="ic-preview" data-size={placement.size}><div className="ic-preview-canvas"><ImageCreativeView variant={variant} assetUrl={url} /></div></div>;
+  return <div ref={box} className="ic-preview" data-size={placement.size}><div className="ic-preview-canvas"><ImageCreativeView variant={variant} assetUrl={url} referenceUrl={referenceUrl} detailUrl={detailUrl} /></div></div>;
 }
 
 const fontLabels = { original: "포맷 기본 글꼴", sans: "고딕 · 프리텐다드", serif: "명조 · 고운바탕", hand: "손글씨 · 개구", sign: "간판체 · 검은고딕" } satisfies Record<ImageDesign["font"], string>;
@@ -46,10 +46,10 @@ export function SafeZoneOverlay({ size, design }: { size: CreativeVariant["size"
 }
 
 type EditorProps = {
-  projectId: string; base: CreativeVariant; assetUrl?: string;
+  projectId: string; base: CreativeVariant; assetUrl?: string; referenceUrl?: string; detailUrl?: string;
   onSave: (baseId: string, id: string, design: ImageDesign) => Promise<void>; onClose: () => void;
 };
-export function ImageDesignEditor({ projectId, base, assetUrl, onSave, onClose }: EditorProps) {
+export function ImageDesignEditor({ projectId, base, assetUrl, referenceUrl, detailUrl, onSave, onClose }: EditorProps) {
   const original = useMemo<ImageDesign>(() => base.design || { font: "original", card: "original", placement: defaultPlacement(base.size) }, [base]);
   const [design, setDesign] = useState(original);
   const [guide, setGuide] = useState(true);
@@ -83,7 +83,7 @@ export function ImageDesignEditor({ projectId, base, assetUrl, onSave, onClose }
       <div className="ic-artboard">
         {isWarehouseFormat(base.formatId)
           ? <WarehouseVariantPreview key={key} variant={draft} assetUrl={assetUrl} onCheck={onCheck}/>
-          : <LegacySavedPng key={key} projectId={projectId} baseId={base.id} variant={draft} assetUrl={assetUrl} onCheck={onCheck}/>}
+          : <LegacySavedPng key={key} projectId={projectId} baseId={base.id} variant={draft} assetUrl={assetUrl} referenceUrl={referenceUrl} detailUrl={detailUrl} onCheck={onCheck}/>}
         {guide && <SafeZoneOverlay size={base.size} design={design}/>}
       </div>
       <label className="ic-check ic-guide-switch"><input type="checkbox" checked={guide} onChange={e=>setGuide(e.target.checked)}/> 세이프 존 표시</label>

@@ -14,7 +14,7 @@ test("an updated Mac can still poll an older OS without claiming a second job af
     return {idle:true};
   };
   assert.equal(await processAdRender(call,process.cwd()),false);
-  assert.deepEqual(versions,[3,2,1]);
+  assert.deepEqual(versions,[8,7,6,5,4,3,2,1]);
   let attempts=0;
   await assert.rejects(processAdRender(async()=>{attempts++;throw new Error("lost response");},"unused"),/lost response/);
   assert.equal(attempts,1);
@@ -30,6 +30,19 @@ test("a new worker with an older installed image bundle advertises only the form
     assert.equal(claim.rendererVersion,2);
     return {idle:true};
   },root),false);
+
+  const referenceRoot = mkdtempSync(path.join(os.tmpdir(),"ad-slot-bundle-"));
+  t.after(() => rmSync(referenceRoot,{recursive:true,force:true}));
+  const slots = path.join(referenceRoot,"image-renderer");
+  for (const name of ["thumbnail-ad.mjs","youtube-process/thumb-frame.mjs","youtube-process/thumb-style.mjs",
+    "fonts/Pretendard-900.otf","reference-view.mjs","reference-layout.mjs"]) {
+    mkdirSync(path.dirname(path.join(slots,name)),{recursive:true});
+    writeFileSync(path.join(slots,name),"");
+  }
+  assert.equal(await processAdRender(async claim => {
+    assert.equal(claim.rendererVersion,4);
+    return {idle:true};
+  },referenceRoot),false);
 });
 
 test("a staff video bundle renders offline without the OS checkout and uploads only the complete, checked set", async t=>{
@@ -63,7 +76,7 @@ test("a staff video bundle renders offline without the OS checkout and uploads o
   const dispatch=async body=>{
     sent.push(body.action);
     switch(body.action){
-      case "image_creative_claim":assert.equal(body.rendererVersion,3);return {jobId:"j",lease:"lease",variantIds:["v"]};
+      case "image_creative_claim":assert.equal(body.rendererVersion,8);return {jobId:"j",lease:"lease",variantIds:["v"]};
       case "image_creative_scene":assert.equal(body.variantId,"v");return scene("v");
       case "image_creative_prepare":return {signedUrl:"https://example.test/storage/v1/object/upload/sign/owned-result"};
       case "image_creative_complete":
@@ -84,4 +97,67 @@ test("a staff video bundle renders offline without the OS checkout and uploads o
   await assert.rejects(processAdRender(dispatch,installed),/완료 응답/);
   assert.equal(sent.includes("image_creative_fail"),false);
   assert.equal(await processAdRender(async()=>({idle:true}),installed),false);
+});
+
+test("uploaded reference pixels survive outside the replacement slots on the actual Mac PNG", async t => {
+  const {getSharp} = await import("next/dist/server/image-optimizer.js");
+  const sharp = getSharp();
+  const temp = mkdtempSync(path.join(os.tmpdir(),"ad-reference-"));
+  t.after(()=>rmSync(temp,{recursive:true,force:true}));
+  const {renderAdPng} = await import("../tools/image-ad-renderer.mjs");
+  const runtime = buildAdRuntime(process.cwd(),path.join(temp,"engine"));
+  const source = {w:108,h:135,path:"source.png"};
+  const pixels = Buffer.alloc(source.w*source.h*3);
+  for (let y=0;y<source.h;y++) for (let x=0;x<source.w;x++) {
+    const color = x<54 ? [18,93,118] : [174,81,13];
+    pixels.set(color,(y*source.w+x)*3);
+  }
+  const dataUrl = bytes => "data:image/png;base64,"+bytes.toString("base64");
+  const referenceDataUrl = dataUrl(await sharp(pixels,{raw:{width:108,height:135,channels:3}}).png().toBuffer());
+  const replacement = dataUrl(await sharp({create:{width:12,height:12,channels:3,background:"#73c760"}}).png().toBuffer());
+  const style={fill:"#f9e5ca",color:"#101010",align:"left",fontSize:48};
+  const variant={formatId:"reference_image",formatVersion:1,size:"portrait",asset:{w:12,h:12,path:"photo.png"},
+    referenceLayout:{source,headline:{x:8,y:8,w:70,h:12,...style},photo:{x:10,y:30,w:45,h:32},
+      body:{x:15,y:35,w:30,h:10,...style,fill:"transparent"},
+      cta:{x:53,y:76,w:35,h:12,...style,fill:"#1e2240",color:"#ffffff",align:"center"}},
+    copy:{headline:"나를 아는 시간",body:"시작",cta:"무료 진단"}};
+  const {isReferenceLayout}=await import("../lib/image-creative/reference-layout.ts");
+  assert.equal(isReferenceLayout(variant.referenceLayout),true);
+  assert.equal(isReferenceLayout({...variant.referenceLayout,body:{...variant.referenceLayout.body,x:75}}),false);
+  const output=await renderAdPng(runtime,variant,replacement,{referenceDataUrl});
+  const {data, info}=await sharp(output).removeAlpha().raw().toBuffer({resolveWithObject:true});
+  assert.deepEqual([info.width,info.height],[1080,1350]);
+  const pixel=(x,y)=>[...data.subarray((y*info.width+x)*3,(y*info.width+x)*3+3)];
+  assert.deepEqual(pixel(23,23),[18,93,118]);
+  assert.deepEqual(pixel(1005,1130),[174,81,13]);
+  assert.deepEqual(pixel(132,432),[115,199,96]);
+  assert.deepEqual(pixel(96,121),[249,229,202]);
+  assert.deepEqual(pixel(580,1032),[30,34,64]);
+  const inkNear=(x0,y0,w,h,r,g,b)=>{for(let y=y0;y<y0+h;y++)for(let x=x0;x<x0+w;x++){
+    const p=pixel(x,y);if(Math.abs(p[0]-r)<3 && Math.abs(p[1]-g)<3 && Math.abs(p[2]-b)<3)return true;
+  }return false;};
+  assert.ok(inkNear(88,109,750,160,16,16,16),"new headline is visibly drawn");
+  assert.deepEqual(pixel(165,475),[115,199,96],"replacement photo shows through body slot");
+  assert.ok(inkNear(165,475,310,130,16,16,16),"body is drawn directly onto replacement photo");
+  assert.ok(inkNear(575,1030,365,155,255,255,255),"new CTA is visibly drawn");
+
+  const edgeLayout = {...variant.referenceLayout, cta:{...variant.referenceLayout.cta,x:0,w:100,align:"left"}};
+  const edgeOutput = await renderAdPng(runtime,{...variant,referenceLayout:edgeLayout},replacement,{referenceDataUrl});
+  const edgePixels = await sharp(edgeOutput).removeAlpha().raw().toBuffer();
+  const rgb=(x,y)=>[...edgePixels.subarray((y*1080+x)*3,(y*1080+x)*3+3)];
+  assert.deepEqual([rgb(0,0),rgb(1079,0),rgb(0,1349),rgb(1079,1349)],[[18,93,118],[174,81,13],[18,93,118],[174,81,13]]);
+  assert.deepEqual(rgb(0,1060),[30,34,64]);
+  assert.deepEqual(rgb(1079,1060),[30,34,64]);
+  let firstInk=1080;
+  for (let y=1030;y<1180;y++) for(let x=0;x<firstInk;x++) {
+    if(rgb(x,y).every(c=>c>245)) firstInk=x;
+  }
+  assert.ok(firstInk>=54 && firstInk<160,"an edge-to-edge CTA aligns its lettering inside the safe zone");
+
+  const composition = {style:"stack",background:"#fffaf0",ink:"#1a1520",accent:"#184671",imageSide:"end",fit:"contain"};
+  const composed = {...variant, referenceLayout:{...variant.referenceLayout,composition}};
+  const poster = await renderAdPng(runtime,composed,replacement,{referenceDataUrl});
+  const newSource = await renderAdPng(runtime,composed,replacement,{referenceDataUrl:replacement});
+  assert.ok(poster.equals(newSource),"new compositions only use the reference for design decisions");
+  assert.ok(!poster.equals(output),"old source-raster and new composition outputs differ");
 });
