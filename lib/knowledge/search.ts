@@ -5,13 +5,18 @@ export interface KnowledgeSearchHit {id:string;title:string;space:Space;group:"t
 export function queryTerms(query:string){return query.toLowerCase().trim().split(/\s+/).filter(Boolean).map(word=>GROUPS.find(group=>group.includes(word))??[word]);}
 export function plainMarkdown(value:string){return value.replace(/!\[[^\]]*\]\([^)]*\)/g,"").replace(/\[([^\]]+)\]\([^)]*\)/g,"$1").replace(/[#*_>|]/g,"").replace(/\s+/g," ").trim();}
 export interface SearchText {body:string;lower:string}
+export interface SearchScope {space?:string;includeMine?:boolean;includeAI?:boolean;ownerId?:string}
+/** Apply the same scope before fetching bodies and when ranking results. */
+export function inSearchScope(d:KnowledgeDocument,{space="all",includeMine=false,includeAI=false,ownerId=""}:SearchScope={}){
+  const s=documentSpace(d);
+  return d.status!=="archived"&&(space==="all"||space===s)&&!(s==="mine"&&(!includeMine||d.owner_id!==ownerId))&&!(s==="ai"&&!includeAI);
+}
 /** A body as search reads it; the server keeps this per document so a search does not clean every body again. */
 export function searchText(markdown:string):SearchText{const body=plainMarkdown(markdown);return {body,lower:body.toLowerCase()};}
 export function searchWorkspace(documents:KnowledgeDocument[],query:string,{space="all",includeMine=false,includeAI=false,ownerId="",titleOnly=false,text}:{space?:string;includeMine?:boolean;includeAI?:boolean;ownerId?:string;titleOnly?:boolean;text?:(d:KnowledgeDocument)=>SearchText|undefined}={}):KnowledgeSearchHit[]{
   const terms=queryTerms(query.replace(/결정/g,"").trim());if(!terms.length)return [];
-  return documents.filter(d=>d.status!=="archived").flatMap(d=>{
+  return documents.filter(d=>inSearchScope(d,{space,includeMine,includeAI,ownerId})).flatMap(d=>{
     const s=documentSpace(d);
-    if((space!=="all"&&space!==s)||(s==="mine"&&(!includeMine||d.owner_id!==ownerId))||(s==="ai"&&!includeAI))return [];
     const title=d.title.toLowerCase(),{body,lower}=text?.(d)??searchText(d.content_md);
     const titleMatches=terms.filter(words=>words.some(word=>title.includes(word))).length;
     const matches=terms.filter(words=>words.some(word=>title.includes(word)||lower.includes(word))).length;
