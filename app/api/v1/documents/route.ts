@@ -33,10 +33,10 @@ export async function GET(request: Request) {
     // Pagination and totals are computed only after access filtering.
     // Summary views drop the body anyway; never transfer every document's full text to list a few titles.
     const columns = includeContent ? "*" : "id,title,folder,parent_document_id,page_order,status,brand,team,tags,source,source_ref,owner_id,steward_id,created_by,current_version,created_at,updated_at,category_id,work_state,due_on,daily_on,review_due_on,archived_at,archived_by,archived_from_status,retention_hold,meeting_record_id,reader_scope";
-    const listDocuments = (columns: string, scanOffset: number, scanEnd = scanOffset + 999, client = createServiceSupabase()) => {
+    const listDocuments = (columns: string, scanOffset: number, scanEnd = scanOffset + 999, client = createServiceSupabase(), exactCount = false) => {
       let builder = client
       .from("os_documents")
-      .select(columns, { count: "exact" })
+      .select(columns, exactCount ? { count: "exact" } : undefined)
       .order("updated_at", { ascending: false })
       .order("id", { ascending: true })
       .range(scanOffset, scanEnd);
@@ -61,7 +61,7 @@ export async function GET(request: Request) {
     if (actor.type === "user" && !listFilters) {
       // A member's row policies already drop unreadable documents, so the database
       // can page and count; the page check below still runs on what is returned.
-      const { data, error, count } = await listDocuments(columns, offset, offset + limit - 1, actor.supabase);
+      const { data, error, count } = await listDocuments(columns, offset, offset + limit - 1, actor.supabase, true);
       if (error) throw new ApiError(400, "DOCUMENT_LIST_FAILED", "문서 목록을 불러오지 못했습니다.");
       const page = (data ?? []) as unknown as KnowledgeDocument[];
       const allowed = await readableKnowledgePages(actor, page);

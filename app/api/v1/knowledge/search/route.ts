@@ -3,7 +3,7 @@ import {ApiError,apiErrorResponse} from "@/lib/http";
 import {authenticateRequest} from "@/lib/server/auth";
 import {POLICY_FIELDS,readableKnowledgePages} from "@/lib/server/knowledge-page-access";
 import {knowledgeAccessContext} from "@/lib/server/knowledge-access";
-import {searchText,searchWorkspace,type SearchText} from "@/lib/knowledge/search";
+import {inSearchScope,searchText,searchWorkspace,type SearchText} from "@/lib/knowledge/search";
 import type {KnowledgeDocument} from "@/lib/types";
 export const dynamic="force-dynamic";
 // 문서 찾기 reads every visible body. A warm instance keeps them per document and content_hash (the os_documents write trigger
@@ -33,10 +33,16 @@ export async function GET(request:Request){
     }
     const read=performance.now();timing.push(`documents;dur=${Math.round(read-started)}`);
     // One ancestor check over every page (parents on other pages are already loaded), not one per page.
-    const allowed=await readableKnowledgePages(actor,documents),readable=documents.filter(d=>allowed.has(d.id));
+    const allowed=await readableKnowledgePages(actor,documents),readable=documents.filter(d=>allowed.has(d.id)&&inSearchScope(d,options));
+    const offset=Math.max(0,Number(url.searchParams.get("offset"))||0),limit=options.titleOnly?6:50;
+    // Title-only ranking depends exclusively on title and time. Read excerpt bodies
+    // only for the six displayed hits, not every visible document on a cold instance.
+    const titleHits=options.titleOnly?searchWorkspace(readable,q,{...options,text:()=>({body:"",lower:""})}):null;
+    const shownIds=new Set(titleHits?.slice(offset,offset+limit).map(hit=>hit.id));
+    const bodyRows=titleHits?readable.filter(d=>shownIds.has(d.id)):readable;
     const checked=performance.now();timing.push(`access;dur=${Math.round(checked-read)}`);
     const hashOf=(d:KnowledgeDocument)=>(d as KnowledgeDocument&{content_hash?:string|null}).content_hash??"";
-    const stale=readable.filter(d=>!hashOf(d)||bodyCache.get(d.id)?.hash!==hashOf(d)).map(d=>d.id);
+    const stale=bodyRows.filter(d=>!hashOf(d)||bodyCache.get(d.id)?.hash!==hashOf(d)).map(d=>d.id);
     const chunks=Array.from({length:Math.ceil(stale.length/200)},(_,i)=>stale.slice(i*200,i*200+200));
     for(let i=0;i<chunks.length;i+=4){
       const pages=await Promise.all(chunks.slice(i,i+4).map(chunk=>actor.supabase.from("os_documents").select("id,content_md,content_hash").in("id",chunk)));
@@ -46,8 +52,8 @@ export async function GET(request:Request){
       }
     }
     timing.push(`stale;desc="${stale.length}/${readable.length}"`,`bodies;dur=${Math.round(performance.now()-checked)}`);
-    const results=searchWorkspace(readable,q,{...options,text:d=>bodyCache.get(d.id)?.text??{body:"",lower:""}}),offset=Math.max(0,Number(url.searchParams.get("offset"))||0),limit=options.titleOnly?6:50;
+    const results=searchWorkspace(bodyRows,q,{...options,text:d=>bodyCache.get(d.id)?.text??{body:"",lower:""}});
     timing.push(`total;dur=${Math.round(performance.now()-started)}`);
-    return NextResponse.json({results:results.slice(offset,offset+limit),total:results.length},{headers:{"Cache-Control":"private, no-store","Server-Timing":timing.join(", ")}});
+    return NextResponse.json({results:titleHits?results:results.slice(offset,offset+limit),total:titleHits?.length??results.length},{headers:{"Cache-Control":"private, no-store","Server-Timing":timing.join(", ")}});
   }catch(error){return apiErrorResponse(error);}
 }

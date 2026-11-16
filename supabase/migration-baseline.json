@@ -1114,6 +1114,18 @@
         "production"
       ],
       "notes": "Owner approved Production on 2026-11-13 (\"운영 적용·병합\"). Applied to the brandyaction OS Production project the same way as DEV: the 95 applied Production history rows were fetched into a disposable staging directory, this one file (same sha256) was added, the dry-run listed exactly this migration, then db push; history 95 -> 96 with the earlier 95 unchanged; postflight read back RLS on, the 3 finance policies, 3 indexes, authenticated select/insert/update only, anon none, 0 rows, os_fin_tax_invoices untouched. No seed, reset, history repair, other migration, environment variable or business row. Applied before the code merge; the previous code never reads the table. Owner approved DEV on 2026-11-13 (\"#574도 DEV DB 적용해서 확인해줘\"). Applied to brandyaction-os-dev only: the 70 applied DEV history rows were fetched into a disposable staging directory, this one file was added, the dry-run listed exactly this migration, then db push; history 70 -> 71 with the earlier 70 unchanged; postflight read back RLS on, 3 policies, 3 indexes, authenticated select/insert/update only, anon none, 0 rows. Connected DEV check with synthetic identities through the real API (7 checks: 401/403/200, import and read-back, re-import dedupe, other-business 409, invalid 400, RLS and check constraints, archive-only, live permission revoke); all synthetic rows and users removed. DEV is still missing 26 earlier migrations that Production has (among them 20261029120000_finance_tax_invoices), so GET /api/v1/finance/vat answers 503 FINANCE_SETUP_REQUIRED there and the page-level flow was not exercised on DEV. Additive: one new table with the same columns, checks, index, grants (select/insert/update, no delete) and finance_read/finance_insert/finance_update policies as os_fin_tax_invoices (tests/finance-purchase-vat.test.mjs compares the two definitions); no existing table, row, policy or function changes, os_fin_log_action untouched. Deploy order does not matter: until the table exists GET /api/v1/finance/vat answers purchase.available=false with the sales fields unchanged and /api/v1/finance/purchase-invoices answers 503 FINANCE_PURCHASE_NOT_READY. Manual undo: supabase/rollback/20261113100000_finance_purchase_invoices.down.sql (drops the table; saved 매입 rows can be uploaded again). DEV and Production each need the owner's approval."
+    },
+    {
+      "file": "20261116052725_meeting_conflict_no_retry.sql",
+      "sha256": "c7208b0e5a2a7dc3eac7caf4669b5f13359515552de160568a17845d20c62454",
+      "purpose": "Return permanent meeting version conflicts as PT409 instead of the retryable 40001 SQLSTATE.",
+      "requiresApproval": true,
+      "developmentApprovedAt": "2026-11-16",
+      "productionApprovedAt": null,
+      "appliedEnvironments": [
+        "development"
+      ],
+      "notes": "DEV verified: 15 transactional checks, 3 real REST conflicts, idempotent apply and unchanged ACL/owner/security attributes. Two existing function bodies only; original source hashes guard against concurrent edits. No business rows changed. Production approval and fresh looping-session evidence required separately; cleanup generator never executes SQL."
     }
   ],
   "legacyMigrations": [
