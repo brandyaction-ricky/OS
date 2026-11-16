@@ -33,7 +33,19 @@ const runId = runArg > 0 ? process.argv[runArg + 1] : undefined;
 const mindmapDir = process.env.MINDMAP_DIR ?? "";
 const GAP = 0.45; // Logan's pause between paragraphs; his timings and renderer assume it.
 const MIN_DISK_GB = 60; // one render decodes about 45 GB of deck frames under MINDMAP_DIR
-let current = null; // { renderId?, step } while working, for the heartbeat
+let current = null; // { renderId?, runId?, step } while working, for the heartbeat
+// 원고를 고쳐 다시 누른 영상 (로건 11-16): the heartbeat answers stopRun when a newer run of the video being worked on exists. Its
+// processes are stopped and the run fails as MYIN_RUN_STALE (the OS stops it there), so the new run starts within a minute.
+let stopping = null;
+const children = new Set();
+const isStopping = () => Boolean(stopping) && current?.runId === stopping;
+const staleError = () => Object.assign(new Error("a newer run of this video was started"), { code: "MYIN_RUN_STALE" });
+/** A process and everything it started (his voice runs two paragraph workers), children first. */
+export function killTree(pid) {
+  const rows = execFileSync("ps", ["-axo", "pid=,ppid="], { encoding: "utf8" }).trim().split("\n").map((line) => line.trim().split(/\s+/).map(Number));
+  const kill = (target) => { for (const [child, parent] of rows) if (parent === target) kill(child); try { process.kill(target, "SIGTERM"); } catch { /* gone */ } };
+  kill(pid);
+}
 // 렌더 PC 여러 대 (2026-11-08): this PC's name on every claim and heartbeat, so a video stays with the PC holding its work folder.
 // RENDER_PC_NAME names it on the screen; without one, the computer's own name.
 const pcName = local ? "" : ((process.env.RENDER_PC_NAME || os.hostname()).replace(/\.local$/, "").replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[^A-Za-z0-9]+/, "").slice(0, 40) || "render-pc");
@@ -51,6 +63,11 @@ export async function heartbeat() {
   const answer = await call({ action: "heartbeat", diskFreeGb: diskFreeGb(), memUsedGb: gb(os.totalmem() - os.freemem()), memTotalGb: gb(os.totalmem()), job: current,
     packageName: (process.env.MINDMAP_PACKAGE_NAME || path.basename(path.resolve(local ? myinPkg : mindmapDir, ".."))).slice(0, 80),
     ...(engine() ? { engine: engine() } : {}), ...pcField }).catch((error) => { console.error(`heartbeat: ${error.message}`); return null; });
+  if (answer?.stopRun && answer.stopRun === current?.runId && stopping !== answer.stopRun) {
+    stopping = answer.stopRun;
+    console.error(`newer run of this video: stopping ${stopping}`);
+    for (const child of children) { try { killTree(child.pid); } catch (error) { console.error(`stop: ${error.message}`); } }
+  }
   if (answer && Boolean(answer.engineHeld) !== held) {
     held = Boolean(answer.engineHeld);
     console.error(held ? "engine differs from the other render PCs: taking no work" : "engine matches the other render PCs again");
@@ -347,9 +364,12 @@ export async function reportDiagramCatalog() {
   } catch (error) { console.error(`diagram catalog: ${error.message}`); } // never stops the worker
 }
 const runAsync = (command, args, options) => new Promise((resolve, reject) => {
+  if (isStopping()) return reject(staleError());
   const child = spawn(command, args, { stdio: "inherit", ...options });
+  children.add(child);
   child.on("error", reject);
-  child.on("exit", (code) => code === 0 ? resolve() : reject(Object.assign(new Error(`${args[0]} exited with ${code}`), { code: "WORKER_STAGE_FAILED" })));
+  child.on("exit", (code) => { children.delete(child);
+    code === 0 ? resolve() : reject(isStopping() ? staleError() : Object.assign(new Error(`${args[0]} exited with ${code}`), { code: "WORKER_STAGE_FAILED" })); });
 });
 
 // 로건 호흡·타이밍 (2026-10-27): his breath model picks where 안저님 breathes mid-sentence; Fish (on the OS) reads those commas.
@@ -526,7 +546,10 @@ export function myinVoiceEnv(job, base = process.env) {
 
 /** Like runAsync, but never throws: what the process printed (stdout and stderr) and whether it ended well. */
 const runOut = (command, args, options) => new Promise((resolve) => {
+  if (isStopping()) return resolve({ ok: false, out: "" });
   const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], ...options });
+  children.add(child);
+  child.on("exit", () => children.delete(child));
   let out = "";
   child.stdout.on("data", (chunk) => { out += chunk; process.stdout.write(chunk); });
   child.stderr.on("data", (chunk) => { out += chunk; process.stderr.write(chunk); });
@@ -608,7 +631,7 @@ export async function processMyinWords() {
   if (!myinPkg) return false;
   const job = await call({ action: "myin_claim", ...shortClaim, ...pcField });
   if (job.idle) return false;
-  current = { step: "download" };
+  current = { step: "download", runId: job.runId };
   const lease = { runId: job.runId, lease: job.lease };
   try {
     const work = path.join(myinWork, job.runId);
@@ -773,7 +796,7 @@ export async function processMyinPrep() {
   if (!myinPkg) return false;
   const job = await call({ action: "myin_prep_claim", ...(local ? { engine: engine() } : { ...shortClaim, ...pcField }) });
   if (job.idle) return false;
-  current = { step: "download" };
+  current = { step: "download", runId: job.runId };
   const lease = { runId: job.runId, lease: job.lease };
   try {
     const work = path.join(myinWork, job.runId);
@@ -902,7 +925,7 @@ export async function processMyinRedraw() {
   const job = await call({ action: "myin_redraw_claim", ...(local ? { engine: engine() } : { ...shortClaim, ...pcField }) })
     .catch((error) => { if (error.code === "MYIN_ENGINE_DIFFERENT") throw error; console.error(`myin sheets redraw claim: ${error.message}`); return { idle: true }; });
   if (job.idle) return false;
-  current = { step: "drawing" };
+  current = { step: "drawing", runId: job.runId };
   const lease = { runId: job.runId, lease: job.lease };
   try {
     const { work, videoDir, myinDir } = myinDirs(job.runId);
@@ -1020,7 +1043,7 @@ export async function processMyinClips() {
   const stills = stillsReady() ? { stills: true } : {};
   const job = await call({ action: "myin_clips_claim", ...(local ? { engine: engine() } : { ...shortClaim, ...pcField }), ...stills });
   if (job.idle) return false;
-  current = { step: "drawing" };
+  current = { step: "drawing", runId: job.runId };
   const lease = { runId: job.runId, lease: job.lease };
   try {
     if (job.seed) await myinRebuild(job.runId, job.seed, job.layout);
@@ -1057,7 +1080,7 @@ export async function processMyinFinal() {
   if (!myinPkg) return false;
   const job = await call({ action: "myin_final_claim", ...(local ? { engine: engine() } : { ...shortClaim, ...pcField }) });
   if (job.idle) return false;
-  current = { step: "drawing" };
+  current = { step: "drawing", runId: job.runId };
   const lease = { runId: job.runId, lease: job.lease };
   try {
     if (job.seed) await myinRebuild(job.runId, job.seed, job.layout);

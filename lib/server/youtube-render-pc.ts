@@ -22,7 +22,9 @@ export const renderPcSignalSchema = z.object({
   diskFreeGb: z.number().min(0).max(1_000_000),
   memUsedGb: z.number().min(0).max(4_096),
   memTotalGb: z.number().min(0).max(4_096),
-  job: z.object({ renderId: z.string().uuid().optional(), step: z.enum(["voice", "download", "narration", "drawing", "upload"]) }).strict().nullable(),
+  // runId (로건 11-16): the v13 run being worked on, so the OS can say when a newer run of that video replaced it. Steps are free
+  // words now: "voice check", "breath" and others the worker already sent were refused, and the screen shows 「작업 중」 for those.
+  job: z.object({ renderId: z.string().uuid().optional(), runId: z.string().uuid().optional(), step: z.string().trim().min(1).max(40) }).strict().nullable(),
   packageName: z.string().trim().max(80).optional(),
   // 내 컴퓨터로 시안 (2026-10-27): a hash of the v13 engine (Logan's package, the diagrams, fonts, Python packages). A staff Mac
   // makes ③ drafts only while its hash equals the render PC's, so a draft looks like the full video the render PC makes later.
