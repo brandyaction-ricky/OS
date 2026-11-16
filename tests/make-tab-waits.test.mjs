@@ -16,8 +16,8 @@ test("a refusal of any step's button stays on screen while the steps are", () =>
 
 test("words ready again send the storyboard to whoever asked for it last", () => {
   const words = between(run, "export async function completeMyinWords", "export async function failMyinWords");
-  assert.match(words, /if \(stage === "words_ready"\) await resendStoryboard\(run\.sourceId, record\.id\);/, "an edited 원고's new voice or fixed sentences");
-  const gate = between(run, "if (gate.length) {", "return { runId: record.id, stage: \"words_ready\"");
+  assert.match(words, /if \(stage === "words_ready"\) await resendStoryboard\(run\.sourceId, record\.id, autoConfirms\(run\) \? run\.settings\?\.by \?\? record\.owner_id \?\? undefined : undefined\);/, "an edited 원고's new voice or fixed sentences; with 자동 the first one too");
+  const gate = between(run, "if (gate.length && !goOn) {", "return { runId: record.id, stage: \"words_ready\"");
   assert.match(gate, /await resendStoryboard\(run\.sourceId, record\.id\);/, "렌더 전 관문's 수정 요청");
   const jobs = read("lib/server/youtube-ai-jobs.ts");
   const resend = between(jobs, "export async function resendStoryboard", "export async function staffJobStatus");

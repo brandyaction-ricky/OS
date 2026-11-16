@@ -9,7 +9,7 @@ import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { RequestActor } from "./auth";
 import { readDiagramCatalog } from "./diagram-catalog";
-import { editFinalSchema, finishMyinDraft, myinAddEditFinal, myinEditorImageSize, myinEditorImageUpload, myinEditorImageUrl, myinEditUploads, myinFinalAt, myinFinalEngine, myinFinalForHandoff, myinFinalNumbers, myinFinalVersions, myinDraftState, myinRunWords } from "./myin-run";
+import { editFinalSchema, finishMyinDraft, myinAddEditFinal, myinEditorImageSize, myinEditorImageUpload, myinEditorImageUrl, myinEditUploads, myinFinalAt, myinFinalEngine, myinFinalForHandoff, myinFinalNumbers, myinFinalVersions, myinDraftState, myinMakingNews, myinRunWords } from "./myin-run";
 import { renderPcEngine } from "./youtube-render-pc";
 import { currentEngineDownload, ENGINE_BUCKET, ENGINE_PART_BYTES, engineBundleSaved } from "./render-engine";
 import { getYoutubeProject } from "./youtube-process";
@@ -97,7 +97,8 @@ export async function editStatus(actor: RequestActor, projectId: string) {
   const waitingFeedback = (await listFeedback(actor, project.id)).filter((f) => f.target === "video" && f.status === "open" && !f.deleted && !f.reaction && !ordered.has(f.id))
     .map((f) => ({ id: f.id, at: f.at, text: f.text, who: f.who }));
   return { projectId: project.id, lock: live, waitingFeedback, base: await myinFinalAt(service, project.id), uploadedAt: await uploadedAt(actor, project), versions: await myinFinalVersions(service, project.id),
-    confirming: live && meta?.confirming ? { at: meta.confirming.at, fromVersion: meta.confirming.fromVersion } : null, history: meta?.history ?? [], orders };
+    confirming: live && meta?.confirming ? { at: meta.confirming.at, fromVersion: meta.confirming.fromVersion } : null, history: meta?.history ?? [], orders,
+    making: await myinMakingNews(service, project.id).catch(() => []) };
 }
 const presentOrder = (o: Order) => ({ text: o.text, videoAt: o.at, from: o.from, feedbackIds: o.feedbackIds, name: o.name, meaning: o.meaning,
   changes: [...(o.storyboard ? ["기획표"] : []), ...(o.subtitles.length ? [`자막 ${o.subtitles.length}줄`] : []), ...(o.manual ? ["손 편집"] : [])], status: o.status, result: o.result ?? null });
@@ -615,6 +616,18 @@ export async function registerDraftVersion(service: Service, projectId: string, 
   for (const waiting of rows ?? []) if (orderSchema.parse(waiting.metadata).manual)
     await moveOrder(service, waiting, "cancelled", row.owner_id, { result: { note: "새 장면 그림이 나와서 지웠어요", at: new Date().toISOString(), by: row.owner_id } }).catch(() => undefined);
   return { files: version.files, bytes: version.bytes };
+}
+
+/**
+ * 로건 11-13 「v1도 같은 편집 화면에서」: a final made from v0 as it was (nothing changed since the scene pictures) keeps v0 on the screen
+ * as that final's version, so the screen opens on v1 at once; an editing computer that takes the video later goes on from it as before.
+ */
+export async function linkDraftVersion(service: Service, projectId: string, runId: string, finalAt: string) {
+  const record = await sessionRecord(service, projectId);
+  if (!record || sessionSchema.parse(record.metadata).screen?.lockId !== runId) return;
+  const row = await projectRow(service, projectId);
+  await changeSession(service, projectId, row.owner_id, (m) => !m.screen || m.screen.lockId !== runId ? m
+    : { ...m, screen: { ...m.screen, versions: m.screen.versions.map((v) => v.name === DRAFT_VERSION ? { ...v, final: finalAt } : v) } });
 }
 
 /** The first final landed: v0 leaves the screen (an editing computer puts that final up as its own version, as for any final). */

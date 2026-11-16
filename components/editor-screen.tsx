@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Scissors, X } from "lucide-react";
+import { Maximize2, Scissors, X } from "lucide-react";
 import { apiRequest } from "@/lib/api-client";
 import { SUPABASE_URL } from "@/lib/config";
 import { editorScreenDoc } from "@/lib/editor-screen-doc";
@@ -27,8 +27,10 @@ function ScreenTags({ s }: { s: Screen }) {
  * sandboxed frame. The frame asks this page for everything (public/editor-screen-shim.js); this page answers from the OS with the
  * viewer's own sign-in, only for the asks below. It opens once the editing computer has put a version's files up.
  */
-export function EditorScreenEntry({ token, projectId, title, onFinal, finals = 0 }: { token: string | null; projectId: string; title: string; onFinal: () => void;
-  /** Finished versions in 제작: after the first one the card stays (로건 11-13: it vanished once v1 replaced the scene pictures). */ finals?: number }) {
+export function EditorScreenEntry({ token, projectId, title, onFinal, finals = 0, inline = false, paidOk = false }: { token: string | null; projectId: string; title: string; onFinal: () => void;
+  /** Finished versions in 제작: after the first one the card stays (로건 11-13: it vanished once v1 replaced the scene pictures). */ finals?: number;
+  /** 로건 11-13 「제작 탭 = 편집 화면 하나」: the screen sits in the page once it has a version (크게 보기 puts it over the window). */ inline?: boolean;
+  /** The paid steps were approved when the video started: the first 「완성」 asks no more. */ paidOk?: boolean }) {
   const [screen, setScreen] = useState<Screen | null>(null);
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
@@ -39,10 +41,18 @@ export function EditorScreenEntry({ token, projectId, title, onFinal, finals = 0
     return () => { live = false; };
   }, [token, projectId]);
   useEffect(read, [read]);
+  // In the page the screen comes as soon as the scene pictures (v0) are up: read again every 30 seconds until it has a version.
+  const waiting = inline && !screen?.versions.length;
+  useEffect(() => {
+    if (!waiting) return;
+    const timer = window.setInterval(() => void read(), 30_000);
+    return () => window.clearInterval(timer);
+  }, [waiting, read]);
   const close = useCallback(() => { setOpen(false); read(); button.current?.focus(); }, [read]);
   // Nothing to show until a computer opened the editor or put files up.
   if (!token || !screen || (!screen.versions.length && !screen.lock && !finals)) return null;
   const ready = screen.versions.length > 0;
+  if (inline && ready) return <EditorScreen token={token} projectId={projectId} title={title} first={screen} onState={setScreen} onFinal={onFinal} onClose={read} inline paidOk={paidOk} />;
   // 장면 그림 v0: before the first final the screen holds each scene's picture; 완성 makes the moving video (v1) in the OS.
   const draft = !screen.saves.list.length && screen.versions.some(v => v.name === "v0");
   return <><div className="yp-card yp-escreen-entry">
@@ -57,14 +67,14 @@ export function EditorScreenEntry({ token, projectId, title, onFinal, finals = 0
       <button ref={button} type="button" className="yp-btn yp-pri" disabled={!ready} onClick={() => setOpen(true)}>편집 화면 열기</button>
     </div>
   </div>
-  {open ? <EditorScreen token={token} projectId={projectId} title={title} first={screen} onState={setScreen} onFinal={onFinal} onClose={close} /> : null}</>;
+  {open ? <EditorScreen token={token} projectId={projectId} title={title} first={screen} onState={setScreen} onFinal={onFinal} onClose={close} paidOk={paidOk} /> : null}</>;
 }
 
 /** A finished version exists (the screen's 완성 then confirms an edit on the editing computer, no paid step in the OS). */
 const hasFinal = (s: Screen) => s.saves.list.length > 0;
 
-function EditorScreen({ token, projectId, title, first, onState, onFinal, onClose }: { token: string; projectId: string; title: string; first: Screen;
-  onState: (s: Screen) => void; onFinal: () => void; onClose: () => void }) {
+function EditorScreen({ token, projectId, title, first, onState, onFinal, onClose, inline = false, paidOk = false }: { token: string; projectId: string; title: string; first: Screen;
+  onState: (s: Screen) => void; onFinal: () => void; onClose: () => void; inline?: boolean; paidOk?: boolean }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const lock = useRef<Lock>(first.lock);
   const [doc, setDoc] = useState<string | null>(null);
@@ -74,6 +84,9 @@ function EditorScreen({ token, projectId, title, first, onState, onFinal, onClos
   const [screen, setScreen] = useState(first);
   // The screen asked for the whole window (its own full-screen button where the browser's is not allowed): the bar steps aside.
   const [full, setFull] = useState(false);
+  // In the page (inline): 크게 보기 puts the same frame over the window, so nothing in it is lost; 작게 보기 brings it back.
+  const [big, setBig] = useState(false);
+  const over = !inline || big;
   // 장면 그림 v0's 완성 starts paid steps (구독 대사 voice, the full render): asked here, over the screen, before it goes.
   const cost = useCostConfirm(), { myinVoice } = useCostModels();
   const beforeFinal = useRef(!hasFinal(first));
@@ -94,10 +107,11 @@ function EditorScreen({ token, projectId, title, first, onState, onFinal, onClos
 
   // The page behind does not scroll while the screen is over it (Esc stays the screen's own key).
   useEffect(() => {
+    if (!over) return;
     const overflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = overflow; };
-  }, []);
+  }, [over]);
 
   const answer = useCallback(async (op: string, body: Record<string, unknown>) => {
     const get = <T,>(query: string) => apiRequest<T>(`${ROUTE}?projectId=${projectId}&${query}`, { token });
@@ -107,7 +121,7 @@ function EditorScreen({ token, projectId, title, first, onState, onFinal, onClos
     if (op === "edit") return { id: (await post<{ orderId: string }>("order", { text: String(body.text || "손 편집"), ...(body.version ? { version: body.version } : {}), manual: body.manual })).orderId };
     if (op === "cancel") return post("edit_cancel", { orderId: body.id });
     if (op === "save") {
-      if (beforeFinal.current && !await cost.confirm({ model: myinVoice, amount: voiceEstimate("가".repeat(600), myinVoice).krw, upTo: true,
+      if (beforeFinal.current && !paidOk && !await cost.confirm({ model: myinVoice, amount: voiceEstimate("가".repeat(600), myinVoice).krw, upTo: true,
         detail: "구독 대사 음성(300자까지, 끊긴 문장은 한 번 더)을 만들고 1080p 60fps 전체 영상까지 이어서 만들어요", ok: "완성하기" }))
         throw new Error("완성을 취소했어요.");
       return post("save", {});
@@ -126,7 +140,7 @@ function EditorScreen({ token, projectId, title, first, onState, onFinal, onClos
       return { file: (await post<{ file: string }>("image_saved", { pc, file: slot.file, path: slot.path })).file };
     }
     throw new Error("OS 편집 화면에서는 아직 못 쓰는 기능이에요.");
-  }, [token, projectId, onState, cost, myinVoice]);
+  }, [token, projectId, onState, cost, myinVoice, paidOk]);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -146,17 +160,18 @@ function EditorScreen({ token, projectId, title, first, onState, onFinal, onClos
     return () => removeEventListener("message", onMessage);
   }, [answer, onFinal]);
 
-  return <div className="yp-escreen" role="dialog" aria-modal="true" aria-label={`${title} 편집 화면`}>
+  return <div className={over ? "yp-escreen" : "yp-escreen yp-escreen-inline"} role={over ? "dialog" : "region"} aria-modal={over ? true : undefined} aria-label={`${title} 편집 화면`}>
     {full ? null : <div className="yp-escreen-bar">
       <Scissors size={16} aria-hidden="true" />
       <b title={title}>{title}</b>
       <ScreenTags s={screen} />
       <span className="yp-sp" />
       {made?.at ? <span className="yp-muted yp-escreen-made" title={made.by ? `${made.by}님이 올린 편집 화면` : undefined}>화면 {md(made.at)} 올림</span> : null}
-      <button type="button" className="yp-btn yp-sm" onClick={onClose}><X size={14} aria-hidden="true" /> 닫기</button>
+      {inline ? <button type="button" className="yp-btn yp-sm" onClick={() => setBig(on => !on)}>{big ? <><X size={14} aria-hidden="true" /> 작게 보기</> : <><Maximize2 size={14} aria-hidden="true" /> 크게 보기</>}</button>
+        : <button type="button" className="yp-btn yp-sm" onClick={onClose}><X size={14} aria-hidden="true" /> 닫기</button>}
     </div>}
     {doc ? <iframe ref={frame} title={`${title} 편집 화면`} srcDoc={doc} sandbox="allow-scripts allow-modals" allow="fullscreen; clipboard-write" allowFullScreen
-      onLoad={() => frame.current?.focus()} />
+      onLoad={() => { if (over) frame.current?.focus(); }} />
       : <div className="yp-escreen-wait" role={error ? "alert" : "status"}>
         {error ? <><span>{error}</span><button type="button" className="yp-btn" onClick={() => setTries(n => n + 1)}>다시 열기</button></> : <span>편집 화면을 여는 중이에요…</span>}
       </div>}

@@ -20,6 +20,7 @@ import { assToSrt } from "@/lib/subtitle-files";
 import { myinRetryScope, myinStop } from "@/lib/myin-stop";
 import { MyinRunRecord } from "./myin-run-record";
 import { MyinSubtitleEdit } from "./myin-subtitle-edit";
+import { EditorScreenEntry } from "./editor-screen";
 
 interface Storyboard { scenes: number; model: string; at: string; metaphors: { scene: number; type: string; at: string }[]; cta: { after: string; line: string }[];
   summary: { title: string; points: string[] } | null; reasons: { metaphors: string; cta: string; summary: string };
@@ -28,7 +29,8 @@ interface MyinRun { id: string; status: string; stage: string; layout?: "short" 
   words: { words: number; subtitleLines: number; durationSeconds: number } | null; storyboard: Storyboard | null;
   review: { decision: "confirmed" | "revise"; name: string; note: string; at: string } | null;
   assetDecisions: Record<string, { decision: "approved" | "excluded" }>; ctaReady: string | null;
-  prepared: { misses: string[]; sheets: number; credits: string[]; at: string; redraw?: "pending" | "drawing" | "failed" | null; redrawnAt?: string | null; standIns?: string[] } | null;
+  prepared: { misses: string[]; sheets: number; credits: string[]; at: string; redraw?: "pending" | "drawing" | "failed" | null; redrawnAt?: string | null; standIns?: string[]; needsPerson?: string[] } | null;
+  /** 로건 11-13 자동 흐름: the storyboard confirms itself; the paid steps were approved at the start; 렌더 전 관문 sends in a row. */ autoConfirm?: boolean; paidOk?: boolean; gateRounds?: number;
   clips: { name: string; label: string }[] | null; clipsReview: { name: string; note: string; at: string } | null;
   /** 장면 그림 v0 (편집기 3차 요청 11-09): a longform's ③ as each scene's finished picture, on the editor screen. */ stills?: { at: string; files: number } | null;
   screenCheckAuto?: boolean;
@@ -112,7 +114,9 @@ const when = (iso: string) => new Intl.DateTimeFormat("ko-KR", { month: "numeric
  * storyboard and its confirmation, the drafts (2026-10-27: before the paid CTA voice and the sound pass), then the finished video and handouts. Where the pilot is closed
  * (production today) it says so instead.
  */
-export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, voiceText, title = "", short = false, channel }: { sourceId: string; finalNote?: ReactNode; embedded?: boolean; onFinal?: () => void;
+export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, voiceText, title = "", short = false, channel, folded = false, finals = 0 }: { sourceId: string; finalNote?: ReactNode; embedded?: boolean; onFinal?: () => void;
+  /** 로건 11-13 「제작 탭 = 편집 화면 하나」: the editor screen in the page, where the video is now (with its one next action) and the five
+   *  step cards folded under it; `finals` is how many finished versions 제작 lists. */ folded?: boolean; finals?: number;
   /** The project's 채널 카드 (다채널 1단계): its look is picked first; none means the 기본 채널, the first. */ channel?: string;
   /** The video name, for downloaded file names. */ title?: string;
   /** The spoken paragraphs, for the company-money estimate shown before the voice is made (owner request 2026-10-25). */ voiceText?: string;
@@ -126,6 +130,13 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
     // 가장 자연스러운 것을 고른다(음성 고르기 v2, 로건 2026-11-11) — 네 배.
     const takesNote = !takes ? "" : short ? "끊긴 문장은 한 번 더 만들어 많게는 2배 · " : "문장마다 4번 만들어 가장 자연스러운 것을 골라요 · ";
     return cost.confirm({ model: myinVoice, amount: takes && !short ? estimate.krw * 4 : estimate.krw, detail: `${estimate.chars.toLocaleString("ko-KR")}자 · ${takesNote}${again}`, ok: "확인하고 만들기" });
+  };
+  // 로건 11-13: a 롱폼 that goes on by itself asks once, at the start, for every paid step up to the finished video — the voice and the
+  // 구독 대사 voice (300자까지, as the editor's 「완성」 counted it) — and 「완성」 asks no more.
+  const askStart = (text: string, takes: boolean) => {
+    const voice = voiceEstimate(text, myinVoice), cta = voiceEstimate("가".repeat(600), myinVoice);
+    return cost.confirm({ model: myinVoice, amount: voice.krw * (takes ? 4 : 1) + cta.krw, upTo: true, ok: "확인하고 시작",
+      detail: `음성 ${voice.chars.toLocaleString("ko-KR")}자${takes ? "(문장마다 4번 만들어 골라요)" : ""} + 구독 대사 음성(300자까지) · 지금 한 번 확인하면 「완성」까지 다시 묻지 않아요 · 켜 둔 GPT 화면 검사는 GPT 크레딧에서 따로 빠져요` });
   };
   const { accessToken } = useSession();
   const [run, setRun] = useState<MyinRun | null>(null);
@@ -159,6 +170,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
   // at the top; the confirms no longer ask.
   const [settings, setSettings] = useState<MakeSettings>(lastSettings);
   const [editingSettings, setEditingSettings] = useState(false);
+  const [stepsOpen, setStepsOpen] = useState(false);
   // 채널 모양 (유쓰 요청 5/8): picked when the voice starts and pinned to the video with its version.
   const [styles, setStyles] = useState<{ id: string; name: string; version: number }[]>([]);
   const [styleId, setStyleId] = useState<string | null>(null);
@@ -280,13 +292,31 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
         onClick={() => move(target, "local")}>내 컴퓨터로 만들기</button> : null}
   </div>;
   const openSettings = () => {
-    if (run?.settings) setSettings({ place: run.settings.place, screenCheck: run.settings.screenCheck });
+    if (run?.settings) setSettings({ place: run.settings.place, screenCheck: run.settings.screenCheck, confirm: run.settings.confirm ?? "auto" });
     setEditingSettings(true);
     window.setTimeout(() => document.getElementById("myin-settings")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
   };
   const phase = run ? run.status === "blocked" ? `멈춤 · 오류 코드 ${run.lastErrorCode ?? "없음"}` : phaseLabel(run) : null;
+  const start = async () => {
+    const pick = styleId ?? run?.style?.id ?? channelOf(styles, channel)?.id ?? "";
+    const fresh = !(run && !run.scriptChanged);
+    const together = fresh && !short && settings.confirm === "auto";
+    if (fresh && !(together ? await askStart(voiceText ?? "", voiceOnPc) : await askVoice(voiceText ?? "", "같은 원고로 다시 누르면 들지 않아요", voiceOnPc))) return;
+    rememberSettings(settings);
+    await act("start", () => post("/myin", "POST", { sourceId, ...(pick ? { styleId: pick } : {}), settings: short ? { ...settings, place: "pc" } : settings, ...(together ? { paidOk: true } : {}) }));
+  };
+  // 장면 그림 → 「완성」: the paid steps approved at the start ask nothing more (로건 11-13); a video started before that asks as it did.
+  const finishDraft = async (target: MyinRun) => {
+    if (!target.paidOk) {
+      if (!window.confirm(`지금 기획표로 완성해요. ${maker(target)}가 사진을 확정하고 구독 대사 음성을 만든 뒤 1080p 60fps 전체 영상까지 이어서 만들어요. 시작할까요?`)) return;
+      if (target.storyboard && !await askVoice(target.storyboard.cta.map((c) => c.line).join("\n"), "이미 만든 문장은 다시 들지 않아요", Boolean(target.voiceOnPc))) return;
+    }
+    await act("clips", () => post("/editor", "POST", { action: "save", projectId: sourceId }));
+  };
+  const openStep = (n: number) => { setStepsOpen(true); window.setTimeout(() => document.getElementById(`myin-step-${n}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 80); };
   const board = run?.storyboard;
 
+  const autoMode = run ? Boolean(run.autoConfirm) : !short && settings.confirm === "auto";
   const step1: StepState = run?.words && !run.scriptChanged ? "done" : "current";
   const step2: StepState = !run?.words ? "waiting" : run.review?.decision === "confirmed" ? "done" : "current";
   const materials = Boolean(run?.clipsReview);   // ③ drafts confirmed: the ④ preparation and the full video
@@ -300,6 +330,64 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
     <p>{standIns.join(" · ")} — 아래에서 올리면 자료 준비부터 다시 해요{run.final ? ". 그다음 전체 영상을 다시 만들면 새 버전이 돼요" : ""}.</p>
     <MyinOurImages key={`${run.id}-swap`} runId={run.id} token={accessToken} open onSaved={() => void load()} onScene={(scene) => void showSheet(scene)} /></div> : null;
 
+  // 로건 11-13 「제작 탭 = 편집 화면 하나」: one card says where the video is and holds its one next action; the editor screen sits above it
+  // once the scene pictures are up, and the step cards (downloads, subtitles, voice check, scene notes, sound) fold under 「단계별로 보기」.
+  const stepNo = !run?.words ? 1 : run.review?.decision !== "confirmed" ? 2 : !materials ? 3 : ["final_pending", "final_ready"].includes(run.stage) ? 5 : 4;
+  const look = (n: number, label: string) => <div className="yt-actions"><button type="button" className="secondary-button compact" onClick={() => openStep(n)}>{label}</button></div>;
+  const nowCard = !folded ? null : (() => {
+    let head = "", body: ReactNode = null;
+    if (!run || run.scriptChanged || (run.status === "blocked" && !run.words)) {
+      head = run?.scriptChanged ? "원고가 바뀌었어요 · 새로 만들기" : run ? "음성에서 멈췄어요 · 다시 시작" : "영상 만들기 시작";
+      body = <>{run?.status === "blocked" ? <StopNote run={run} /> : null}
+        <p>{autoMode ? "한 번 누르면 음성 → 장면 기획표 → 장면 그림까지 저절로 가고, 다 되면 여기에 편집 화면이 열려요. 비용은 지금 한 번만 확인해요."
+          : "누르면 음성과 받아쓰기 · 자막을 만들어요. 기획표는 사람이 확인해야 넘어가요(제작 설정)."}</p>
+        <div className="yt-actions"><button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void start()}>{busy === "start" ? "시작하는 중…" : autoMode ? "영상 만들기 시작" : "음성 만들기"}</button>
+          <CostTag kind="paid" /></div></>;
+    } else if (run.status === "blocked") {
+      head = `멈췄어요 · ${stepNo}단계`;
+      body = <><StopNote run={run} />{look(stepNo, "그 단계 열어서 다시 하기")}</>;
+    } else if (stepNo === 1) {
+      head = "1/4 음성 · 받아쓰기 · 자막";
+      body = <div className="yt-run-head"><span className="status-pill" data-status="scheduled">{phase}</span>
+        {run.stage === "voice_pending" ? <progress max={run.paragraphs} value={run.paragraphsReady} aria-label="음성 진행" /> : <RunWait run={run} />}</div>;
+    } else if (stepNo === 2) {
+      const gate = run.review?.decision === "revise" && run.review.name === "렌더 전 관문";
+      if (run.stage === "storyboard_review") { head = "2/4 기획표 확인 대기 (로건, 유쓰)"; body = look(2, "기획표 보고 확인하기"); }
+      else {
+        head = gate ? `2/4 렌더 전 관문 · 내 AI가 고치는 중 (${run.gateRounds ?? 1}회차)` : "2/4 장면 기획표 · 내 AI가 써요";
+        body = <>{gate ? <p className="yt-note">{run.review!.note}</p> : null}
+          <StaffDesign status={job} busy={busy === "send"} typical={storyboardMinutes(run)} onSend={() => void act("send", () => post("/ai-jobs", "POST", { task: "storyboard", sourceId }))} /></>;
+      }
+    } else if (stepNo === 3) {
+      if (run.stage === "clips_review" && run.stills) {
+        head = "편집 화면에서 보고 「완성」";
+        body = <>{run.prepared?.needsPerson?.length ? <div className="yt-note yt-warn"><strong>여기서 사람 확인 필요 · 관문에서 {run.gateRounds ?? 0}번 넘게 걸린 곳</strong>
+          <ul className="yt-list">{run.prepared.needsPerson.map((line) => <li key={line}>{line}</li>)}</ul></div> : null}
+          {run.clipsStale?.length ? <p className="yt-note yt-warn">장면 그림을 만든 뒤 {run.clipsStale.join(" · ")}이(가) 바뀌었어요. 3단계에서 다시 만든 뒤 완성해 주세요.</p> : null}
+          <p>위 편집 화면에서 끌거나 AI 채팅으로 고치고, 다 됐으면 「완성」을 눌러요. {maker(run)}가 움직이는 첫 최종본(v1)까지 이어서 만들어요.</p>
+          <div className="yt-actions"><button type="button" className="primary-button" disabled={Boolean(busy) || Boolean(run.clipsStale?.length)} onClick={() => void finishDraft(run)}>{busy === "clips" ? "시작하는 중…" : "완성 · 움직이는 첫 최종본 만들기"}</button>
+            {run.paidOk ? <small>비용은 시작할 때 확인했어요.</small> : <CostTag kind="paid" />}</div></>;
+      } else if (run.stage === "clips_review") { head = "3/4 미리보기 확인 대기 (로건, 유쓰)"; body = look(3, "미리보기 보고 확인하기"); }
+      else if (run.stage === "prep_ready") { head = "3/4 점검에서 걸린 곳이 있어요"; body = <>{run.prepared?.misses.length ? <ul className="yt-list">{run.prepared.misses.slice(0, 8).map((m) => <li key={m}>{m}</li>)}</ul> : null}{look(3, "3단계 열기")}</>; }
+      else { head = "3/4 장면 그림 만드는 중"; body = <><div className="yt-run-head"><span className="status-pill" data-status="scheduled">{phase}</span><RunWait run={run} /></div>{draftWaiting ? placeButtons(run) : null}</>; }
+    } else if (run.stage === "final_ready" && run.final) {
+      head = `완성 · ${Math.floor(run.final.durationSeconds / 60)}분 ${Math.round(run.final.durationSeconds % 60)}초`;
+      body = <>{outputs?.video ? <video className="yt-now-video" src={outputs.video} controls preload="metadata" /> : null}
+        {outputs ? <ul className="yt-list">
+          {outputs.summary ? <li><a href={outputs.summary} target="_blank" rel="noreferrer">한 장 정리 이미지 (PNG)</a></li> : null}
+          {outputs.deck ? <li><a href={outputs.deck} target="_blank" rel="noreferrer">덱 전체 (PDF) — 설명란·고정 댓글용</a></li> : null}
+          {outputs.srt ? <li><a href={outputs.srt} target="_blank" rel="noreferrer">유튜브 자막 파일 (SRT)</a></li> : null}</ul> : null}
+        {swapPhotos}</>;
+    } else if (run.stage === "prep_ready") { head = "4/4 사운드 확인 뒤 전체 영상"; body = <>{look(4, "4단계 열기")}{swapPhotos}</>; }
+    else {
+      head = run.stage === "final_pending" ? "4/4 완성본 만드는 중 · 전체 영상" : "4/4 완성본 만드는 중 · 자료 준비";
+      body = <><div className="yt-run-head"><span className="status-pill" data-status="scheduled">{phase}</span><RunWait run={run} /></div>{finishWaiting && !run.workingSince ? placeButtons(run) : null}{swapPhotos}</>;
+    }
+    return <section className="panel yt-now" aria-label="지금 단계"><div className="panel-pad-lg"><h2>{head}</h2>{body}</div></section>;
+  })();
+  const allSteps = (inner: ReactNode) => folded ? <details className="yt-details yt-steps-fold" open={stepsOpen} onToggle={(event) => setStepsOpen((event.target as HTMLDetailsElement).open)}>
+    <summary>단계별로 보기 · 내려받기 · 자막 · 음성 확인 · 장면 의견 · 사운드</summary><div className="yt-steps">{inner}</div></details> : inner;
+
   return <div className="yt-steps" role="region" aria-label="마이인 영상 만들기">
     {cost.element}
     {embedded ? null : <section className="panel">
@@ -311,15 +399,14 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       onEditing={(open) => open ? openSettings() : setEditingSettings(false)} styles={styles} styleId={styleId ?? run?.style?.id ?? channelOf(styles, channel)?.id ?? ""} onStyle={setStyleId}
       value={settings} onChange={setSettings} localPc={localPc} onLocalConnected={() => void reloadLocal()} onSaved={() => void load()} />
 
+    {folded ? <EditorScreenEntry token={accessToken} projectId={sourceId} title={title} onFinal={() => { onFinal?.(); void load(); }} finals={finals} inline paidOk={Boolean(run?.paidOk)} /> : null}
+    {nowCard}
+    {allSteps(<>
     <Step index={0} state={step1} title="음성과 받아쓰기·자막" idBase="myin-step">
       <p>{short ? "확정한 대본을 대표 목소리로 읽고, 영상 만드는 컴퓨터가 받아쓰기와 자막을 만들어요." : "승인된 원고를 대표 목소리(drama-3)로 만들고, 영상 만드는 컴퓨터가 다듬어 받아쓰기와 방송 자막을 만듭니다."}</p>
       {run?.scriptChanged ? <p className="yt-note yt-warn">{short ? "확정한 대본이 바뀌었어요. 아래 작업은 옛 대본으로 만든 것이라 더 진행되지 않아요. 새로 만들면 기획표와 미리보기 확인도 다시 거쳐요." : "구성안 원고가 바뀌었어요. 아래 작업은 옛 원고로 만든 것이라 더 진행되지 않아요. 새로 만들면 기획표와 미리보기 확인도 다시 거쳐요."}</p> : null}
       {!run || (run.status === "blocked" && !run.words) || run.scriptChanged ? <div className="yt-actions">
-        <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void (async () => {
-          const pick = styleId ?? run?.style?.id ?? channelOf(styles, channel)?.id ?? "";
-          if (!(run && !run.scriptChanged) && !await askVoice(voiceText ?? "", "같은 원고로 다시 누르면 들지 않아요", voiceOnPc)) return;
-          rememberSettings(settings);
-          await act("start", () => post("/myin", "POST", { sourceId, ...(pick ? { styleId: pick } : {}), settings: short ? { ...settings, place: "pc" } : settings })); })()}>{busy === "start" ? "시작하는 중…" : run?.scriptChanged ? short ? "바뀐 대본으로 음성 다시 만들기" : "바뀐 원고로 v13 음성 다시 만들기" : run ? short ? "음성 다시 시작" : "v13 음성 다시 시작" : short ? "음성 만들기" : "v13 음성 만들기"}</button>
+        <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void start()}>{busy === "start" ? "시작하는 중…" : run?.scriptChanged ? short ? "바뀐 대본으로 음성 다시 만들기" : "바뀐 원고로 v13 음성 다시 만들기" : run ? short ? "음성 다시 시작" : "v13 음성 다시 시작" : short ? "음성 만들기" : "v13 음성 만들기"}</button>
         <small><CostTag kind="paid" amount={voiceText ? voiceEstimate(voiceText, myinVoice).krw * (voiceOnPc && !short ? 4 : 1) : null} /> 같은 {short ? "대본" : "원고"}으로 다시 누르면 만든 음성을 이어 써요.</small>
       </div> : null}
       {run ? <div className="yt-run">
@@ -347,11 +434,12 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       {run?.words ? <MyinSubtitleEdit key={run.id} runId={run.id} token={accessToken} stage={run.stage} onFinal={() => act("final", () => post("/myin", "PATCH", { action: "final", runId: run.id }))} /> : null}
     </Step>
 
-    <Step index={1} state={step2} title="장면 기획표 (내 AI → 로건, 유쓰 확인)" idBase="myin-step">
+    <Step index={1} state={step2} title={autoMode ? "장면 기획표 (내 AI → OS 검사 → 자동 확인)" : "장면 기획표 (내 AI → 로건, 유쓰 확인)"} idBase="myin-step">
       {!run?.words ? <p>받아쓰기·자막이 끝나면 내 AI에 보낼 수 있습니다.</p> : null}
       {run?.stage === "words_ready" ? <>
         {run.review?.decision === "revise" ? <div className="yt-note yt-warn"><strong>{run.review.name === "렌더 전 관문" ? "렌더 전 관문 · 자동 수정 요청" : "로건, 유쓰 수정 요청"} · {when(run.review.at)}</strong><p>{run.review.note}</p></div> : null}
         <p>{short ? "내 AI가 세로 화면 규칙과 세로 도식 목록으로 숏폼 기획표를 써요. 첫 화면에는 확정한 헤드 카피가 떠요." : "내 AI가 영상 제작 매뉴얼·기획표 문서와 음악 창고 목록을 읽고, 위 받아쓰기의 철자 그대로 장면 기획표와 사진 후보를 만듭니다. OS가 문구 위치와 형식을 검사합니다."}</p>
+        {autoMode && run.review?.decision !== "revise" ? <p className="yt-note">받아쓰기가 끝나면 OS가 시작한 분의 내 AI에 기획표를 바로 보내요. OS 검사를 통과하면 저절로 확인돼 장면 그림으로 넘어가요(제작 설정 · 기획표 확인 「자동」).</p> : null}
         <StaffDesign status={job} busy={busy === "send"} typical={storyboardMinutes(run)} onSend={() => void act("send", () => post("/ai-jobs", "POST", { task: "storyboard", sourceId }))} />
       </> : null}
       {board && run && run.stage !== "words_ready" ? <>
@@ -421,12 +509,10 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
           <video src={outputs.stills} controls preload="metadata" style={{ width: "100%", aspectRatio: "16 / 9", borderRadius: 8, background: "#000" }} /></details> : null}
         {run.clipsStale?.length ? <div className="yt-actions"><p className="yt-note yt-warn">장면 그림을 만든 뒤 {run.clipsStale.join(" · ")}이(가) 바뀌었어요. 다시 만든 뒤 완성해 주세요.</p>
           <button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => void act("prep", () => post("/myin", "PATCH", { action: "prepare", runId: run.id }))}>{busy === "prep" ? "시작하는 중…" : "장면 그림 다시 만들기"}</button></div> : null}
-        <div className="yt-actions"><button type="button" className="primary-button" disabled={Boolean(busy) || Boolean(run.clipsStale?.length)} onClick={() => void (async () => {
-          if (!window.confirm(`지금 기획표로 완성해요. ${maker(run)}가 사진을 확정하고 구독 대사 음성을 만든 뒤 1080p 60fps 전체 영상까지 이어서 만들어요. 시작할까요?`)) return;
-          if (board && !await askVoice(board.cta.map((c) => c.line).join("\n"), "이미 만든 문장은 다시 들지 않아요", Boolean(run.voiceOnPc))) return;
-          await act("clips", () => post("/editor", "POST", { action: "save", projectId: sourceId }));
-        })()}>{busy === "clips" ? "시작하는 중…" : "완성 · 움직이는 첫 최종본 만들기"}</button>
-          {board?.cta.length ? <CostTag kind="paid" /> : null}
+        {run.prepared?.needsPerson?.length ? <div className="yt-note yt-warn"><strong>여기서 사람 확인 필요 · 관문에서 {run.gateRounds ?? 0}번 넘게 걸린 곳</strong>
+          <ul className="yt-list">{run.prepared.needsPerson.map((line) => <li key={line}>{line}</li>)}</ul></div> : null}
+        <div className="yt-actions"><button type="button" className="primary-button" disabled={Boolean(busy) || Boolean(run.clipsStale?.length)} onClick={() => void finishDraft(run)}>{busy === "clips" ? "시작하는 중…" : "완성 · 움직이는 첫 최종본 만들기"}</button>
+          {board?.cta.length && !run.paidOk ? <CostTag kind="paid" /> : null}
           <small>완성하지 않은 손 편집이 있으면 편집하는 컴퓨터가 먼저 반영해요.</small></div>
       </div> : null}
       {run?.stage === "clips_review" && !materials && !run.stills ? <div className="yt-note">
@@ -451,7 +537,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
     </Step>
 
     <Step index={3} state={step4} title={short ? "사진 확정" : "자료 준비 (사진 · 구독 대사 · 사운드)"} idBase="myin-step">
-      {run?.final ? null : swapPhotos}
+      {run?.final || folded ? null : swapPhotos}
       <p>{short ? "미리보기를 확인하면 사진을 확정하고 바로 전체 영상을 만들어요. 숏폼은 음악 없이 목소리만 들어가요." : run?.stills ? "편집 화면에서 「완성」을 누르면 자동으로 시작해 전체 영상까지 이어서 만들어요. 사운드는 편집 화면에서 고쳐요. 점검에서 걸린 곳이 있으면 여기서 멈춰요." : "미리보기 확인을 누르면 자동으로 시작합니다. 미리보기의 사진을 확정하고 구독 대사 음성을 만든 뒤 고른 곳(영상 만드는 컴퓨터 또는 내 컴퓨터)이 다시 점검합니다. 끝나면 아래에서 음악 · 앰비언스 · 효과음을 확인하고 고친 뒤 [전체 영상 만들기]를 누릅니다. 전체 영상도 같은 곳에서 만들어요."}</p>
       {run && finishWaiting && run.stage !== "final_pending" ? placeButtons(run) : null}
       {materials && assetsUsed.length ? <ul className="yt-list">{assetsUsed.map((a) => { const swap = run?.photoCredits?.[a.file], url = swap ? swap.url : a.url;
@@ -483,7 +569,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
     </Step>
 
     <Step index={4} state={step5} title={short ? "완성 영상" : "완성 영상과 자료 확인"} idBase="myin-step" open>
-      {run?.final ? swapPhotos : null}
+      {run?.final && !folded ? swapPhotos : null}
       <p>{short ? "세로 1080×1920 숏폼과 유튜브 자막 파일을 영상 만드는 컴퓨터가 만들어 올려요." : `1080p 전체 영상, 음향 마스터링, 한 장 정리 이미지와 덱 PDF, 유튜브 자막 파일을 ${run ? maker(run) : "영상 만드는 컴퓨터"}가 만들어 올립니다. 소리가 아쉬우면 [4단계로 돌아가 사운드 고치기]를 눌러요. 기획표와 미리보기는 그대로 두고 전체 영상만 다시 만듭니다.`}</p>
       {run?.stage === "final_pending" ? <div className="yt-run"><div className="yt-run-head">
         <RunState run={run} /></div>
@@ -492,7 +578,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       {run?.final ? <div className="yt-run"><div className="yt-run-head">
         <span className="status-pill" data-status={Math.abs(run.final.lufs + 14) <= 1 && run.final.peak <= -1 ? "approved" : "review"}>완성 · {short ? `${Math.round(run.final.durationSeconds)}초` : `${Math.floor(run.final.durationSeconds / 60)}분 ${Math.round(run.final.durationSeconds % 60)}초`}</span>
         <small>{(run.final.bytes / 1e6).toFixed(1)}MB · 음량 {run.final.lufs} LUFS · 최대 {run.final.peak} dB · {when(run.final.at)}</small></div></div> : null}
-      {outputs?.video ? <video src={outputs.video} controls preload="metadata" style={short ? { width: "100%", maxWidth: 360, aspectRatio: "9 / 16", borderRadius: 8, background: "#000" } : { width: "100%", borderRadius: 8, background: "#000" }} /> : null}
+      {outputs?.video && !folded ? <video src={outputs.video} controls preload="metadata" style={short ? { width: "100%", maxWidth: 360, aspectRatio: "9 / 16", borderRadius: 8, background: "#000" } : { width: "100%", borderRadius: 8, background: "#000" }} /> : null}
       {run?.final && outputs ? <ul className="yt-list">
         {outputs.summary ? <li><a href={outputs.summary} target="_blank" rel="noreferrer">한 장 정리 이미지 (PNG)</a></li> : null}
         {outputs.deck ? <li><a href={outputs.deck} target="_blank" rel="noreferrer">덱 전체 (PDF) — 설명란·고정 댓글용</a></li> : null}
@@ -503,6 +589,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
         <small>고친 뒤 [전체 영상 만들기]를 누르면 새 완성본이 다음 버전으로 올라와요.</small></div> : null}
       {run?.final ? finalNote ?? <p className="yt-note">이어폰으로 소리를 확인한 뒤 <a href={`/content/production?sourceId=${sourceId}`}>제작 현황 › 제작 자산·전체 승인 현황</a>에서 대표가 최종 영상·업로드 자료를 승인하고, <a href={`/content/publishing?sourceId=${sourceId}`}>⑥ 발행·업로드</a>에서 [OS 완성본 쓰기]로 올립니다. 업로드 자료는 ⑦ 유튜브 관리에서 만듭니다. 자막 파일과 엔드 스크린은 유튜브 스튜디오에서 사람이 합니다.</p> : null}
     </Step>
+    </>)}
     {run ? <MyinRunRecord key={run.id} runId={run.id} token={accessToken} /> : null}
     {error ? <p className="inline-alert danger" role="alert">{error}</p> : null}
   </div>;
