@@ -134,6 +134,7 @@ const runSchema = z.object({
   // redraw = one waiting for (or on) the computer that holds the video's folder.
   prepared: z.object({ path: z.string(), misses: z.array(z.string()), sheets: z.array(z.string()), credits: z.array(z.string()), at: z.string().datetime(), used: materialsSchema.optional(), engine: engineFp.optional(),
     storyboardPath: z.string().optional(), cells: z.array(z.number().int().min(1).max(400)).max(600).optional(), storyAt: z.string().max(40).optional(),
+    /** 우리 이미지 nobody uploaded, drawn as a gray 「사진 자리」 at ④ (로건 11-13): the video goes on and names them as 바꿀 사진. */ standIns: z.array(z.string().max(200)).max(60).optional(),
     drawn: z.object({ at: z.string().datetime(), scenes: z.array(z.number().int().min(1).max(400)).max(600), lines: z.array(z.string().max(300)).max(60) }).strict().optional(),
     redraw: z.object({ state: z.enum(["pending", "drawing", "failed"]), at: z.string().datetime(), attempts: z.number().int().min(0).max(20), token: z.string().uuid().optional(),
       expiresAt: z.string().datetime().optional(), storyboardAt: z.string().max(40).optional(), path: z.string().optional(), code: z.string().max(80).optional() }).strict().optional() }).strict().optional(),
@@ -223,7 +224,7 @@ export function presentMyinRun(record: OsRecord) {
     assetDecisions: Object.fromEntries(Object.entries(run.assets ?? {}).map(([file, value]) => [file, { decision: value.decision }])),
     ctaReady: run.cta ? `${run.cta.filter((c) => c.status === "ready").length}/${run.cta.length}` : null,
     prepared: run.prepared ? { misses: run.prepared.misses, sheets: run.prepared.sheets.length, credits: run.prepared.credits, at: run.prepared.at,
-      redraw: run.prepared.redraw?.state ?? null, redrawnAt: run.prepared.drawn?.at ?? null } : null,
+      redraw: run.prepared.redraw?.state ?? null, redrawnAt: run.prepared.drawn?.at ?? null, standIns: (run.prepared.standIns ?? []).filter((file) => !run.ours?.[file]) } : null,
     clips: run.clips ? run.clips.items.map(({ name, label }) => ({ name, label })) : null, clipsReview: run.clipsReview ?? null, sound: run.sound ?? null,
     stills: run.stills ? { at: run.stills.at, files: run.stills.files } : null, screenCheckAuto: !run.screenCheckOff,
     final: run.final ? { bytes: run.final.bytes, durationSeconds: run.final.durationSeconds, lufs: run.final.lufs, peak: run.final.peak, at: run.final.at } : null,
@@ -470,6 +471,9 @@ async function prepareAgain(service: Service, record: OsRecord, run: MyinRun, st
   delete next.pc; delete next.lease; delete next.lastError;
   await save(service, record, "backlog", "prep_pending", next).catch(() => null);
 }
+
+/** ④'s 우리 이미지 with nothing uploaded: drawn as 「사진 자리」 and shown as 바꿀 사진. */
+const ourStandIns = (run: MyinRun, folders: Map<string, string[]>) => photoSources(run, folders).filter((photo) => photo.from === "none" && photo.file.startsWith("ours_")).map((photo) => photo.file);
 
 async function failed(service: Service, record: OsRecord, run: MyinRun, code: string, files?: string[]) {
   const next: MyinRun = { ...run, lastError: { code: code.replace(/[^A-Z0-9_]/g, "").slice(0, 60) || "MYIN_FAILED", at: new Date().toISOString(), ...(files ? { files: files.slice(0, 30) } : {}) } };
@@ -1074,11 +1078,10 @@ export async function claimMyinPrep(service: Service = createServiceSupabase(), 
     // quality), not yet approved; no CTA voice (paid). A gray 「사진 자리」 stands in only where a photo cannot be fetched.
     const draft = !run.clipsReview;
     const folders = myinPhotoFolders(story);
-    // 우리 이미지 (2026-11-03): an ours_ photo nobody uploaded stopped Logan's engine at ④ with FileNotFoundError. Say which ones instead;
-    // uploading the last of them starts the preparation again (saveMyinOurImage).
-    const waiting = draft ? [] : photoSources(run, folders).filter((photo) => photo.from === "none" && photo.file.startsWith("ours_")).map((photo) => photo.file);
-    if (waiting.length) { await failed(service, record, run, "MYIN_OUR_IMAGE_NEEDED", waiting); return { idle: true as const }; }
-    const placeholders = draft ? [...folders].flatMap(([file, kinds]) => kinds.map((kind) => ({ kind, file }))) : [];
+    // 우리 이미지 (2026-11-03): an ours_ photo nobody uploaded stopped Logan's engine at ④ with FileNotFoundError, and then (until 11-16) the
+    // OS stopped ④ by name. 로건 11-13: go on to the end with a gray 「사진 자리」 and name it as 바꿀 사진; uploading it prepares ④ again.
+    const standIns = draft ? [] : ourStandIns(run, folders);
+    const placeholders = [...folders].filter(([file]) => draft || standIns.includes(file)).flatMap(([file, kinds]) => kinds.map((kind) => ({ kind, file })));
     const ours = Object.fromEntries(await Promise.all(Object.entries(run.ours ?? {}).filter(([file]) => folders.has(file))
       .map(async ([file, image]) => [file, await sign(service, OUTPUT_BUCKET, image.path)] as const)));
     const assets = myinPrepPhotos(folders, run.storyboard?.assets ?? [], (file) => draft || run.assets?.[file]?.decision === "approved", ours);
@@ -1138,6 +1141,7 @@ export async function completeMyinPrep(input: { runId: string; lease: string }, 
   const next: MyinRun = { ...run, storyboard, sound, attempts: 0, prepared: { path: prepBundlePath(record, run, input.lease), misses: bundle.misses.slice(0, 60),
     sheets: Array.from({ length: bundle.sheets }, (_, i) => sheetPath(record, run, input.lease, i + 1)), credits, at: new Date().toISOString(), ...drewWith(run),
     ...(bundle.cells ? { cells: bundle.cells } : {}) } };
+  if (!draft) { const standIns = ourStandIns(run, myinPhotoFolders(await storyboardJson(service, run))); if (standIns.length) next.prepared!.standIns = standIns.slice(0, 60); }
   next.prepared!.used = materials(next);
   delete next.lease; delete next.lastError;
   if (draft) { delete next.clips; delete next.stills; delete next.clipsReview; retireFinal(next); }

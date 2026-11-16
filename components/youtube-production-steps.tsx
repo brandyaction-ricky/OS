@@ -44,13 +44,14 @@ const RENDER_STEP: Record<string, string> = { voice: "목소리 만드는 중", 
 export const MY_AI_PROMPT = "브랜디 OS 연결 도구로 list_youtube_ai_jobs를 실행해 내 작업을 확인하고, 작업이 있으면 process_youtube_ai_job으로 하나씩 claim → 받은 지시대로 처리 → complete 하세요. 작업이 없으면 끝내세요.";
 
 /** One step card; the 마이인 v13 panel reuses it with its own titles and ids. */
-export function Step({ index, state, children, title, idBase = "yt-step" }: { index: number; state: StepState; children: ReactNode; title?: string; idBase?: string }) {
+export function Step({ index, state, children, title, idBase = "yt-step", open = false }: { index: number; state: StepState; children: ReactNode; title?: string; idBase?: string;
+  /** A finished step that stays open (the finished video: 로건 11-13 found only a folded line after v1). */ open?: boolean }) {
   const pill = STEP_PILL[state];
   return <section id={`${idBase}-${index + 1}`} className={`panel yt-step yt-step-${state}`} aria-current={state === "current" ? "step" : undefined} aria-labelledby={`${idBase}-title-${index + 1}`}>
     <header className="panel-header"><h2 id={`${idBase}-title-${index + 1}`}><span className="yt-step-no" aria-hidden="true">{state === "done" ? "✓" : index + 1}</span>{index + 1}. {title ?? STEPS[index]}</h2>
       <span className="status-pill" data-status={pill.status}>{pill.label}</span></header>
     {/* 로건 QA 10/30: every finished step stayed open and the step to do now sat far down — finished ones fold away. */}
-    {state === "done" ? <details className="panel-pad-lg yt-step-fold"><summary>끝난 단계 · 펼쳐 보기</summary><div className="yt-step-body">{children}</div></details>
+    {state === "done" && !open ? <details className="panel-pad-lg yt-step-fold"><summary>끝난 단계 · 펼쳐 보기</summary><div className="yt-step-body">{children}</div></details>
       : <div className="panel-pad-lg yt-step-body">{children}</div>}
   </section>;
 }
