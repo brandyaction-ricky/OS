@@ -204,18 +204,27 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
     const ids = noteRanges.current.filter(({ range }) => { try { return range.isPointInRange(startContainer, startOffset); } catch { return false; } }).map(({ id }) => id);
     setPeek(ids.length ? { ids, ...spotUnder({ bottom: event.clientY + 8, left: event.clientX - 20 }) } : null);
   };
-  // Live notes marked in the 원고 (CSS highlight: the editor's own text is not touched), again after an edit or a new note.
+  // Live notes marked in the 원고 (CSS highlight: the editor's own text is not touched), again whenever the editor's text changes — it
+  // fills in after the page opens, so marking once on load found nothing (11-16) — and when the notes change.
   useEffect(() => {
-    if (typeof CSS === "undefined" || !("highlights" in CSS)) return;
+    const host = editorBox.current;
+    if (!host || typeof CSS === "undefined" || !("highlights" in CSS)) return;
     const notes = viewing ? [] : (form?.notes ?? []).filter(note => note.state === "open" || note.state === "proposed");
-    const timer = window.setTimeout(() => {
-      const box = editorBox.current?.querySelector<HTMLElement>("[contenteditable]");
-      noteRanges.current = box ? noteRangesIn(box, notes) : [];
-      if (noteRanges.current.length) CSS.highlights.set("yp-notes", new Highlight(...noteRanges.current.map(({ range }) => range)));
-      else CSS.highlights.delete("yp-notes");
-    }, 250);
-    return () => window.clearTimeout(timer);
-  }, [form?.notes, form?.script, editorKey, viewing]);
+    let timer = 0;
+    const mark = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        const box = host.querySelector<HTMLElement>("[contenteditable]");
+        noteRanges.current = box ? noteRangesIn(box, notes) : [];
+        if (noteRanges.current.length) CSS.highlights.set("yp-notes", new Highlight(...noteRanges.current.map(({ range }) => range)));
+        else CSS.highlights.delete("yp-notes");
+      }, 250);
+    };
+    mark();
+    const watch = new MutationObserver(mark);
+    watch.observe(host, { childList: true, subtree: true, characterData: true });
+    return () => { watch.disconnect(); window.clearTimeout(timer); };
+  }, [form?.notes, viewing]);
   // Notes save with the 원고 as it is on screen, so a note never points at text the server has not seen.
   const notePatch = async (patch: Record<string, unknown>, remount = false) => {
     if (!form) return false;
