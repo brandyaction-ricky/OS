@@ -1684,12 +1684,14 @@ export async function myinEarlierStyles(actor: RequestActor, sourceId: string) {
 export async function myinOutputs(actor: RequestActor, runId: string, at?: string) {
   const { record, run } = await visibleRun(actor, runId);
   const service = createServiceSupabase();
-  const read = (bucket: string, path?: string) => path ? sign(service, bucket, path) : Promise.resolve(null);
+  // One file storage no longer holds is null, not the whole answer (로건 11-13: v0's picture video, dropped when v1 landed, failed the
+  // call, so the panel never got v1 and showed no player).
+  const read = (bucket: string, path?: string) => path ? sign(service, bucket, path).catch(() => null) : Promise.resolve(null);
   // An earlier version of this run's finished video (최종 검토 버전 비교), found by when it was made.
   const final = at ? [...(run.finals ?? []), ...(run.final ? [run.final] : [])].find((item) => item.at === at) : run.final;
   return {
     clips: await Promise.all((run.clips?.items ?? []).map(async (item) => ({ label: item.label, url: await read(ASSET_VIDEO_BUCKET, item.path) }))),
-    stills: run.stills && record.parent_id ? await import("./myin-edit").then(async ({ draftPreview }) => { const file = await draftPreview(service, record.parent_id!, runId); return read(file.bucket, file.path); }) : null,
+    stills: run.stills && record.parent_id && !run.final ? await import("./myin-edit").then(async ({ draftPreview }) => { const file = await draftPreview(service, record.parent_id!, runId); return read(file.bucket, file.path); }) : null,
     video: await read(ASSET_VIDEO_BUCKET, final?.video), summary: await read(OUTPUT_BUCKET, final?.summary),
     deck: await read(OUTPUT_BUCKET, final?.deck), srt: await read(OUTPUT_BUCKET, final?.srt),
   };

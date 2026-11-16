@@ -55,6 +55,6 @@ test("③'s pictures carry no baked subtitle: the editor gets them bare, the 정
   assert.match(v0, /subs, M\.SUBS = list\(M\.SUBS\), \[\]/);
   assert.match(v0, /"video": "video\.mp4", "video_ns": "video_ns\.mp4", "proxy": "video_ns\.mp4"/);
   assert.match(v0, /M\.draw_sub\(im, M\.src_time\(mid\), M\.scene_bg\(sc\[k\]\)\)/);
-  assert.match(read("lib/server/myin-run.ts"), /stills: run\.stills && record\.parent_id \? await import\("\.\/myin-edit"\)/);
+  assert.match(read("lib/server/myin-run.ts"), /stills: run\.stills && record\.parent_id && !run\.final \? await import\("\.\/myin-edit"\)/);
   assert.match(read("components/myin-v13-panel.tsx"), /정지 그림 영상 · 목소리와 자막/);
 });

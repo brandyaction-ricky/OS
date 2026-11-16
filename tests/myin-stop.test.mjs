@@ -51,3 +51,11 @@ test("the finished video stays open in 5단계 and the editor card stays after v
   const entry = await readFile(new URL("../components/editor-screen.tsx", import.meta.url), "utf8");
   assert.match(entry, /\(!screen\.versions\.length && !screen\.lock && !finals\)\) return null;/);
 });
+
+// 로건 11-13: after v1 the outputs call failed on v0's dropped picture video, so 5단계 had no player.
+test("a file storage no longer holds is left out of the outputs instead of failing them", async () => {
+  const run = await readFile(new URL("../lib/server/myin-run.ts", import.meta.url), "utf8");
+  const outputs = run.slice(run.indexOf("export async function myinOutputs"), run.indexOf("export async function myinEditorView"));
+  assert.match(outputs, /path \? sign\(service, bucket, path\)\.catch\(\(\) => null\) : Promise\.resolve\(null\)/);
+  assert.match(outputs, /stills: run\.stills && record\.parent_id && !run\.final \?/, "v0 is dropped once the first final lands");
+});
