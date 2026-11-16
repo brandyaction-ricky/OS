@@ -1,3 +1,4 @@
+import { usesReferenceDetailRendering, usesReferencePhotoStyling } from "@/lib/image-creative/reference-layout";
 import { createHash, randomUUID } from "node:crypto";
 import { getSharp } from "next/dist/server/image-optimizer";
 import { z } from "zod";
@@ -15,7 +16,7 @@ const variantId = z.string().uuid();
 const fileSize = z.number().int().positive().max(20 * 1024 * 1024);
 const file = z.object({variantId, bytes: fileSize, sha256: z.string().regex(/^[a-f0-9]{64}$/)}).strict();
 export const imageMacActions = [
-  z.object({action:z.literal("image_creative_claim"), rendererVersion:z.union([z.literal(1),z.literal(2),z.literal(3)])}).strict(),
+  z.object({action:z.literal("image_creative_claim"), rendererVersion:z.number().int().min(1).max(8)}).strict(),
   z.object({action:z.literal("image_creative_scene"), ...lease, variantId}).strict(),
   z.object({action:z.literal("image_creative_prepare"), ...lease, variantId, fileSize}).strict(),
   z.object({action:z.literal("image_creative_complete"), ...lease, files:z.array(file).min(1).max(20)}).strict(),
@@ -39,7 +40,7 @@ async function updateRun(record: OsRecord, run: ImageMacRun) {
   const meta = imageMeta(record);
   return saveImageMeta(createServiceSupabase(), record, { ...meta, renders: meta.renders!.map(r => r.id === run.id ? run : r) });
 }
-async function claim(computer: Computer, rendererVersion: 1 | 2 | 3) {
+async function claim(computer: Computer, rendererVersion: number) {
   for (const status of ["queued", "active"] as const) {
     for (let start = 0;; start += 20) {
       const {data,error} = await projects(computer,{target:computer.target,status})
@@ -51,7 +52,7 @@ async function claim(computer: Computer, rendererVersion: 1 | 2 | 3) {
         const run = meta.renders?.find(r => r.target === computer.target && r.status === status &&
           (status === "queued" || (r.expires ?? 0) <= Date.now()) && isApprovedRender(meta, r) &&
           meta.state.variants.every(v => !r.variantIds.includes(v.id) ||
-            rendererVersion >= (v.formatId === "thumbnail_subject" ? 3 : usesBackgroundPhoto(v) ? 2 : 1)));
+            rendererVersion >= (usesReferencePhotoStyling(v.referenceLayout) ? 8 : usesReferenceDetailRendering(v.referenceLayout) ? 7 : v.referenceLayout?.master ? 6 : v.referenceLayout?.composition ? 5 : v.formatId === "reference_image" ? 4 : v.formatId === "thumbnail_subject" ? 3 : usesBackgroundPhoto(v) ? 2 : 1)));
         if (!run) continue;
         const token = randomUUID();
         try {
@@ -95,9 +96,12 @@ export async function imageMacWork(computer: Computer, input: Action) {
   const bucket = createServiceSupabase().storage.from(MEDIA_BUCKET);
   if (input.action === "image_creative_scene") {
     const variant = variantOf(record,run,input.variantId);
-    const photoUrl = await macPhotoUrl(record,variant);
+    const [photoUrl, referenceUrl, detailUrl] = await Promise.all([
+      macPhotoUrl(record,variant,variant.asset), variant.referenceLayout && macPhotoUrl(record,variant,variant.referenceLayout.source),
+      variant.detailAsset && macPhotoUrl(record,variant,variant.detailAsset),
+    ]);
     const {width,height} = resolvePlacement(variant.size,variant.design?.placement,variant.design?.outputWidth);
-    return { variant,photoUrl,width,height };
+    return { variant,photoUrl,...(referenceUrl && {referenceUrl}),...(detailUrl && {detailUrl}),width,height };
   }
   if (input.action === "image_creative_prepare") {
     variantOf(record,run,input.variantId);

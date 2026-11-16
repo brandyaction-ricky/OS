@@ -25,8 +25,7 @@ export async function PATCH(request: Request, { params }: Context) {
     }
     const saved = await patchImageProject(actor, record, input);
     const plan = imageMeta(saved).state.formatRecommendation;
-    if ((input.action === "recommend-appeals" && !plan?.appealOptions?.length) ||
-        (input.action === "recommend-formats" && !(plan?.conceptFirst ? plan.appeals?.length : plan?.items?.length)) ||
+    if ((input.action === "recommend-formats" && !(plan?.conceptFirst ? plan.appeals?.length : plan?.items?.length)) ||
         (input.action === "plan-scene" && !plan?.scene))
       await requestStaffJob(actor, {task:"image-creative", sourceId:id, request:{phase:"formats"}});
     if (input.action === "approve-and-generate" && imageMeta(saved).state.formatApproval)

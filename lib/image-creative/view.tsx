@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import { CREATIVE_SIZES, isWarehouseFormat, usesBackgroundPhoto } from "./formats.ts";
 import { artworkGeometry } from "./safe-artwork.mjs";
+import { ReferenceImageView } from "./reference-view.tsx";
 import { ThumbnailAdView } from "./thumbnail-ad.tsx";
 import type { CreativeVariant } from "./model.ts";
 
@@ -27,8 +28,9 @@ function Picture({ variant, url, style, contain = false }: { variant: CreativeVa
 const Arrow = ({ color = C.ink, width = 90 }: { color?: string; width?: number }) => <svg width={width} height={50} viewBox="0 0 90 50">
   <path d="M4 25H78M57 7L79 25 57 43" stroke={color} strokeWidth="5" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 
-export function ImageCreativeView({ variant, assetUrl }: { variant: CreativeVariant; assetUrl?: string }) {
+export function ImageCreativeView({ variant, assetUrl, referenceUrl, detailUrl }: { variant: CreativeVariant; assetUrl?: string; referenceUrl?: string; detailUrl?: string }) {
   if (variant.formatVersion !== 1 || isWarehouseFormat(variant.formatId)) throw new Error("이 시안은 해당 버전의 창고 디자인 렌더러로 열어 주세요.");
+  if (variant.formatId === "reference_image") return <ReferenceImageView variant={variant} assetUrl={assetUrl} referenceUrl={referenceUrl} detailUrl={detailUrl} />;
   if (variant.formatId === "thumbnail_subject") return <ThumbnailAdView variant={variant} assetUrl={assetUrl} />;
   // A tall placement has more interface covering it, so use the compact square composition inside its safe area.
   const { width: W, height: H } = CREATIVE_SIZES[variant.size === "story" ? "square" : variant.size];

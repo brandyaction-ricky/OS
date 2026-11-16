@@ -1,4 +1,4 @@
-import { validWarehouseBrand } from "./model.ts";
+import { validWarehouseBrand, sameImageBrief, type ImageBrief } from "./model.ts";
 import { markdownBlocks, markdownSections, type MarkdownSection } from "../markdown-sections.ts";
 
 export interface ImageAdProductSource { id: string; title: string; version: number }
@@ -9,6 +9,31 @@ export interface ImageAdProduct {
 }
 export interface ImageProductDocument {
   id: string; title: string; current_version: number; status: string; content_md: string;
+}
+
+// Goal and funnel can be adjusted for an individual ad. The remaining facts belong to the selected canon.
+export function imageBriefMatchesProduct(brief:ImageBrief, row:ImageAdProduct|undefined) {
+  const ref = brief.productSource;
+  return !ref || Boolean(row && ref.productId === row.id && ref.source.id === row.source.id &&
+    ref.source.version === row.source.version && ref.audienceSource?.id === row.audienceSource?.id &&
+    ref.audienceSource?.version === row.audienceSource?.version && brief.product === row.product &&
+    brief.audience === row.audience && brief.offer === row.offer && (brief.brand ?? "") === (row.brand ?? ""));
+}
+
+export function onlyImageProductVersionChanged(previous:ImageBrief, next:ImageBrief) {
+  const old = previous.productSource, current = next.productSource;
+  return Boolean(old && current && old.productId===current.productId && old.source.id===current.source.id &&
+    old.audienceSource?.id===current.audienceSource?.id &&
+    (old.source.version!==current.source.version || old.audienceSource?.version!==current.audienceSource?.version) &&
+    sameImageBrief({...previous,productSource:current},next));
+}
+
+export function briefForImageProduct(brief:ImageBrief, row:ImageAdProduct):ImageBrief {
+  const sameProduct = brief.productSource?.productId===row.id;
+  return {...brief,product:row.product,brand:row.brand,audience:row.audience,offer:row.offer,
+    objective:sameProduct ? brief.objective : row.objective ?? "",funnel:sameProduct ? brief.funnel : row.funnel ?? "",
+    productSource:{productId:row.id,source:{id:row.source.id,version:row.source.version},...(row.audienceSource &&
+      {audienceSource:{id:row.audienceSource.id,version:row.audienceSource.version}})}};
 }
 
 const channelTitle = "마이인 유입용 직원 자동화 채널 — 운영 정본";

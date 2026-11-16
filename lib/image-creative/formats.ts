@@ -9,8 +9,9 @@ export const CREATIVE_SIZES: Record<CreativeSize, { width: number; height: numbe
 };
 export const LEGACY_IMAGE_FORMAT_IDS = ["photo_headline", "split_compare", "note", "annotated", "object_spotlight", "checklist", "question", "typography", "steps", "conversation", "reframe", "report_crop"] as const;
 type LegacyImageFormatId = typeof LEGACY_IMAGE_FORMAT_IDS[number];
-export type ImageFormatId = LegacyImageFormatId | WarehouseFormatId | "thumbnail_subject";
+export type ImageFormatId = LegacyImageFormatId | WarehouseFormatId | "thumbnail_subject" | "reference_image";
 export const WAREHOUSE_FORMAT_IDS = FORMAT_TEST_FORMATS.map(format => format.id);
+// Fixed compositions available without an uploaded design.
 export const IMAGE_FORMAT_IDS: readonly ImageFormatId[] = [...LEGACY_IMAGE_FORMAT_IDS, ...WAREHOUSE_FORMAT_IDS, "thumbnail_subject"];
 export function isWarehouseFormat(id: unknown): id is WarehouseFormatId {
   return FORMAT_TEST_FORMATS.some(format => format.id === id);
@@ -59,6 +60,10 @@ function warehouse(id: WarehouseFormatId, when: string, photoGuide: string, keyw
     references: [{ title: name, sourceId: id, url: "https://brandyaction-os.vercel.app/knowledge/doc/" + chapter, basis: when }] };
 }
 export const IMAGE_FORMATS: Record<ImageFormatId, ImageFormat> = {
+  reference_image: {
+    id: "reference_image", version: 1, name: "내 레퍼런스 디자인", when: "직원이 가져온 디자인에서 지정한 이미지와 문구를 교체합니다.",
+    assetRequired: false, supportsAsset: true, limits: { headline: 100, body: 200, cta: 100 }, keywords: [], status: "candidate", references: [],
+  },
   thumbnail_subject: {
     ...format("thumbnail_subject", "썸네일형 · 한 장면", "고객이 겪는 순간을 사진 하나와 짧은 제목으로 보여줄 때", true, 24, 44, ["고객", "선택", "행동", "장면", "강점", "공감"]),
     photoGuide: "흰 배경에서 표정이나 행동이 한눈에 읽히는 컬러 사진 한 장. 중앙에 피사체를 크게 담고 제목·로고·테두리는 넣지 않아요.",

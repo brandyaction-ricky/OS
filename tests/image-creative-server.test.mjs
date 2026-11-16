@@ -1,3 +1,7 @@
+import * as referenceLayoutModule from "../lib/image-creative/reference-layout.ts";
+const {draftReferenceLayout} = referenceLayoutModule;
+import * as referenceCanon from "../lib/image-creative/reference-canon.ts";
+import * as products from "../lib/image-creative/products.ts";
 import * as placements from '../lib/image-creative/placement.ts';
 import * as direction from '../lib/image-creative/direction.ts';
 import * as subjectBox from '../lib/image-creative/subject-box.ts';
@@ -27,7 +31,7 @@ let stored;
 function reset(){modules["@/lib/supabase/server"].createServiceSupabase=db;stored={id:projectId,owner_id:owner,version:1,record_type:"content_package",archived_at:null,title:"테스트",metadata:{kind:storage.IMAGE_CREATIVE_KIND,state:{...model.emptyImageCreative(),brief},assets:[{...baseAsset,sha256:"a".repeat(64)}],appliedJobs:{}}};}
 function db() { return {from(){let filters=[],update;const q={select(){return q},eq(k,v){filters.push([k,v]);return q},is(k,v){filters.push([k,v]);return q},update(v){update=v;return q},async maybeSingle(){const ok=filters.every(([key,value])=>key==="metadata->>kind"?stored.metadata.kind===value:stored[key]===value);if(!ok)return {data:null,error:null};if(update)stored={...stored,...update,version:stored.version+1};return {data:structuredClone(stored),error:null};}};return q;}};}
 const source=readFileSync(new URL("../lib/server/image-creatives.ts",import.meta.url),"utf8");
-const modules={"@/lib/image-creative/direction":direction,"@/lib/image-creative/subject-box":subjectBox,"./image-ad-products": {readImageAdProducts:async()=>[]}, "@/lib/image-creative/placement":placements,"@/lib/image-creative/format-test":formatTest,"node:crypto":crypto,"next/dist/server/image-optimizer":sharpModule,"node:fs/promises":{},"node:path":{},react:{createElement:()=>({})},"next/og":{ImageResponse:class { async arrayBuffer(){return new ArrayBuffer(0);} }},zod,"@/lib/http":{ApiError},"@/lib/supabase/server":{},"@/lib/cardnews/zip":{},"@/lib/image-creative/formats":formats,"@/lib/image-creative/format-test-fonts.json":{default:JSON.parse(readFileSync(new URL("../lib/image-creative/format-test-fonts.json",import.meta.url),"utf8"))},"@/lib/image-creative/model":model,"@/lib/image-creative/storage":storage,"@/lib/image-creative/view":{},"./youtube-process-stages":{}};
+const modules={"@/lib/image-creative/reference-layout":referenceLayoutModule,"./image-ad-references":{readImageAdReferences:async()=>({entries:[]})},"@/lib/image-creative/reference-canon":referenceCanon,"@/lib/image-creative/products":products,"@/lib/image-creative/direction":direction,"@/lib/image-creative/subject-box":subjectBox,"./image-ad-products": {readImageAdProducts:async()=>[]}, "@/lib/image-creative/placement":placements,"@/lib/image-creative/format-test":formatTest,"node:crypto":crypto,"next/dist/server/image-optimizer":sharpModule,"node:fs/promises":{},"node:path":{},react:{createElement:()=>({})},"next/og":{ImageResponse:class { async arrayBuffer(){return new ArrayBuffer(0);} }},zod,"@/lib/http":{ApiError},"@/lib/supabase/server":{},"@/lib/cardnews/zip":{},"@/lib/image-creative/formats":formats,"@/lib/image-creative/format-test-fonts.json":{default:JSON.parse(readFileSync(new URL("../lib/image-creative/format-test-fonts.json",import.meta.url),"utf8"))},"@/lib/image-creative/model":model,"@/lib/image-creative/storage":storage,"@/lib/image-creative/view":{},"./youtube-process-stages":{}};
 const compiled={exports:{}};
 vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{module:compiled,exports:compiled.exports,require:n=>{if(!(n in modules))throw Error(n);return modules[n];},Buffer,URL,Date,Uint8Array,TextEncoder,console});
 const server=compiled.exports;
@@ -35,6 +39,91 @@ const server=compiled.exports;
 const ownerActor = () => ({type:"user", id:owner, ownerId:owner, name:"owner", supabase:db()});
 const decision = input => server.patchImageProject(ownerActor(),stored,server.imagePatchSchema.parse({version:stored.version,...input}));
 const approveRequest = request => decision({action:"approve-format",request});
+test("창고 문서를 고친 뒤 이전 화면은 승인할 수 없고 새 원문과 버전만 작업에 저장한다", async()=>{
+  reset();
+  const reader = modules["./image-ad-references"];
+  const original = reader.readImageAdReferences;
+  const row = {id:"M01", documentId:other, version:5, name:"바뀐 연출", keep:"그림 오른쪽에 질문", slots:"쓸 질문 하나"};
+  try {
+    reader.readImageAdReferences = async()=>({entries:[row]});
+    const state = stored.metadata.state;
+    state.brief = {...brief,brand:"공방"};
+    state.formatRecommendation = direction.selectedReferencePlan(state.brief,"standalone","portrait",[{id:"angle",meaning:"직접 만든 잔"}]);
+    const request = {mode:"standalone", count:1, size:"portrait", formatIds:["M01"]};
+    const approve = version=>decision({action:"approve-format", request, referenceSource:{documentId:other,version}});
+    await assert.rejects(approve(4), e=>e.code==="IMAGE_REFERENCE_CHANGED");
+    assert.equal(stored.version, 1);
+    await approve(5);
+    assert.deepEqual(stored.metadata.state.formatRecommendation.referenceSnapshot, row);
+    assert.match(server.imageJobInstructions(stored,request), /그림 오른쪽에 질문/);
+  } finally { reader.readImageAdReferences = original; }
+});
+test("a custom reference binds the real project source, replacement photo and layout through A/B rounds", async () => {
+  reset();
+  const meta=stored.metadata;
+  meta.state.experiment=true;
+  const appeals=[{id:"a",meaning:"첫 번째 소구"},{id:"b",meaning:"두 번째 소구"}];
+  meta.state.formatRecommendation=direction.selectedReferencePlan(brief,"appeal","portrait",appeals);
+  const source={path:`image-creatives/${projectId}/${crypto.randomUUID()}.png`,w:800,h:1000};
+  const alternate={path:`image-creatives/${projectId}/${crypto.randomUUID()}.jpg`,w:12,h:15};
+  meta.assets.push({...source,sha256:"b".repeat(64)},{...alternate,sha256:"c".repeat(64)});
+  const detail={path:`image-creatives/${projectId}/${crypto.randomUUID()}.png`,w:90,h:35};
+  meta.assets.push({...detail,sha256:"d".repeat(64)});
+  const fullCrop={x:0,y:0,w:100,h:100};
+  const layout={...draftReferenceLayout(source),master:{v:1,headlineWeight:600,background:"#ffffff",regions:[],
+    detailSlots:[{x:10,y:32,w:10,h:7,crop:fullCrop}]}};
+  const req={mode:"appeal",count:2,size:"square",formatIds:["reference_image"],assetPaths:[baseAsset.path],referenceLayout:layout,detailAssetPath:detail.path};
+  await assert.rejects(approveRequest({...req,detailAssetPath:undefined}),/디테일/);
+  await assert.rejects(approveRequest({...req,detailAssetPath:detail.path.replace(projectId,other)}),e=>e.code==="IMAGE_ASSET_NOT_OWNED");
+  await assert.rejects(approveRequest({...req,detailAssetPath:source.path}),/디테일/);
+  await assert.rejects(approveRequest({...req,referenceLayout:{...layout,source:{...source,h:999}}}),e=>e.code==="IMAGE_ASSET_NOT_OWNED");
+  await assert.rejects(approveRequest({...req,assetPaths:[source.path]}), /다른|별도/);
+  await approveRequest(req);
+  assert.equal(stored.metadata.state.formatRecommendation.size,"square");
+  assert.throws(()=>server.checkedImageRequest(stored,{...req,size:"portrait"}),e=>e.code==="IMAGE_FORMAT_APPROVAL_REQUIRED");
+  const alternateLayout={...layout,cta:{...layout.cta,x:layout.cta.x+1}};
+  assert.throws(()=>server.checkedImageRequest(stored,{...req,referenceLayout:alternateLayout}),e=>e.code==="IMAGE_FORMAT_APPROVAL_REQUIRED");
+  const result={variants:appeals.map(appeal=>({formatId:"reference_image",formatVersion:1,size:"square",asset:baseAsset,
+    appeal,copy:{headline:appeal.meaning,body:"",cta:"확인하기"}}))};
+  await assert.rejects(server.importImageResults(db(),stored,req,{variants:result.variants.map(row=>({...row,referenceLayout:alternateLayout}))},"test"), /바꿀 수 없는/);
+  const copies=result.variants.map(row=>row.copy);
+  const prompt=server.imageJobInstructions(stored,req,true);
+  assert.match(prompt,/"copies":\[\{"headline"/);
+  assert.ok(!prompt.includes(source.path));
+  assert.ok(!prompt.includes(detail.path));
+  await assert.rejects(server.importImageResults(db(),stored,req,{variants:result.variants.map(row=>({...row,detailAsset:alternate}))},"test"),/바꿀 수 없는/);
+  await assert.rejects(server.importImageResults(db(),stored,req,{copies,referenceLayout:alternateLayout},"test"),/바꿀 수 없는/);
+  await assert.rejects(server.importImageResults(db(),stored,req,{copies:[{...copies[0],asset:alternate},copies[1]]},"test"),/바꿀 수 없는/);
+  await assert.rejects(server.importImageResults(db(),stored,req,{copies:copies.slice(1)},"test"),e=>e.code==="IMAGE_COUNT_MISMATCH");
+  await server.importImageResults(db(),stored,req,{copies},"test");
+  const original=stored.metadata.state.variants[0];
+  assert.deepEqual(original.detailAsset,detail);
+  assert.deepEqual(stored.metadata.state.variants[1].detailAsset,detail);
+  assert.deepEqual(original.referenceLayout,layout);
+  assert.deepEqual(original.asset,baseAsset);
+  await reviewedFixture(original.id);
+  await decision({action:"record-winner",batchId:stored.metadata.state.batches[0].id,variantId:original.id});
+  const copyReq={mode:"copy",baseId:original.id,count:1,copyFields:["headline"]};
+  await assert.rejects(approveRequest({...copyReq,detailAssetPath:alternate.path}),/디테일 이미지를 유지/);
+  await assert.rejects(approveRequest({...copyReq,size:"portrait"}),/같은 규격/);
+  await approveRequest(copyReq);
+  await server.importImageResults(db(),stored,copyReq,{variants:[{copy:{headline:"새로운 제목"}}]},"test");
+  const next=stored.metadata.state.variants.at(-1);
+  assert.deepEqual(next.detailAsset,detail);
+  assert.deepEqual(next.referenceLayout,layout);
+  await reviewedFixture(next.id);
+  await decision({action:"record-winner",batchId:stored.metadata.state.batches.at(-1).id,variantId:next.id});
+  const imageReq={mode:"image",count:1,baseId:next.id,assetPaths:[alternate.path]};
+  await assert.rejects(approveRequest({...imageReq,referenceLayout:alternateLayout}),/교체 영역을 유지/);
+  await approveRequest(imageReq);
+  await server.importImageResults(db(),stored,imageReq,{variants:[{asset:alternate}]},"test");
+  const last=stored.metadata.state.variants.at(-1);
+  assert.deepEqual(last.detailAsset,detail);
+  assert.deepEqual(last.referenceLayout,layout);
+  assert.deepEqual(last.asset,alternate);
+  assert.deepEqual(last.copy,next.copy);
+});
+
 async function reviewedFixture(variantId) {
   const batchId = stored.metadata.state.batches.find(b => b.variantIds.includes(variantId)).id;
   await decision({action:"approve-copy",batchId});
@@ -91,6 +180,19 @@ test("address-free planning validates canonical product claims, keeps older appr
     await pick(structuredClone(nextBrief));
     assert.equal(stored.version,version);
     assert.equal(stored.metadata.state.brief.productSource.source.version,3);
+    modules["./image-ad-products"].readImageAdProducts = async () => [{...item,audienceSource:{...item.audienceSource,version:2}}];
+    await assert.rejects(pick(nextBrief),e=>e.code==="IMAGE_PRODUCT_CHANGED");
+    await assert.rejects(approveRequest(initial),e=>e.code==="IMAGE_PRODUCT_CHANGED");
+    assert.equal(stored.version,version);
+    assert.equal(stored.metadata.state.formatApproval,undefined);
+    const retained = structuredClone(stored.metadata.state.formatRecommendation);
+    const currentItem = {...item,audienceSource:{...item.audienceSource,version:2},objective:"상품의 기본 목표",funnel:"상품의 기본 퍼널"};
+    const refreshed = products.briefForImageProduct(nextBrief,currentItem);
+    assert.equal(refreshed.objective,nextBrief.objective);
+    assert.equal(refreshed.funnel,nextBrief.funnel);
+    await decision({action:"save-brief",brief:refreshed});
+    assert.equal(stored.metadata.state.brief.productSource.audienceSource.version,2);
+    assert.deepEqual(structuredClone(stored.metadata.state.formatRecommendation),retained);
     // A previously saved project's pending recommendation can complete after the UI update.
     stored.metadata.state.brief.landingUrl = legacyUrl;
     assert.doesNotMatch(server.imageJobInstructions(stored,{phase:"formats"}),/old-destination|landingUrl/);
@@ -165,10 +267,11 @@ test("a new appeal plan waits for an independent concept and medium, then binds 
   assert.ok(stored.metadata.state.formatApproval.key);
 });
 
-test("reference-led single ads offer five optional appeals and bind only the selected appeal and design to the copy", async () => {
+test("legacy reference-led suggestions can finish and bind only the selected appeal and design to the copy", async () => {
   reset();
   const start = {mode:"standalone",size:"portrait",brief};
-  await decision({action:"recommend-appeals",...start,count:1});
+  assert.equal(server.imagePatchSchema.safeParse({version:1,action:"recommend-appeals",...start,count:1}).success,false);
+  stored.metadata.state.formatRecommendation={mode:"standalone",size:"portrait",count:1,referenceFirst:true,appealFirst:true};
   const planning = {phase:"formats"};
   assert.equal(server.imageJobPhase(stored,planning),"appeal-options");
   assert.match(server.imageJobInstructions(stored,planning),/5개만/);
@@ -222,6 +325,48 @@ test("direct A/B appeals skip any AI request, reject duplicates and preserve the
   assert.ok(!stored.metadata.state.batches[0].review.copy);
   await decision({action:"confirm-reference-copy",batchId:batch.id,copies});
   assert.ok(stored.metadata.state.batches[0].review.copy);
+});
+
+test("reference copy drafts survive reopening and generation without advancing approvals", async () => {
+  reset();
+  stored.metadata.state.experiment = true;
+  const appeals = [{id:"a",meaning:"일의 기준을 찾는다"},{id:"b",meaning:"강점을 기억한다"}];
+  await decision({action:"select-appeals",mode:"appeal",size:"portrait",brief,appeals});
+  const request = {mode:"appeal",size:"portrait",count:2,formatIds:["note"]};
+  const copies = [{headline:"일하는 기준",body:"",cta:"진단 받기"},{headline:"",body:"",cta:"진단 받기"}];
+  const draft = (rows, version=stored.version) => decision({action:"save-reference-copy-draft",copies:rows,version});
+  await assert.rejects(draft(copies),e=>e.code==="IMAGE_COPY_UNAVAILABLE");
+  await approveRequest(request);
+  await assert.rejects(draft(copies.slice(1)),e=>e.code==="IMAGE_COUNT_MISMATCH");
+  await assert.rejects(draft([copies[0],{...copies[1],cta:"다른 CTA"}]),/버튼 문구/);
+  const before = stored.version;
+  await draft(copies);
+  const saved = server.imageMeta(await server.imageRecord(db(),owner,projectId)).state;
+  assert.deepEqual(saved.formatApproval.copyDraft,copies);
+  assert.deepEqual(saved.batches,[]);
+  assert.deepEqual(saved.variants,[]);
+  assert.equal(stored.version,before+1);
+  await draft(copies,before);
+  assert.equal(stored.version,before+1);
+  await assert.rejects(draft([{...copies[0],headline:"다른 문구"},copies[1]],before),e=>e.code==="IMAGE_VERSION_CONFLICT");
+  await approveRequest({...request,formatIds:["typography"]});
+  assert.equal(stored.metadata.state.formatApproval.copyDraft,undefined);
+  await approveRequest(request);
+  await draft(copies);
+  const completed = [copies[0],{...copies[1],headline:"나의 강점"}];
+  await decision({action:"import",request,result:{copies:completed}});
+  const batch = stored.metadata.state.batches[0];
+  assert.deepEqual(batch.review.copyDraft,copies);
+  assert.equal(batch.review.copy,undefined);
+  assert.deepEqual(batch.review.history.map(e=>e.step),["format"]);
+  await assert.rejects(decision({action:"approve-copy",batchId:batch.id}),e=>e.code==="IMAGE_DRAFT_REVIEW_REQUIRED");
+  const edited = [completed[0],{...completed[1],headline:"새로운 강점"}];
+  await draft(edited);
+  assert.deepEqual(stored.metadata.state.variants.map(v=>v.copy),completed);
+  await decision({action:"confirm-reference-copy",batchId:batch.id,copies:edited});
+  assert.deepEqual(stored.metadata.state.variants.map(v=>v.copy),edited);
+  assert.equal(stored.metadata.state.batches[0].review.copyDraft,undefined);
+  await assert.rejects(draft(copies),e=>e.code==="IMAGE_COPY_LOCKED");
 });
 
 test("real-product direction uses the selected original and rejects a new thumbnail without an asset", async () => {
@@ -568,6 +713,44 @@ test("a Mac renders only an assigned saved batch; its checked PNG is the actual 
   assert.equal((await imageMacWork(local,poll)).idle,true);
   assert.equal((await imageMacWork(local,{...poll,rendererVersion:2})).idle,true);
   assert.equal((await imageMacWork(local,{...poll,rendererVersion:3})).jobId,run.id);
+  stored = structuredClone(queued);
+  stored.metadata.state.variants[0] = {...original,formatId:"reference_image"};
+  assert.equal((await imageMacWork(local,{...poll,rendererVersion:3})).idle,true);
+  assert.equal((await imageMacWork(local,{...poll,rendererVersion:4})).jobId,run.id);
+  stored = structuredClone(queued);
+  const layout = draftReferenceLayout({path:jpeg.path,w:jpeg.w,h:jpeg.h});
+  stored.metadata.state.variants[0] = {...original,formatId:"reference_image",referenceLayout:{...layout,
+    composition:{style:"split",background:"#fffaf0",ink:"#1a1520",accent:"#184671",imageSide:"start",fit:"contain"}}};
+  assert.equal((await imageMacWork(local,{...poll,rendererVersion:4})).idle,true);
+  assert.equal((await imageMacWork(local,{...poll,rendererVersion:5})).jobId,run.id);
+  stored = structuredClone(queued);
+  stored.metadata.state.variants[0] = {...original,formatId:"reference_image",referenceLayout:{...layout,
+    master:{v:1,background:"#ffffff",regions:[],headlineWeight:900}}};
+  assert.equal((await imageMacWork(local,{...poll,rendererVersion:5})).idle,true);
+  assert.equal((await imageMacWork(local,{...poll,rendererVersion:6})).jobId,run.id);
+  stored = structuredClone(queued);
+  stored.metadata.state.variants[0] = {...original,formatId:"reference_image",referenceLayout:{...layout,
+    master:{v:1,base:"solid",background:"#151515",regions:[],headlineWeight:900}}};
+  assert.equal((await imageMacWork(local,{...poll,rendererVersion:7})).idle,true);
+  assert.equal((await imageMacWork(local,{...poll,rendererVersion:8})).jobId,run.id);
+  stored = structuredClone(queued);
+  const logoBytes=await sharp({create:{width:6,height:5,channels:4,background:{r:20,g:75,b:190,alpha:0.5}}}).png().toBuffer();
+  const logo={path:`image-creatives/${projectId}/${crypto.randomUUID()}.png`,w:6,h:5};
+  stored.metadata.assets.push({...logo,sha256:crypto.createHash("sha256").update(logoBytes).digest("hex")});
+  files.set(logo.path,new Blob([logoBytes],{type:"image/png"}));
+  const detailLayout={...layout,photo:undefined,master:{v:1,background:"#ffffff",regions:[],headlineWeight:600,
+    detailSlots:[{x:0,y:0,w:10,h:10,crop:{x:0,y:0,w:100,h:100}}]}};
+  stored.metadata.state.variants[0]={...original,asset:undefined,formatId:"reference_image",referenceLayout:detailLayout,detailAsset:logo};
+  assert.equal((await imageMacWork(local,{...poll,rendererVersion:6})).idle,true);
+  const detailLease=await imageMacWork(local,{...poll,rendererVersion:7});
+  assert.equal(detailLease.jobId,run.id);
+  const detailScene=await imageMacWork(local,{action:"image_creative_scene",jobId:detailLease.jobId,lease:detailLease.lease,variantId});
+  assert.equal(detailScene.photoUrl,undefined);
+  assert.ok(detailScene.referenceUrl && detailScene.detailUrl !== detailScene.referenceUrl);
+  const signedPng = files.get(detailScene.detailUrl.slice("https://storage.example/".length));
+  const rgba=await sharp(Buffer.from(await signedPng.arrayBuffer())).raw().toBuffer();
+  assert.deepEqual([...rgba.subarray(0,4)],[20,75,190,128]);
+  const preparedBeforePhoto=cachedWrites;
   stored = queued;
   stored.metadata.state.variants[0] = original;
   const {jobId,lease}=await imageMacWork(local,poll);
@@ -580,7 +763,7 @@ test("a Mac renders only an assigned saved batch; its checked PNG is the actual 
   assert.match(descriptor.photoUrl,/\/render-sources\/v1\/[a-f0-9]{64}\.png$/);
   const normalized=await sharp(Buffer.from(await files.get(descriptor.photoUrl.slice("https://storage.example/".length)).arrayBuffer())).metadata();
   assert.deepEqual([normalized.format,normalized.width,normalized.height],["png",3,2]);
-  assert.equal((await imageMacWork(local,scene)).photoUrl,descriptor.photoUrl);assert.equal(cachedWrites,1);
+  assert.equal((await imageMacWork(local,scene)).photoUrl,descriptor.photoUrl);assert.equal(cachedWrites,preparedBeforePhoto);
   assert.equal(descriptor.variant.copy.headline,candidate.copy.headline);
   await assert.rejects(server.exportImageCreative(stored,{variantId}));
   await assert.rejects(macReviewPng(stored,variantId,jobId));
@@ -686,6 +869,7 @@ for (const [formatId, withDirection] of [["note",false],["thumbnail_subject",fal
   };
   const pick = { action:"recommend-formats", brief:{...brief,mainMessage:"자주 부탁받는 일을 떠올려 보세요"},mode:"appeal",count:5,size:"portrait" };
   const request = { mode:"appeal",count:5,size:"portrait",formatIds:[formatId],assetPaths:[] };
+  const previousProducts = modules["./image-ad-products"].readImageAdProducts;
   const items = (withDirection ? [formatId,"photo_headline","annotated"] : [formatId,"question","typography"]).map(id=>({id,reason:"회의가 끝나자 수첩에 마지막 요청을 적는 순간을 보여준다"}));
   try {
     const pending = await patch(pick);
@@ -696,13 +880,9 @@ for (const [formatId, withDirection] of [["note",false],["thumbnail_subject",fal
     const first = await worker.claimStaffJob(ai,jobId);
     assert.ok(first.instructions.includes(pick.brief.mainMessage));
     const product = {id:"sample",product:"메모 수첩",audience:"여러 업무를 맡은 직원",offer:"할 일 목록과 업무별 정리 칸",source:{id:other,version:1}};
-    const previousProducts = modules["./image-ad-products"].readImageAdProducts;
     modules["./image-ad-products"].readImageAdProducts = async () => [product];
-    let revision;
-    try {
-      revision = await patch({...pick,appealFirst:true,...(withDirection ? {conceptFirst:true} : {}),brief:{product:product.product,audience:product.audience,offer:product.offer,
+    const revision = await patch({...pick,appealFirst:true,...(withDirection ? {conceptFirst:true} : {}),brief:{product:product.product,audience:product.audience,offer:product.offer,
         productSource:{productId:product.id,source:product.source},objective:"",funnel:"",facts:""}});
-    } finally { modules["./image-ad-products"].readImageAdProducts = previousProducts; }
     assert.ok(!revision.state.brief.mainMessage && !revision.state.formatApproval);
     assert.deepEqual(revision.jobs.filter(job=>job.phase==="copy"),[]);
     const current = revision.jobs.find(row=>row.status==="backlog");
@@ -800,6 +980,7 @@ for (const [formatId, withDirection] of [["note",false],["thumbnail_subject",fal
     assert.equal(state.batches[0].review.copy,undefined);
     assert.equal(state.selectedId,"");
   } finally {
+    modules["./image-ad-products"].readImageAdProducts = previousProducts;
     modules["@/lib/supabase/server"].createServiceSupabase=originalServer;
     workerModules["@/lib/supabase/server"].createServiceSupabase=originalWorker;
   }

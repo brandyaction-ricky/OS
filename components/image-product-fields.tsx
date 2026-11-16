@@ -1,50 +1,58 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { apiRequest } from "@/lib/api-client";
+import type { ImageProductCatalog } from "./use-image-product-catalog";
 import type { ImageBrief } from "@/lib/image-creative/model";
-import type { ImageAdProduct } from "@/lib/image-creative/products";
+import { briefForImageProduct, imageBriefMatchesProduct, onlyImageProductVersionChanged } from "@/lib/image-creative/products";
 import { useSession } from "./session-provider";
 
-const catalogPath = "/api/v1/content/image-creatives/products";
 const manualOption = "__manual";
 const demoOption = "__demo";
 const demoProduct = { product: "산들공방 머그컵 수업", brand: "산들공방", audience: "퇴근 후 도자기를 처음 배우려는 직장인", offer: "한 시간 수업에서 직접 만든 머그컵 한 개", objective:"첫 수업 예약", funnel:"체험 수업 예약" };
 
-export function ImageProductFields({brief,setBrief,previewProducts,revision,onProductChosen,disabled,requireGoal=true}:{
-  brief:ImageBrief; setBrief:(value:ImageBrief)=>void; previewProducts?:ImageAdProduct[]; revision:number;
+export function ProductCanonNotice({brief,catalog,disabled,onReview,onRecheck,apply=false}:{
+  brief:ImageBrief;catalog:ImageProductCatalog;disabled:boolean;onReview?:()=>void;onRecheck?:(brief:ImageBrief)=>void;apply?:boolean;
+}) {
+  const ref = brief.productSource, result = catalog.result;
+  if (!ref || !result) return null;
+  if (result.error) return <p role="status" className="ic-muted">{result.error} <button type="button" className="secondary-button"
+    disabled={disabled} onClick={()=>void catalog.refresh().catch(()=>{})}>다시 불러오기</button></p>;
+  const current = result.items.find(item=>item.id===ref.productId);
+  if (imageBriefMatchesProduct(brief,current)) return null;
+  const next = current && briefForImageProduct(brief,current);
+  const versionOnly = next && onlyImageProductVersionChanged(brief,next);
+  const sourceChanges = current ? [
+    ref.source.version!==current.source.version && `상품 v${ref.source.version} → v${current.source.version}`,
+    ref.audienceSource && current.audienceSource && ref.audienceSource.version!==current.audienceSource.version &&
+      `타겟 v${ref.audienceSource.version} → v${current.audienceSource.version}`,
+  ].filter(Boolean).join(" · ") : "";
+  return <div role="status" className="os-callout" data-tone="info">
+    <strong>{current ? "상품 정본이 갱신됐어요." : "이 상품을 최신 정본에서 찾을 수 없어요."}</strong>
+    {sourceChanges && <p>{sourceChanges}</p>}
+    {versionOnly && <p>이 광고에 쓰는 상품 정보는 같습니다.</p>}
+    {current && current.audience!==brief.audience && <p>최신 타겟 · {current.audience}</p>}
+    {current && current.offer!==brief.offer && <p>최신 제공 내용 · {current.offer}</p>}
+    {versionOnly && onRecheck ? <button type="button" className="secondary-button" disabled={disabled} onClick={()=>onRecheck(next)}>기획 유지 · 정본 버전 반영</button>
+    : onReview && (!apply || current) ? <button type="button" className="secondary-button" disabled={disabled} onClick={onReview}>
+      {apply ? "최신 정본 적용" : "상품 정보 확인"}</button> : <p>{onReview ? "다른 상품을 고르거나 직접 입력해 주세요." : "승인된 기획에는 승인 당시의 상품 정보가 보존됩니다."}</p>}
+  </div>;
+}
+
+export function ImageProductFields({brief,setBrief,catalog,sample,onProductChosen,disabled,requireGoal=true}:{
+  brief:ImageBrief;setBrief:(value:ImageBrief)=>void;catalog:ImageProductCatalog;sample:boolean;
   onProductChosen?:(value:ImageBrief)=>void; disabled:boolean; requireGoal?:boolean;
 }) {
-  const {demo,accessToken} = useSession();
-  const [load,setLoad] = useState<{token:string;items:ImageAdProduct[];error?:string}>();
-  const [refresh,setRefresh] = useState(0);
+  const {demo} = useSession();
   const [manual,setManual] = useState(false);
   const [editGoal,setEditGoal] = useState(false);
-  useEffect(()=>{
-    if (demo || !accessToken) return;
-    const controller = new AbortController();
-    apiRequest<{products:ImageAdProduct[]}>(catalogPath,{token:accessToken,signal:controller.signal})
-      .then(({products})=>{
-        if (!Array.isArray(products)) throw new Error("상품 목록을 읽지 못했어요.");
-        if (!controller.signal.aborted) setLoad({token:accessToken,items:products});
-      }).catch(()=>{
-        if (!controller.signal.aborted) setLoad({token:accessToken,items:[],error:"상품 정본을 불러오지 못했어요."});
-      });
-    return ()=>controller.abort();
-  },[accessToken,demo,refresh,revision]);
-
-  const result: {items:ImageAdProduct[];error?:string}|undefined = demo ? {items:previewProducts ?? []} : (load?.token === accessToken ? load : undefined);
+  const result = catalog.result;
   const items = result?.items ?? [];
-  const sample = demo && !previewProducts;
   const isSample = sample && !manual && !brief.productSource && brief.product === demoProduct.product && brief.audience === demoProduct.audience && brief.offer === demoProduct.offer;
   const ref = brief.productSource;
-  const docLink = (id:string) => (demo && previewProducts ? "https://brandyaction-os.vercel.app" : "") + "/knowledge/doc/" + encodeURIComponent(id);
+  const docLink = (id:string) => (demo && !sample ? "https://brandyaction-os.vercel.app" : "") + "/knowledge/doc/" + encodeURIComponent(id);
   const selectedId = ref?.productId ?? (isSample ? demoOption : (manual || brief.product ? manualOption : ""));
   const selected = items.find(row=>row.id === selectedId);
-  const changed = Boolean(ref && selected && (ref.source.id !== selected.source.id || ref.source.version !== selected.source.version ||
-    ref.audienceSource?.id !== selected.audienceSource?.id || ref.audienceSource?.version !== selected.audienceSource?.version));
-
   function choose(id:string) {
     setManual(id===manualOption);
     setEditGoal(false);
@@ -61,11 +69,7 @@ export function ImageProductFields({brief,setBrief,previewProducts,revision,onPr
     else {
       const item = items.find(row=>row.id === id);
       if (!item) return;
-      const {source,audienceSource} = item;
-      chosen = {...next,...defaults,product:item.product,brand:item.brand,audience:item.audience,offer:item.offer,
-        objective:item.objective ?? "",funnel:item.funnel ?? "",
-        productSource:{productId:item.id,source:{id:source.id,version:source.version},
-          ...(audienceSource ? {audienceSource:{id:audienceSource.id,version:audienceSource.version}} : {})}};
+      chosen = briefForImageProduct(ref?.productId===id ? brief : {...next,...defaults},item);
     }
     setBrief(chosen);
     onProductChosen?.(chosen);
@@ -89,7 +93,7 @@ export function ImageProductFields({brief,setBrief,previewProducts,revision,onPr
       <option value={manualOption}>직접 입력</option>
     </select></label>
     {!result && <p className="ic-muted" role="status">상품 정본을 불러오는 중이에요.</p>}
-    {result?.error && <p className="ic-muted" role="status">{result.error} <button type="button" className="secondary-button" onClick={()=>{setLoad(undefined);setRefresh(value=>value+1);}}>다시 불러오기</button></p>}
+    {result?.error && !ref && <p className="ic-muted" role="status">{result.error} <button type="button" className="secondary-button" onClick={()=>void catalog.refresh().catch(()=>{})}>다시 불러오기</button></p>}
     {result && !result.error && !items.length && !sample && <p className="ic-muted">선택할 수 있는 상품 정본이 없습니다. 상품을 직접 입력할 수 있어요.</p>}
     {selectedId===manualOption ? <div className="ic-grid ic-actions">{manualField("product","상품명")}{manualField("audience","타겟")}{manualField("offer","제공 내용")}
       <label className="ic-field">브랜드명 (선택)<input className="field" maxLength={15} value={brief.brand ?? ""} onChange={event=>setBrief({...brief,brand:event.target.value})}/></label></div>
@@ -100,7 +104,7 @@ export function ImageProductFields({brief,setBrief,previewProducts,revision,onPr
         {!showGoalInput && <><dt>광고 목표</dt><dd>{brief.objective}</dd></>}
       </dl>
       {demo && <small>{isSample ? "체험용 예시 상품" : "OS 정본 조회본"}</small>}
-      {changed && <p role="status">상품 정본이 갱신됐어요. <button type="button" className="secondary-button" disabled={disabled} onClick={()=>choose(selectedId)}>최신 정본 적용</button></p>}
+      <ProductCanonNotice brief={brief} catalog={catalog} disabled={disabled} apply onReview={()=>choose(selectedId)}/>
       <details className="ic-details"><summary>{isSample ? "상품 정보 · 수정" : "정본 정보 · 수정"}</summary>
         {brief.funnel && <p>고객 단계 · {brief.funnel}</p>}
         <div className="ic-row">

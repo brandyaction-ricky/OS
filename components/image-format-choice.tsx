@@ -2,9 +2,11 @@
 
 import { useId, useState } from "react";
 import { CREATIVE_SIZES, IMAGE_FORMAT_IDS, IMAGE_FORMATS, isWarehouseFormat, type CreativeSize, type ImageFormatId } from "@/lib/image-creative/formats";
+import type { ReferenceEntry } from "@/lib/image-creative/reference-canon";
 
 interface PickerProps {
   reference?:boolean;
+  references?: readonly ReferenceEntry[];
   recommendations: { id: ImageFormatId; reason: string }[];
   selected: ImageFormatId[];
   onSelect: (id: ImageFormatId) => void;
@@ -21,26 +23,41 @@ export function ImageFormatSample({id,size}: {id:ImageFormatId;size:CreativeSize
     alt={IMAGE_FORMATS[id].name + " 광고 구성 예시"} loading="lazy" decoding="async"/>;
 }
 
-function ImageFormatChoice({ id, size, reason, assetHint, selected, onSelect, disabled }: {
+function ImageFormatChoice({ id, size, reason, assetHint, selected, onSelect, disabled, entry, reference }: {
   id: ImageFormatId; size: CreativeSize; reason?: string; assetHint?: string; selected: boolean; onSelect: () => void; disabled?: boolean;
+  entry?: ReferenceEntry; reference?: boolean;
 }) {
   const format = IMAGE_FORMATS[id];
+  const name = entry?.name ?? format.name;
+  const [imageResult, setImageResult] = useState<{ url: string; loaded: boolean }>();
+  const thumbnail = entry?.archivedThumbnail || entry?.thumbnail || entry?.originalImageUrl;
+  const result = imageResult?.url === thumbnail ? imageResult : undefined;
+  let previewKind = "구성 예시";
+  if (thumbnail) {
+    if (!result) previewKind = "광고 원본 불러오는 중";
+    else previewKind = result.loaded ? "광고 원본" : "구성 예시 · 원본 로드 실패";
+  }
   const description = useId();
-  return <button type="button" className="ic-format-choice" aria-label={format.name}
-    aria-pressed={selected} aria-describedby={description} disabled={disabled} onClick={onSelect}>
-    <ImageFormatSample id={id} size={size}/>
+  return <button type="button" className="ic-format-choice" aria-label={name}
+    aria-pressed={selected} aria-describedby={reference ? description + "-preview " + description : description} disabled={disabled} onClick={onSelect}>
+    {thumbnail && result?.loaded !== false
+      // eslint-disable-next-line @next/next/no-img-element -- current reference image from the OS chapter
+      ? <img key={thumbnail} className="ic-format-sample" src={thumbnail} referrerPolicy="no-referrer" loading="lazy" alt={name + " 원 광고"}
+          onLoad={()=>setImageResult({url:thumbnail,loaded:true})} onError={()=>setImageResult({url:thumbnail,loaded:false})}/>
+      : <ImageFormatSample id={id} size={size}/>}
     <span className="ic-format-caption">
-      <span className="ic-format-heading"><strong>{format.name}</strong>
+      {reference && <span id={description + "-preview"} className="ic-format-origin">{previewKind}</span>}
+      <span className="ic-format-heading"><strong>{name}</strong>
         <span className="ic-format-indicator" aria-hidden="true">{selected ? "✓" : ""}</span>
       </span>
-      <span id={description} className="ic-format-description">{reason || format.when}
+      <span id={description} className="ic-format-description">{entry ? entry.keep : reason || format.when}
         {format.assetRequired && <small>{assetHint ?? (id === "thumbnail_subject" ? "사진 업로드 또는 구독 AI로 제작" : "사진 또는 이미지 필요")}</small>}
       </span>
     </span>
   </button>;
 }
 
-export function ImageFormatPicker({ recommendations, selected, onSelect, size, availableIds = IMAGE_FORMAT_IDS, assetHint, disabled, reference }: PickerProps) {
+export function ImageFormatPicker({ recommendations, selected, onSelect, size, availableIds = IMAGE_FORMAT_IDS, assetHint, disabled, reference, references }: PickerProps) {
   const [expanded, setExpanded] = useState(false);
   const supported = availableIds.filter(id => !isWarehouseFormat(id) || size === "portrait");
   const recommended = recommendations.filter(row => supported.includes(row.id));
@@ -50,9 +67,10 @@ export function ImageFormatPicker({ recommendations, selected, onSelect, size, a
     featured.push({ id: "thumbnail_subject", reason: "유튜브 썸네일 방식으로 사진 한 장과 짧은 제목을 조합합니다." });
   }
   const others = supported.filter(id => !featured.some(row => row.id === id));
-  const otherSelection = others.filter(id => selected.includes(id)).map(id => IMAGE_FORMATS[id].name).join(", ");
+  const entryFor = (id: ImageFormatId) => references?.find(row => row.id === id);
+  const otherSelection = others.filter(id => selected.includes(id)).map(id => entryFor(id)?.name ?? IMAGE_FORMATS[id].name).join(", ");
   const card = (id: ImageFormatId, reason?: string) => <ImageFormatChoice key={id} id={id} size={size}
-    reason={reason} assetHint={assetHint} selected={selected.includes(id)} onSelect={() => onSelect(id)} disabled={disabled}/>;
+    reason={reason} entry={entryFor(id)} reference={reference} assetHint={assetHint} selected={selected.includes(id)} onSelect={() => onSelect(id)} disabled={disabled}/>;
   return <div className="ic-format-picker">
     {featured.length > 0 && <div className="ic-format-choice-grid">{featured.map(row => card(row.id, row.reason))}</div>}
     {others.length > 0 && <details className="ic-details" onToggle={event => setExpanded(event.currentTarget.open)}>
