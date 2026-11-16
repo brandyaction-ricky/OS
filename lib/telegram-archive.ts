@@ -11,7 +11,7 @@ export const ARCHIVE_STATES = ["새로 들어옴", "검토함", "주제 후보",
 /** A first-word tag decides the folder without asking the AI. */
 const TAG_TOPIC: Record<string, ArchiveTopic> = { 후킹: "후킹·대본 구조", 썸네일: "썸네일·제목", 채널: "채널·계정 포맷", 연출: "영상 연출·편집",
   ai툴: "AI 툴·자동화", 마케팅: "마케팅·세일즈 사례", 주제: "콘텐츠 주제 소재" };
-const TRACKING = /^(si|igsh|igshid|img_index|utm_[a-z]+|fbclid|gclid|feature|pp|ab_channel|s|xmt|slof|_r|_t|ref|ref_src|share_id|is_from_webapp|sender_device)$/i;
+const TRACKING = /^(si|igsh|igshid|img_index|utm_[a-z]+|fbclid|gclid|feature|pp|ab_channel|s|xmt|xtok|slof|_r|_t|ref|ref_src|share_id|is_from_webapp|sender_device)$/i;
 
 /** The archive rooms: a comma list of chat ids from the environment (they are internal identifiers, never in the code). */
 export const archiveChats = (value: string | undefined) => new Set((value ?? "").split(",").map((id) => id.trim()).filter((id) => /^-?\d+$/.test(id)));
@@ -58,6 +58,23 @@ export function formatOf(url: string | null) {
   return "툴·기타";
 }
 
+/** The account a profile or post link belongs to (@name), when its address says so. */
+export function handleOf(url: string) {
+  try {
+    const { pathname } = new URL(url), platform = platformOf(url), first = pathname.split("/").filter(Boolean)[0] ?? "";
+    if (platform === "Instagram") return /^(p|reel|reels|tv|stories|explore)$/.test(first) || !first ? "" : `@${first}`;
+    if (platform === "Threads" || platform === "TikTok" || platform === "YouTube") return first.startsWith("@") ? first : "";
+    return "";
+  } catch { return ""; }
+}
+/** What a login wall answers for every page (「Instagram」, its logo) says nothing about the link: such a title or picture is left out. */
+export function usefulFact(platform: string, kind: "title" | "channel" | "thumbnail", value: string) {
+  const text = value.trim();
+  if (!text) return "";
+  if (kind === "thumbnail") return /static\.cdninstagram\.com\/rsrc\.php|\/rsrc\.php\/|threads\.(net|com)\/.*logo|favicon/i.test(text) ? "" : text;
+  return new RegExp(`^(log ?in|로그인)?[\\s•|·-]*(${platform}|instagram|threads|tiktok)([\\s•|·-]*(log ?in|로그인|make your day))?$`, "i").test(text) ? "" : text;
+}
+
 /** A first word such as #후킹 or #AI툴 (spaces and case ignored) names the folder. */
 export function tagTopic(text: string): ArchiveTopic | null {
   const tag = text.trim().match(/^#([^\s#]+)/)?.[1]?.toLowerCase().replace(/\s+/g, "");
@@ -98,4 +115,44 @@ export function withMention(content: string, mention: ArchiveMention) {
   const count = (content.match(/^- .* \(telegram:/gm) ?? []).length;
   const next = `${content.trimEnd()}\n${mentionLine(mention)}\n`;
   return /^추가 언급: \d+$/m.test(next) ? next.replace(/^추가 언급: \d+$/m, `추가 언급: ${count}`) : next.replace(/^상태: /m, `추가 언급: ${count}\n상태: `);
+}
+
+// ── 2단계 아카이브 화면 (수정 요청 2026-11-13): a reference document read back as a card, and the two things people change on it ──
+const KEYS: Record<string, keyof ArchiveFields> = { 링크: "link", url: "link", link: "link", 플랫폼: "platform", platform: "platform", 형식: "format", format: "format",
+  주제: "topic", 주제폴더: "topic", topic: "topic", 방: "room", room: "room", 올린사람: "who", 올린이: "who", author: "who", 올린시각: "at", at: "at", 시각: "at",
+  채널: "channel", channel: "channel", 썸네일: "thumbnail", thumbnail: "thumbnail", 이미지: "image", image: "image", 수집시점조회수: "views", views: "views",
+  수집시점좋아요: "likes", likes: "likes", 추가언급: "mentions", 상태: "state", state: "state" };
+export interface ArchiveFields { link: string; platform: string; format: string; topic: string; room: string; who: string; at: string; channel: string;
+  thumbnail: string; image: string; views: string; likes: string; mentions: string; state: string }
+
+/** The header block (key: value lines between ---), the quoted note and the 추가 언급 count; keys read with or without spaces. */
+export function readArchive(content: string) {
+  const fields = Object.fromEntries(Object.values(KEYS).map((key) => [key, ""])) as unknown as ArchiveFields;
+  const head = content.match(/^---\n([\s\S]*?)\n---/);
+  for (const row of (head?.[1] ?? "").split("\n")) {
+    const at = row.indexOf(":");
+    if (at < 1) continue;
+    const key = KEYS[row.slice(0, at).replace(/\s+/g, "").toLowerCase()] ?? KEYS[row.slice(0, at).replace(/\s+/g, "")];
+    if (key && !fields[key]) fields[key] = row.slice(at + 1).trim();
+  }
+  const note = content.split("\n").filter((row) => row.startsWith(">")).map((row) => row.replace(/^>\s?/, "")).join("\n").trim();
+  return { ...fields, note, state: fields.state || "새로 들어옴", topic: ARCHIVE_TOPICS.includes(fields.topic as ArchiveTopic) ? fields.topic : "미분류",
+    mentions: Number(fields.mentions) || 0 };
+}
+
+/** A new 상태 or 주제: the header line changes and the change is written down with who made it. */
+export function withArchiveChange(content: string, change: { state?: string; topic?: string }, who: string, at: string) {
+  let next = content;
+  const set = (key: string, value: string) => {
+    const head = next.match(/^---\n[\s\S]*?\n---/)?.[0];
+    if (!head) return;
+    const line = new RegExp(`^${key}\\s*:.*$`, "m");
+    next = next.replace(head, line.test(head) ? head.replace(line, `${key}: ${value}`) : head.replace(/\n---$/, `\n${key}: ${value}\n---`));
+  };
+  const notes: string[] = [];
+  if (change.state) { set("상태", change.state); notes.push(`상태 → ${change.state}`); }
+  if (change.topic) { set("주제", change.topic); notes.push(`주제 → ${change.topic}`); }
+  if (!notes.length) return content;
+  const log = `- ${at.slice(0, 16).replace("T", " ")} · ${who} · ${notes.join(" · ")}`;
+  return /^## 바꾼 기록$/m.test(next) ? `${next.trimEnd()}\n${log}\n` : `${next.trimEnd()}\n\n## 바꾼 기록\n${log}\n`;
 }
