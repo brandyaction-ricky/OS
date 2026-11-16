@@ -275,7 +275,7 @@ test("the purchase table mirrors os_fin_tax_invoices: same columns, checks, gran
   assert.ok(!/\bdelete\b|drop |alter table public\.os_fin_(?!%I)|create or replace function|insert into/i.test(statements), "additive only: no delete grant, no change to an existing object, no rows");
   assert.match(purchase.split("\n").slice(0, 6).join("\n"), /Additive[\s\S]*REVIEW ONLY/);
   assert.match(readFileSync("supabase/rollback/20261113100000_finance_purchase_invoices.down.sql", "utf8"), /drop table if exists public\.os_fin_purchase_invoices;/);
-  const entry = JSON.parse(readFileSync("supabase/migration-baseline.json", "utf8")).forwardMigrations.at(-1);
+  const entry = JSON.parse(readFileSync("supabase/migration-baseline.json", "utf8")).forwardMigrations.find(entry => entry.file === "20261113100000_finance_purchase_invoices.sql");
   assert.deepEqual([entry.file, entry.requiresApproval, entry.productionApprovedAt, entry.appliedEnvironments], ["20261113100000_finance_purchase_invoices.sql", true, "2026-11-13", ["development", "production"]]);
 });
 
