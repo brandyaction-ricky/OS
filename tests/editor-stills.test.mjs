@@ -68,7 +68,7 @@ test("a computer whose engine can draw them makes the scene pictures instead of 
   assert.match(section(worker, "async function drawStills", "/** v13 stage 4a"), /action: "myin_stills_upload"[\s\S]*action: "myin_clips_complete", \.\.\.lease, stills: \{ files: files\.length \}/);
   for (const route of ["app/api/v1/content/youtube-automation/media/route.ts", "app/api/v1/content/youtube-automation/local-render/route.ts"])
     assert.match(read(route), /input\.action === "myin_stills_upload" \? await myinStillsUpload\(input\)/, route);
-  assert.match(read("lib/server/myin-run.ts"), /if \(!run\.layout\) await import\("\.\/myin-edit"\)\.then\(\(edit\) => edit\.dropDraftVersion/, "a final replaces the run's pictures");
+  assert.match(read("lib/server/myin-run.ts"), /if \(!run\.layout\) await import\("\.\/myin-edit"\)\.then\(\(edit\) => run\.stills && \(changedSince\(run\.stills\.used, run\) \?\? \["\?"\]\)\.length === 0\n\s+\? edit\.linkDraftVersion\(service, run\.sourceId, record\.id, next\.final!\.at\) : edit\.dropDraftVersion/, "a final made from v0 as it was keeps v0 as its version; else it replaces the run's pictures");
   assert.match(section(read("lib/server/myin-edit.ts"), "export async function dropDraftVersion", "export const draftFinishSchema"), /screen\?\.lockId !== runId\) return;/, "only this run's v0, never an editing computer's versions");
 });
 
@@ -127,7 +127,7 @@ print(sorted({e["scene"] for e in errors}), errors[0]["error"])`;
 
 test("the first 완성 from the editor screen asks for the paid steps first; a picture the engine cannot draw does not stop ③", () => {
   const screen = read("components/editor-screen.tsx");
-  assert.match(screen, /if \(beforeFinal\.current && !await cost\.confirm\(/);
+  assert.match(screen, /if \(beforeFinal\.current && !paidOk && !await cost\.confirm\(/, "unless the paid steps were approved at the start (로건 11-13)");
   assert.match(screen, /throw new Error\("완성을 취소했어요\."\);/);
   const v0 = read("tools/myin_v0.py");
   assert.match(v0, /for t in \(settled_at\(s\), s\["t0"\] \+ 0\.6\):/);

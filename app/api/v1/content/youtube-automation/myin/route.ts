@@ -66,7 +66,7 @@ const patchSchema = z.discriminatedUnion("action", [
   // place / screenCheck left out: the video's 제작 설정 decides.
   z.object({ action: z.literal("review"), runId: z.string().uuid(), decision: z.enum(["confirmed", "revise"]), note: z.string().max(2000).default(""), place: z.enum(["pc", "local"]).optional(),
     screenCheck: z.boolean().optional() }),
-  z.object({ action: z.literal("settings"), runId: z.string().uuid(), place: z.enum(["pc", "local"]), screenCheck: z.boolean() }),
+  z.object({ action: z.literal("settings"), runId: z.string().uuid(), place: z.enum(["pc", "local"]), screenCheck: z.boolean(), confirm: z.enum(["auto", "person"]).optional() }),
   z.object({ action: z.literal("screen_check_auto"), runId: z.string().uuid(), on: z.boolean() }),
   z.object({ action: z.literal("place"), runId: z.string().uuid(), place: z.enum(["pc", "local"]) }),
   z.object({ action: z.literal("prepare"), runId: z.string().uuid() }),
@@ -107,7 +107,7 @@ export async function PATCH(request: Request) {
       : input.action === "sheets_redraw" ? { run: await requestMyinRedraw(actor, input.runId) }
       : input.action === "screen_check_auto" ? { run: await setMyinScreenCheck(actor, input.runId, input.on) }
       : input.action === "place" ? { run: await setMyinDraftPlace(actor, input.runId, input.place) }
-      : input.action === "settings" ? { run: await setMyinSettings(actor, input.runId, { place: input.place, screenCheck: input.screenCheck }) }
+      : input.action === "settings" ? { run: await setMyinSettings(actor, input.runId, { place: input.place, screenCheck: input.screenCheck, ...(input.confirm ? { confirm: input.confirm } : {}) }) }
       : input.action === "clips_ok" ? { run: await confirmMyinClips(actor, input.runId, input.note, input.place) }
       // [다시 검사]: only someone who can read the run (myinScreenCheck checks it) asks GPT again.
       : input.action === "screen_check" ? await myinScreenCheck(actor, input.runId).then(() => checkMyinScreens(input.runId, input.tier)).then((stage) => ({ check: stage?.data ?? null }))
@@ -135,9 +135,9 @@ export async function POST(request: Request) {
   try {
     pilot();
     const actor = await authenticateRequest(request, { allowAgent: false });
-    const input = z.object({ sourceId: z.string().uuid(), styleId: z.string().uuid().optional(), settings: z.object({ place: z.enum(["pc", "local"]), screenCheck: z.boolean() }).strict().optional() })
+    const input = z.object({ sourceId: z.string().uuid(), styleId: z.string().uuid().optional(), settings: z.object({ place: z.enum(["pc", "local"]), screenCheck: z.boolean(), confirm: z.enum(["auto", "person"]).optional() }).strict().optional(), paidOk: z.boolean().optional() })
       .passthrough().parse(await parseJson(request, 1_000));
-    return NextResponse.json({ run: await createMyinRun(actor, input.sourceId, input.styleId, input.settings) }, { status: 202, headers });
+    return NextResponse.json({ run: await createMyinRun(actor, input.sourceId, input.styleId, input.settings, input.paidOk) }, { status: 202, headers });
   } catch (error) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "INVALID_MYIN_INPUT", "콘텐츠를 확인해 주세요."));
     return apiErrorResponse(error);

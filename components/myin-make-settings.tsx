@@ -9,14 +9,15 @@ import { ago, sinceIso, type StaffJobStatus } from "./youtube-production-steps";
 
 // 제작 설정 (직원 요청 2026-11-05): 채널 모양, 기획표를 쓰는 AI, 만드는 곳, GPT 화면 검사를 영상을 시작할 때 한 번 정한다. 단계 사이에는
 // 다시 묻지 않고, 바꾸면 그다음 단계부터 따른다. 새 영상은 이 브라우저에서 지난번에 고른 값으로 시작한다.
-export interface MakeSettings { place: DraftPlace; screenCheck: boolean }
+// 로건 11-13 (대표 11-16): 기획표 확인 「자동」 — the storyboard that passes the OS check goes straight to the scene pictures; 「사람이 확인」 waits as before.
+export interface MakeSettings { place: DraftPlace; screenCheck: boolean; confirm: "auto" | "person" }
 export interface RunSettings extends MakeSettings { name: string }
 const KEY = "myin-make-settings";
 export function lastSettings(): MakeSettings {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? "null") as Partial<MakeSettings> | null;
-    return { place: saved?.place === "local" ? "local" : "pc", screenCheck: saved?.screenCheck !== false };
-  } catch { return { place: "pc", screenCheck: true }; }
+    return { place: saved?.place === "local" ? "local" : "pc", screenCheck: saved?.screenCheck !== false, confirm: saved?.confirm === "person" ? "person" : "auto" };
+  } catch { return { place: "pc", screenCheck: true, confirm: "auto" }; }
 }
 export function rememberSettings(settings: MakeSettings) {
   try { localStorage.setItem(KEY, JSON.stringify(settings)); } catch { /* private window: next video starts from the defaults */ }
@@ -62,6 +63,7 @@ export function MyinMakeSettings({ sourceId, token, short, run, fresh, editing, 
     <div className="yt-run-head"><strong>제작 설정</strong>
       {!open && run ? <button type="button" className="secondary-button compact" onClick={() => onEditing(true)}>바꾸기</button> : null}</div>
     {!open && run ? <small>{run.style ? `채널 모양 ${run.style.name} · v${run.style.version} · ` : ""}만드는 곳 {placeName(current, run)} · GPT 화면 검사 {(current?.screenCheck ?? true) ? "켬" : "끔"}
+      {short ? "" : ` · 기획표 확인 ${(current?.confirm ?? "auto") === "auto" ? "자동" : "사람이 확인"}`}
       {current ? "" : " · 이 영상은 제작 설정 전에 시작해서 기본값을 따라요"}</small> : null}
     {open ? <>
       <small>한 번 정하면 단계마다 다시 묻지 않아요. 바꾸면 그다음 단계부터 따라요.</small>
@@ -74,7 +76,12 @@ export function MyinMakeSettings({ sourceId, token, short, run, fresh, editing, 
         : <DraftPlacePicker label="만드는 곳 (미리보기 · 자료 준비 · 전체 영상)" value={value.place} onChange={(place) => onChange({ ...value, place })} status={localPc} ready token={token} onConnected={onLocalConnected} />}
       <label className="yt-check"><input type="checkbox" checked={value.screenCheck} onChange={(event) => onChange({ ...value, screenCheck: event.target.checked })} />
         점검 시트가 나오면 GPT가 바로 화면을 검사해요 <CostTag kind="paid" /> <small>급하면 끄고 바로 편집으로 넘어가요. 빈 화면 · 그리기 오류 검사는 언제나 해요(무료).</small></label>
-      <small>사람이 확인하는 단계 · 기획표 확인 · 미리보기 확인</small>
+      {short ? <small>사람이 확인하는 단계 · 기획표 확인 · 미리보기 확인</small>
+        : <fieldset className="yt-choice"><legend>기획표 확인</legend>
+          <label><input type="radio" name={`myin-confirm-${sourceId}`} checked={value.confirm === "auto"} onChange={() => onChange({ ...value, confirm: "auto" })} />
+            자동 <small>OS 검사를 통과하면 바로 장면 그림까지 가요. 사람은 편집 화면에서 보고 「완성」만 눌러요.</small></label>
+          <label><input type="radio" name={`myin-confirm-${sourceId}`} checked={value.confirm === "person"} onChange={() => onChange({ ...value, confirm: "person" })} />
+            사람이 확인 <small>기획표가 나오면 로건 · 유쓰가 확인을 눌러야 넘어가요.</small></label></fieldset>}
       {!fresh && run ? <div className="yt-actions"><button type="button" className="primary-button" disabled={busy} onClick={() => void save()}>{busy ? "저장 중…" : "저장"}</button>
         <button type="button" className="secondary-button" disabled={busy} onClick={() => onEditing(false)}>닫기</button></div> : null}
       {error ? <p className="inline-alert" role="alert">{error}</p> : null}

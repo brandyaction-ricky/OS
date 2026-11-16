@@ -390,6 +390,14 @@ export async function resendStoryboard(sourceId: string) {
   return requestStaffJob({ id: last.owner_id, supabase: service() } as unknown as RequestActor, { task: "storyboard", sourceId });
 }
 
+/** 로건 11-13 자동 흐름: a video's first storyboard, asked of the AI of whoever started it once its words are ready (none yet asked). */
+export async function requestFirstStoryboard(sourceId: string, ownerId: string) {
+  const { data } = await service().from("os_records").select("id").eq("record_type", "ai_job").eq("metadata->>kind", STAFF_AI_JOB_KIND).eq("parent_id", sourceId)
+    .eq("metadata->>task", "storyboard").is("archived_at", null).limit(1);
+  if (data?.length) return null;
+  return requestStaffJob({ id: ownerId, supabase: service() } as unknown as RequestActor, { task: "storyboard", sourceId });
+}
+
 export async function staffJobStatus(actor: RequestActor, sourceId: string, task: JobMeta["task"], limit = 1) {
   const [{ data: jobs, error }, { data: keys, error: keyError }] = await Promise.all([
     service().from("os_records").select("*").eq("record_type", "ai_job").eq("metadata->>kind", STAFF_AI_JOB_KIND).eq("parent_id", sourceId)
