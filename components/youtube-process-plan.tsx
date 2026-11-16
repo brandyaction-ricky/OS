@@ -330,7 +330,8 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
         {/* 전달 사항 is optional: folded until someone wants it (or it already holds something). */}
         <details className="yp-more-fields" open={Boolean(form.note || rev("topic.note"))}><summary>전달 사항 더 쓰기 (선택)</summary>
         <Field n={6} title="전달 사항" question="더 설명할 게 있으면 써 주세요" need={false} rev={rev("topic.note")}>
-          <textarea className="yp-in yp-max720" id="yp-topic-note" rows={2} aria-label="전달 사항" readOnly={!open("note")} value={form.note} onChange={event => edit({ note: event.target.value })} />
+          {/* 직원 요청 11-16: two rows were too small to write in or check — it starts tall and grows with what is written. */}
+          <textarea className="yp-in yp-max720 yp-autogrow yp-note-area" id="yp-topic-note" rows={8} aria-label="전달 사항" readOnly={!open("note")} value={form.note} onChange={event => edit({ note: event.target.value })} />
         </Field>
         </details>
         <StepFooter action={action} todo={editable ? [{ label: "주제", done: Boolean(lines.length) }, { label: "유형", done: Boolean(form.kind) }, { label: "정밀 타겟", done: Boolean(form.target.trim()) },

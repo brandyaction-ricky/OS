@@ -200,6 +200,8 @@
 .linear-shell .ui-v2.yp .yp-paras time{color:var(--muted);font-variant-numeric:tabular-nums}
 .linear-shell .ui-v2.yp .yp-paras span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .linear-shell .ui-v2.yp .yp-autogrow{field-sizing:content;min-height:44px;resize:vertical;line-height:1.5}
+/* 주제 › 전달 사항 (직원 요청 11-16): starts about eight rows tall, grows up to most of the window, then scrolls inside. */
+.linear-shell .ui-v2.yp .yp-autogrow.yp-note-area{min-height:180px;max-height:60vh;overflow:auto}
 /* 업로드 1번 (로건 요청 10/30): 멘트 | 링크 | 빼기 on one line, stacked on a phone. */
 .linear-shell .ui-v2.yp .yp-links{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) auto;gap:6px;align-items:center}
 @media (max-width:640px){.linear-shell .ui-v2.yp .yp-links{grid-template-columns:minmax(0,1fr) auto}.linear-shell .ui-v2.yp .yp-links>input:first-child{grid-column:1 / -1}}
