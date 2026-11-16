@@ -28,6 +28,8 @@ async function setup(file, handler, options = {}) {
     "@/lib/server/auth": { authenticateRequest: async () => options.actor ?? actor, safeSecretMatch: (a, b) => a === b },
     "@/lib/supabase/server": { createServiceSupabase: () => db },
     "@/lib/telegram-intents": intents,
+    "@/lib/telegram-archive": await import("../lib/telegram-archive.ts"),
+    "@/lib/server/telegram-archive": { archiveInRoom: options.archiveInRoom ?? (async () => ({ saved: 0, merged: 0 })) },
     "@/lib/search-relevance": await import("../lib/search-relevance.ts"),
     "@/lib/telegram-team": await import("../lib/telegram-team.ts"),
     "@/lib/telegram-meeting": await import("../lib/telegram-meeting.ts"),
@@ -550,4 +552,21 @@ test("a bare topic keyword still surfaces the live-operations listing when no gr
   const body = await (await ctx.api.POST(incoming({ text: "지금 진행 중인 콘텐츠 무엇있어?" }))).json();
   assert.equal(body.ok, true);
   assert.match(ctx.sent[0].text, /브랜디 OS의 최신 콘텐츠입니다/);
+});
+
+test("텔레그램 아카이브: a message in an archive room is kept and gets no reply; other groups and a bad secret keep nothing", async () => {
+  const kept = [];
+  const archiveInRoom = async (_db, message) => { kept.push(message.message_id); return { saved: 1, merged: 0 }; };
+  const group = (chatId, extra = {}) => ({ chat: { id: chatId, type: "group", title: "인스타 아카이빙" }, text: "후킹 좋음 https://instagram.com/reel/AB", ...extra });
+  const ctx = await setup("webhook", normalHandler, { archiveInRoom, env: { TELEGRAM_ARCHIVE_CHAT_IDS: "-700" } });
+  const body = await (await ctx.api.POST(incoming(group(-700)))).json();
+  assert.deepEqual(body.archived, { saved: 1, merged: 0 });
+  assert.deepEqual(kept, [20]);
+  assert.equal(ctx.sent.length, 0, "the room is answered with a reaction only, never a message");
+  assert.equal((await (await ctx.api.POST(incoming(group(-800)))).json()).ignored, true, "a group outside the list is not kept");
+  assert.equal((await ctx.api.POST(incoming(group(-700), "wrong"))).status, 401);
+  assert.deepEqual(kept, [20]);
+  // A bot's own message is not kept.
+  await ctx.api.POST(incoming(group(-700, { from: { id: 41, first_name: "봇", is_bot: true } })));
+  assert.deepEqual(kept, [20]);
 });
