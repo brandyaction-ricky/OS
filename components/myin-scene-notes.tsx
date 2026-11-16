@@ -171,7 +171,7 @@ export function MyinSceneNotes({ projectId, runId, token, short, storyboardAt, s
       <summary>점검 시트 {sheetCount}장 보기 · 장면마다 의견 남기기</summary>
       <p className="yt-note">장면마다 한 순간(한 컷)만 보여요. 움직임 · 전환 · 음성 · 효과음은 장면 미리보기와 완성 영상에서 따로 확인해요.{sheets?.cells
         ? " 칸마다 그 장면이 다 나온 모습이에요. 오프닝처럼 여러 칸인 장면은 같은 번호예요."
-        : " 이 시트는 칸 번호가 기획표와 어긋날 수 있고, 구독 요청 뒤 칸에는 앞 장면이 보일 수 있어요. 「시트 다시 그리기」를 누르면 기획표 번호대로 다시 그려요."}</p>
+        : ` 이 시트는 칸 번호가 기획표와 어긋날 수 있고, 구독 요청 뒤 칸에는 앞 장면이 보일 수 있어요. ${canApply ? "「시트 다시 그리기」를 누르면 기획표 번호대로 다시 그려요." : "새로 만드는 미리보기부터는 바로잡혀요."}`}</p>
       {sheets && sheets.storyboardAt ? <p className="yt-note">{when(sheets.storyboardAt)} 기획표로 그린 시트예요.{redraw === "pending" || redraw === "drawing"
         ? " 반영한 장면을 영상 만드는 컴퓨터가 다시 그리는 중이에요. 끝나면 이 시트가 바로 바뀌어요."
         : redraw === "failed" ? " 바뀐 장면을 다시 그리지 못했어요." : sheets.storyboardAt !== storyboardAt ? " 그 뒤 반영한 수정이 있어요." : ""}
