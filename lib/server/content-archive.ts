@@ -26,8 +26,13 @@ export async function listArchive(actor: RequestActor) {
     const { data: signed } = await service.storage.from("os-content-media").createSignedUrl(path, SIGN_SECONDS);
     return signed?.signedUrl ?? "";
   }));
-  return { cards: rows.map(({ doc, card }, i) => ({ id: doc.id as string, version: doc.current_version as number, title: cardTitle(doc.title),
-    folderTopic: String(doc.folder ?? "").slice(ARCHIVE_FOLDER.length + 1), createdAt: String(doc.created_at ?? ""), ...card, image: images[i] })),
+  // The folder is the card's 주제 (a move changes it); the temporary collection's cards mostly have no 주제 line in their header.
+  const topicOf = (folder: string, header: string) => (ARCHIVE_TOPICS as readonly string[]).includes(folder) ? folder : header;
+  return { cards: rows.map(({ doc, card }, i) => {
+    const folderTopic = String(doc.folder ?? "").slice(ARCHIVE_FOLDER.length + 1);
+    return { id: doc.id as string, version: doc.current_version as number, title: cardTitle(doc.title), folderTopic, createdAt: String(doc.created_at ?? ""),
+      ...card, topic: topicOf(folderTopic, card.topic), image: images[i] };
+  }),
     topics: ARCHIVE_TOPICS, states: ARCHIVE_STATES, truncated: rows.length === LIMIT };
 }
 

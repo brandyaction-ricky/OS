@@ -137,4 +137,6 @@ test("cards the temporary collection wrote read like the room hook's: link-deriv
   assert.deepEqual([readArchive(own.content).note, readArchive(own.content).format], ["메모", "롱폼"]);
   assert.equal(cardTitle("[레퍼런스] instagram.com/reel/AB1"), "instagram.com/reel/AB1");
   assert.match(read("lib/server/content-archive.ts"), /title: cardTitle\(doc\.title\)/);
+  // 주제 = the folder the card sits in, not only its header line (most temporary-collection cards have none)
+  assert.match(read("lib/server/content-archive.ts"), /topic: topicOf\(folderTopic, card\.topic\)/);
 });
