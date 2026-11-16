@@ -14,12 +14,14 @@ import { buildMeetingRawDocument, buildMeetingSummaryDocument, buildOpsDecisionD
 import { prepareMeetingBrief, type MeetingPrepResult } from "@/lib/server/meeting-prep";
 import { summarizeMeetingText } from "@/lib/server/meeting-summary";
 import { synthesizeOperatingBaseline } from "@/lib/server/operating-baseline";
+import { archiveChats } from "@/lib/telegram-archive";
+import { archiveInRoom } from "@/lib/server/telegram-archive";
 
 export const runtime = "nodejs";
 
 interface TelegramPhoto { file_id: string; file_size?: number }
 interface TelegramMessage {
-  message_id: number; chat: { id: number; type: string; title?: string }; from?: { id: number; first_name?: string; last_name?: string; username?: string };
+  message_id: number; date?: number; chat: { id: number; type: string; title?: string }; from?: { id: number; first_name?: string; last_name?: string; username?: string; is_bot?: boolean };
   text?: string; caption?: string; photo?: TelegramPhoto[]; voice?: { file_id: string }; reply_to_message?: { message_id?: number; text?: string; from?: { is_bot?: boolean; username?: string } };
 }
 interface TelegramCallbackQuery {
@@ -550,6 +552,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, ...result });
     }
     const message = update.message;
+    // 텔레그램 아카이브 (수정 요청 2026-11-13): every link or image in an archive room is kept as a reference document; the room's talk
+    // is not. A message there that also calls the bot goes on to the usual answer.
+    if (message?.from && !message.from.is_bot && archiveChats(process.env.TELEGRAM_ARCHIVE_CHAT_IDS).has(String(message.chat.id))) {
+      const service = createServiceSupabase();
+      const archived = await archiveInRoom(service, message, () => ownerId(service));
+      if (!shouldRespond(message)) return NextResponse.json({ ok: true, archived });
+    }
     if (!message?.from || !shouldRespond(message)) return NextResponse.json({ ok: true, ignored: true });
     const rawText = (message.text ?? message.caption ?? "").trim();
     const botUsername = process.env.TELEGRAM_BOT_USERNAME?.replace(/^@/, "");
