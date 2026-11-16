@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { archiveChats } from "@/lib/telegram-archive";
 import { ApiError, apiErrorResponse } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
 import { createServiceSupabase } from "@/lib/supabase/server";
@@ -72,7 +73,9 @@ export async function GET(request: Request) {
       pendingCount: pending.count ?? 0,
       approvedCount: approved.count ?? 0,
       approvedUsers: withLastSeen(approved.data ?? []),
-      bot: { username: bot.username ?? null, name: bot.first_name ?? null },
+      // 텔레그램 아카이브: the bot sees every message of the archive rooms only with group privacy off (BotFather /setprivacy → Disable).
+      bot: { username: bot.username ?? null, name: bot.first_name ?? null, readsAllGroupMessages: typeof bot.can_read_all_group_messages === "boolean" ? bot.can_read_all_group_messages : null },
+      archiveRooms: [...archiveChats(process.env.TELEGRAM_ARCHIVE_CHAT_IDS)].length,
       webhook: webhookResult ? {
         url: webhook.url ?? "",
         pendingUpdates: webhook.pending_update_count ?? 0,
