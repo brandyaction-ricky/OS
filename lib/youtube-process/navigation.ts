@@ -1,4 +1,4 @@
-import { Activity, AtSign, BarChart3, CalendarDays, CheckCircle2, Eye, Film, GalleryHorizontal, LayoutGrid, Lightbulb, Link2, Megaphone, Mic, PenLine, Radar, Scissors, Settings, SlidersHorizontal, Smartphone, UploadCloud, Youtube } from "lucide-react";
+import { Activity, Archive, AtSign, BarChart3, CalendarDays, CheckCircle2, Eye, Film, GalleryHorizontal, LayoutGrid, Lightbulb, Link2, Megaphone, Mic, PenLine, Radar, Scissors, Settings, SlidersHorizontal, Smartphone, UploadCloud, Youtube } from "lucide-react";
 import type { NavPage, NavStage } from "../navigation";
 
 // Owner decision 2026-10-21: the side menu is 내 영상 · 스케줄 · 성과; the steps live inside a video (its progress line), so nobody
@@ -36,9 +36,12 @@ export const YOUTUBE_V1_STEP_PAGES: NavPage[] = [
 // automation pages stay under 콘텐츠 자동화. Bookmarks and menu permissions follow the page address.
 /** 한눈에 보기 (리키 관제실 시안, owner decision 2026-10-31: its own menu with an everyday name, first under 공통). */
 export const OVERVIEW_PAGE: NavPage = { label: "한눈에 보기", href: "/content/overview", icon: Activity, aliases: ["관제실", "진행 현황", "확인 필요", "AI 일하는 중", "맡긴 일 현황"], ready: true };
+/** 아카이브 (수정 요청 2026-11-13): what the team drops in the Telegram archive rooms, as reference cards by topic folder. */
+export const ARCHIVE_PAGE: NavPage = { label: "아카이브", href: "/content/archive", icon: Archive, aliases: ["레퍼런스 아카이브", "텔레그램 아카이브", "인스타 아카이빙", "썸네일 아카이빙", "AI방", "레퍼런스 인박스"], ready: true };
 export const YOUTUBE_V1_COMMON_PAGES: NavPage[] = [
   OVERVIEW_PAGE,
   { label: "주제 찾기", href: "/content/projects?view=discover", icon: Radar, aliases: ["주제", "레퍼런스", "참고 영상", "새 주제"], ready: true },
+  ARCHIVE_PAGE,
   ...YOUTUBE_V1_PAGES.slice(1),
 ];
 const platformStage = (id: string, label: string, page: string, platform: string, icon: NavPage["icon"]): NavStage => {
@@ -102,6 +105,7 @@ export const YOUTUBE_V1_SCREENS = {
   "/content/schedule": "schedule",
   "/content/confirm": "confirm",
   "/content/links": "links",
+  "/content/archive": "archive",
   "/content/card-canon": "card-canon",
   "/content/short-canon": "short-canon",
   "/content/threads-canon": "threads-canon",

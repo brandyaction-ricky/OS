@@ -62,7 +62,7 @@ test("the platform sidebar keeps video ads under 광고 and image ads under 콘�
   assert.deepEqual(stages.map(stage => stage.label).slice(0, 7), ["공통", "롱폼 유튜브", "숏폼 · 릴스", "광고", "카드뉴스", "스레드", "콘텐츠 자동화"]);
   assert.deepEqual(stages.filter(stage => stage.pages.some(page => page.href === "/content/images")).map(stage => stage.id), ["automation"]);
   // 한눈에 보기 (리키 관제실 시안, owner decision 2026-10-31) leads 공통.
-  assert.deepEqual(stages[0].pages.map(page => page.label), ["한눈에 보기", "주제 찾기", "스케줄", "성과", "채널/링크 관리"]);
+  assert.deepEqual(stages[0].pages.map(page => page.label), ["한눈에 보기", "주제 찾기", "아카이브", "스케줄", "성과", "채널/링크 관리"]);
   const threads = stages.find(stage => stage.id === "threads");
   assert.equal(threads.pages[0].label, "스레드 글감 모으기", "레퍼런스 수집 says what it collects");
   assert.equal(threads.pages[0].href, "/automation/references");

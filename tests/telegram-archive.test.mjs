@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { archiveChats, archiveDocument, commentOf, formatOf, linkKey, messageLinks, normalizeLink, platformOf, safeComment, tagTopic, withMention } from "../lib/telegram-archive.ts";
+import { archiveChats, archiveDocument, commentOf, formatOf, handleOf, linkKey, messageLinks, normalizeLink, platformOf, readArchive, safeComment, tagTopic, usefulFact, withArchiveChange, withMention } from "../lib/telegram-archive.ts";
 
 // 텔레그램 아카이브 (수정 요청 2026-11-13): links dropped in the archive rooms become OS reference documents.
 const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
@@ -63,4 +63,41 @@ test("the webhook keeps archive-room messages before its usual filter, and only 
   assert.match(server, /setMessageReaction/);
   assert.match(server, /status: "team", source: "telegram"/);
   assert.match(server, /model: CLAUDE_FAST_MODEL/);
+});
+
+test("a login wall's 「Instagram」 title and logo are left out; the account name and a clean link stay (first real card, 11-16)", () => {
+  assert.equal(usefulFact("Instagram", "title", "Instagram"), "");
+  assert.equal(usefulFact("Instagram", "title", "Login • Instagram"), "");
+  assert.equal(usefulFact("Instagram", "title", "한결 툰 (@demo)"), "한결 툰 (@demo)");
+  assert.equal(usefulFact("Instagram", "thumbnail", "https://static.cdninstagram.com/rsrc.php/v4/yD/r/logo.png"), "");
+  assert.equal(handleOf("https://instagram.com/demo.account"), "@demo.account");
+  assert.equal(handleOf("https://instagram.com/reel/AB"), "");
+  assert.equal(normalizeLink("https://instagram.com/demo.account?xtok=abc"), "https://instagram.com/demo.account");
+});
+
+test("the archive screen reads a card back from its header, and a 상태 or 주제 change is written down with who made it", () => {
+  const first = { at: "2026-11-16T01:02:03.000Z", room: "인스타 아카이빙", who: "직원A", comment: "첫 줄\n둘째 줄", receipt: "telegram:-1:10" };
+  const { content } = archiveDocument({ link: "https://instagram.com/reel/AB", platform: "Instagram", format: "숏폼", topic: "미분류", title: "", channel: "",
+    thumbnail: "", views: null, likes: null, image: "", first });
+  const card = readArchive(withMention(content, { ...first, receipt: "telegram:-2:11" }));
+  assert.equal(card.link, "https://instagram.com/reel/AB");
+  assert.equal(card.who, "직원A");
+  assert.equal(card.mentions, 1);
+  assert.equal(card.note, "첫 줄\n둘째 줄");
+  assert.equal(card.state, "새로 들어옴");
+  const moved = withArchiveChange(content, { state: "주제 후보", topic: "콘텐츠 주제 소재" }, "직원B", "2026-11-16T09:00:00.000Z");
+  assert.equal(readArchive(moved).topic, "콘텐츠 주제 소재");
+  assert.equal(readArchive(moved).state, "주제 후보");
+  assert.match(moved, /## 바꾼 기록\n- 2026-11-16 09:00 · 직원B · 상태 → 주제 후보 · 주제 → 콘텐츠 주제 소재/);
+  // Older documents written another way (keys without spaces) read the same.
+  assert.equal(readArchive("---\n올린사람: 직원C\n주제: 썸네일·제목\n---\n").who, "직원C");
+});
+
+test("the archive is read with the member's own access, and a change is refused when the card moved on", () => {
+  const server = read("lib/server/content-archive.ts");
+  assert.match(server, /actor\.supabase\.from\("os_documents"\)\.select\("id,title,folder,content_md,current_version,created_at,updated_at"\)/);
+  const change = server.slice(server.indexOf("export async function changeArchive"));
+  assert.ok(change.indexOf("actor.supabase") < change.indexOf("createServiceSupabase()"), "the member must be able to read the card before the server writes it");
+  assert.match(change, /\.eq\("current_version", input\.version\)/);
+  assert.match(read("app/api/v1/content/archive/route.ts"), /authenticateRequest\(request\)/);
 });

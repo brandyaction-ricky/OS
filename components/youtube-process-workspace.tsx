@@ -15,6 +15,7 @@ import { YoutubeScheduleScreen } from "./youtube-process-schedule";
 import { YoutubeShortsScreen } from "./youtube-process-shorts";
 import { ContentPerformanceDashboard } from "./content-performance-dashboard";
 import { YoutubeLinksScreen } from "./youtube-process-links";
+import { YoutubeArchiveScreen } from "./youtube-process-archive";
 import { CanonGrindScreen, ScriptCanonScreen } from "./canon-grind";
 import { YoutubeVoiceDictionaryScreen } from "./youtube-process-voice-dictionary";
 import { YoutubeOverviewScreen } from "./youtube-process-overview";
@@ -33,7 +34,7 @@ const SUB: Partial<Record<YoutubeV1Screen | "shorts", string>> = {
   "script-canon": "롱폼 원고마다 받은 두 번째 검수를 원고 정본 묶음별로 모아, 어느 관문에서 자주 반려되는지 보고 정본을 다듬어요.",
 };
 
-const TITLES: Record<YoutubeV1Screen | "shorts", string> = { overview: "한눈에 보기", projects: "내 영상", plan: "기획", make: "제작", "final-check": "최종 검토", upload: "업로드", shorts: "쇼츠 · 칼럼", schedule: "콘텐츠 일정", confirm: "컨펌", links: "채널/링크 관리", "voice-dictionary": "음성 사전", "card-canon": "카드뉴스 정본 다듬기", "short-canon": "숏폼 대본 정본 다듬기", "threads-canon": "스레드 정본 다듬기", "column-canon": "SEO 칼럼 정본 다듬기", "script-canon": "롱폼 원고 정본 다듬기" };
+const TITLES: Record<YoutubeV1Screen | "shorts", string> = { overview: "한눈에 보기", projects: "내 영상", plan: "기획", make: "제작", "final-check": "최종 검토", upload: "업로드", shorts: "쇼츠 · 칼럼", schedule: "콘텐츠 일정", confirm: "컨펌", links: "채널/링크 관리", archive: "아카이브", "voice-dictionary": "음성 사전", "card-canon": "카드뉴스 정본 다듬기", "short-canon": "숏폼 대본 정본 다듬기", "threads-canon": "스레드 정본 다듬기", "column-canon": "SEO 칼럼 정본 다듬기", "script-canon": "롱폼 원고 정본 다듬기" };
 
 /** 유튜브 공정 v1 screens behind YOUTUBE_V1_ENABLED. */
 /**
@@ -44,7 +45,7 @@ function widthOf(screen: YoutubeV1Screen | "shorts" | "performance", view: strin
   if (screen === "projects") return view === "discover" ? "yp-w-l" : "yp-w-m";
   if (screen === "plan") return !view || view === "topic" ? "yp-w-m" : "";
   if (screen === "make" || screen === "links" || screen === "voice-dictionary") return "yp-w-m";
-  return screen === "overview" || screen === "final-check" || screen === "schedule" || screen === "performance" || screen === "card-canon" || screen === "short-canon" || screen === "threads-canon" || screen === "column-canon" || screen === "script-canon" ? "yp-w-l" : "";
+  return screen === "overview" || screen === "archive" || screen === "final-check" || screen === "schedule" || screen === "performance" || screen === "card-canon" || screen === "short-canon" || screen === "threads-canon" || screen === "column-canon" || screen === "script-canon" ? "yp-w-l" : "";
 }
 
 export function YoutubeProcessWorkspace({ screen }: { screen: YoutubeV1Screen | "shorts" | "performance" }) {
@@ -69,6 +70,7 @@ export function YoutubeProcessWorkspace({ screen }: { screen: YoutubeV1Screen | 
       : screen === "schedule" ? <YoutubeScheduleScreen header={header} />
       : screen === "overview" ? <YoutubeOverviewScreen />
       : screen === "links" ? <YoutubeLinksScreen />
+      : screen === "archive" ? <YoutubeArchiveScreen />
       : screen === "card-canon" ? <CanonGrindScreen kind="card" />
       : screen === "short-canon" ? <CanonGrindScreen kind="short" />
       : screen === "threads-canon" ? <CanonGrindScreen kind="threads" />
