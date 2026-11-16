@@ -61,6 +61,8 @@ test("the note box opens under the dragged passage without moving the page, and 
   assert.match(screen, /<form className="yp-snote-pop yp-snote-new" ref=\{placeAt\(pick\)\}/);
   // Live notes are marked with a CSS highlight (the editor's text is untouched); a plain click inside one opens its notes.
   assert.match(screen, /CSS\.highlights\.set\("yp-notes", new Highlight\(/);
+  // The editor fills in after the page opens: the marks follow its text, not one pass on load.
+  assert.match(screen, /new MutationObserver\(mark\)/);
   assert.match(screen, /range\.isPointInRange\(startContainer, startOffset\)/);
   assert.match(readFileSync("components/youtube-process.css", "utf8"), /::highlight\(yp-notes\)\{/);
 });
