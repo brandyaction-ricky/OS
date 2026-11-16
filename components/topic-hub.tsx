@@ -45,17 +45,18 @@ export function TopicHub() {
     {platform === "longform" ? <YoutubeDiscoverScreen bare />
       : platform === "threads" ? <ContentAutomationV07 page="references" embedded />
       : platform === "card" ? <CardStart initial={params.get("q") ?? ""} />
-      : <ShortStart key={platform} platform={platform} initial={params.get("q") ?? ""} />}
+      : <ShortStart key={platform} platform={platform} initial={params.get("q") ?? ""} initialLink={params.get("link") ?? ""} />}
   </div>;
 }
 
 /** 숏폼 · 릴스 and 광고: a 초안 키워드 (+ a link) becomes a new 숏폼 at 주제, where its references, formulas and 주제 후보 are found. */
-function ShortStart({ platform, initial = "" }: { platform: "short" | "ad"; initial?: string }) {
+/** 아카이브 카드의 「숏폼 · 광고로 시작」 opens here with its link (?link=), so the PD only types the 초안 키워드. */
+function ShortStart({ platform, initial = "", initialLink = "" }: { platform: "short" | "ad"; initial?: string; initialLink?: string }) {
   const { accessToken, demo, profile } = useSession();
   const client = useMemo(() => youtubeProcessClient(accessToken, demo), [accessToken, demo]);
   const router = useRouter();
   const [keyword, setKeyword] = useState(initial);
-  const [link, setLink] = useState("");
+  const [link, setLink] = useState(initialLink);
   const [target, setTarget] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");

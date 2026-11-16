@@ -101,3 +101,17 @@ test("the archive is read with the member's own access, and a change is refused 
   assert.match(change, /\.eq\("current_version", input\.version\)/);
   assert.match(read("app/api/v1/content/archive/route.ts"), /authenticateRequest\(request\)/);
 });
+
+test("3단계: a card goes on — a YouTube video into 담아 둔 영상 once, a reel or TikTok into a 숏폼 · 광고 start, any link into 스레드 글감", () => {
+  const server = read("lib/server/content-archive.ts");
+  const keep = server.slice(server.indexOf("export async function keepArchiveVideo"), server.indexOf("/** 상태 or 주제"));
+  assert.match(keep, /parseYoutubeRef\(card\.link\)/);
+  assert.match(keep, /\.eq\("metadata->>youtubeId", ref\.videoId\)/, "the same video is kept once");
+  assert.match(keep, /studioKind: "outlier", discoverySource: "keyword"/, "the record 담아 둔 영상 lists");
+  assert.match(keep, /state: "주제 후보"/);
+  assert.match(read("components/topic-hub.tsx"), /initialLink=\{params\.get\("link"\) \?\? ""\}/);
+  assert.match(read("lib/threads-reference.ts"), /platform: z\.enum\(\["threads", "substack", "instagram", "youtube", "tiktok", "other"\]\)/, "레퍼런스 수집 takes the archive's platforms");
+  const screen = read("components/youtube-process-archive.tsx");
+  assert.match(screen, /\/api\/v1\/content\/automation\/topics/);
+  assert.match(screen, /platform=\$\{way\}&link=\$\{encodeURIComponent\(card\.link\)\}/);
+});

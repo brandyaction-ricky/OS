@@ -11,7 +11,8 @@ import "./threads-reference-workspace.css";
 
 const METRICS = [["views", "조회"], ["likes", "좋아요"], ["comments", "댓글"], ["reposts", "재공유"]] as const;
 const READ_SCOPES = { full: "전체 읽음", partial: "일부 읽음", preview: "미리보기만 확인", unavailable: "본문 확인 불가" } as const;
-const PLATFORM_LABELS = { threads: "Threads", substack: "Substack", other: "기타" } as const;
+// 텔레그램 아카이브 (수정 요청 2026-11-13): Instagram · YouTube · TikTok links come in from the archive cards too.
+const PLATFORM_LABELS = { threads: "Threads", substack: "Substack", instagram: "Instagram", youtube: "YouTube", tiktok: "TikTok", other: "기타" } as const;
 const QUALITY_LABELS = { recommended: "추천 후보", pending: "검증 대기", reference_only: "내용 참고", all: "전체" } as const;
 type QualityFilter = keyof typeof QUALITY_LABELS;
 type Mutate = (path: string, method: "POST" | "PATCH" | "PUT", body: unknown) => Promise<Record<string, unknown>>;

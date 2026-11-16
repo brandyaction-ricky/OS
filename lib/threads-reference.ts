@@ -24,7 +24,7 @@ const metric = z.object({ value: z.number().int().nonnegative().max(Number.MAX_S
 const publishedAt = z.union([z.string().date(), z.string().datetime({ offset: true })]).nullable();
 export const threadsReferenceItemSchema = z.object({
   id: z.string().trim().min(1).max(100), url: httpsUrl, title: z.string().trim().max(240),
-  platform: z.enum(["threads", "substack", "other"]), author: z.string().trim().max(240),
+  platform: z.enum(["threads", "substack", "instagram", "youtube", "tiktok", "other"]), author: z.string().trim().max(240),
   publishedAt, observedAt: z.string().datetime({ offset: true }),
   metrics: z.object({ views: metric, likes: metric, comments: metric, reposts: metric }).strict(),
   scene: z.string().trim().max(5000), readerQuestion: z.string().trim().max(3000),
