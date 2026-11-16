@@ -21,6 +21,7 @@ test("형식 comes from the kind of link, not the room it was posted in", () => 
   assert.equal(formatOf("https://youtube.com/shorts/AB"), "숏폼");
   assert.equal(formatOf("https://tiktok.com/@a/video/1"), "숏폼");
   assert.equal(formatOf("https://youtube.com/watch?v=AB"), "롱폼");
+  assert.equal(formatOf("https://youtu.be/AB?si=x"), "롱폼");
   assert.equal(formatOf("https://youtube.com/@channel"), "채널");
   assert.equal(formatOf("https://instagram.com/p/AB"), "게시물");
   assert.equal(formatOf("https://threads.net/@a/post/1"), "스레드");

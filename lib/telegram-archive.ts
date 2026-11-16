@@ -52,7 +52,8 @@ export function formatOf(url: string | null) {
   const platform = platformOf(url), path = (() => { try { return new URL(url).pathname; } catch { return ""; } })();
   if (platform === "TikTok") return /\/video\//.test(path) ? "숏폼" : "채널";
   if (platform === "Instagram") return /^\/(reel|reels)\//.test(path) ? "숏폼" : /^\/(p|tv)\//.test(path) ? "게시물" : "채널";
-  if (platform === "YouTube") return /^\/shorts\//.test(path) ? "숏폼" : /^\/watch/.test(path) || /^\/live\//.test(path) ? "롱폼" : "채널";
+  // a youtu.be short address is always one video (the hook normalizes it to /watch; the temporary collection kept it as posted)
+  if (platform === "YouTube") return /^\/shorts\//.test(path) ? "숏폼" : /^\/watch/.test(path) || /^\/live\//.test(path) || /youtu\.be$/.test(new URL(url).hostname) ? "롱폼" : "채널";
   if (platform === "Threads") return "스레드";
   if (platform === "X") return "게시물";
   return "툴·기타";
