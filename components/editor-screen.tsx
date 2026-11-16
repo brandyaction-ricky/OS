@@ -27,7 +27,8 @@ function ScreenTags({ s }: { s: Screen }) {
  * sandboxed frame. The frame asks this page for everything (public/editor-screen-shim.js); this page answers from the OS with the
  * viewer's own sign-in, only for the asks below. It opens once the editing computer has put a version's files up.
  */
-export function EditorScreenEntry({ token, projectId, title, onFinal }: { token: string | null; projectId: string; title: string; onFinal: () => void }) {
+export function EditorScreenEntry({ token, projectId, title, onFinal, finals = 0 }: { token: string | null; projectId: string; title: string; onFinal: () => void;
+  /** Finished versions in 제작: after the first one the card stays (로건 11-13: it vanished once v1 replaced the scene pictures). */ finals?: number }) {
   const [screen, setScreen] = useState<Screen | null>(null);
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
@@ -40,7 +41,7 @@ export function EditorScreenEntry({ token, projectId, title, onFinal }: { token:
   useEffect(read, [read]);
   const close = useCallback(() => { setOpen(false); read(); button.current?.focus(); }, [read]);
   // Nothing to show until a computer opened the editor or put files up.
-  if (!token || !screen || (!screen.versions.length && !screen.lock)) return null;
+  if (!token || !screen || (!screen.versions.length && !screen.lock && !finals)) return null;
   const ready = screen.versions.length > 0;
   // 장면 그림 v0: before the first final the screen holds each scene's picture; 완성 makes the moving video (v1) in the OS.
   const draft = !screen.saves.list.length && screen.versions.some(v => v.name === "v0");
@@ -49,7 +50,8 @@ export function EditorScreenEntry({ token, projectId, title, onFinal }: { token:
       <Scissors size={18} aria-hidden="true" />
       <div className="yp-escreen-txt">
         <b>편집 화면</b>
-        <span className="yp-muted">{draft ? "장면 그림으로 먼저 고쳐요. 「완성」을 누르면 움직이는 첫 최종본(v1)을 만들어요." : ready ? "손으로 자르고 옮긴 뒤 「완성」을 누르면 새 최종본이 돼요." : "편집하는 컴퓨터가 편집 재료를 올리면 열 수 있어요."}</span>
+        <span className="yp-muted">{draft ? "장면 그림으로 먼저 고쳐요. 「완성」을 누르면 움직이는 첫 최종본(v1)을 만들어요." : ready ? "손으로 자르고 옮긴 뒤 「완성」을 누르면 새 최종본이 돼요."
+          : finals ? `최종본 v${finals}은 위에서 바로 재생돼요. 편집하는 컴퓨터에서 편집기를 켜면 이 버전이 올라와 여기서 열 수 있어요.` : "편집하는 컴퓨터가 편집 재료를 올리면 열 수 있어요."}</span>
         <div className="yp-escreen-tags"><ScreenTags s={screen} /></div>
       </div>
       <button ref={button} type="button" className="yp-btn yp-pri" disabled={!ready} onClick={() => setOpen(true)}>편집 화면 열기</button>

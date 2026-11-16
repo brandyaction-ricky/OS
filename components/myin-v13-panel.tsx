@@ -28,7 +28,7 @@ interface MyinRun { id: string; status: string; stage: string; layout?: "short" 
   words: { words: number; subtitleLines: number; durationSeconds: number } | null; storyboard: Storyboard | null;
   review: { decision: "confirmed" | "revise"; name: string; note: string; at: string } | null;
   assetDecisions: Record<string, { decision: "approved" | "excluded" }>; ctaReady: string | null;
-  prepared: { misses: string[]; sheets: number; credits: string[]; at: string; redraw?: "pending" | "drawing" | "failed" | null; redrawnAt?: string | null } | null;
+  prepared: { misses: string[]; sheets: number; credits: string[]; at: string; redraw?: "pending" | "drawing" | "failed" | null; redrawnAt?: string | null; standIns?: string[] } | null;
   clips: { name: string; label: string }[] | null; clipsReview: { name: string; note: string; at: string } | null;
   /** 장면 그림 v0 (편집기 3차 요청 11-09): a longform's ③ as each scene's finished picture, on the editor screen. */ stills?: { at: string; files: number } | null;
   screenCheckAuto?: boolean;
@@ -294,6 +294,11 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
   const step4: StepState = !run || !materials ? "waiting" : ["final_pending", "final_ready"].includes(run.stage) ? "done" : "current";
   const step5: StepState = run?.stage === "final_ready" ? "done" : run?.stage === "final_pending" ? "current" : "waiting";
   const assetsUsed = board ? board.assets.filter((a) => run?.assetDecisions[a.file]?.decision === "approved") : [];
+  // 로건 11-13: a 우리 이미지 nobody uploaded no longer stops ④ — it goes in as a gray 「사진 자리」 and is listed here to replace.
+  const standIns = materials ? run?.prepared?.standIns ?? [] : [];
+  const swapPhotos = run && standIns.length ? <div className="yt-note yt-warn"><strong>바꿀 사진 {standIns.length}장 · 회색 「사진 자리」로 들어갔어요</strong>
+    <p>{standIns.join(" · ")} — 아래에서 올리면 자료 준비부터 다시 해요{run.final ? ". 그다음 전체 영상을 다시 만들면 새 버전이 돼요" : ""}.</p>
+    <MyinOurImages key={`${run.id}-swap`} runId={run.id} token={accessToken} open onSaved={() => void load()} onScene={(scene) => void showSheet(scene)} /></div> : null;
 
   return <div className="yt-steps" role="region" aria-label="마이인 영상 만들기">
     {cost.element}
@@ -446,6 +451,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
     </Step>
 
     <Step index={3} state={step4} title={short ? "사진 확정" : "자료 준비 (사진 · 구독 대사 · 사운드)"} idBase="myin-step">
+      {run?.final ? null : swapPhotos}
       <p>{short ? "미리보기를 확인하면 사진을 확정하고 바로 전체 영상을 만들어요. 숏폼은 음악 없이 목소리만 들어가요." : run?.stills ? "편집 화면에서 「완성」을 누르면 자동으로 시작해 전체 영상까지 이어서 만들어요. 사운드는 편집 화면에서 고쳐요. 점검에서 걸린 곳이 있으면 여기서 멈춰요." : "미리보기 확인을 누르면 자동으로 시작합니다. 미리보기의 사진을 확정하고 구독 대사 음성을 만든 뒤 고른 곳(영상 만드는 컴퓨터 또는 내 컴퓨터)이 다시 점검합니다. 끝나면 아래에서 음악 · 앰비언스 · 효과음을 확인하고 고친 뒤 [전체 영상 만들기]를 누릅니다. 전체 영상도 같은 곳에서 만들어요."}</p>
       {run && finishWaiting && run.stage !== "final_pending" ? placeButtons(run) : null}
       {materials && assetsUsed.length ? <ul className="yt-list">{assetsUsed.map((a) => { const swap = run?.photoCredits?.[a.file], url = swap ? swap.url : a.url;
@@ -476,7 +482,8 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
         <small>사진을 다시 받고 점검을 다시 돌립니다. 같은 구독 대사면 음성은 그대로 씁니다.</small></div> : null}
     </Step>
 
-    <Step index={4} state={step5} title={short ? "완성 영상" : "완성 영상과 자료 확인"} idBase="myin-step">
+    <Step index={4} state={step5} title={short ? "완성 영상" : "완성 영상과 자료 확인"} idBase="myin-step" open>
+      {run?.final ? swapPhotos : null}
       <p>{short ? "세로 1080×1920 숏폼과 유튜브 자막 파일을 영상 만드는 컴퓨터가 만들어 올려요." : `1080p 전체 영상, 음향 마스터링, 한 장 정리 이미지와 덱 PDF, 유튜브 자막 파일을 ${run ? maker(run) : "영상 만드는 컴퓨터"}가 만들어 올립니다. 소리가 아쉬우면 [4단계로 돌아가 사운드 고치기]를 눌러요. 기획표와 미리보기는 그대로 두고 전체 영상만 다시 만듭니다.`}</p>
       {run?.stage === "final_pending" ? <div className="yt-run"><div className="yt-run-head">
         <RunState run={run} /></div>
