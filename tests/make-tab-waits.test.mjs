@@ -32,3 +32,12 @@ test("finished preview drafts tell the storyboard's confirmer and the PD, with a
   assert.ok(clips.indexOf("notify(") > clips.indexOf('"clips_review", next)'), "after the drafts are saved");
   assert.match(read("supabase/migrations/20261015130000_youtube_process_v1.sql"), /'ai_result','computer_silent','publish_due','yt_confirm_request'/);
 });
+
+test("the voice step and the storyboard step show minutes so far and one bar against the usual time", () => {
+  const panel = read("components/myin-v13-panel.tsx"), steps = read("components/youtube-production-steps.tsx");
+  assert.match(steps, /export function WaitBar\(\{ minutes, typical \}/);
+  assert.match(steps, /<progress max=\{typical\} value=\{Math\.min\(minutes, typical\)\}/, "the bar stops full, never past");
+  assert.match(panel, /\{!run\.words && run\.stage === "words_pending" && run\.status !== "blocked" \? <RunWait run=\{run\} \/> : null\}/, "① 음성 · 받아쓰기 · 자막");
+  assert.match(panel, /<StaffDesign status=\{job\} busy=\{busy === "send"\} typical=\{storyboardMinutes\(run\)\}/, "② 기획표 while my AI writes it");
+  assert.match(steps, /\{typical \? <WaitBar minutes=\{Math\.floor\(\(sinceIso\(job\.claimedAt\) \?\? 0\) \/ 60\)\} typical=\{typical\} \/>/);
+});

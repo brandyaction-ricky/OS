@@ -19,5 +19,5 @@ test("a longform voice lease grows with the script, so four takes a sentence are
   assert.match(run, /claim\(service, "words_pending", wordsLeaseMs, fits\(short\)/);
   assert.match(run, /typeof leaseMs === "function" \? leaseMs\(run\) : leaseMs/);
   assert.match(run, /Date\.parse\(run\.lease\.expiresAt\) < Date\.now\(\)/, "a late result is still refused");
-  assert.match(panel, /run\.layout === "short" \? 8 : 10 \+ Math\.ceil\(run\.paragraphs \* 1\.75\)/);
+  assert.match(panel, /run\.layout === "short" \? 8 : 10 \+ Math\.ceil\(run\.paragraphs \* 1\.4\)/);
 });

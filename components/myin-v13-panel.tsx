@@ -6,7 +6,7 @@ import { channelOf } from "@/lib/youtube-process/channel-style";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { apiRequest, ApiRequestError } from "@/lib/api-client";
 import { useSession } from "./session-provider";
-import { StaffDesign, Step, type StaffJobStatus, type StepState } from "./youtube-production-steps";
+import { StaffDesign, Step, WaitBar, type StaffJobStatus, type StepState } from "./youtube-production-steps";
 import "./youtube-production-steps.css";
 import { CostTag, useCostConfirm, useCostModels, voiceEstimate } from "./cost-notice";
 import { MyinSoundEditor } from "./myin-sound-editor";
@@ -55,7 +55,8 @@ const finalMinutes = (run: MyinRun) => Math.ceil((run.words?.durationSeconds ?? 
 // ponytail: a 숏폼's minutes are guesses from the A1 pilot (40 s, one draft of the whole short); measure after the first ones.
 const SHORT_MIN: Record<string, number> = { words_pending: 6, prep_pending: 3, clips_pending: 5, final_pending: 8 };
 // 롱폼 음성은 문장마다 4번 만들어 받아쓰기로 고른다(음성 고르기 v2, 2026-11-11 맥미니 시험: 한 문장 약 27초).
-const typicalMinutes = (run: MyinRun) => run.voiceOnPc && run.stage === "words_pending" ? (run.layout === "short" ? 8 : 10 + Math.ceil(run.paragraphs * 1.75))
+// v2.1 (2026-11-12, two paragraphs at a time): 39 paragraphs took 63–66 minutes on 11-13, so 1.4 a paragraph.
+const typicalMinutes = (run: MyinRun) => run.voiceOnPc && run.stage === "words_pending" ? (run.layout === "short" ? 8 : 10 + Math.ceil(run.paragraphs * 1.4))
   : run.layout === "short" ? SHORT_MIN[run.stage] : run.stage === "clips_pending" ? Math.ceil(((run.storyboard?.metaphors.length ?? 0) + 1) * 1.5)
   : run.stage === "final_pending" ? finalMinutes(run) : TYPICAL_MIN[run.stage];
 // What a stop means and what 다시 하기 redoes, so a staff member knows whether pressing again can help (2026-10-26: three presses hit
@@ -87,16 +88,23 @@ const KIND: Record<string, string> = { people: "인물 사진", situations: "상
 
 /** The stage pill, with how long the render PC has been at it, or what a stop means. */
 function RunState({ run }: { run: MyinRun }) {
+  return <>
+    <span className="status-pill" data-status={run.status === "blocked" ? "failed" : "scheduled"}>{run.status === "blocked" ? `멈춤 · 오류 코드 ${run.lastErrorCode ?? "없음"}` : phaseLabel(run)}</span>
+    <RunWait run={run} />
+  </>;
+}
+/** How long the render PC has been at the step, with the wait bar when the usual time is known; or what a stop means. */
+function RunWait({ run }: { run: MyinRun }) {
   const minutes = run.workingSince ? Math.max(0, Math.floor((Date.now() - Date.parse(run.workingSince)) / 60_000)) : null;
   const typical = typicalMinutes(run);
   const started = run.workingSince ? new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit" }).format(new Date(run.workingSince)) : "";
-  return <>
-    <span className="status-pill" data-status={run.status === "blocked" ? "failed" : "scheduled"}>{run.status === "blocked" ? `멈춤 · 오류 코드 ${run.lastErrorCode ?? "없음"}` : phaseLabel(run)}</span>
-    {run.status === "blocked" || (run.lastErrorCode && minutes === null) ? <StopNote run={run} />
-      : minutes !== null ? <small>시작 {started} · {minutes}분째{typical ? minutes > typical * 1.5 ? " · 평소보다 오래 걸려요(확인 필요)" : ` · 보통 ${typical}분쯤 걸려요${run.stage === "clips_pending" && run.layout !== "short" ? `(미리보기 ${(run.storyboard?.metaphors.length ?? 0) + 1}개)` : ""}` : ""}</small>
-      : typical && run.status === "backlog" ? <small>{maker(run)} 차례를 기다리는 중</small> : null}
-  </>;
+  return run.status === "blocked" || (run.lastErrorCode && minutes === null) ? <StopNote run={run} />
+    : minutes !== null ? <><small>시작 {started}{run.stage === "clips_pending" && run.layout !== "short" ? ` · 미리보기 ${(run.storyboard?.metaphors.length ?? 0) + 1}개` : ""}</small>
+      {typical ? <WaitBar minutes={minutes} typical={typical} /> : <small>{minutes}분째</small>}</>
+    : typical && run.status === "backlog" ? <small>{maker(run)} 차례를 기다리는 중</small> : null;
 }
+// The staff AI's storyboard (claimed → handed in, 11-11~11-16): a first one 9 minutes for 8 paragraphs, 13 for 26, 19 for 39; a fix 2–9.
+const storyboardMinutes = (run: MyinRun) => run.storyboard ? 5 : Math.ceil(6 + run.paragraphs / 3);
 const when = (iso: string) => new Intl.DateTimeFormat("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
 
 /**
@@ -312,7 +320,8 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       {run ? <div className="yt-run">
         <div className="yt-run-head"><span className="status-pill" data-status={run.status === "blocked" && !run.words ? "failed" : run.words && !run.voiceFixes?.length ? "approved" : "scheduled"}>{run.voiceFixes?.length && run.stage === "words_pending" ? "고친 곳 다시 만드는 중" : run.words ? "받아쓰기·자막 완료" : phase}</span>
           {run.voiceOnPc ? <small>음성 {run.paragraphs}문단 · 영상 만드는 컴퓨터가 문장마다 만들어 고름</small> : <small>음성 {run.paragraphsReady}/{run.paragraphs}문단</small>}
-          {run.style ? <small>채널 모양 {run.style.name} · v{run.style.version}</small> : null}</div>
+          {run.style ? <small>채널 모양 {run.style.name} · v{run.style.version}</small> : null}
+          {!run.words && run.stage === "words_pending" && run.status !== "blocked" ? <RunWait run={run} /> : null}</div>
         {run.status === "blocked" && !run.words ? <StopNote run={run} /> : null}
         {run.stage === "voice_pending" ? <progress max={run.paragraphs} value={run.paragraphsReady} aria-label="음성 진행" /> : null}
         {run.words ? <small>낭독 {Math.floor(run.words.durationSeconds / 60)}분 {Math.round(run.words.durationSeconds % 60)}초 · 받아쓴 단어 {run.words.words.toLocaleString()}개 · 자막 {run.words.subtitleLines}줄</small> : null}
@@ -338,7 +347,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       {run?.stage === "words_ready" ? <>
         {run.review?.decision === "revise" ? <div className="yt-note yt-warn"><strong>{run.review.name === "렌더 전 관문" ? "렌더 전 관문 · 자동 수정 요청" : "로건, 유쓰 수정 요청"} · {when(run.review.at)}</strong><p>{run.review.note}</p></div> : null}
         <p>{short ? "내 AI가 세로 화면 규칙과 세로 도식 목록으로 숏폼 기획표를 써요. 첫 화면에는 확정한 헤드 카피가 떠요." : "내 AI가 영상 제작 매뉴얼·기획표 문서와 음악 창고 목록을 읽고, 위 받아쓰기의 철자 그대로 장면 기획표와 사진 후보를 만듭니다. OS가 문구 위치와 형식을 검사합니다."}</p>
-        <StaffDesign status={job} busy={busy === "send"} onSend={() => void act("send", () => post("/ai-jobs", "POST", { task: "storyboard", sourceId }))} />
+        <StaffDesign status={job} busy={busy === "send"} typical={storyboardMinutes(run)} onSend={() => void act("send", () => post("/ai-jobs", "POST", { task: "storyboard", sourceId }))} />
       </> : null}
       {board && run && run.stage !== "words_ready" ? <>
         <div className="yt-run"><div className="yt-run-head"><span className="status-pill" data-status={run.review?.decision === "confirmed" ? "approved" : "review"}>{run.review?.decision === "confirmed" ? "로건, 유쓰 확인 완료" : "로건, 유쓰 확인 대기"}</span>

@@ -247,9 +247,16 @@ export function YoutubeProductionSteps({ sourceId, storedPlan, onChange }: { sou
   </div>;
 }
 
+/** 로건 피드백 11-16: while a step is being worked on, minutes so far and one bar against the usual time, with roughly how much is left. */
+export function WaitBar({ minutes, typical }: { minutes: number; typical: number }) {
+  const left = typical - minutes;
+  return <span className="yt-wait"><progress max={typical} value={Math.min(minutes, typical)} aria-label="걸린 시간" />
+    <small>{minutes}분째 · 보통 {typical}분{left > 0 ? ` · ${left}분쯤 남았어요` : minutes > typical * 1.5 ? " · 평소보다 오래 걸려요(확인 필요)" : " · 곧 끝나요"}</small></span>;
+}
+
 /** 화면 설계 by the requester's own AI: send, then the job's state in words (대기 · 처리 중 · 확인 필요 · 못 함). */
 /** [내 AI에 보내기] and where the job stands; shared by ② 원고 and ③ 화면 설계. */
-export function StaffDesign({ status, busy, onSend }: { status: StaffJobStatus | null; busy: boolean; onSend: () => void }) {
+export function StaffDesign({ status, busy, onSend, typical }: { status: StaffJobStatus | null; busy: boolean; onSend: () => void; /** usual minutes, for the wait bar */ typical?: number }) {
   const job = status?.job;
   const lastSeen = sinceIso(status?.myAi.lastUsedAt ?? null);
   const connected = (status?.myAi.keys ?? 0) > 0;
@@ -262,7 +269,7 @@ export function StaffDesign({ status, busy, onSend }: { status: StaffJobStatus |
     {job?.status === "backlog" ? <div className="yt-run"><div className="yt-run-head"><span className="status-pill" data-status="waiting">대기</span>
       <small>{lastSeen === null ? "내 AI가 아직 OS를 확인한 적이 없어요." : `내 AI가 ${ago(lastSeen)} 전에 마지막으로 확인했어요. 다음 확인 때 가져가요.`}</small></div></div> : null}
     {job?.status === "active" && !job.issues.length ? <div className="yt-run"><div className="yt-run-head"><span className="status-pill" data-status="scheduled">처리 중</span>
-      <small>내 AI가 처리 중 · {ago(sinceIso(job.claimedAt) ?? 0)}째</small></div></div> : null}
+      {typical ? <WaitBar minutes={Math.floor((sinceIso(job.claimedAt) ?? 0) / 60)} typical={typical} /> : <small>내 AI가 처리 중 · {ago(sinceIso(job.claimedAt) ?? 0)}째</small>}</div></div> : null}
     {job?.status === "active" && job.issues.length ? <div className="yt-note yt-warn"><strong>확인 필요 · 검사에서 걸린 곳</strong>
       <ul className="yt-list">{job.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul><p>내 AI가 고쳐서 다시 제출하면 넘어갑니다.</p></div> : null}
     {job?.status === "blocked" ? <div className="yt-note yt-warn"><strong>못 함</strong><p>{job.failReason ?? "이유가 남지 않았어요."}</p></div> : null}
