@@ -626,6 +626,46 @@ export function styleStoryboard(videoDir, myinDir, style, file = "myin_storyboar
   return styled;
 }
 
+/**
+ * 고친 문장만 다시 (로건 11-16 46efb0b9): a changed script used to be voiced from the first paragraph again (about an hour, every
+ * paragraph paid). Each paragraph whose text an earlier voice of this video on this PC already has is copied in under its new number
+ * (files cloned, its lists and sentence file pointed at the new folder) with a 「pNN_이전음성.txt」 note of the text; his stage_voice
+ * keeps a paragraph whose note matches and makes only the rest. A reading added or changed since that voice (읽기사전) makes the
+ * paragraphs with it again. Returns how many paragraphs were taken.
+ */
+export const REUSE_MARK = "_이전음성.txt";
+export function reuseEarlierVoice(work, texts, donorWorks) {
+  const voiceDir = path.join(work, "voice", "os_voice");
+  const donor = donorWorks.find((dir) => existsSync(path.join(dir, "voice", "os_voice", "speech.txt")));
+  if (!donor) return 0;
+  const from = path.join(donor, "voice", "os_voice");
+  const json = (file) => { try { return JSON.parse(readFileSync(file, "utf8")); } catch { return {}; } };
+  const readings = (dir) => json(path.join(dir, "tools", "voice_timing", "읽기사전.json"));
+  const now = readings(work), then = readings(donor);
+  const changed = [...new Set([...Object.keys(now), ...Object.keys(then)])].filter((key) => !key.startsWith("_") && now[key] !== then[key]);
+  const old = readFileSync(path.join(from, "speech.txt"), "utf8").replace(/\r/g, "").split("\n").filter((line) => line.trim() && !line.startsWith("#SECTION"));
+  const tag = (n) => `p${String(n).padStart(2, "0")}_`;
+  const names = readdirSync(from), fixes = json(path.join(from, "고친문장.json")), carried = {};
+  mkdirSync(voiceDir, { recursive: true });
+  let taken = 0;
+  texts.forEach((text, i) => {
+    const k = old.findIndex((line, n) => line === text && existsSync(path.join(from, `${tag(n)}t.wav`)) && existsSync(path.join(from, `${tag(n)}문장.json`)));
+    if (k < 0 || changed.some((key) => text.includes(key))) return;
+    const a = tag(k), b = tag(i);
+    for (const name of names) {
+      if (!name.startsWith(a) || name.endsWith(REUSE_MARK)) continue;
+      const target = path.join(voiceDir, b + name.slice(a.length));
+      if (/\.(txt|json)$/.test(name)) writeFileSync(target, readFileSync(path.join(from, name), "utf8").split(from).join(voiceDir).split(a).join(b));
+      else copyFileSync(path.join(from, name), target, fsConstants.COPYFILE_FICLONE);
+    }
+    for (const [key, value] of Object.entries(fixes)) if (key.startsWith(a)) carried[b + key.slice(a.length)] = value;
+    writeFileSync(path.join(voiceDir, b.slice(0, -1) + REUSE_MARK), text);
+    taken += 1;
+  });
+  if (Object.keys(carried).length) writeFileSync(path.join(voiceDir, "고친문장.json"), JSON.stringify(carried, null, 1));
+  return taken;
+}
+
 /** Process one v13 words job; returns false when there is none (or this PC has no v13 package). */
 export async function processMyinWords() {
   if (!myinPkg) return false;
@@ -672,8 +712,12 @@ export async function processMyinWords() {
       for (const fix of fixes) fixed.push({ memo: fix.memo, ok: false, report: why });
       if (!hasVoice) throw Object.assign(new Error("the voice to fix is gone from this render PC"), { code: "MYIN_VOICE_FIX_NO_VOICE" });
     } else {
+      const earlier = (Array.isArray(job.earlier) ? job.earlier : []).filter((id) => /^[0-9a-f-]{36}$/.test(id)).map((id) => path.join(myinWork, id));
+      const reused = earlier.length && !existsSync(path.join(voiceDir, "voice.wav")) ? reuseEarlierVoice(work, job.paragraphs.map((p) => p.text), earlier) : 0;
+      if (reused) console.log(`myin voice: ${reused}/${job.paragraphs.length} paragraphs kept from an earlier voice of this video`);
       current.step = "narration";
-      await runAsync(speaker.python, ["stage_voice.py", script, voiceJob], { cwd: path.join(work, "tools", "mindmap_pipeline"), env });
+      try { await runAsync(speaker.python, ["stage_voice.py", script, voiceJob], { cwd: path.join(work, "tools", "mindmap_pipeline"), env }); }
+      finally { for (const name of readdirSync(voiceDir)) if (name.endsWith(REUSE_MARK)) rmSync(path.join(voiceDir, name), { force: true }); }
     }
     // 들어 볼 문장 (his voice_audit): every sentence scored for breaks and long runs, worst first; stage 1 lists the ones worth a listen.
     let audit = null;

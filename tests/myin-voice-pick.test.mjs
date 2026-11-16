@@ -10,7 +10,8 @@ test("the longform voice price counts four takes a sentence; shorts keep 많게�
   assert.match(panel, /amount: takes && !short \? estimate\.krw \* 4 : estimate\.krw/);
   assert.match(panel, /문장마다 4번 만들어 가장 자연스러운 것을 골라요/);
   assert.match(panel, /끊긴 문장은 한 번 더 만들어 많게는 2배/);
-  assert.match(panel, /voiceEstimate\(voiceText, myinVoice\)\.krw \* \(voiceOnPc && !short \? 4 : 1\)/);
+  // 고친 문장만 다시 (11-16): with a changed script the tag counts only the paragraphs the earlier voice lacks.
+  assert.match(panel, /voiceEstimate\(run\?\.scriptChanged && run\.voiceReuse \? run\.voiceReuse\.text : voiceText, myinVoice\)\.krw \* \(voiceOnPc && !short \? 4 : 1\)/);
 });
 
 test("a longform voice lease grows with the script, so four takes a sentence are not refused as late; the panel's time follows", () => {

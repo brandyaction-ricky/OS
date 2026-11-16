@@ -396,12 +396,38 @@ export async function myinRunReplaced(runId: string, service: Service = createSe
   return Boolean(data?.length);
 }
 
+/**
+ * 고친 문장만 다시 (로건 11-16 46efb0b9): earlier runs of the video whose voice the render PC may borrow paragraphs from — made there,
+ * finished (words), with the same voice — newest first. The PC that has one of their folders reuses each paragraph whose text is unchanged.
+ */
+async function voiceDonors(service: Service, sourceId: string, like: Pick<MyinRun, "voiceReferenceFingerprint" | "voiceModel" | "layout">, before?: string) {
+  let query = service.from("os_records").select("id, metadata").eq("parent_id", sourceId).eq("record_type", "ai_job").eq("metadata->>kind", MYIN_RUN_KIND)
+    .is("archived_at", null);
+  if (before) query = query.lt("created_at", before);
+  const { data } = await query.order("created_at", { ascending: false }).limit(10);
+  return ((data ?? []) as { id: string; metadata: MyinRun }[]).filter(({ metadata: m }) => m.voiceOn && m.words && m.voiceModel === like.voiceModel
+    && m.voiceReferenceFingerprint === like.voiceReferenceFingerprint && (m.layout ?? null) === (like.layout ?? null)).slice(0, 3);
+}
+/** Before 「바뀐 원고로 다시 만들기」: the paragraphs the newest earlier voice does not have, which are the ones Fish is paid for. */
+async function voiceReuse(service: Service, sourceId: string, run: MyinRun) {
+  if (!run.voiceOn || run.layout) return null;
+  const [donor] = await voiceDonors(service, sourceId, run);
+  if (!donor) return null;
+  const kept = new Set(donor.metadata.paragraphs.map((p) => p.textHash));
+  const { spoken } = await currentInput(service, sourceId);
+  const make = spoken.filter((text) => !kept.has(sha(text)));
+  return { keep: spoken.length - make.length, make: make.length, text: make.join("\n") };
+}
+
 export async function latestMyinRun(actor: RequestActor, sourceId: string) {
   const { data } = await actor.supabase.from("os_records").select("*").eq("parent_id", sourceId).eq("record_type", "ai_job")
     .eq("metadata->>kind", MYIN_RUN_KIND).is("archived_at", null).order("created_at", { ascending: false }).limit(1);
   const record = data?.[0] as OsRecord | undefined;
-  return record ? { ...presentMyinRun(record), scriptChanged: await scriptChanged(actor.supabase, parse(record)),
-    storyboardJob: record.stage === "words_ready" ? await storyboardJobNow(sourceId, actor.id).catch(() => null) : null } : null;
+  if (!record) return null;
+  const changed = await scriptChanged(actor.supabase, parse(record));
+  return { ...presentMyinRun(record), scriptChanged: changed,
+    ...(changed ? { voiceReuse: await voiceReuse(createServiceSupabase(), sourceId, parse(record)).catch(() => null) } : {}),
+    storyboardJob: record.stage === "words_ready" ? await storyboardJobNow(sourceId, actor.id).catch(() => null) : null };
 }
 
 /**
@@ -640,7 +666,10 @@ export async function claimMyinWords(service: Service = createServiceSupabase(),
     const { data: preview } = await service.storage.from(YOUTUBE_VOICE_BUCKET).createSignedUploadUrl(previewPath(prefix), { upsert: true });
     // 음성 사전 (phase ④): the render PC voices with what the OS keeps; until the OS has one, his package's files stand.
     const dictionary = await readVoiceDictionary(service).catch(() => null);
+    // 고친 문장만 다시: a fresh voice names the earlier runs whose unchanged paragraphs its render PC may reuse.
+    const earlier = run.voiceOn && !run.words && !run.voiceFixes?.length ? (await voiceDonors(service, run.sourceId, run, record.created_at).catch(() => [])).map((d) => d.id) : [];
     return { runId: record.id, lease: lease.token, ...voice, bundleUploadUrl: upload.signedUrl, ...(voiceUploadUrls.length === MYIN_VOICE_PARTS ? { voiceUploadUrls } : {}),
+      ...(earlier.length ? { earlier } : {}),
       ...(preview ? { previewUploadUrl: preview.signedUrl } : {}), ...(run.layout ? { layout: run.layout } : {}),
       ...(dictionary?.exists ? { dictionary: dictionaryFiles(dictionary.dictionary) } : {}),
       ...(run.voiceFixes?.length ? { fixes: run.voiceFixes.map(({ memo, say, read, video }) => ({ memo, ...(say ? { say } : {}), ...(read ? { read } : {}), ...(video ? { video } : {}) })) } : {}) };

@@ -36,6 +36,8 @@ interface MyinRun { id: string; status: string; stage: string; layout?: "short" 
   /** 장면 그림 v0 (편집기 3차 요청 11-09): a longform's ③ as each scene's finished picture, on the editor screen. */ stills?: { at: string; files: number } | null;
   screenCheckAuto?: boolean;
   final: { bytes: number; durationSeconds: number; lufs: number; peak: number; at: string } | null; scriptChanged?: boolean; workingSince?: string | null; pc?: string | null;
+  /** 고친 문장만 다시 (로건 11-16): with a changed script, how many paragraphs the earlier voice already has, and the text to make. */
+  voiceReuse?: { keep: number; make: number; text: string } | null;
   sound: { report: string; at: string; edited?: { name: string; at: string } } | null; local: { by: string; name: string } | null; localFinish?: { by: string; name: string } | null; localReady: boolean;
   clipsStale?: string[] | null; photoCredits?: Record<string, { source: string; license: string; url: string | null }>;
   voiceFixes?: MyinVoiceFixView[]; voiceCheck?: MyinVoiceCheckView | null; voiceFixable?: boolean; voiceChanged?: { at: string; count: number } | null;
@@ -134,10 +136,10 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
   };
   // 로건 11-13: a 롱폼 that goes on by itself asks once, at the start, for every paid step up to the finished video — the voice and the
   // 구독 대사 voice (300자까지, as the editor's 「완성」 counted it) — and 「완성」 asks no more.
-  const askStart = (text: string, takes: boolean) => {
+  const askStart = (text: string, takes: boolean, kept = "") => {
     const voice = voiceEstimate(text, myinVoice), cta = voiceEstimate("가".repeat(600), myinVoice);
     return cost.confirm({ model: myinVoice, amount: voice.krw * (takes ? 4 : 1) + cta.krw, upTo: true, ok: "확인하고 시작",
-      detail: `음성 ${voice.chars.toLocaleString("ko-KR")}자${takes ? "(문장마다 4번 만들어 골라요)" : ""} + 구독 대사 음성(300자까지) · 지금 한 번 확인하면 「완성」까지 다시 묻지 않아요 · 켜 둔 GPT 화면 검사는 GPT 크레딧에서 따로 빠져요` });
+      detail: `${kept}음성 ${voice.chars.toLocaleString("ko-KR")}자${takes ? "(문장마다 4번 만들어 골라요)" : ""} + 구독 대사 음성(300자까지) · 지금 한 번 확인하면 「완성」까지 다시 묻지 않아요 · 켜 둔 GPT 화면 검사는 GPT 크레딧에서 따로 빠져요` });
   };
   const { accessToken } = useSession();
   const [run, setRun] = useState<MyinRun | null>(null);
@@ -302,7 +304,11 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
     const pick = styleId ?? run?.style?.id ?? channelOf(styles, channel)?.id ?? "";
     const fresh = !(run && !run.scriptChanged);
     const together = fresh && !short && settings.confirm === "auto";
-    if (fresh && !(together ? await askStart(voiceText ?? "", voiceOnPc) : await askVoice(voiceText ?? "", "같은 원고로 다시 누르면 들지 않아요", voiceOnPc))) return;
+    // 고친 문장만 다시 (로건 11-16): only the paragraphs the earlier voice lacks are paid for; the rest is that voice as it was.
+    const reuse = run?.scriptChanged ? run.voiceReuse : null;
+    const kept = reuse ? `바뀐 문단 ${reuse.make}개만 새로 만들어요(안 바뀐 ${reuse.keep}문단은 전에 만든 음성 그대로) · ` : "";
+    const text = reuse ? reuse.text : voiceText ?? "";
+    if (fresh && !(together ? await askStart(text, voiceOnPc, kept) : await askVoice(text, `${kept}같은 원고로 다시 누르면 들지 않아요`, voiceOnPc))) return;
     rememberSettings(settings);
     await act("start", () => post("/myin", "POST", { sourceId, ...(pick ? { styleId: pick } : {}), settings: short ? { ...settings, place: "pc" } : settings, ...(together ? { paidOk: true } : {}) }));
   };
@@ -411,7 +417,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       {run?.scriptChanged ? <p className="yt-note yt-warn">{short ? "확정한 대본이 바뀌었어요. 아래 작업은 옛 대본으로 만든 것이라 더 진행되지 않아요. 새로 만들면 기획표와 미리보기 확인도 다시 거쳐요." : "구성안 원고가 바뀌었어요. 아래 작업은 옛 원고로 만든 것이라 더 진행되지 않아요. 새로 만들면 기획표와 미리보기 확인도 다시 거쳐요."}</p> : null}
       {!run || (run.status === "blocked" && !run.words) || run.scriptChanged ? <div className="yt-actions">
         <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void start()}>{busy === "start" ? "시작하는 중…" : run?.scriptChanged ? short ? "바뀐 대본으로 음성 다시 만들기" : "바뀐 원고로 v13 음성 다시 만들기" : run ? short ? "음성 다시 시작" : "v13 음성 다시 시작" : short ? "음성 만들기" : "v13 음성 만들기"}</button>
-        <small><CostTag kind="paid" amount={voiceText ? voiceEstimate(voiceText, myinVoice).krw * (voiceOnPc && !short ? 4 : 1) : null} /> 같은 {short ? "대본" : "원고"}으로 다시 누르면 만든 음성을 이어 써요.</small>
+        <small><CostTag kind="paid" amount={voiceText ? voiceEstimate(run?.scriptChanged && run.voiceReuse ? run.voiceReuse.text : voiceText, myinVoice).krw * (voiceOnPc && !short ? 4 : 1) : null} /> 같은 {short ? "대본" : "원고"}으로 다시 누르면 만든 음성을 이어 써요.</small>
       </div> : null}
       {run ? <div className="yt-run">
         <div className="yt-run-head"><span className="status-pill" data-status={run.status === "blocked" && !run.words ? "failed" : run.words && !run.voiceFixes?.length ? "approved" : "scheduled"}>{run.voiceFixes?.length && run.stage === "words_pending" ? "고친 곳 다시 만드는 중" : run.words ? "받아쓰기·자막 완료" : phase}</span>
