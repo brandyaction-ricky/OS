@@ -1534,6 +1534,11 @@
 .linear-shell .ui-v2.yp .yp-snote-new blockquote{margin:0;padding:6px 10px;border-left:3px solid var(--accent);background:var(--accent-soft);font-size:13px;white-space:pre-wrap;max-height:120px;overflow:auto}
 .linear-shell .ui-v2.yp .yp-noting [contenteditable]{cursor:text;outline:2px dashed color-mix(in srgb, var(--accent) 45%, transparent);outline-offset:4px}
 .linear-shell .ui-v2.yp ::highlight(yp-note){background:color-mix(in srgb, var(--warning) 35%, transparent);color:inherit}
+.linear-shell .ui-v2.yp ::highlight(yp-notes){background:color-mix(in srgb, var(--warning) 16%, transparent);text-decoration:underline dotted color-mix(in srgb, var(--warning) 80%, transparent);text-underline-offset:3px}
+.linear-shell .ui-v2.yp .yp-snote-wrap{position:relative}
+.linear-shell .ui-v2.yp .yp-snote-pop{position:absolute;z-index:40;width:320px;max-width:100%;display:grid;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:8px}
+.linear-shell .ui-v2.yp .yp-snote-pop.yp-snote-new{margin-top:0}
+.linear-shell .ui-v2.yp .yp-snote-pop .yp-snote-list{max-height:260px;overflow:auto}
 .linear-shell .ui-v2.yp .yp-snotes{margin-top:8px}
 .linear-shell .ui-v2.yp .yp-snote-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
 .linear-shell .ui-v2.yp .yp-snote{border:1px solid var(--line-soft);border-radius:8px;padding:8px 10px}

@@ -52,3 +52,15 @@ test("a 수정안 is saved beside its note and never written into the 원고; th
   assert.match(screen, /closest\("input, textarea, select, \[contenteditable='true'\], \[contenteditable=''\]"\)/);
   assert.match(screen, /event\.isComposing \|\| event\.keyCode === 229/);
 });
+
+test("the note box opens under the dragged passage without moving the page, and a passage with notes is marked and opens them on a click", () => {
+  const screen = readFileSync("components/youtube-process-outline.tsx", "utf8");
+  // 직원 요청 11-13: the box at the top took the cursor (autoFocus) and scrolled a long 원고 back up.
+  assert.doesNotMatch(screen, /autoFocus/);
+  assert.match(screen, /noteInput\.current\?\.focus\(\{ preventScroll: true \}\)/);
+  assert.match(screen, /<form className="yp-snote-pop yp-snote-new" ref=\{placeAt\(pick\)\}/);
+  // Live notes are marked with a CSS highlight (the editor's text is untouched); a plain click inside one opens its notes.
+  assert.match(screen, /CSS\.highlights\.set\("yp-notes", new Highlight\(/);
+  assert.match(screen, /range\.isPointInRange\(startContainer, startOffset\)/);
+  assert.match(readFileSync("components/youtube-process.css", "utf8"), /::highlight\(yp-notes\)\{/);
+});
