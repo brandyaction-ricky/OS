@@ -74,11 +74,26 @@ test("the sheets before travel with the run: a voice fix, the gate's round, the 
   assert.match(run, /const sheetsNow = prepRef\(record\.id, next\);\n\s*if \(sheetsNow\) back\.lastPrep = sheetsNow;/);
   assert.match(run, /sheets: prepRef\(found\.id, donor\)/);
   assert.match(run, /\.\.\.\(loan\.sheets \? \{ lastPrep: loan\.sheets \} : \{\}\)/);
-  assert.match(run, /const prior = draft && run\.lastPrep && run\.lastPrep\.engine === lease\.engine \? run\.lastPrep : undefined;/, "only sheets this engine drew");
+  assert.match(run, /const prior = run\.lastPrep && run\.lastPrep\.engine === lease\.engine \? run\.lastPrep : undefined;/, "only sheets this engine drew, at ③ and ④");
   assert.match(run, /if \(!prepared\?\.cells \|\| !prepared\.sheets\.length \|\| !prepared\.engine \|\| prepared\.storyboardPath \|\| !run\.storyboard\) return undefined;/);
   assert.match(run, /delete next\.lease; delete next\.lastError; delete next\.lastPrep;/);
   assert.match(run, /next\.prepared!\.from = \{ runId: run\.lastPrep\.runId, at: run\.lastPrep\.at \}/);
   const worker = read("tools/youtube-media-worker.mjs");
   assert.match(worker, /\.catch\(\(\) => drawSheets\(myinDir, videoDir, previewEnv, job\.sheetUploadUrls\.length\)\)/, "trouble with the sheets before: all drawn");
   assert.match(worker, /\.\.\.\(kept\?\.length \? \{ kept \} : \{\}\)/);
+});
+
+test("④ starts from ③'s sheets; a photo uploaded since, or a 「사진 자리」 then, has its scenes drawn again", () => {
+  const run = read("lib/server/myin-run.ts");
+  const prep = run.slice(run.indexOf("async function beginPrep"), run.indexOf("/** [자료 준비 다시 하기]"));
+  assert.match(prep, /const before = prepRef\(record\.id, run\);/, "stashed before the preparation is cleared");
+  assert.match(run, /photos: photoKeys\(run\), missing: \(prepared\.photosMissing \?\? \[\]\)\.slice\(0, 200\)/);
+  assert.match(run, /\.\.\.Object\.entries\(run\.ours \?\? \{\}\)\.map\(\(\[file, image\]\) => \[file, image\.path\] as const\)/, "our upload wins over the listed photo");
+  assert.match(run, /filter\(\(file\) => now\[file\] !== then\[file\]\) : Object\.keys\(now\)/, "sheets from before this change redraw every photo scene");
+  assert.match(run, /if \(bundle\.missingPhotos\?\.length\) next\.prepared!\.photosMissing = bundle\.missingPhotos;/);
+  const worker = read("tools/youtube-media-worker.mjs");
+  assert.match(worker, /return \[\.\.\.new Set\(\(job\.placeholders \?\? \[\]\)\.filter\(\(spot\) => !fetched\[`\$\{spot\.kind\}\/\$\{spot\.file\}`\]\)/);
+  assert.match(worker, /if \(old && job\.previous\.redraw\?\.length\) \{/);
+  assert.match(worker, /\[redrawScript, "os_myin", oldStory, oldDir, out, \.\.\.\(redrawFiles \? \[redrawFiles\] : \[\]\)\]/);
+  assert.match(read("tools/myin_redraw.py"), /if forced: keep = \{i: k for i, k in keep\.items\(\) if not any\(f in keys\[i\] for f in forced\)\}/);
 });

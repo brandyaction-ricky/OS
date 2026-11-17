@@ -156,11 +156,15 @@ const runSchema = z.object({
       expiresAt: z.string().datetime().optional(), storyboardAt: z.string().max(40).optional(), path: z.string().optional(), code: z.string().max(80).optional() }).strict().optional(),
     /** 바뀐 장면만 (요청 3번): scenes whose cells came from the sheets of `from` ([now, then] storyboard numbers); its screen check carries them. */
     kept: z.array(z.tuple([z.number().int().min(1).max(400), z.number().int().min(1).max(400)])).max(600).optional(),
-    from: z.object({ runId: z.string().uuid(), at: z.string().datetime() }).strict().optional() }).strict().optional(),
+    from: z.object({ runId: z.string().uuid(), at: z.string().datetime() }).strict().optional(),
+    /** Photo files the render PC drew as a gray 「사진 자리」 (it could not fetch them); a later preparation draws their scenes again. */
+    photosMissing: z.array(z.string().max(200)).max(200).optional() }).strict().optional(),
   // 바뀐 장면만 (요청 3번, 2026-11-17): the sheets this video had before a new ③ (this run's before a voice fix or the 렌더 전 관문's
   // round, or the earlier run that lent its storyboard) — the next ③ draws and checks only the scenes that differ from them.
   lastPrep: z.object({ runId: z.string().uuid(), at: z.string().datetime(), engine: engineFp, sheets: z.array(z.string()).min(1).max(60), storyboardPath: z.string(),
-    lines: z.array(z.string()).max(60) }).strict().optional(),
+    lines: z.array(z.string()).max(60),
+    /** Where each photo file came from then (our upload or a listed photo's address) and those drawn as 「사진 자리」 (④ 이어 쓰기, 2026-11-17). */
+    photos: z.record(z.string().max(200), z.string().max(2000)).optional(), missing: z.array(z.string().max(200)).max(200).optional() }).strict().optional(),
   // Stage 4: Logan's 720p clips (opening + reel, each metaphor), his OK, then the full render, mix and handouts.
   clips: z.object({ items: z.array(z.object({ name: z.string(), label: z.string(), path: z.string() }).strict()), at: z.string().datetime(), used: materialsSchema.optional(),
     engine: engineFp.optional() }).strict().optional(),
@@ -1075,13 +1079,24 @@ function prepRef(runId: string, run: MyinRun): MyinRun["lastPrep"] {
   if (!prepared?.cells || !prepared.sheets.length || !prepared.engine || prepared.storyboardPath || !run.storyboard) return undefined;
   if ((prepared.used?.storyboard ?? run.storyboard.at) !== run.storyboard.at) return undefined;
   return { runId, at: prepared.at, engine: prepared.engine, sheets: prepared.sheets.slice(0, 60), storyboardPath: run.storyboard.path,
-    lines: prepared.misses.filter((line) => /^\[장면 \d+\] (빈 화면|그리기 오류)/.test(line)).slice(0, 60) };
+    lines: prepared.misses.filter((line) => /^\[장면 \d+\] (빈 화면|그리기 오류)/.test(line)).slice(0, 60),
+    photos: photoKeys(run), missing: (prepared.photosMissing ?? []).slice(0, 200) };
+}
+
+/** Where each photo file comes from: our upload (its path) or the listed photo's address; one that changes is drawn again (④ 이어 쓰기). */
+function photoKeys(run: MyinRun): Record<string, string> {
+  return Object.fromEntries([...(run.storyboard?.assets ?? []).map((asset) => [asset.file, asset.url] as const),
+    ...Object.entries(run.ours ?? {}).map(([file, image]) => [file, image.path] as const)].slice(0, 200));
 }
 
 /** The sheets a ③ starts from, as the render PC takes them: the storyboard they show, where to fetch them, their check's lines. */
 async function priorSheets(service: Service, run: MyinRun, prior: NonNullable<MyinRun["lastPrep"]>) {
   const story = await storyboardJson(service, { ...run, storyboard: { ...run.storyboard!, path: prior.storyboardPath } });
-  return { storyboard: await renderStory(story), sheets: await Promise.all(prior.sheets.map((path) => sign(service, SHEET_BUCKET, path))), lines: prior.lines };
+  // A photo whose source changed since (our image uploaded or swapped) or that was a 「사진 자리」 then: its scenes are drawn again.
+  const now = photoKeys(run), then = prior.photos;
+  const redraw = then ? [...new Set([...Object.keys(now), ...Object.keys(then)])].filter((file) => now[file] !== then[file]) : Object.keys(now);
+  return { storyboard: await renderStory(story), sheets: await Promise.all(prior.sheets.map((path) => sign(service, SHEET_BUCKET, path))), lines: prior.lines,
+    redraw: [...new Set([...redraw, ...prior.missing ?? []])].slice(0, 200) };
 }
 
 /** GPT 화면 검사 on or off for this video's next 점검 시트 (11-09); the button in the card still checks by hand. */
@@ -1105,7 +1120,9 @@ async function beginPrep(service: Service, record: OsRecord, run: MyinRun, by: s
     const kept = run.cta?.find((p) => p.index === index && p.textHash === sha(c.line));
     return kept && (kept.path || !run.localFinish) ? kept : { index, textHash: sha(c.line), status: run.voiceOn && !run.localFinish ? "ready" as const : "pending" as const };
   });
-  const next: MyinRun = { ...run, assets, cta, attempts: 0 }; delete next.prepared; delete next.lastError; delete next.lease;
+  // ④ 이어 쓰기 (2026-11-17): the sheets ③ (or the ④ before) drew; only scenes that differ or whose photo changed are drawn and checked again.
+  const before = prepRef(record.id, run);
+  const next: MyinRun = { ...run, assets, cta, attempts: 0, ...(before ? { lastPrep: before } : {}) }; delete next.prepared; delete next.lastError; delete next.lease;
   return save(service, record, "backlog", cta.every((c) => c.status === "ready") ? "prep_pending" : "cta_pending", next);
 }
 
@@ -1427,7 +1444,7 @@ export async function claimMyinPrep(service: Service = createServiceSupabase(), 
     const { data: bundle } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).createSignedUploadUrl(prepBundlePath(record, run, lease.token), { upsert: true });
     if (!bundle) throw new ApiError(503, "MYIN_SIGN_FAILED", "결과 업로드 주소를 만들지 못했습니다.");
     // 바뀐 장면만 (요청 3번): the sheets before, drawn by the same engine; without them (or when they cannot be read) every scene is drawn.
-    const prior = draft && run.lastPrep && run.lastPrep.engine === lease.engine ? run.lastPrep : undefined;
+    const prior = run.lastPrep && run.lastPrep.engine === lease.engine ? run.lastPrep : undefined;
     const previous = prior ? await priorSheets(service, run, prior).catch(() => null) : null;
     return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), draft, placeholders, ...(previous ? { previous } : {}), storyboard: await renderStory(story), assets, cta, ...(cta.some((c) => !c.url) ? { fishVoice: fishVoice(run) } : {}), siteCapture: story.scenes.some((sc) => sc.type === "site_ad"),
       sheetUploadUrls: sheetUploads, bundleUploadUrl: bundle.signedUrl, ...(owner ? { seed: await localSeed(service, run) } : await seedFor(service, run)), ...await subtitlesFor(service, run), ...styleFor(run) };
@@ -1455,7 +1472,8 @@ export async function completeMyinPrep(input: { runId: string; lease: string }, 
   if (!data) throw new ApiError(409, "MYIN_BUNDLE_MISSING", "준비 결과 파일을 찾지 못했습니다.");
   const bundle = z.object({ misses: z.array(z.string()), sheets: z.number().int().min(0), musicCredits: z.array(z.string()).default([]),
     storyboard: z.record(z.unknown()).optional(), soundReport: z.string().optional(), cells: z.array(z.number().int().min(1).max(400)).max(600).nullish(),
-    kept: z.array(z.tuple([z.number().int().min(1).max(400), z.number().int().min(1).max(400)])).max(600).optional() }).passthrough().parse(JSON.parse(await data.text()));
+    kept: z.array(z.tuple([z.number().int().min(1).max(400), z.number().int().min(1).max(400)])).max(600).optional(),
+    missingPhotos: z.array(z.string().max(200)).max(200).optional() }).passthrough().parse(JSON.parse(await data.text()));
   const draft = !run.clipsReview;
   let { storyboard, sound } = run;
   if (draft && bundle.storyboard) {
@@ -1478,6 +1496,7 @@ export async function completeMyinPrep(input: { runId: string; lease: string }, 
   if (!draft) { const standIns = ourStandIns(run, myinPhotoFolders(await storyboardJson(service, run))); if (standIns.length) next.prepared!.standIns = standIns.slice(0, 60); }
   next.prepared!.used = materials(next);
   if (bundle.kept?.length && run.lastPrep) { next.prepared!.kept = bundle.kept; next.prepared!.from = { runId: run.lastPrep.runId, at: run.lastPrep.at }; }
+  if (bundle.missingPhotos?.length) next.prepared!.photosMissing = bundle.missingPhotos;
   delete next.lease; delete next.lastError; delete next.lastPrep;
   if (draft) { delete next.clips; delete next.stills; delete next.clipsReview; retireFinal(next); }
   if (!next.sound) delete next.sound;

@@ -7,7 +7,8 @@ drawn on the video's clock, just before its scene ends, and labelled with its st
 With an older storyboard and its sheets, both storyboards are resolved with the engine's load(); a scene resolved alike (same pieces,
 same times) keeps its cell and only the others are drawn. Same grid as preview(): 3 × 4 cells of 640×360 (270×480 vertical).
 
-  cd <work>/tools/myin_pipeline && python myin_redraw.py <video job> <old storyboard file | -> <old sheets dir | -> <out dir>
+  cd <work>/tools/myin_pipeline && python myin_redraw.py <video job> <old storyboard file | -> <old sheets dir | -> <out dir> [files.json]
+  (files.json: photo file names whose picture changed since the old sheets — a scene that names one is drawn again, ④ 이어 쓰기 2026-11-17)
   (the preview's environment: STORY = the storyboard now, both files in the video's folder; SRC, PYTHONPATH with the diagram folder,
   MYIN_FONT_DIR, CHROME_PATH)
 
@@ -56,7 +57,10 @@ def main():
         try: old_numbers = numbers(before, old_st, len(json.load(open(os.path.join(old_wd, old_story), encoding="utf-8"))["scenes"]))
         except Exception: old_numbers = None
     wd, scenes, st = R.load(job)
-    keep = same([key(s) for s in before], [key(s) for s in scenes])
+    keys = [key(s) for s in scenes]
+    keep = same([key(s) for s in before], keys)
+    forced = json.load(open(sys.argv[5], encoding="utf-8")) if len(sys.argv) > 5 else []
+    if forced: keep = {i: k for i, k in keep.items() if not any(f in keys[i] for f in forced)}
     tw, th = (640, 360) if M.W >= M.H else (270, 480)
     sheets = {}
 
