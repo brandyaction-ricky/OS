@@ -18,7 +18,7 @@ import { createServiceSupabase } from "@/lib/supabase/server";
 import { storedZip } from "@/lib/cardnews/zip";
 import { IMAGE_FORMATS, IMAGE_FORMAT_IDS, isImageFormat, isWarehouseFormat } from "@/lib/image-creative/formats";
 
-import { isReferenceLayout, type ReferenceLayout, canSaveImageBrief, confirmReferenceCopy, saveReferenceCopyDraft, createImageBatch, emptyImageCreative, sameImageBrief, productionBrief, imageBriefProblems, imageVariantProblems, imageCreativePrompt, ImageCreativeError, normalizeImageRequest, reviseImageDesign, applyImagePromptEdit, isImageDesign,
+import { isReferenceLayout, type ReferenceLayout, canSaveImageBrief, confirmReferenceCopy, attachReferencePhoto, saveReferenceCopyDraft, createImageBatch, emptyImageCreative, sameImageBrief, productionBrief, imageBriefProblems, imageVariantProblems, imageCreativePrompt, ImageCreativeError, normalizeImageRequest, reviseImageDesign, applyImagePromptEdit, isImageDesign,
   imageExperimentSummary, recordImageWinner, selectedImageResults, approveImageFormat, startImageCopyBatch, formatApprovalKey, reviewImageBatch, returnImageReview, type ApprovalStamp,
   type ImageBrief, type ImageDesign, type ImageFormatPlan, type ImageCreativeState, type ImageAsset, type ImageBatchRequest, type ImageBatchResult, type CreativeVariant } from "@/lib/image-creative/model";
 import { imageBriefSchema, imageDirectionSchema, appealsPrompt, parseAppealOptions, selectedReferencePlan, conceptsPrompt, parseConcepts, sceneFormatCatalog, scenePlanPrompt, parseScenePlan, formatItemsSchema, appealSchema } from "@/lib/image-creative/direction";
@@ -63,6 +63,7 @@ export const imagePatchSchema = z.discriminatedUnion("action", [
   referencePlan.extend({action:z.literal("select-appeals"),appeals:z.array(appealSchema).min(1).max(20)}).strict(),
   z.object({action:z.literal("save-reference-copy-draft"),version,copies:referenceCopies}).strict(),
   z.object({action:z.literal("confirm-reference-copy"),version,batchId:z.string().min(1).max(100),copies:referenceCopies}).strict(),
+  z.object({action:z.literal("attach-reference-photo"),version,batchId:z.string().min(1).max(100),assetPath:z.string().min(1).max(200)}).strict(),
   formatPlan.extend({ action: z.literal("recommend-formats"), version, brief: imageBriefSchema }).strict(),
   z.object({ action: z.literal("plan-scene"), version, direction:imageDirectionSchema, replan:z.literal(true).optional() }).strict(),
   z.object({ action: z.literal("approve-and-generate"), version, request: imageRequestSchema }).strict(),
@@ -451,6 +452,13 @@ export async function patchImageProject(actor: RequestActor, record: OsRecord, i
   if (input.action === "save-reference-copy-draft") {
     const state = saveReferenceCopyDraft(meta.state,input.copies);
     if (state === meta.state) return record;
+    if (record.version !== input.version) throw new ApiError(409,"IMAGE_VERSION_CONFLICT","다른 곳에서 바뀌었어요. 새로 불러와 주세요.");
+    return saveImageMeta(createServiceSupabase(),record,{...meta,state});
+  }
+  if (input.action === "attach-reference-photo") {
+    const photo = meta.assets.find(row => row.path === input.assetPath);
+    if (!photo || !ownsImageAsset(record.id, photo.path)) throw new ApiError(422,"IMAGE_ASSET_NOT_OWNED","이 프로젝트에 올린 사진을 골라 주세요.");
+    const state = attachReferencePhoto(meta.state,input.batchId,{path:photo.path,w:photo.w,h:photo.h});
     if (record.version !== input.version) throw new ApiError(409,"IMAGE_VERSION_CONFLICT","다른 곳에서 바뀌었어요. 새로 불러와 주세요.");
     return saveImageMeta(createServiceSupabase(),record,{...meta,state});
   }

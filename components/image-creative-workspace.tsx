@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "./session-provider";
 import { apiRequest } from "@/lib/api-client";
 import { CREATIVE_SIZES, IMAGE_FORMATS, IMAGE_FORMAT_IDS, WAREHOUSE_FORMAT_IDS, isImageFormat, isWarehouseFormat, recommendImageFormats, type ImageFormatId } from "@/lib/image-creative/formats";
-import { activeImageWinner, imageExperimentCandidateIds, imageExperimentSummary, latestImageExperimentBatch, recordImageWinner, approveImageFormat, formatApprovalKey, startImageCopyBatch, reviewImageBatch, returnImageReview, canSaveImageBrief, createImageBatch, reviseImageDesign, applyImagePromptEdit, type ImageDesign, emptyImageCreative, productionBrief, imageCreativePrompt, imageBriefProblems, type ImageBatchRequest, type ImageCreativeState, type CreativeVariant, type ImageAsset } from "@/lib/image-creative/model";
+import { activeImageWinner, attachReferencePhoto, imageExperimentCandidateIds, imageExperimentSummary, latestImageExperimentBatch, recordImageWinner, approveImageFormat, formatApprovalKey, startImageCopyBatch, reviewImageBatch, returnImageReview, canSaveImageBrief, createImageBatch, reviseImageDesign, applyImagePromptEdit, type ImageDesign, emptyImageCreative, productionBrief, imageCreativePrompt, imageBriefProblems, type ImageBatchRequest, type ImageCreativeState, type CreativeVariant, type ImageAsset } from "@/lib/image-creative/model";
 import { LocalConnect, useLocalRender } from "./myin-local-render";
 import { GuidedImageCreative, type ImagePreviewProduct } from "./guided-image-creative";
 import { ImageReferenceSteps } from "./reference-image-creation";
@@ -302,6 +302,17 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
       if (demo) updateDemo(approveImageFormat(bundle.state,request,demoStamp()));
       else applyBundle(await patch({action:"approve-format",request}));
       setMessage("포맷을 승인했어요. 이 조건으로 카피를 준비할 수 있습니다.");
+    });
+  }
+  function attachPhoto(batchId:string,assetPath:string) {
+    void run(async () => {
+      if (!bundle) return;
+      if (demo) {
+        const photo=bundle.assets.find(a=>a.path===assetPath);
+        if (!photo) throw new Error("올린 사진을 다시 골라 주세요.");
+        updateDemo(attachReferencePhoto(bundle.state,batchId,{path:photo.path,w:photo.w,h:photo.h}));
+      } else applyBundle(await patch({action:"attach-reference-photo",batchId,assetPath}));
+      setMessage("사진을 넣었어요. 시안을 확인해 주세요.");
     });
   }
   function reviewBatch(batchId:string,step:ReviewStep,runId?:string) {
@@ -603,6 +614,7 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
           revisions={experiment && !batch.designRevision ? imageExperimentCandidateIds(saved,batch)
             .filter(id=>id !== batch.baseId && !batch.variantIds.includes(id)).flatMap(id=>saved.variants.find(v=>v.id===id) ?? []) : []}
           review={reviewBatch} returnReview={sendBack} edit={setEditingId} select={select} download={download}
+          attachPhoto={attachPhoto} uploadPhoto={file=>upload(file)}
           keepBlob={(id,blob)=>{if(blob)previewBlobs.current.set(id,blob);else previewBlobs.current.delete(id);}}/>;
           return showTools || index===saved.batches.length-1 || currentRound?.id===batch.id ? review :
             <details key={batch.id} className="ic-details"><summary>이전 시안 · {index+1}번째 묶음 ({batch.count}장){experiment && batch.winner ? " · 승리 소재 기록됨" : ""}</summary>{review}</details>;
