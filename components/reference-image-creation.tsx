@@ -68,6 +68,9 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
   const [warehouseFilter,setWarehouseFilter] = useState("approved");
   const [warehouseQuery,setWarehouseQuery] = useState("");
   const [failedReferences,setFailedReferences] = useState<string[]>([]);
+  const [galleryGroup,setGalleryGroup] = useState("");
+  const [galleryQuery,setGalleryQuery] = useState("");
+  const [galleryId,setGalleryId] = useState<string>();
   const referenceDialog = useRef<HTMLDialogElement>(null);
   const [referenceLayout,setReferenceLayout] = useState<ReferenceLayout>();
   const [detailAssetPath,setDetailAssetPath] = useState<string>();
@@ -136,13 +139,21 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
   const detail = needsDetail ? bundle?.assets.find(asset=>asset.path===detailAssetPath && asset.path!==referenceLayout?.source.path) : undefined;
   const original = bundle?.assets.find(a=>a.path===referenceLayout?.source.path);
   const hasWarehouseImage = Boolean(selectedEntry?.originalImageUrl || selectedEntry?.archivedThumbnail || selectedEntry?.thumbnail);
-  async function importWarehouseSource() {
-    if (!selectedEntry || referenceBusy) return;
+  // 레퍼런스 창고 gallery: one group at a time; a search looks through every group.
+  const galleryEntries = warehouse.catalog?.entries ?? [];
+  const galleryGroups = [...new Set(galleryEntries.map(entry=>entry.group))];
+  const shownGroup = galleryGroups.includes(galleryGroup) ? galleryGroup : galleryGroups[0] ?? "";
+  const galleryText = galleryQuery.trim().toLowerCase();
+  const galleryShown = galleryEntries.filter(entry=>galleryText ? `${entry.id} ${entry.name} ${entry.group}`.toLowerCase().includes(galleryText) : entry.group===shownGroup);
+  const galleryEntry = galleryEntries.find(entry=>entry.id===galleryId);
+  const imageOf = (entry:{archivedThumbnail?:string;originalImageUrl?:string;thumbnail:string}) => entry.archivedThumbnail || entry.originalImageUrl || entry.thumbnail;
+  async function importWarehouseSource(entry = selectedEntry) {
+    if (!entry || referenceBusy) return;
     setPreparing(true);setReferenceError("");
     try {
-      const file=await warehouseReferenceFile(selectedEntry);
+      const file=await warehouseReferenceFile(entry);
       await upload(file,async asset=>{
-        const layout=await prepareReferenceDesign(asset,selectedEntry.masterRecipe,brief.brand);
+        const layout=await prepareReferenceDesign(asset,entry.masterRecipe,brief.brand);
         setReferenceLayout(layout);setReferenceSize(undefined);setDetailAssetPath(undefined);setPicked("reference_image");
       });
     } catch (cause) {
@@ -284,6 +295,11 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
   const referenceReady=!!chosenRef && (custom
     ? isReferenceLayout(referenceLayout) && !brandIssue && (!needsDetail || !!detail) && (!referenceLayout.photo || (!!photo && photo.path!==referenceLayout.source.path))
     : !chosenRef.assetRequired || !!photo || (!demo && picked!=="report_crop"));
+  const referenceDialogView = <dialog ref={referenceDialog} className="ic-flow-reference-dialog" onClose={()=>setEnlargedReference(undefined)}>
+    <div><strong>{enlargedReference?.name}</strong><button className="secondary-button" type="button" onClick={()=>referenceDialog.current?.close()}>닫기</button></div>
+    {/* eslint-disable-next-line @next/next/no-img-element -- same original image at a larger size */}
+    {enlargedReference && <img src={enlargedReference.imageUrl} alt={`${enlargedReference.name} 원본 크게 보기`}/>}
+  </dialog>;
   return <><ImageReferenceSteps current={step}/>
     {step>0 && <ProductCanonNotice brief={brief} catalog={catalog} disabled={busy} onRecheck={bundle && sameImageBrief(brief,bundle.state.brief) ? recheckProduct : undefined}
       onReview={!approved && !batch ? ()=>setStep(0) : undefined}/>}
@@ -370,17 +386,47 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
       <div className="ic-row"><button type="button" className="primary-button" disabled={referenceBusy || !previewProductReady || !previewReference || !!uploadedPreview || !!(previewReferenceId && failedReferences.includes(previewReferenceId))}
         onClick={choosePreviewReference}>이 디자인으로 카피 {saved.appeals?.length ?? 0}개 제안받기</button>
         <button type="button" className="secondary-button" disabled={referenceBusy} onClick={backToAppeals}>소구점으로 돌아가기</button></div>
-      <dialog ref={referenceDialog} className="ic-flow-reference-dialog" onClose={()=>setEnlargedReference(undefined)}>
-        <div><strong>{enlargedReference?.name}</strong><button className="secondary-button" type="button" onClick={()=>referenceDialog.current?.close()}>닫기</button></div>
-        {/* eslint-disable-next-line @next/next/no-img-element -- same original image at a larger size */}
-        {enlargedReference && <img src={enlargedReference.imageUrl} alt={`${enlargedReference.name} 원본 크게 보기`}/>}
-      </dialog>
+      {referenceDialogView}
     </section>}
     {step===2 && saved?.items && !preview && <section className="panel panel-pad-lg ic-panel ic-guided-brief"><h2>레퍼런스 선택</h2>
       <p>원본 디자인을 가져올 광고를 고르세요.{mode==="appeal" && " 고른 디자인과 버튼 문구는 모든 안에 공통으로 적용됩니다."}</p>
       {!custom && warehouse.offline && <p className="ic-muted">오프라인 체험용 예시</p>}
       {!custom && warehouse.error && <p role="alert">{warehouse.error} <button type="button" className="secondary-button" onClick={()=>void warehouse.refresh().catch(()=>{})}>다시 읽기</button></p>}
       {!custom && !warehouse.catalog && !warehouse.error && <p role="status">OS 포맷 창고를 읽고 있어요.</p>}
+      {!custom && galleryEntries.length>0 && <div className="ic-flow-reference">
+        <h3>레퍼런스 창고에서 고르기</h3>
+        <div className="ic-flow-warehouse-toolbar">
+          <label className="ic-field">묶음<select className="field" value={shownGroup} disabled={!!galleryText} onChange={e=>setGalleryGroup(e.target.value)}>
+            {galleryGroups.map(group=><option key={group} value={group}>{group} · {galleryEntries.filter(entry=>entry.group===group).length}종</option>)}</select></label>
+          <label className="ic-field">레퍼런스 검색<input type="search" className="field" value={galleryQuery} placeholder="이름 또는 번호 · 모든 묶음에서 찾아요"
+            onChange={e=>setGalleryQuery(e.target.value)}/></label>
+        </div>
+        <div className="ic-flow-reference-grid" aria-label="레퍼런스 창고">
+          {galleryShown.map(entry=>{
+            const url=imageOf(entry), missing=!url || failedReferences.includes(entry.id), selected=entry.id===galleryId;
+            return <article className="ic-flow-reference-card" key={entry.id} data-selected={selected}>
+              <button className="ic-flow-reference-choice" type="button" disabled={referenceBusy || missing} aria-pressed={selected}
+                onClick={()=>{setGalleryId(entry.id);setReferenceError("");}}>
+                {/* eslint-disable-next-line @next/next/no-img-element -- the warehouse's own original, never a substitute */}
+                {!missing ? <img src={url} alt={`${entry.name} 원본 광고`} loading="lazy" onError={()=>setFailedReferences(old=>old.includes(entry.id)?old:[...old,entry.id])}/>
+                  : <span className="ic-flow-reference-missing">{url ? "이미지를 불러오지 못했어요" : "원본 이미지 등록 필요"}</span>}
+                <span><strong>{entry.id} · {entry.name}</strong><span>{selected ? "선택됨" : missing ? "선택 불가" : "선택"}</span></span>
+              </button>
+              <div className="ic-flow-reference-actions">
+                <button type="button" className="ic-flow-enlarge" disabled={missing} onClick={()=>{setEnlargedReference({name:entry.name,imageUrl:url,source:entry.source});referenceDialog.current?.showModal();}}>크게 보기</button>
+                {entry.source && <a className="ic-flow-enlarge" href={entry.source} target="_blank" rel="noreferrer">광고 출처</a>}
+              </div>
+            </article>;
+          })}
+        </div>
+        {!galleryShown.length && <p role="status">조건에 맞는 레퍼런스가 없어요. 검색어나 묶음을 바꿔 주세요.</p>}
+        {galleryEntry && <div className="ic-row"><button type="button" className="primary-button" disabled={referenceBusy} onClick={()=>void importWarehouseSource(galleryEntry)}>
+          {preparing ? "원본을 준비하고 있어요" : "이 디자인으로 시작하기"}</button>
+          <span className="ic-muted">{galleryEntry.id} · {galleryEntry.name} 원본에서 바꿀 자리를 자동으로 잡아요.</span></div>}
+        {galleryEntry && referenceError && <p role="alert">{referenceError}</p>}
+        {referenceDialogView}
+        <h3>다른 방법으로 만들기</h3>
+      </div>}
       <button type="button" className="secondary-button" disabled={referenceBusy} aria-pressed={custom}
         onClick={()=>{setReferenceError("");setPicked("reference_image");}}>새 레퍼런스 이미지 사용</button>
       {custom && <ReferenceLayoutEditor brand={brief.brand} onPreparing={setPreparing} layout={referenceLayout} onChange={next=>{

@@ -399,3 +399,35 @@ for (const source of ["직접 업로드", "창고 보관본"] as const) {
     expect(bundle.jobs).toHaveLength(0);
   });
 }
+
+test("레퍼런스 창고에서 카드를 골라 시작하면 원본을 가져와 바꿀 자리를 잡고, 돌아가면 창고가 다시 보인다", async ({page}) => {
+  const card = {keep:"구도를 유지하세요.",slots:"문구",source:"",version:1,documentId:""};
+  const samples = [{...card,id:"R01",name:"첫 묶음 원본",group:"대표 선택 18종",thumbnail:"/image-format-test/master.jpg"},
+    {...card,id:"R02",name:"이미지 없는 원본",group:"대표 선택 18종",thumbnail:""},
+    {...card,id:"D01",name:"다른 묶음 원본",group:"비교·순서·도식",thumbnail:"/image-format-test/master.jpg"}];
+  await page.route(/\/api\/(dev\/image-ad-references|v1\/content\/image-creatives\/references(?:\/examples)?)$/,route=>route.fulfill({json:{entries:samples}}));
+  await page.goto("/content/images");
+  await page.getByRole("button",{name:"광고 한 장 만들기",exact:true}).click();
+  const products=page.getByRole("combobox",{name:"상품 선택",exact:true});
+  const sample=products.locator('option[value="__demo"], option[value="myin-free"]').first();
+  await expect(sample).toBeAttached();
+  await products.selectOption((await sample.getAttribute("value"))!);
+  await page.getByRole("button",{name:"소구점 선택하기",exact:true}).click();
+  await page.getByLabel("소구점 직접 작성",{exact:true}).fill("직접 만든 컵을 선물하기");
+  await page.getByRole("button",{name:"레퍼런스 선택하기",exact:true}).click();
+  await expect(page.getByRole("heading",{name:"레퍼런스 창고에서 고르기",exact:true})).toBeVisible();
+  const cards=page.locator('[aria-label="레퍼런스 창고"] article');
+  await expect(cards).toHaveCount(2);
+  await expect(cards.nth(1).getByText("원본 이미지 등록 필요")).toBeVisible();
+  await expect(page.getByRole("button",{name:"이 디자인으로 시작하기"})).toHaveCount(0);
+  await page.getByLabel("레퍼런스 검색").fill("다른 묶음");
+  await expect(cards).toHaveCount(1);
+  await expect(page.getByLabel("묶음")).toBeDisabled();
+  await page.getByLabel("레퍼런스 검색").fill("");
+  await cards.first().locator("button.ic-flow-reference-choice").click();
+  await page.getByRole("button",{name:"이 디자인으로 시작하기"}).click();
+  await expect(page.getByRole("combobox",{name:"구도",exact:true})).toBeVisible();
+  await expect(page.getByRole("heading",{name:"레퍼런스 창고에서 고르기",exact:true})).toHaveCount(0);
+  await page.getByRole("button",{name:"디자인 견본으로 돌아가기"}).click();
+  await expect(page.getByRole("heading",{name:"레퍼런스 창고에서 고르기",exact:true})).toBeVisible();
+});
