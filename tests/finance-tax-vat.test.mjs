@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { asideHometaxInstruction, hometaxDate, hometaxWon, matchDeposit, matchInvoices, parseHometaxRows, revenueBySource } from "../lib/finance/tax-invoices.ts";
-import { COMPANY, paymentEvidence, scopeLabel, splitVat, vatCsv, vatLines, vatPeriod, vatRows } from "../lib/finance/vat.ts";
+import { cardsHref, COMPANY, paymentEvidence, scopeLabel, splitVat, vatCsv, vatLines, vatPeriod, vatRows } from "../lib/finance/vat.ts";
 
 const header = ["작성일자", "승인번호", "발급일자", "전송일자", "공급자사업자등록번호", "종사업장번호", "상호", "대표자명", "주소", "공급받는자사업자등록번호", "종사업장번호", "상호", "대표자명", "주소", "합계금액", "공급가액", "세액", "전자세금계산서분류", "전자세금계산서종류", "발급유형", "비고", "영수/청구 구분", "공급자 이메일", "공급받는자 이메일1", "공급받는자 이메일2", "품목일자", "품목명"];
 const row = (approval, written, total, supply, tax, options = {}) => [written, approval, options.issued ?? written, written, "123-45-67890", "", "브랜디액션", "대표", "주소", options.buyerNo ?? "222-33-44444", "", options.buyer ?? "고객사", "", "", total, supply, tax, options.cls ?? "세금계산서", "일반", "", "", "청구", "", "a@b.c", "", written, options.item ?? "강의"];
@@ -163,4 +163,14 @@ test("tax invoice tables and routes stay behind finance access; Aside never hand
     assert.match(text, /담당자가 「저장」을 누르게 합니다/);
   }
   for (const panel of ["tax-invoice-panel", "purchase-invoice-panel"]) assert.match(readFileSync(`components/finance/${panel}.tsx`, "utf8"), /asideHometaxInstruction\(from, to/, panel);
+});
+
+test("카드지출에서 정하기 opens 카드지출 on the same 신고기간 and 사업자", () => {
+  const href = (key, scope, today = "2026-11-17") => cardsHref(vatPeriod(key), scope, today);
+  assert.equal(href("2026-Q3", "all"), "/finance/cards?period=custom&month=2026-07&from=2026-07-01&to=2026-09-30");
+  assert.equal(href("2026-07", "all"), "/finance/cards?period=month&month=2026-07");
+  assert.equal(href("2026-H2", "myin"), "/finance/cards?period=custom&month=2026-07&from=2026-07-01&to=2026-11-17&biz=myin");
+  assert.equal(href("2026-Q4", "edu"), "/finance/cards?period=custom&month=2026-10&from=2026-10-01&to=2026-11-17&biz=edu");
+  // 카드지출 has no 브랜디액션 chip, so that scope opens on every business rather than a wrong one.
+  assert.equal(href("2026-Q3", "ba"), "/finance/cards?period=custom&month=2026-07&from=2026-07-01&to=2026-09-30");
 });

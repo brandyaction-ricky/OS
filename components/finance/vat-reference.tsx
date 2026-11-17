@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { apiRequest } from "@/lib/api-client";
 import { TAX_BIZ, type Biz } from "@/lib/finance/tax-invoices";
-import { COMPANY, EVIDENCE_LABEL, scopeLabel, vatCsv, type VatLine, type VatPeriod, type VatRow, type VatScope } from "@/lib/finance/vat";
+import { cardsHref, COMPANY, EVIDENCE_LABEL, scopeLabel, vatCsv, type VatLine, type VatPeriod, type VatRow, type VatScope } from "@/lib/finance/vat";
 import { payableLabel, type VatPurchase } from "@/lib/finance/vat-payable";
 import { PurchaseInvoicePanel, PurchaseNotReady } from "./purchase-invoice-panel";
 
@@ -33,7 +34,7 @@ const labelOf = (key: string) => {
 };
 
 /** 예상 납부세액 = 매출 합계 세액 (A) − 매입 합계 세액 (B), with the evidence behind (B). */
-export function VatPayableSummary({ salesTax, purchase, payable }: { salesTax: number; purchase: VatPurchase; payable: number }) {
+export function VatPayableSummary({ salesTax, purchase, payable, cards = "/finance/cards" }: { salesTax: number; purchase: VatPurchase; payable: number; cards?: string }) {
   return <div className="fin-card fin-gap fin-payable">
     <div className="fin-payable-top"><span className="fin-l">예상 납부세액</span><span className="fin-payable-v">{won(payable)}원</span><span className="status-pill" data-tone={payable < 0 ? "ok" : "progress"}>{payableLabel(payable)}</span></div>
     <div className="fin-tbl-wrap fin-payable-tbl"><table className="fin-tbl">
@@ -49,7 +50,7 @@ export function VatPayableSummary({ salesTax, purchase, payable }: { salesTax: n
     <p className="fin-note">참고용 추정이에요 · 세액 공제와 예정고지 세액은 반영하지 않았어요 · 매입 계산서는 모두 공제된다고 보았어요 · 카드는 「공제 예상」으로 분류한 사용액 합계의 1/11을 세액으로 추정했어요.
       {purchase.unassigned.count ? ` 사업 구분이 공통이거나 없는 「공제 예상」 카드 ${won(purchase.unassigned.count)}건 (${won(purchase.unassigned.amount)}원)은 어느 사업자 몫인지 알 수 없어 넣지 않았어요.` : ""}</p>
     {purchase.invoice.count ? null : <p className="fin-callout fin-info" role="status">이 기간에 올린 매입 세금계산서가 없어요. 아래 「매입 세금계산서 (홈택스)」에 올리면 매입세액에 반영돼요.</p>}
-    {purchase.undecided.count ? <div className="fin-callout fin-warn"><b>확인 필요</b><span className="fin-grow">공제 여부를 아직 정하지 않은 「판단 필요」 카드가 {won(purchase.undecided.count)}건 ({won(purchase.undecided.amount)}원) 있어요. 공제로 정하면 매입세액이 늘어 예상 납부세액이 줄 수 있어요.</span><Link href="/finance/cards" className="secondary-button compact">카드지출에서 정하기</Link></div> : null}
+    {purchase.undecided.count ? <div className="fin-callout fin-warn"><b>확인 필요</b><span className="fin-grow">공제 여부를 아직 정하지 않은 「판단 필요」 카드가 {won(purchase.undecided.count)}건 ({won(purchase.undecided.amount)}원) 있어요. 공제로 정하면 매입세액이 늘어 예상 납부세액이 줄 수 있어요.</span><Link href={cards} className="secondary-button compact">카드지출에서 정하기</Link></div> : null}
   </div>;
 }
 
@@ -65,8 +66,11 @@ export function VatReferenceDemo() {
 
 export function VatReference({ token }: { token: string | null }) {
   const options = periodOptions();
-  const [period, setPeriod] = useState(options.quarters[0]);
-  const [biz, setBiz] = useState<VatScope>(COMPANY);
+  // The choice lives in the address too, so 뒤로 from 카드지출 comes back to the same 기간 and 사업자.
+  const search = useSearchParams();
+  const [period, setPeriod] = useState(() => { const key = search.get("period") ?? ""; return [...options.quarters, ...options.halves, ...options.months].includes(key) ? key : options.quarters[0]; });
+  const [biz, setBiz] = useState<VatScope>(() => SCOPES.find(key => key === search.get("biz")) ?? COMPANY);
+  useEffect(() => { window.history.replaceState(window.history.state, "", `/finance/vat?${new URLSearchParams({ period, biz })}`); }, [period, biz]);
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -131,7 +135,8 @@ export function VatReference({ token }: { token: string | null }) {
     {error ? <p className="fin-callout fin-bad" role="alert">{error}</p> : null}
     {!result && !error ? <p className="fin-small fin-muted" role="status">자료를 모으는 중이에요…</p> : null}
     {result ? <>
-      {result.purchase.available && result.payable !== null ? <VatPayableSummary salesTax={result.salesTax} purchase={result.purchase} payable={result.payable} /> : null}
+      {result.purchase.available && result.payable !== null ? <VatPayableSummary salesTax={result.salesTax} purchase={result.purchase} payable={result.payable}
+        cards={cardsHref(result.period, biz, new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" }))} /> : null}
       {result.review ? <div className="fin-callout fin-warn"><b>확인 필요</b><span className="fin-grow">같은 매출인지 확인하지 않은 계산서가 {result.review}건 있어요. 확인 전에는 결제·외부 매출 줄과 계산서 줄에 둘 다 들어갈 수 있어요.</span><Link href="/finance/sales" className="secondary-button compact">매출내역에서 확인</Link></div> : null}
       <div className="fin-tiles fin-t4 fin-gap">
         <div className="fin-tile"><span className="fin-l">공급가액</span><span className="fin-v">{won(sum("supply"))}원</span></div>

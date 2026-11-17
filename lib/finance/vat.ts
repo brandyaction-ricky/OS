@@ -37,7 +37,15 @@ export function vatPeriod(key: string): VatPeriod | null {
   return null;
 }
 
-export type VatPayment = { payment_key: string; biz: string; method: string | null; amount: number; paid_date: string | null; order_name?: string | null };
+/** 카드지출 for the same 신고기간: a month opens as that month, a quarter or half as its dates up to today. 카드지출 has no 브랜디액션 filter, so that scope opens on every business. */
+export function cardsHref(period: VatPeriod, scope: VatScope, today: string) {
+  const q = new URLSearchParams(period.kind === "month" ? { period: "month", month: period.key }
+    : { period: "custom", month: period.from.slice(0, 7), from: period.from, to: period.to < today ? period.to : today });
+  if (scope !== COMPANY && scope !== "ba") q.set("biz", scope);
+  return `/finance/cards?${q}`;
+}
+
+export type VatPayment ={ payment_key: string; biz: string; method: string | null; amount: number; paid_date: string | null; order_name?: string | null };
 export type VatCancel = { payment_key: string; cancel_amount: number; cancel_date: string };
 export type VatInvoice = { id: string; biz: string; approval_no: string; invoice_class: "tax" | "exempt"; is_modified: boolean; written_date: string; issued_date: string | null; buyer_name: string; supply_amount: number; tax_amount: number; total_amount: number };
 export type VatExternal = { id: string; biz: string; title: string; revenue_date: string; supply: number | null; vat: number | null };
