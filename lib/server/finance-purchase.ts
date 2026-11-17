@@ -69,7 +69,7 @@ export async function vatWithPurchase(actor: RequestActor, input: z.infer<typeof
   if (!listed) return { ...reference, salesTax, purchase: { available: false as const }, payable: null };
   const db = actor.supabase;
   const [cards, rules] = await Promise.all([
-    all<Record<string, unknown>>((a, b) => db.from("os_fin_card_transactions").select("id,used_date,merchant,amount_krw,canceled,manual_biz,manual_vat,archived_at").is("archived_at", null).eq("canceled", false).gte("used_date", from).lte("used_date", to).order("id").range(a, b)),
+    all<Record<string, unknown>>((a, b) => db.from("os_fin_card_transactions").select("id,used_date,merchant,amount_krw,currency,canceled,manual_biz,manual_vat,archived_at").is("archived_at", null).eq("canceled", false).gte("used_date", from).lte("used_date", to).order("id").range(a, b)),
     all<Record<string, unknown>>((a, b) => db.from("os_fin_card_rules").select("id,keywords,biz,vat_type,enabled,sort_order,archived_at").is("archived_at", null).order("id").range(a, b)),
   ]);
   const purchase = vatPurchase({ biz: input.biz, from, to, invoices: listed.invoices, cards, rules });
