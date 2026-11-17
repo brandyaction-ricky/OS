@@ -110,7 +110,8 @@ def timing(scenes, plan, idx, words, end, out_time, decks):
         j, raw = idx[i], plan[idx[i]]
         if j <= decks or sc["type"] in FRAME: continue
         ta = said(raw.get("at"), prev) if raw.get("at") else None
-        if ta is not None and sc["t0"] - ta > LATE:
+        # 앞 장면의 멈춤을 문장 끝에 두려고 엔진이 이 장면을 미룬 만큼(_pushed, 2026-11-17)은 늦은 것으로 세지 않는다.
+        if ta is not None and sc["t0"] - sc.get("_pushed", 0) - ta > LATE:
             out.append((j, "late", f"말보다 화면이 늦게 바뀜: 말 {ta:.1f}초 → 화면 {sc['t0']:.1f}초({sc['t0'] - ta:.1f}초 늦음)"))
         prev = ta if ta is not None else sc["t0"]
         ft = first_shown(sc)
@@ -155,7 +156,11 @@ def main():
     lines += [f"[장면 {drawn(s - 1)}] 그리기 오류: {', '.join(str(f['t']) + '초' for f in errors if f['scene'] == s)} ({next(f['error'] for f in errors if f['scene'] == s)})"
               for s in sorted({f["scene"] for f in errors})]
     lines += [f"[장면 {no(j)}] {text}" for j, _, text in timed]
+    # 멈춤이 문장 중간 (2026-11-17, 영상 피드백 73): 엔진이 원고의 문장 끝에 놓지 못한 멈춤(render_myin.HOLD_PROBLEMS — 그 엔진부터).
+    holds = [(n, t, why) for n, t, why in getattr(R, "HOLD_PROBLEMS", [])]
+    lines += [f"[장면 {drawn(n)}] 멈춤이 문장 중간: {t}초 — {why}. 다음 장면 문구를 문장 첫 말로" for n, t, why in holds]
     json.dump({"scenes": len(scenes), "points": points, "flat": flat, "errors": errors, "timing": [{"scene": no(j), "kind": kind, "text": text} for j, kind, text in timed],
+               "holds": [{"scene": drawn(n), "t": t, "why": why} for n, t, why in holds],
                "lines": lines, "sec": round(time.time() - t0, 1)}, open(out, "w", encoding="utf-8"), ensure_ascii=False)
     print(f"빈 화면 · 그리기 오류 · 시간 검사: 장면 {len(scenes)}개 × {points}순간 · 빈 화면 {len({f['scene'] for f in flat})}장면 · 오류 {len({f['scene'] for f in errors})}장면"
           f" · 시간 {len(timed)}곳 · {round(time.time() - t0, 1)}초", flush=True)

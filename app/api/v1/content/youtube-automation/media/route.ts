@@ -5,7 +5,7 @@ import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { safeSecretMatch } from "@/lib/server/auth";
 import { buildYoutubeRenderBrief, claimYoutubeRender, completeYoutubeRender, failYoutubeRender } from "@/lib/server/youtube-render-run";
-import { MYIN_VOICE_PARTS, myinRunReplaced, claimMyinBreath, claimMyinClips, claimMyinCta, claimMyinFinal, claimMyinPrep, claimMyinWords, completeMyinBreath, completeMyinClips, completeMyinCta, completeMyinFinal, completeMyinPrep, completeMyinVoiceBackfill, completeMyinWords, failMyinPrep, failMyinStage, failMyinWords, claimMyinRedraw, completeMyinRedraw, failMyinRedraw, redrawResultSchema, myinStillsUpload, myinVoiceBackfill, stillFiles, stills } from "@/lib/server/myin-run";
+import { MYIN_VOICE_PARTS, myinRunReplaced, claimMyinTakes, completeMyinTakes, failMyinTakes, myinTakeFile, myinTakesUpload, claimMyinBreath, claimMyinClips, claimMyinCta, claimMyinFinal, claimMyinPrep, claimMyinWords, completeMyinBreath, completeMyinClips, completeMyinCta, completeMyinFinal, completeMyinPrep, completeMyinVoiceBackfill, completeMyinWords, failMyinPrep, failMyinStage, failMyinWords, claimMyinRedraw, completeMyinRedraw, failMyinRedraw, redrawResultSchema, myinStillsUpload, myinVoiceBackfill, stillFiles, stills } from "@/lib/server/myin-run";
 import { RENDER_PC_NAME, renderPcSignalSchema, saveRenderPcSignal } from "@/lib/server/youtube-render-pc";
 import { assetsReadySchema, assetsUploadSchema, assetsUploadUrls, engineReadySchema, engineUploadSchema, engineUploadUrls, saveAssetsManifest, saveEngineManifest } from "@/lib/server/render-engine";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
@@ -57,6 +57,12 @@ const inputSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("myin_redraw_claim"), short: z.literal(true).optional(), pc }).strict(),
   z.object({ action: z.literal("myin_redraw_complete"), runId: z.string().uuid(), lease: z.string().uuid(), ...redrawResultSchema }).strict(),
   z.object({ action: z.literal("myin_redraw_fail"), runId: z.string().uuid(), lease: z.string().uuid(), code: z.string().max(80) }).strict(),
+  // 테이크 고르기 (요청 2번, 2026-11-17): the render PC that made a voice puts one sentence's takes up to listen to.
+  z.object({ action: z.literal("myin_takes_claim"), pc }).strict(),
+  z.object({ action: z.literal("myin_takes_upload"), runId: z.string().uuid(), lease: z.string().uuid(), files: z.array(myinTakeFile).min(1).max(12) }).strict(),
+  z.object({ action: z.literal("myin_takes_complete"), runId: z.string().uuid(), lease: z.string().uuid(),
+    takes: z.array(z.object({ name: z.string().regex(/^p\d{2}_s\d{2}_\d{1,3}_t\.wav$/), file: myinTakeFile, current: z.boolean() }).strict()).min(1).max(12) }).strict(),
+  z.object({ action: z.literal("myin_takes_fail"), runId: z.string().uuid(), lease: z.string().uuid(), code: z.string().max(80) }).strict(),
   // Stage 4: Logan's clips, then the full render, mix and handouts.
   // stills: this worker's engine draws a longform's scene pictures (장면 그림 v0, 2026-11-09) in place of the clips.
   z.object({ action: z.literal("myin_clips_claim"), short: z.literal(true).optional(), pc, stills: z.literal(true).optional() }).strict(),
@@ -112,6 +118,10 @@ export async function POST(request: Request) {
       : input.action === "myin_redraw_claim" ? await claimMyinRedraw(undefined, undefined, Boolean(input.short), input.pc)
       : input.action === "myin_redraw_complete" ? await completeMyinRedraw(input)
       : input.action === "myin_redraw_fail" ? await failMyinRedraw(input)
+      : input.action === "myin_takes_claim" ? await claimMyinTakes(undefined, input.pc)
+      : input.action === "myin_takes_upload" ? await myinTakesUpload(input)
+      : input.action === "myin_takes_complete" ? await completeMyinTakes(input)
+      : input.action === "myin_takes_fail" ? await failMyinTakes(input)
       : input.action === "myin_clips_claim" ? await claimMyinClips(undefined, undefined, Boolean(input.short), input.pc, Boolean(input.stills))
       : input.action === "myin_stills_upload" ? await myinStillsUpload(input)
       : input.action === "myin_clips_complete" ? await completeMyinClips(input)

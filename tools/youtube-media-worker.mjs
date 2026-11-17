@@ -34,7 +34,7 @@ const mindmapDir = process.env.MINDMAP_DIR ?? "";
 const GAP = 0.45; // Logan's pause between paragraphs; his timings and renderer assume it.
 const MIN_DISK_GB = 60; // one render decodes about 45 GB of deck frames under MINDMAP_DIR
 let current = null; // { renderId?, runId?, step } while working, for the heartbeat
-// 원고를 고쳐 다시 누른 영상 (로건 11-16): the heartbeat answers stopRun when a newer run of the video being worked on exists. Its
+// 원고를 고쳐 다시 누른 영상 (2026-11-16): the heartbeat answers stopRun when a newer run of the video being worked on exists. Its
 // processes are stopped and the run fails as MYIN_RUN_STALE (the OS stops it there), so the new run starts within a minute.
 let stopping = null;
 const children = new Set();
@@ -627,7 +627,7 @@ export function styleStoryboard(videoDir, myinDir, style, file = "myin_storyboar
 }
 
 /**
- * 고친 문장만 다시 (로건 11-16 46efb0b9): a changed script used to be voiced from the first paragraph again (about an hour, every
+ * 고친 문장만 다시 (2026-11-16): a changed script used to be voiced from the first paragraph again (about an hour, every
  * paragraph paid). Each paragraph whose text an earlier voice of this video on this PC already has is copied in under its new number
  * (files cloned, its lists and sentence file pointed at the new folder) with a 「pNN_이전음성.txt」 note of the text; his stage_voice
  * keeps a paragraph whose note matches and makes only the rest. A reading added or changed since that voice (읽기사전) makes the
@@ -700,6 +700,13 @@ export async function processMyinWords() {
     if (fixes.length && hasVoice && hasTool) {
       current.step = "voice fix";
       for (const fix of fixes) {
+        // 테이크 바꾸기 · 앞뒤 쉼 (요청 2번, 2026-11-17): our script with the engine's own joins — another take the voice made, or more pause; no Fish.
+        if (fix.take || fix.pause) {
+          const args = fix.take ? ["take", String(fix.take.p), fix.take.text, fix.take.name] : ["pause", String(fix.pause.p), fix.pause.text, String(fix.pause.before), String(fix.pause.after)];
+          const result = await runOut(speaker.python, [voiceEditScript, voiceJob, ...args], { cwd: path.join(work, "tools", "mindmap_pipeline"), env });
+          fixed.push({ memo: fix.memo, ok: result.ok, report: fixReport(result.out) });
+          continue;
+        }
         const result = await runOut(speaker.python, ["voice_fix.py", voiceJob, "--memo", fix.memo, ...(fix.say ? ["--say", fix.say] : []), ...(fix.read ? ["--read", fix.read] : []),
           ...(fix.video ? ["--video", "--video_work", videoJob] : [])], { cwd: timing, env });
         fixed.push({ memo: fix.memo, ok: result.ok, report: fixReport(result.out) });
@@ -1058,6 +1065,36 @@ st = json.load(open("../../voice/os_myin/myin_storyboard.json", encoding="utf-8"
 w = json.load(open("../../voice/os_myin/words.json", encoding="utf-8"))
 print("TIMES " + json.dumps([[s["t0"], s["t1"]] for s in M.resolve(st, w)]))`;
 
+// 문장 하나 고치기 (요청 2번, 2026-11-17): our script next to this file, run in the voice's engine folder — takes to listen to, a take swapped, a pause added.
+const voiceEditScript = path.join(path.dirname(fileURLToPath(import.meta.url)), "myin_voice_edit.py");
+
+/** 테이크 고르기: one sentence's takes from a voice this PC made, up to the OS to listen to (nothing paid). */
+export async function processMyinTakes() {
+  if (!myinPkg || local || !existsSync(voiceEditScript)) return false;
+  const job = await call({ action: "myin_takes_claim", ...pcField });
+  if (job.idle) return false;
+  current = { step: "takes", runId: job.runId };
+  const lease = { runId: job.runId, lease: job.lease };
+  try {
+    const work = path.join(myinWork, job.runId), out = path.join(work, "voice", "takes-out");
+    if (!existsSync(path.join(work, "voice", "os_voice", "voice.wav"))) throw Object.assign(new Error("no voice of this run on this PC"), { code: "MYIN_TAKES_NO_VOICE" });
+    rmSync(out, { recursive: true, force: true });
+    const speaker = myinVoiceEnv({ paragraphs: [] });
+    const result = await runOut(speaker.python, [voiceEditScript, "os_voice", "takes", String(job.p), job.text, out], { cwd: path.join(work, "tools", "mindmap_pipeline"), env: speaker.env });
+    if (!result.ok) throw Object.assign(new Error(fixReport(result.out) || "takes failed"), { code: /테이크 바꾸기/.test(result.out) ? "MYIN_TAKES_UNAVAILABLE" : "MYIN_TAKES_FAILED" });
+    const listed = JSON.parse(readFileSync(path.join(out, "takes.json"), "utf8")).takes;
+    if (!listed.length) throw Object.assign(new Error("no takes of that sentence"), { code: "MYIN_TAKES_NONE" });
+    const { uploads } = await call({ action: "myin_takes_upload", ...lease, files: listed.map((take) => take.file) });
+    for (const item of uploads) await upload(item.url, path.join(out, item.name), "audio/mpeg");
+    await call({ action: "myin_takes_complete", ...lease, takes: listed.map(({ name, file, current: now }) => ({ name, file, current: now })) });
+    console.log(`myin takes ready: ${job.runId} (${listed.length})`);
+  } catch (error) {
+    console.error(`myin takes failed: ${job.runId} ${error.message}`);
+    await call({ action: "myin_takes_fail", ...lease, code: error.code ?? "MYIN_TAKES_FAILED" }).catch(() => undefined);
+  }
+  return true;
+}
+
 // 장면 그림 v0 (편집기 3차 요청, 2026-11-09): our script next to this file, run inside the engine with the editor's own functions, which the engine
 // carries from that release on (tools/editor/engine_common.py). Only a computer with both asks for scene pictures instead of clips.
 const v0Script = path.join(path.dirname(fileURLToPath(import.meta.url)), "myin_v0.py");
@@ -1286,7 +1323,7 @@ else if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).h
   setInterval(() => void reportSoundCatalog(), 60 * 60_000).unref();
   do {
     // No render ready? Advance the voice queue one step (review or one paragraph) so no separate scheduler is needed.
-    const worked = held ? false : await (shortsOnly?processShortform():processOne().then((rendered) => rendered || processMyinBreath()).then((rendered) => rendered || processShortRefs()).then((rendered) => rendered || processMyinWords()).then((rendered) => rendered || processMyinSay()).then((rendered) => rendered || processMyinCta()).then((rendered) => rendered || processMyinRedraw()).then((rendered) => rendered || processMyinPrep())
+    const worked = held ? false : await (shortsOnly?processShortform():processOne().then((rendered) => rendered || processMyinBreath()).then((rendered) => rendered || processShortRefs()).then((rendered) => rendered || processMyinWords()).then((rendered) => rendered || processMyinTakes()).then((rendered) => rendered || processMyinSay()).then((rendered) => rendered || processMyinCta()).then((rendered) => rendered || processMyinRedraw()).then((rendered) => rendered || processMyinPrep())
       .then((rendered) => rendered || processMyinClips()).then((rendered) => rendered || processMyinFinal()).then((rendered) => rendered || (current = { step: "voice" }, call(runId ? { runId } : {}, "worker")).then((step) => {
       if (step.processed) console.log(`voice step: ${JSON.stringify(step).slice(0, 300)}`);
       return step.processed;

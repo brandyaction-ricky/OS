@@ -36,7 +36,8 @@ test("two different 읽는 글 for one sentence are a conflict; a video-time mem
 test("the server sends the merged fixes and refuses a conflict; the screens show the plan before paying", async () => {
   const run = await readFile(new URL("../lib/server/myin-run.ts", import.meta.url), "utf8");
   const request = run.slice(run.indexOf("export async function requestMyinVoiceFix"), run.indexOf("/** 「음성 확인 완료」"));
-  assert.match(request, /const plan = planVoiceFix\(memos, await voiceSentences\(service, run\)\);[\s\S]*MYIN_VOICE_FIX_CONFLICT[\s\S]*const fixes = plan\.fixes;/);
+  // 2026-11-17: a take or a pause (free, names its own sentence) goes as it is beside the plan (myin-voice-takes.test.mjs).
+  assert.match(request, /const plan = planVoiceFix\(memos\.filter\(\(memo\) => !memo\.take && !memo\.pause\), await voiceSentences\(service, run\)\);[\s\S]*MYIN_VOICE_FIX_CONFLICT[\s\S]*const fixes = \[\.\.\.plan\.fixes, \.\.\.direct\];/);
   const check = await readFile(new URL("../components/myin-voice-check.tsx", import.meta.url), "utf8");
   assert.match(check, /<VoiceFixScope plan=\{plan\} \/>/);
   assert.match(check, /askCost\(planText\(plan\), plan\.fixes\.length\)/, "the cost is from the sentences found, not a guess per memo");

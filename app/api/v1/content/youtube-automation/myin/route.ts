@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
-import { checkMyinVoice, confirmMyinClips, createMyinRun, latestMyinRun, myinVoiceCheck, myinVoiceFixPlan, myinVoiceFixSchema, myinVoiceOnRenderPc, requestMyinVoiceFix, myinDownloads, myinEarlierStyles, myinRecord, myinSubtitles, myinSubtitleChangeSchema, saveMyinSubtitles, myinOurImageUpload, myinOutputs, myinPhotos, myinPreviewSheets, myinSoundState, requestMyinRedraw, myinWordsReport, reopenMyinMaterials, reviewMyinStoryboard, saveMyinOurImage, saveMyinSound, separateMyinPhoto, setMyinDraftPlace, setMyinSettings, setMyinScreenCheck, startMyinFinal, startMyinPrep } from "@/lib/server/myin-run";
+import { checkMyinVoice, confirmMyinClips, requestMyinTakes, createMyinRun, latestMyinRun, myinVoiceCheck, myinVoiceFixPlan, myinVoiceFixSchema, myinVoiceOnRenderPc, requestMyinVoiceFix, myinDownloads, myinEarlierStyles, myinRecord, myinSubtitles, myinSubtitleChangeSchema, saveMyinSubtitles, myinOurImageUpload, myinOutputs, myinPhotos, myinPreviewSheets, myinSoundState, requestMyinRedraw, myinWordsReport, reopenMyinMaterials, reviewMyinStoryboard, saveMyinOurImage, saveMyinSound, separateMyinPhoto, setMyinDraftPlace, setMyinSettings, setMyinScreenCheck, startMyinFinal, startMyinPrep } from "@/lib/server/myin-run";
 import { findMyinPhotoCandidates, applyMyinPhotoCandidate } from "@/lib/server/myin-photo-candidates";
 import { readLocalRenderStatus } from "@/lib/server/youtube-render-pc";
 import { checkMyinScreens, myinScreenCheck } from "@/lib/server/myin-screen-check";
@@ -87,6 +87,8 @@ const patchSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("voice_fix"), runId: z.string().uuid(), fixes: z.array(myinVoiceFixSchema).min(1).max(20) }),
   z.object({ action: z.literal("voice_fix_plan"), runId: z.string().uuid(), fixes: z.array(myinVoiceFixSchema).min(1).max(20) }),
   z.object({ action: z.literal("voice_check"), runId: z.string().uuid(), skipped: z.boolean() }),
+  // 테이크 고르기 (요청 2번, 2026-11-17): one sentence's takes, put up by the render PC to listen to (free).
+  z.object({ action: z.literal("voice_takes"), runId: z.string().uuid(), p: z.number().int().min(0).max(150), text: z.string().trim().min(1).max(300) }),
   z.object({ action: z.literal("subtitles"), runId: z.string().uuid(), changes: z.array(myinSubtitleChangeSchema).min(1).max(600) }),
   z.object({ action: z.literal("sound"), runId: z.string().uuid(), plan: z.object({
     music: z.array(z.object({ scene: z.number().int().min(1).max(200), key: z.string().min(1).max(80), start: z.number().min(0).max(3600).optional() }).strict()).max(60),
@@ -116,6 +118,7 @@ export async function PATCH(request: Request) {
       : input.action === "voice_fix" ? { run: await requestMyinVoiceFix(actor, input.runId, input.fixes) }
       : input.action === "voice_fix_plan" ? await myinVoiceFixPlan(actor, input.runId, input.fixes)
       : input.action === "voice_check" ? { run: await checkMyinVoice(actor, input.runId, input.skipped) }
+      : input.action === "voice_takes" ? { run: await requestMyinTakes(actor, input.runId, input.p, input.text) }
       : input.action === "subtitles" ? { run: await saveMyinSubtitles(actor, input.runId, input.changes) }
       : input.action === "sound" ? { run: await saveMyinSound(actor, input.runId, input.plan) }
       : input.action === "our_image_url" ? await myinOurImageUpload(actor, input.runId, input.file, input.type)

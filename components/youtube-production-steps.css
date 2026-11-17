@@ -143,4 +143,13 @@
   .linear-shell .ui-v2 .yt-step .panel-pad-lg { padding: 12px; }
 }
 
+  /* 테이크 고르기 · 모든 문장 (요청 2번, 2026-11-17): one row per take or sentence, wrapping on a phone. */
+  .linear-shell .ui-v2 .yt-takes {margin-top:8px}
+  .linear-shell .ui-v2 .yt-take-list {list-style:none;padding:0;display:grid;gap:6px}
+  .linear-shell .ui-v2 .yt-all-lines {margin-top:6px}
+  .linear-shell .ui-v2 .yt-take-list li {display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .linear-shell .ui-v2 .yt-all-lines li {align-items:baseline}
+  .linear-shell .ui-v2 .yt-take-no {min-width:64px}
+  .linear-shell .ui-v2 .yt-take-list audio {flex:1 1 220px;min-width:0}
+  .linear-shell .ui-v2 .yt-line-text {flex:1 1 260px;min-width:0}
 }
