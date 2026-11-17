@@ -439,6 +439,8 @@ async function voiceDonors(service: Service, sourceId: string, like: Pick<MyinRu
 // waits says what the PC is on and how many voices are ahead. Minutes as the panel's: 1.4 a paragraph made (two at a time, 11-13), the
 // paragraphs an earlier voice of the video has are kept (#606), words and the check of kept paragraphs take a minute or two (#612).
 const VOICE_FIXED_MIN = 3, VOICE_PARAGRAPH_MIN = 1.4;
+/** A voice that waited this long before the render PC took it notifies (음성 시작 알림); a short wait is not worth a notice. */
+const VOICE_START_NOTICE_MS = 10 * 60_000;
 const RENDER_STAGE_MIN: Record<string, number> = { breath_pending: 5, cta_pending: 2, prep_pending: 5, clips_pending: 4 };
 
 /** About how many minutes the render PC spends on a run's step now; a voice counts only the paragraphs it has to make. */
@@ -610,7 +612,7 @@ async function claim(service: Service, stage: string, leaseMs: number | ((run: M
     const next: MyinRun = { ...run, lease, attempts: run.attempts + 1 };
     if (pc) { if (pc.name) next.pc = pc.name; else delete next.pc; }
     const claimed = await save(service, candidate, "in_progress", stage, next).catch(() => null);
-    if (claimed) return { record: claimed, run: parse(claimed), lease };
+    if (claimed) return { record: claimed, run: parse(claimed), lease, waitedSince: candidate.updated_at };
   }
   return null;
 }
@@ -717,6 +719,10 @@ export async function claimMyinWords(service: Service = createServiceSupabase(),
   const claimed = await claim(service, "words_pending", wordsLeaseMs, fits(short), undefined, undefined, { name: pc });
   if (!claimed) return { idle: true as const };
   const { record, run, lease } = claimed;
+  // 음성 시작 알림 (2026-11-17): a voice that waited for the render PC (another video's voice, a final render) tells who started it.
+  if (Date.now() - Date.parse(claimed.waitedSince) >= VOICE_START_NOTICE_MS)
+    await notify([record.owner_id, run.paidOk?.by].filter((id): id is string => Boolean(id)), "yt_voice_start", run.sourceId, `voice-start:${record.id}:${lease.token}`)
+      .catch(() => undefined);
   try {
     const voice = await voiceFiles(service, run);
     const { data: upload, error } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).createSignedUploadUrl(bundlePath(record, run, lease.token), { upsert: true });
