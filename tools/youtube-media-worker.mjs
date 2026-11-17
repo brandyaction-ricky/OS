@@ -879,7 +879,7 @@ export async function processMyinPrep() {
         writeFileSync(storyFile, JSON.stringify(job.storyboard, null, 1));
       }
     }
-    await fetchPhotos(job, work, videoDir, env);
+    const missingPhotos = await fetchPhotos(job, work, videoDir, env);
     const bgmDir = path.join(work, "assets", "bgm");
     mkdirSync(bgmDir, { recursive: true });
     if (existsSync(path.join(myinLibrary, "bgm"))) for (const name of readdirSync(path.join(myinLibrary, "bgm")).filter((n) => n.endsWith(".mp3")))
@@ -910,6 +910,8 @@ export async function processMyinPrep() {
     // 바뀐 장면만 (요청 3번, 2026-11-17): with the sheets this video had before (the storyboard they show, their check's lines), only the
     // scenes that resolve otherwise now are drawn and checked for blank screens; any trouble with them and all of it is drawn as before.
     const old = job.previous ? await oldSheets(job.previous, videoDir, myinDir, job.style).catch((error) => { console.error(`myin sheets before: ${error.message}`); return null; }) : null;
+    // ④ 이어 쓰기 (2026-11-17): photos whose source changed since those sheets, or that were a 「사진 자리」 then — their scenes are drawn again.
+    if (old && job.previous.redraw?.length) { const files = path.join(videoDir, "redraw-files.json"); writeFileSync(files, JSON.stringify(job.previous.redraw)); old.push(files); }
     const { log, cells, sheets, kept, keep } = old ? await drawSheets(myinDir, videoDir, previewEnv, job.sheetUploadUrls.length, old)
       .catch(() => drawSheets(myinDir, videoDir, previewEnv, job.sheetUploadUrls.length)) : await drawSheets(myinDir, videoDir, previewEnv, job.sheetUploadUrls.length);
     const carry = keep ? [path.join(videoDir, "redraw.json"), path.join(videoDir, "lines-before.json")] : [];
@@ -923,6 +925,7 @@ export async function processMyinPrep() {
       .flatMap((file) => readFileSync(file, "utf8").split("\n")).map((line) => line.replace(/^-\s*/, "").trim());
     const musicCredits = [...new Set(music)].map((file) => creditLines.find((line) => line.startsWith(`${file} `)) ?? `${file} — 출처 기록 없음`);
     writeFileSync(bundle, JSON.stringify({ misses, sheets: sheets.length, cells, musicCredits, log: log.slice(-20_000), ...(kept?.length ? { kept } : {}),
+      ...(missingPhotos.length ? { missingPhotos } : {}),
       ...(soundReport !== undefined ? { storyboard: JSON.parse(readFileSync(storyFile, "utf8")), soundReport } : {}) }));
     await upload(job.bundleUploadUrl, bundle, "application/json");
     await call({ action: "myin_prep_complete", ...lease });
@@ -956,6 +959,8 @@ async function fetchPhotos(job, work, videoDir, env) {
     catch (error) { if (job.draft === false) throw error; console.error(`myin draft photo kept as 사진 자리: ${asset.file}: ${error.message}`); }   // ③ goes on
   }
   writeFileSync(fetchedFile, JSON.stringify(fetched));
+  // The files left as 「사진 자리」 (never fetched here): the OS keeps them so a later preparation draws their scenes again.
+  return [...new Set((job.placeholders ?? []).filter((spot) => !fetched[`${spot.kind}/${spot.file}`]).map((spot) => spot.file))];
 }
 
 /**
@@ -968,7 +973,8 @@ export async function drawSheets(myinDir, out, env, most, old) {
   mkdirSync(out, { recursive: true });
   for (const name of readdirSync(out).filter((n) => /^preview_\d+\.png$/.test(n))) rmSync(path.join(out, name));
   try {
-    const log = await runCapture(myinPython, [redrawScript, "os_myin", ...(old ?? ["-", "-"]), out], { cwd: myinDir, env });
+    const [oldStory, oldDir, redrawFiles] = old ?? ["-", "-"];
+    const log = await runCapture(myinPython, [redrawScript, "os_myin", oldStory, oldDir, out, ...(redrawFiles ? [redrawFiles] : [])], { cwd: myinDir, env });
     const report = JSON.parse(readFileSync(path.join(out, "redraw.json"), "utf8"));
     const sheets = Array.from({ length: Math.min(most, Math.ceil(report.scenes / 12)) }, (_, i) => `preview_${String(i + 1).padStart(2, "0")}.png`);
     return { log, cells: report.cells ?? null, drawn: report.drawn ?? [], errors: report.errors ?? [], sheets, kept: report.kept ?? [], keep: Object.keys(report.keep ?? {}).length > 0 };
