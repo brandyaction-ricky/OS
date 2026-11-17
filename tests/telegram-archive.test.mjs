@@ -131,7 +131,8 @@ test("썸네일 참고로: a YouTube video card joins a 기획안's 참고 영�
   const add = server.slice(server.indexOf("export async function addArchiveToPlan"), server.indexOf("/** 상태 or 주제"));
   assert.match(add, /saveYoutubeStage\(actor, project\.id, "plan", \{ expectedVersion: plan\.version,/, "who may edit, 컨펌 대기 and the version are the 기획안's own rules");
   assert.match(add, /\.some\(\(row\) => sameRef\(row, ref\)\)\) return \{ projectId: project\.id, added: false \}/, "a video already there is not added twice");
-  assert.match(server, /filter\(\(project\) => project\.yp\.stage === "draft"\)/, "only videos still in 기획안 are offered");
+  assert.match(server, /filter\(\(project\) => project\.yp\.stage === "draft" && \["live", "anim"\]\.includes\(project\.yp\.topic\.type \?\? ""\)\)/,
+    "only 롱폼 videos still in 기획안 are offered");
   assert.match(read("lib/server/youtube-thumbs.ts"), /references: refsWithThumbs\(\[\.\.\.project\.yp\.topic\.refs, \.\.\.plan\.data\.extraRefs\]\)/, "the 썸네일 후보 job reads 참고 영상");
   // the temporary collection kept no picture: a YouTube card shows the video's own thumbnail
   assert.match(server, /thumbnail: videoId \? `https:\/\/i\.ytimg\.com\/vi\/\$\{videoId\}\/hqdefault\.jpg` : card\.thumbnail/);
