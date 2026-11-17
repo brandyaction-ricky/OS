@@ -108,3 +108,15 @@ test("video feedback: compare two versions and leave feedback on the earlier one
   await expect(page.locator(".yp-compare")).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+// Ctrl+Enter bypassed the disabled button and a Korean IME fires Enter twice: the same note was saved twice, 0.3 ms apart.
+test("video feedback: a doubled Ctrl+Enter saves the note once", async ({ page }) => {
+  await page.goto("/content/projects");
+  await page.locator(".yp-mv").filter({ hasText: "최종 검토" }).first().locator("a.yp-btn").click();
+  await expect(page).toHaveURL(/\/content\/final-check\?project=/);
+  const box = page.getByLabel("피드백", { exact: true });
+  await box.fill("한 번만 저장되어야 해요");
+  await box.evaluate(el => { for (let i = 0; i < 2; i++) el.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true })); });
+  await expect(box).toHaveValue("");
+  await expect(page.locator(".yp-fi").filter({ hasText: "한 번만 저장되어야 해요" })).toHaveCount(1);
+});
