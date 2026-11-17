@@ -42,8 +42,17 @@ export function releaseLogRooms(project: { title?: string | null; brand?: string
   return requestCommentRooms(project, [requesterAffiliation ?? ""]);
 }
 
+// 쉬운 설명 (2026-11-17 대표): written so staff understand the feature at once, not squeezed into 3 lines — the whole of it goes, paragraph
+// breaks kept, cut only near Telegram's 4096 characters per message.
+const PLAIN_CHARS = 2500;
+
+function plainText(body: string) {
+  const text = body.replace(/\r/g, "").split("\n").map((line) => line.trim()).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  return text.length > PLAIN_CHARS ? `${text.slice(0, PLAIN_CHARS - 1)}…` : text;
+}
+
 /** Staff read plain words only: the 쉬운 설명 (the log's own, else its request's), never the developer summary; none → the title alone. */
 export function releaseLogText(input: { project: string; title: string; plain?: string | null; url: string }) {
-  const plain = input.plain?.trim() ? `\n\n${excerpt(input.plain)}` : "";
+  const plain = input.plain?.trim() ? `\n\n${plainText(input.plain)}` : "";
   return `🚀 개발 반영 · ${input.project}\n「${input.title.slice(0, 120)}」${plain}\n\nOS에서 보기: ${input.url}`;
 }

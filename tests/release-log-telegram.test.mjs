@@ -29,11 +29,14 @@ test("the message is the title and the plain 쉬운 설명 — never the develop
   const url = "https://os.example/knowledge/development?project=p1&tab=history";
   const text = releaseLogText({ project: "마이인", title: "핵심 광고 따로 집계", url,
     plain: "관리자 성과 화면에 핵심 광고 줄 추가\n\n유료 광고 → 정밀 광고\n10-21 이후 전체 버튼 삭제\n넷째 줄" });
-  assert.match(text, /^🚀 개발 반영 · 마이인\n「핵심 광고 따로 집계」\n\n관리자 성과 화면에 핵심 광고 줄 추가\n유료 광고 → 정밀 광고\n10-21 이후 전체 버튼 삭제…\n\nOS에서 보기: https:\/\/os\.example\/knowledge\/development\?project=p1&tab=history$/);
-  assert.ok(!text.includes("넷째 줄"));
+  assert.match(text, /^🚀 개발 반영 · 마이인\n「핵심 광고 따로 집계」\n\n관리자 성과 화면에 핵심 광고 줄 추가\n\n유료 광고 → 정밀 광고\n10-21 이후 전체 버튼 삭제\n넷째 줄\n\nOS에서 보기: https:\/\/os\.example\/knowledge\/development\?project=p1&tab=history$/,
+    "the whole explanation, paragraph breaks kept (2026-11-17 대표: not limited to 3 lines)");
   assert.equal(releaseLogText({ project: "브랜디액션 OS", title: "음성 대기 순서", url: "u", plain: "  " }), "🚀 개발 반영 · 브랜디액션 OS\n「음성 대기 순서」\n\nOS에서 보기: u");
   assert.equal(releaseLogText({ project: "p", title: "t", url: "u" }), "🚀 개발 반영 · p\n「t」\n\nOS에서 보기: u");
-  assert.ok(releaseLogText({ project: "p", title: "t", url: "u", plain: "가".repeat(500) }).length < 400, "a long plain line is cut");
+  assert.ok(releaseLogText({ project: "p", title: "t", url: "u", plain: "가".repeat(500) }).includes("가".repeat(500)), "a long explanation goes whole");
+  const huge = releaseLogText({ project: "p", title: "t".repeat(200), url: "u".repeat(200), plain: "가\n\n\n\n".repeat(3000) });
+  assert.ok(huge.length < 4096 && huge.includes("…"), "cut only before Telegram's limit");
+  assert.ok(!huge.includes("\n\n\n"), "blank lines fold to one");
 });
 
 test("both ways a log is saved (MCP create_development_log, the web form) announce it after the answer, as the bot, to the meeting-share rooms", () => {
@@ -51,6 +54,7 @@ test("both ways a log is saved (MCP create_development_log, the web form) announ
   assert.match(server, /from\("os_telegram_chats"\)\.select\("external_chat_id"\)\.in\("meeting_share_business", rooms\)/);
   assert.match(server, /process\.env\.TELEGRAM_BOT_TOKEN/);
   const mcp = read("lib/server/mcp.ts");
-  assert.match(mcp, /plain_summary: \{ type: "string", maxLength: 300/, "an agent can give the staff line when it saves the log");
+  assert.match(mcp, /plain_summary: \{ type: "string", maxLength: 2500/, "an agent can give the staff explanation when it saves the log");
+  assert.match(mcp, /plain_summary: z\.string\(\)\.trim\(\)\.max\(2500\)/);
   assert.match(mcp, /plainSummary: input\.plain_summary/);
 });
