@@ -1598,6 +1598,8 @@ export async function failMyinRedraw(input: { runId: string; lease: string; code
 
 // ── 우리 이미지 올리기 (2026-10-28 대표 · 로건): our own photo for a file name the storyboard uses, until the full video starts ──
 const OUR_IMAGE_TYPES: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
+/** 사진 칸 영상 클립 (로건 요청 dc9bb251, 2026-11-17): a scene's photo slot also takes a clip; the engine draws its frame at that moment. */
+const OUR_PHOTO_TYPES: Record<string, string> = { ...OUR_IMAGE_TYPES, "video/mp4": "mp4", "video/quicktime": "mov" };
 const OUR_IMAGE_MAX_BYTES = 20 * 1024 * 1024;
 const ourImageFolder = (record: OsRecord, run: MyinRun) => `${record.owner_id}/${run.sourceId}/${record.id}/our-images`;
 
@@ -1629,8 +1631,8 @@ export async function myinPhotos(actor: RequestActor, runId: string) {
 export async function myinOurImageUpload(actor: RequestActor, runId: string, file: string, type: string) {
   const { service, record, run, open } = await ourImageRun(actor, runId, file);
   if (!open) throw new ApiError(409, "MYIN_OUR_IMAGE_CLOSED", "전체 영상을 만드는 중이에요. 끝난 뒤에 올려 주세요.");
-  const ext = OUR_IMAGE_TYPES[type];
-  if (!ext) throw new ApiError(400, "MYIN_OUR_IMAGE_TYPE", "JPG · PNG · WEBP 이미지만 올릴 수 있어요.");
+  const ext = OUR_PHOTO_TYPES[type];
+  if (!ext) throw new ApiError(400, "MYIN_OUR_IMAGE_TYPE", "JPG · PNG · WEBP 이미지나 MP4 · MOV 영상만 올릴 수 있어요.");
   const path = `${ourImageFolder(record, run)}/${md5(file).slice(0, 12)}-${Date.now().toString(36)}.${ext}`;
   return { path, uploadUrl: await uploadUrl(service, OUTPUT_BUCKET, path) };
 }
@@ -1646,7 +1648,7 @@ export async function saveMyinOurImage(actor: RequestActor, runId: string, file:
   if (!bytes) throw new ApiError(409, "MYIN_OUR_IMAGE_MISSING", "올린 이미지를 찾지 못했어요. 다시 올려 주세요.");
   if (bytes > OUR_IMAGE_MAX_BYTES) {
     await service.storage.from(OUTPUT_BUCKET).remove([path]);
-    throw new ApiError(400, "MYIN_OUR_IMAGE_SIZE", "20MB 이하 이미지만 올릴 수 있어요.");
+    throw new ApiError(400, "MYIN_OUR_IMAGE_SIZE", "20MB 이하 이미지 · 영상만 올릴 수 있어요.");
   }
   const next: MyinRun = { ...run, ours: { ...run.ours, [file]: { path, bytes, by: actor.id, name: actor.name, at: new Date().toISOString(), ...(credit ? { credit } : {}) } } };
   // After the finished video the run goes back to ④ (as 「4단계로 돌아가기」); that video stays a version and the new one is made from here.
