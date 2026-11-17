@@ -1,4 +1,4 @@
-import { releaseLogText, requestCommentRooms, requestCommentText, type CommentRoom } from "@/lib/development-comment-telegram";
+import { releaseLogRooms, releaseLogText, requestCommentRooms, requestCommentText, type CommentRoom } from "@/lib/development-comment-telegram";
 import { createServiceSupabase } from "@/lib/supabase/server";
 
 /** Sends one text, as the bot, to every room set for those businesses (os_telegram_chats.meeting_share_business). Returns how many got it. */
@@ -33,13 +33,22 @@ export async function shareRequestComment(input: { requestId: string; title: str
   return sendToRooms(token, rooms, text, "request comment");
 }
 
-/** 운영 · 완료 개발 로그 → 그 프로젝트 사업의 업무 소통방. A company-wide project (브랜디액션 OS, TIPS) has no room, so nothing is sent. */
-export async function shareReleaseLog(log: { id: string; title: string; description?: string | null; parent_id?: string | null }, origin: string) {
+/** 운영 · 완료 개발 로그 → 그 프로젝트 사업의 업무 소통방. A company-wide project (브랜디액션 OS, TIPS) goes to the requester's room, 액션팀 without a request. */
+export async function shareReleaseLog(log: { id: string; title: string; parent_id?: string | null; metadata?: Record<string, unknown> | null }, origin: string) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token || !log.parent_id) return 0;
-  const { data: project } = await createServiceSupabase().from("os_records").select("title,brand").eq("id", log.parent_id).maybeSingle();
-  const rooms = requestCommentRooms(project ?? {}, []);
-  const text = releaseLogText({ project: String(project?.title || project?.brand || ""), title: log.title, summary: log.description ?? "",
+  const supabase = createServiceSupabase();
+  const requestId = typeof log.metadata?.requestId === "string" ? log.metadata.requestId : null;
+  const [{ data: project }, { data: request }] = await Promise.all([
+    supabase.from("os_records").select("title,brand").eq("id", log.parent_id).maybeSingle(),
+    requestId ? supabase.from("os_records").select("created_by,metadata").eq("id", requestId).maybeSingle() : Promise.resolve({ data: null }),
+  ]);
+  const { data: requester } = request?.created_by
+    ? await supabase.from("os_profiles").select("affiliation").eq("id", request.created_by).maybeSingle()
+    : { data: null };
+  // ponytail: the request's 쉬운 설명 is read once, at save time; a log saved before the request is resolved goes out with the title alone.
+  const plain = String(log.metadata?.plainSummary || request?.metadata?.plainSummary || "");
+  const text = releaseLogText({ project: String(project?.title || project?.brand || ""), title: log.title, plain,
     url: `${origin}/knowledge/development?project=${log.parent_id}&tab=history` });
-  return sendToRooms(token, rooms, text, "release log");
+  return sendToRooms(token, releaseLogRooms(project ?? {}, requester?.affiliation as string | null | undefined), text, "release log");
 }
