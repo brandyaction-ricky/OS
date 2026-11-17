@@ -1,8 +1,9 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { developmentCommentCreateSchema, developmentCommentMetadata, developmentCommentQuerySchema, developmentCommentUpdateSchema, developmentCommentView } from "@/lib/development-comments";
 import { authenticateRequest, type RequestActor } from "@/lib/server/auth";
+import { shareRequestComment } from "@/lib/server/development-comment-telegram";
 import { createServiceSupabase } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -16,7 +17,7 @@ function respondError(error: unknown) {
 
 async function getRequest(actor: RequestActor, requestId: string) {
   const { data, error } = await actor.supabase.from("os_records")
-    .select("id,parent_id,brand,team")
+    .select("id,title,parent_id,brand,team")
     .eq("id", requestId)
     .eq("record_type", "ai_job")
     .eq("metadata->>kind", "development_request")
@@ -115,6 +116,12 @@ export async function POST(request: Request) {
       }),
     }).select("*").single();
     if (error || !data) throw new ApiError(500, "COMMENT_CREATE_FAILED", "댓글을 저장하지 못했습니다.");
+    // 함께 볼 사람이 있는 댓글은 텔레그램 업무 소통방에도(마이인 → 액션팀, 에듀 → 마케팅) — 응답 뒤에, 실패해도 댓글은 그대로.
+    if (mentions.length) {
+      const share = { requestId: input.requestId, title: String(developmentRequest.title ?? ""), projectId: developmentRequest.parent_id ?? null, author: authorName,
+        mentionIds: mentions.map((mention) => mention.id), body: input.body, origin: new URL(request.url).origin };
+      after(() => shareRequestComment(share).catch((cause) => console.warn("[telegram] request comment", cause)));
+    }
     return NextResponse.json({ comment: data }, { status: 201, headers });
   } catch (error) { return respondError(error); }
 }
