@@ -11,7 +11,7 @@ import { promisify } from "node:util";
 const run = promisify(execFile);
 const referenceModules = ["reference-view.tsx", "reference-layout.ts"];
 const compositionModules = ["reference-composition.ts", "reference-composition-view.tsx"];
-const modules = ["formats.ts", "placement.ts", "view.tsx", ...referenceModules, ...compositionModules, "thumbnail-ad.tsx", "safe-artwork.mjs", "format-test-renderer.mjs", "format-test-renderer-v1.mjs", "format-test-fonts.json"];
+const modules = ["formats.ts", "placement.ts", "view.tsx", ...referenceModules, ...compositionModules, "prompt-edit-render.mjs", "thumbnail-ad.tsx", "safe-artwork.mjs", "format-test-renderer.mjs", "format-test-renderer-v1.mjs", "format-test-fonts.json"];
 const compiledName = name => name.replace(/\.tsx?$/, ".mjs");
 const thumbModules = ["thumb-frame.tsx", "thumb-style.ts"];
 const thumbnailFiles = ["thumbnail-ad.mjs", ...thumbModules.map(name => "youtube-process/" + name.replace(/\.tsx?$/, ".mjs")), "fonts/Pretendard-900.otf"];
@@ -69,7 +69,7 @@ export function buildAdRuntime(root,out) {
         ...staticFiles.map(([,name]) => name), ...displayFonts.map(f => "fonts/" + f + "-OFL.txt"),
         ...ogFiles.map(f => "og/" + f), ...reactFiles.map(f => "node_modules/react/" + f)];
       const hasThumbnails = existsSync(path.join(installed, "thumbnail-ad.mjs"));
-      const missing = [referenceModules, compositionModules].flatMap(group => {
+      const missing = [referenceModules, compositionModules, ["prompt-edit-render.mjs"]].flatMap(group => {
         const names = group.map(compiledName);
         return names.some(name => existsSync(path.join(installed, name))) ? [] : names;
       });
@@ -148,6 +148,12 @@ export async function renderAdPng(dir,variant,photoDataUrl,options={}) {
   const {isWarehouseFormat,IMAGE_FORMATS}=await import(fileUrl(dir,"formats.mjs"));
   const {resolvePlacement}=await import(fileUrl(dir,"placement.mjs"));
   const {width,height}=resolvePlacement(variant.size,variant.design?.placement,variant.design?.outputWidth);
+  if (variant.promptEdit) {
+    if (!existsSync(path.join(dir,"prompt-edit-render.mjs"))) throw new Error("수정 이미지 출력을 지원하는 제작 엔진으로 업데이트해 주세요.");
+    const edited = await import(fileUrl(dir,"prompt-edit-render.mjs"));
+    if (edited.promptEditRenderVersion !== 1) throw new Error("수정 이미지 제작 엔진 버전을 확인해 주세요.");
+    return edited.promptEditPng(variant,options.promptEditDataUrl,{width,height});
+  }
   if (Boolean(variant.asset)!==Boolean(photoDataUrl) || (photoDataUrl && !/^data:image\/(?:png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(photoDataUrl))) throw new Error("작업에 등록한 원본 사진을 확인해 주세요.");
   if (variant.asset && !IMAGE_FORMATS[variant.formatId]?.supportsAsset) throw new Error("선택한 컴퓨터의 이미지 광고 렌더러를 업데이트해 주세요.");
   const referenceUrl = options.referenceDataUrl;
@@ -228,6 +234,8 @@ async function rendererVersion(root) {
     if (layout.referenceMasterVersion === 1) version = layout.referenceDetailVersion === 1 ? 7 : 6;
     if (version === 7 && layout.referencePhotoFitVersion === 1) version = 8;
   }
+  if (version === 8 && existsSync(path.join(dir,"prompt-edit-render.mjs")) &&
+      (await import(fileUrl(dir,"prompt-edit-render.mjs"))).promptEditRenderVersion === 1) version = 9;
   advertisedVersions.set(root, version);
   return version;
 }
@@ -254,14 +262,15 @@ export async function processAdRender(call,root,progress=()=>{}) {
       progress("download");
       const scene=await call({action:"image_creative_scene",...lease,variantId});
       if (scene.variant?.id!==variantId) throw new Error("variant mismatch");
-      const [photo, referenceDataUrl, detailDataUrl] = await Promise.all([
+      const [photo, referenceDataUrl, detailDataUrl, promptEditDataUrl] = await Promise.all([
         scene.photoUrl ? scenePhoto(scene.photoUrl) : undefined,
         scene.referenceUrl ? scenePhoto(scene.referenceUrl) : undefined,
         scene.detailUrl ? scenePhoto(scene.detailUrl) : undefined,
+        scene.promptEditUrl ? scenePhoto(scene.promptEditUrl) : undefined,
       ]);
       reason="선택한 컴퓨터에서 광고 PNG를 만들지 못했어요. 설치된 Chrome과 영상 엔진을 확인해 주세요.";
       progress("drawing");
-      const png=await renderAdPng(runtime,scene.variant,photo,{referenceDataUrl,detailDataUrl});
+      const png=await renderAdPng(runtime,scene.variant,photo,{referenceDataUrl,detailDataUrl,promptEditDataUrl});
       if (png.length<33 || png.length>20*1024*1024 || !png.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])) || png.readUInt32BE(16)!==scene.width || png.readUInt32BE(20)!==scene.height) throw new Error("invalid PNG");
       progress("upload");
       reason="완성된 광고 파일을 작업에 저장하지 못했어요.";

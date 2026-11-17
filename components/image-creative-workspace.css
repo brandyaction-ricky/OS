@@ -166,3 +166,13 @@
   .ic-ref-photo-thumb {object-fit:cover}
   @media(max-width:520px){.ic-ref-layout{grid-template-columns:1fr}}
 }
+
+@layer os.screen {
+.ic-editor-tabs,.ic-prompt-editor { grid-column:1/-1; }
+.ic-prompt-editor { display:grid; gap:var(--os-space-8); }
+.ic-prompt-comparison { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--os-space-9); }
+.ic-prompt-comparison figure { min-width:0; margin:0; }
+.ic-prompt-comparison figcaption { font-weight:var(--os-weight-bold); margin-bottom:var(--os-space-5); }
+.ic-prompt-comparison figure>img { width:100%; height:auto; border-radius:var(--os-radius-md); }
+@media(max-width:520px) { .ic-prompt-comparison { grid-template-columns:1fr; } }
+}

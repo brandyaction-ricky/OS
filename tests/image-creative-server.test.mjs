@@ -1,4 +1,5 @@
 import * as referenceLayoutModule from "../lib/image-creative/reference-layout.ts";
+import * as promptEditRender from "../lib/image-creative/prompt-edit-render.mjs";
 const {draftReferenceLayout} = referenceLayoutModule;
 import * as referenceCanon from "../lib/image-creative/reference-canon.ts";
 import * as products from "../lib/image-creative/products.ts";
@@ -33,6 +34,7 @@ function db() { return {from(){let filters=[],update;const q={select(){return q}
 const source=readFileSync(new URL("../lib/server/image-creatives.ts",import.meta.url),"utf8");
 const modules={"@/lib/image-creative/reference-layout":referenceLayoutModule,"./image-ad-references":{readImageAdReferences:async()=>({entries:[]})},"@/lib/image-creative/reference-canon":referenceCanon,"@/lib/image-creative/products":products,"@/lib/image-creative/direction":direction,"@/lib/image-creative/subject-box":subjectBox,"./image-ad-products": {readImageAdProducts:async()=>[]}, "@/lib/image-creative/placement":placements,"@/lib/image-creative/format-test":formatTest,"node:crypto":crypto,"next/dist/server/image-optimizer":sharpModule,"node:fs/promises":{},"node:path":{},react:{createElement:()=>({})},"next/og":{ImageResponse:class { async arrayBuffer(){return new ArrayBuffer(0);} }},zod,"@/lib/http":{ApiError},"@/lib/supabase/server":{},"@/lib/cardnews/zip":{},"@/lib/image-creative/formats":formats,"@/lib/image-creative/format-test-fonts.json":{default:JSON.parse(readFileSync(new URL("../lib/image-creative/format-test-fonts.json",import.meta.url),"utf8"))},"@/lib/image-creative/model":model,"@/lib/image-creative/storage":storage,"@/lib/image-creative/view":{},"./youtube-process-stages":{}};
 const compiled={exports:{}};
+modules["@/lib/image-creative/prompt-edit-render.mjs"] = promptEditRender;
 vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{module:compiled,exports:compiled.exports,require:n=>{if(!(n in modules))throw Error(n);return modules[n];},Buffer,URL,Date,Uint8Array,TextEncoder,console});
 const server=compiled.exports;
 
@@ -275,6 +277,9 @@ test("legacy reference-led suggestions can finish and bind only the selected app
   const planning = {phase:"formats"};
   assert.equal(server.imageJobPhase(stored,planning),"appeal-options");
   assert.match(server.imageJobInstructions(stored,planning),/5개만/);
+  const companyPlan=server.imageJobInstructions(stored,planning,false,undefined,"company-api");
+  assert.match(companyPlan,/OS가 연결한 회사 AI/);
+  assert.doesNotMatch(companyPlan,/구독 AI|process_youtube_ai_job/);
   const options = ["익숙한 일을 발견한다","잘하는 일을 설명한다","다음 일을 고른다","부탁받는 일을 돌아본다","내 선택을 비교한다"].map((meaning,i)=>({id:"a"+i,meaning}));
   await assert.rejects(server.importFormatRecommendations(db(),stored,{appeals:options,items:[]},"wrong"));
   await server.importFormatRecommendations(db(),stored,{appeals:options},"ok");
@@ -287,6 +292,9 @@ test("legacy reference-led suggestions can finish and bind only the selected app
   await approveRequest(request);
   assert.ok(server.imageJobInstructions(stored,request,true).includes(appeals[0].meaning));
   assert.match(server.imageJobInstructions(stored,request,true),/디자인 레퍼런스: 짧은 메모/);
+  const companyCopy=server.imageJobInstructions(stored,request,true,undefined,"company-api");
+  assert.match(companyCopy,/"copies"/);
+  assert.doesNotMatch(companyCopy,/구독 AI|process_youtube_ai_job|유료 AI API/);
   const correct = {formatId:"note",formatVersion:1,size:"portrait",appeal:appeals[0],copy:{headline:"선택할 순간",body:"내 기준을 찾아요",cta:"진단 보기"}};
   await assert.rejects(server.importImageResults(db(),stored,request,{variants:[{...correct,appeal:options[0]}]},"worker"),e=>e.code==="IMAGE_APPEAL_MISMATCH");
   await decision({action:"import",request,result:{variants:[correct]}});
@@ -414,8 +422,8 @@ const workerModules={"node:crypto":crypto,zod,"@/lib/http":{ApiError},"@/lib/sup
 const workerCompiled={exports:{}};
 vm.runInNewContext(ts.transpileModule(workerSource,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{module:workerCompiled,exports:workerCompiled.exports,require:n=>workerModules[n]??{},process:{env:{}},Date,URL,console});
 const worker=workerCompiled.exports;
-test("paid GPT path is refused and expired worker lease cannot submit or upload",async()=>{
-  await assert.rejects(worker.requestStaffJob({ownerId:owner},{task:"image-creative",sourceId:projectId,request:initial},{tier:"precise"}),e=>e.code==="IMAGE_SUBSCRIPTION_ONLY");
+test("unconfigured company GPT is refused and expired worker lease cannot submit or upload",async()=>{
+  await assert.rejects(worker.requestStaffJob({ownerId:owner},{task:"image-creative",sourceId:projectId,request:initial},{tier:"precise"}),e=>e.code==="IMAGE_API_UNAVAILABLE");
   await assert.rejects(worker.completeStaffJob({ownerId:owner,name:"tester"},{action:"complete",jobId:workerJobId,lease,model:"test",result:{variants:[candidate]}}),e=>e.code==="STAFF_AI_JOB_LEASE");
   await assert.rejects(worker.imageAssetForJob({ownerId:owner},{action:"prepare",jobId:workerJobId,lease,mimeType:"image/png",fileSize:1}),e=>e.code==="IMAGE_JOB_LEASE");
   await assert.rejects(worker.failStaffJob({ownerId:owner},{action:"fail",jobId:workerJobId,lease,reason:"expired"}),e=>e.code==="STAFF_AI_JOB_LEASE");
@@ -734,6 +742,33 @@ test("a Mac renders only an assigned saved batch; its checked PNG is the actual 
   assert.equal((await imageMacWork(local,{...poll,rendererVersion:7})).idle,true);
   assert.equal((await imageMacWork(local,{...poll,rendererVersion:8})).jobId,run.id);
   stored = structuredClone(queued);
+  const editedBytes=await sharp({create:{width:1350,height:1080,channels:3,background:"#173859"}}).jpeg().withMetadata({orientation:6}).toBuffer();
+  const editedAsset={...jpeg,path:`image-creatives/${projectId}/${crypto.randomUUID()}.jpg`,w:1080,h:1350};
+  stored.metadata.assets.push({...editedAsset,sha256:crypto.createHash("sha256").update(editedBytes).digest("hex")});
+  files.set(editedAsset.path,new Blob([editedBytes],{type:"image/jpeg"}));
+  const editedVariant={...original,formatId:"M01",formatVersion:2,brand:"공방",promptEdit:{prompt:"배경을 다르게",model:"test",image:editedAsset}};
+  stored.metadata.state.variants[0] = editedVariant;
+  assert.equal((await imageMacWork(local,{...poll,rendererVersion:8})).idle,true);
+  const editedLease=await imageMacWork(local,{...poll,rendererVersion:9});
+  assert.equal(editedLease.jobId,run.id);
+  const editedScene=await imageMacWork(local,{action:"image_creative_scene",...editedLease,variantId});
+  assert.ok(editedScene.promptEditUrl);
+  assert.equal(editedScene.photoUrl,undefined);
+  assert.equal(editedScene.referenceUrl,undefined);
+  const editedPng=Buffer.from(await files.get(editedScene.promptEditUrl.slice("https://storage.example/".length)).arrayBuffer());
+  assert.deepEqual(Buffer.from(await server.savedDesignPreview(stored,variantId)),editedPng);
+  await assert.rejects(server.savedDesignPreview(stored,variantId,{font:"serif",card:"frame",placement:"feed-portrait"}),e=>e.code==="IMAGE_PROMPT_EDIT_LOCKED");
+  const missingOwned=structuredClone(stored);missingOwned.metadata.state.variants[0].promptEdit.image.path=editedAsset.path.replace(projectId,other);
+  await assert.rejects(server.savedDesignPreview(missingOwned,variantId),e=>e.code==="IMAGE_ASSET_NOT_OWNED");
+  const editedSlot=await imageMacWork(local,{action:"image_creative_prepare",...editedLease,variantId,fileSize:editedPng.length});
+  const wrongPixels=await sharp({create:{width:1080,height:1350,channels:3,background:"#ff0000"}}).png().toBuffer();
+  const completeEdited=async bytes=>{
+    files.set(editedSlot.signedUrl,new Blob([bytes],{type:"image/png"}));
+    return imageMacWork(local,{action:"image_creative_complete",...editedLease,files:[{variantId,bytes:bytes.length,sha256:crypto.createHash("sha256").update(bytes).digest("hex")}]});
+  };
+  await assert.rejects(completeEdited(wrongPixels),e=>e.code==="IMAGE_RENDER_HASH");
+  assert.equal((await completeEdited(editedPng)).done,true);
+  stored = structuredClone(queued);
   const logoBytes=await sharp({create:{width:6,height:5,channels:4,background:{r:20,g:75,b:190,alpha:0.5}}}).png().toBuffer();
   const logo={path:`image-creatives/${projectId}/${crypto.randomUUID()}.png`,w:6,h:5};
   stored.metadata.assets.push({...logo,sha256:crypto.createHash("sha256").update(logoBytes).digest("hex")});
@@ -858,7 +893,9 @@ for (const [formatId, withDirection] of [["note",false],["thumbnail_subject",fal
   const source = readFileSync(new URL("../app/api/v1/content/image-creatives/[id]/route.ts", import.meta.url),"utf8");
   const exports = {};
   const requestModules = {zod, "@/lib/http":{ApiError,parseJson:req=>req.json(),apiErrorResponse:e=>Response.json({code:e.code},{status:e.status??400})},
-    "@/lib/server/auth":{authenticateRequest:()=>ownerUser},"@/lib/server/image-creatives":server,"@/lib/server/youtube-ai-jobs":worker};
+    "@/lib/server/auth":{authenticateRequest:()=>ownerUser},"@/lib/server/image-creatives":server,
+    // Exercise the legacy worker adapter with the same route; company API is tested separately.
+    "@/lib/server/image-api-jobs":{requestImageApiJob:(actor,input)=>worker.requestStaffJob(actor,input)}};
   vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,
     {exports,require:n=>requestModules[n],Response});
   const patch = async input => {
@@ -1114,4 +1151,72 @@ test("the A/B list pages owned experiments including legacy rounds and returns o
   assert.deepEqual({...projects.at(-1).experiment},{stage:"copy",status:"awaiting_result"});
   assert.deepEqual(Object.keys(projects[0]).sort(),["experiment","id","title","updatedAt","version"]);
   assert.equal(model.imageExperimentSummary({...model.emptyImageCreative(),formatRecommendation:{mode:"standalone"}}),undefined);
+});
+
+test("local preview normalizes only the edited full image and refuses mismatched or extra sources", async () => {
+  const routeSource=readFileSync(new URL("../app/api/v1/content/image-creatives/[id]/preview/route.ts",import.meta.url),"utf8");
+  const routeModule={exports:{}};
+  const http={ApiError,parseJson:request=>request.json(),apiErrorResponse:error=>new Response(error.message,{status:error.status ?? 500})};
+  const deps={...modules,"@/lib/http":http,"@/lib/server/image-creatives":server,
+    "@/lib/server/auth":{authenticateRequest:()=>{throw new Error("demo must not authenticate");}},
+    "@/lib/server/image-mac-render":{}};
+  vm.runInNewContext(ts.transpileModule(routeSource,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,
+    {module:routeModule,exports:routeModule.exports,require:name=>deps[name],Buffer,URL,Date,Uint8Array,Request,Response,process:{env:{NEXT_PUBLIC_DEMO_MODE:"true"}}});
+  const input=await sharp({create:{width:1350,height:1080,channels:3,background:"#835724"}}).jpeg().withMetadata({orientation:6}).toBuffer();
+  const expected=await sharp(input).rotate().png().toBuffer();
+  const variant={...candidate,id:other,formatId:"M01",formatVersion:2,brand:"공방",
+    promptEdit:{prompt:"배경 색상 변경",model:"test",image:{...baseAsset,w:1080,h:1350}}};
+  const payload={variant,editedImage:"data:image/jpeg;base64,"+input.toString("base64")};
+  const post=body=>routeModule.exports.POST(new Request("http://127.0.0.1/api/v1/content/image-creatives/demo/preview",{
+    method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)}),{params:Promise.resolve({id:"demo"})});
+  const good=await post(payload);
+  assert.equal(good.status,200);
+  assert.deepEqual(Buffer.from(await good.arrayBuffer()),expected);
+  assert.equal((await post({variant})).status,422);
+  assert.equal((await post({...payload,photo:payload.editedImage})).status,422);
+  const small=await sharp({create:{width:10,height:10,channels:3,background:"#ffffff"}}).png().toBuffer();
+  assert.equal((await post({...payload,editedImage:"data:image/png;base64,"+small.toString("base64")})).status,422);
+  assert.equal((await post({...payload,variant:candidate})).status,422);
+});
+
+test("restored image projects keep a new input generation so old copy and format completions stay stale",async()=>{
+  reset();
+  await approveRequest(initial);
+  const copyKey=server.imageInputKey(stored,initial);
+  const originalState=structuredClone(stored.metadata.state);
+  stored.metadata.lifecycleRevision="archive-cycle-one";
+  assert.notEqual(server.imageInputKey(stored,initial),copyKey);
+  assert.deepEqual(stored.metadata.state,originalState);
+  const currentCopyKey=server.imageInputKey(stored,initial);
+  stored.archived_at=null;
+  assert.equal(server.imageInputKey(stored,initial),currentCopyKey);
+  reset();
+  stored.metadata.state.formatRecommendation={mode:"appeal",size:"portrait",count:5,referenceFirst:true,appealFirst:true,items:[]};
+  const request={phase:"formats"};
+  const formatKey=server.imageInputKey(stored,request);
+  stored.metadata.lifecycleRevision="archive-cycle-two";
+  assert.notEqual(server.imageInputKey(stored,request),formatKey);
+});
+
+
+test("prompt result upload never retries into a restored project; ordinary uploads remain additive",async()=>{
+  const png=await sharp({create:{width:20,height:20,channels:3,background:"#345678"}}).png().toBuffer();
+  for(const strictVersion of [true,false]) {
+    reset();
+    const before=structuredClone(stored),count=stored.metadata.assets.length;
+    modules["@/lib/supabase/server"].createServiceSupabase=()=>({...db(),storage:{from:()=>({upload:async()=>{
+      // Trash and restore finish while the original result is being uploaded.
+      stored={...stored,version:stored.version+2,metadata:{...stored.metadata,lifecycleRevision:"restored-generation"}};
+      return {error:null};
+    }})}});
+    const saving=server.registerImageBytes(before,png,undefined,undefined,{strictVersion});
+    if(strictVersion) {
+      await assert.rejects(saving,error=>error.code==="IMAGE_VERSION_CONFLICT");
+      assert.equal(stored.metadata.assets.length,count,"late edit is not registered in the restored project");
+    } else {
+      await saving;assert.equal(stored.metadata.assets.length,count+1,"normal image uploads retain additive retry behavior");
+    }
+    assert.equal(stored.metadata.lifecycleRevision,"restored-generation");
+  }
+  reset();
 });

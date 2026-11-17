@@ -43,11 +43,13 @@ export const unwrap = (value: unknown) => value && typeof value === "object" && 
 /** Takes the job, asks GPT (a second try with the OS's format problems), and completes or fails it like a staff AI would. */
 export async function runGptJob(jobId: string, owner: Owner, tier: GptTier) {
   const agent = gptActor(owner);
-  const claimed = await claimStaffJob(agent, jobId, true) as { lease: string; instructions: string };
+  const claimed = await claimStaffJob(agent, jobId, true) as { task?: string; lease: string; instructions: string };
   const { model, effort } = GPT_TIERS[tier];
   let issues = "";
   try {
-    const docs = await cardDocs(claimed.instructions);
+    // Image requests already contain their authorized product/reference snapshot. Never treat
+    // a doc_id typed into the user's advertising brief as permission to read a service-role document.
+    const docs = claimed.task === "image-creative" ? "" : await cardDocs(claimed.instructions);
     for (let attempt = 0; attempt < 2; attempt++) {
       const text = await generateContentText({ model, effort, maxTokens: 32_000, timeoutMs: 600_000, cachedPrefix: docs ? `${PREFACE}\n\n# 붙인 문서\n${docs}` : PREFACE,
         prompt: `# 작업 카드\n${claimed.instructions}${issues ? `\n\n## 지난 답에서 OS가 돌려준 고칠 점 (고쳐서 다시 답합니다)\n${issues}` : ""}` });

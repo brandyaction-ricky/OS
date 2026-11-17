@@ -5,6 +5,7 @@ import { ImageCreativeView } from "@/lib/image-creative/view";
 import { isWarehouseFormat } from "@/lib/image-creative/formats";
 import { type CreativeVariant, type ImageDesign } from "@/lib/image-creative/model";
 import { defaultPlacement, PLACEMENT_IDS, resolvePlacement } from "@/lib/image-creative/placement";
+import { ImagePromptEditor, type ImagePromptEditorProps } from "./image-prompt-editor";
 import { LegacySavedPng } from "./legacy-saved-png";
 import { WarehouseVariantPreview } from "./warehouse-variant-preview";
 
@@ -47,9 +48,11 @@ export function SafeZoneOverlay({ size, design }: { size: CreativeVariant["size"
 
 type EditorProps = {
   projectId: string; base: CreativeVariant; assetUrl?: string; referenceUrl?: string; detailUrl?: string;
+  promptEditUrl?:string; demo:boolean; examplePrompt?:string; propose:ImagePromptEditorProps["propose"]; apply:ImagePromptEditorProps["apply"];
   onSave: (baseId: string, id: string, design: ImageDesign) => Promise<void>; onClose: () => void;
 };
-export function ImageDesignEditor({ projectId, base, assetUrl, referenceUrl, detailUrl, onSave, onClose }: EditorProps) {
+export function ImageDesignEditor({ projectId, base, assetUrl, referenceUrl, detailUrl, promptEditUrl, demo, examplePrompt, propose, apply, onSave, onClose }: EditorProps) {
+  const [mode,setMode]=useState<"prompt"|"controls">("prompt");
   const original = useMemo<ImageDesign>(() => base.design || { font: "original", card: "original", placement: defaultPlacement(base.size) }, [base]);
   const [design, setDesign] = useState(original);
   const [guide, setGuide] = useState(true);
@@ -79,6 +82,10 @@ export function ImageDesignEditor({ projectId, base, assetUrl, referenceUrl, det
     finally { setBusy(false); }
   }
   return <section ref={section} tabIndex={-1} className="ic-editor" aria-label="디자인 편집">
+    <div className="ic-editor-tabs ic-row"><button type="button" className="secondary-button" disabled={busy} aria-pressed={mode==="prompt"} onClick={()=>setMode("prompt")}>말로 수정</button>
+      {!base.promptEdit && <button type="button" className="secondary-button" disabled={busy} aria-pressed={mode==="controls"} onClick={()=>setMode("controls")}>글꼴 · 크기 직접 조절</button>}</div>
+    {mode==="prompt" ? <ImagePromptEditor projectId={projectId} base={base} assetUrl={assetUrl} referenceUrl={referenceUrl} detailUrl={detailUrl} promptEditUrl={promptEditUrl}
+      demo={demo} examplePrompt={examplePrompt} propose={propose} apply={apply} close={onClose} onBusy={setBusy}/> : <>
     <div className="ic-editor-preview">
       <div className="ic-artboard">
         {isWarehouseFormat(base.formatId)
@@ -103,6 +110,6 @@ export function ImageDesignEditor({ projectId, base, assetUrl, referenceUrl, det
       {render?.key===key && render.problems.length>0 && <p role="status" className="ic-muted">{render.problems.join(" · ")}</p>}
       <div className="ic-row"><button type="button" className="primary-button" disabled={!changed || render?.key!==key || render.problems.length>0} onClick={()=>void save()}>수정본 저장</button>
         <button type="button" className="secondary-button" onClick={onClose}>닫기</button></div>
-    </fieldset>
+    </fieldset></>}
   </section>;
 }

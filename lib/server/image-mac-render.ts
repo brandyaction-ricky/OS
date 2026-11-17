@@ -8,7 +8,7 @@ import { usesBackgroundPhoto } from "@/lib/image-creative/formats";
 import { IMAGE_CREATIVE_KIND } from "@/lib/image-creative/storage";
 import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
-import { imageMeta, isApprovedRender, macOutputPath, macPhotoUrl, saveImageMeta, type ImageMacRun, type ImageRenderTarget } from "./image-creatives";
+import { imageMeta, isApprovedRender, macOutputPath, macPhotoUrl, savedDesignPreview, saveImageMeta, type ImageMacRun, type ImageRenderTarget } from "./image-creatives";
 import { MEDIA_BUCKET } from "./youtube-process-stages";
 
 const lease = { jobId: z.string().uuid(), lease: z.string().uuid() };
@@ -16,7 +16,7 @@ const variantId = z.string().uuid();
 const fileSize = z.number().int().positive().max(20 * 1024 * 1024);
 const file = z.object({variantId, bytes: fileSize, sha256: z.string().regex(/^[a-f0-9]{64}$/)}).strict();
 export const imageMacActions = [
-  z.object({action:z.literal("image_creative_claim"), rendererVersion:z.number().int().min(1).max(8)}).strict(),
+  z.object({action:z.literal("image_creative_claim"), rendererVersion:z.number().int().min(1).max(9)}).strict(),
   z.object({action:z.literal("image_creative_scene"), ...lease, variantId}).strict(),
   z.object({action:z.literal("image_creative_prepare"), ...lease, variantId, fileSize}).strict(),
   z.object({action:z.literal("image_creative_complete"), ...lease, files:z.array(file).min(1).max(20)}).strict(),
@@ -52,7 +52,7 @@ async function claim(computer: Computer, rendererVersion: number) {
         const run = meta.renders?.find(r => r.target === computer.target && r.status === status &&
           (status === "queued" || (r.expires ?? 0) <= Date.now()) && isApprovedRender(meta, r) &&
           meta.state.variants.every(v => !r.variantIds.includes(v.id) ||
-            rendererVersion >= (usesReferencePhotoStyling(v.referenceLayout) ? 8 : usesReferenceDetailRendering(v.referenceLayout) ? 7 : v.referenceLayout?.master ? 6 : v.referenceLayout?.composition ? 5 : v.formatId === "reference_image" ? 4 : v.formatId === "thumbnail_subject" ? 3 : usesBackgroundPhoto(v) ? 2 : 1)));
+            rendererVersion >= (v.promptEdit ? 9 : usesReferencePhotoStyling(v.referenceLayout) ? 8 : usesReferenceDetailRendering(v.referenceLayout) ? 7 : v.referenceLayout?.master ? 6 : v.referenceLayout?.composition ? 5 : v.formatId === "reference_image" ? 4 : v.formatId === "thumbnail_subject" ? 3 : usesBackgroundPhoto(v) ? 2 : 1)));
         if (!run) continue;
         const token = randomUUID();
         try {
@@ -96,6 +96,10 @@ export async function imageMacWork(computer: Computer, input: Action) {
   const bucket = createServiceSupabase().storage.from(MEDIA_BUCKET);
   if (input.action === "image_creative_scene") {
     const variant = variantOf(record,run,input.variantId);
+    if (variant.promptEdit) {
+      const {width,height} = resolvePlacement(variant.size,variant.design?.placement,variant.design?.outputWidth);
+      return {variant, promptEditUrl:await macPhotoUrl(record,variant,variant.promptEdit.image),width,height};
+    }
     const [photoUrl, referenceUrl, detailUrl] = await Promise.all([
       macPhotoUrl(record,variant,variant.asset), variant.referenceLayout && macPhotoUrl(record,variant,variant.referenceLayout.source),
       variant.detailAsset && macPhotoUrl(record,variant,variant.detailAsset),
@@ -137,6 +141,8 @@ export async function imageMacWork(computer: Computer, input: Action) {
       if (info.format !== "png" || info.width !== width || info.height !== height || (info.pages ?? 1) !== 1) throw Error();
       await decoder.raw().toBuffer();
     } catch { throw new ApiError(422,"IMAGE_RENDER_SIZE","PNG가 손상되었거나 시안의 규격과 달라요."); }
+    if (variant.promptEdit && sha(bytes) !== sha(await savedDesignPreview(record, variant.id)))
+      throw new ApiError(422,"IMAGE_RENDER_HASH","완성 PNG가 승인한 수정 이미지와 다릅니다.");
   }
   // Re-read after network downloads. An expired/reclaimed lease must not publish the older computer's files.
   const latest = await assigned(computer,input);
