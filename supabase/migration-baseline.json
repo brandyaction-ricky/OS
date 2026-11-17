@@ -1126,6 +1126,16 @@
         "development"
       ],
       "notes": "DEV verified: 15 transactional checks, 3 real REST conflicts, idempotent apply and unchanged ACL/owner/security attributes. Two existing function bodies only; original source hashes guard against concurrent edits. No business rows changed. Production approval and fresh looping-session evidence required separately; cleanup generator never executes SQL."
+    },
+    {
+      "file": "20261117220000_notification_voice_start.sql",
+      "sha256": "8a441f8881b624d300e48810680449fec22c317836027425a549ad39f925a493",
+      "purpose": "Allow the yt_voice_start notification reason (a waiting voice tells its owner when the render PC starts it).",
+      "requiresApproval": true,
+      "developmentApprovedAt": null,
+      "productionApprovedAt": null,
+      "appliedEnvironments": [],
+      "notes": "Additive and idempotent: reads the deployed os_notification_guard with pg_get_functiondef and adds yt_voice_start next to yt_upload in its two reason lists; stops with an error if the deployed guard does not have exactly two such lists. No rows, policies or grants change. Not applied anywhere yet; the app code tolerates its absence (the notice insert is rejected and logged)."
     }
   ],
   "legacyMigrations": [
