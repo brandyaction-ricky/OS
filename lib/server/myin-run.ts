@@ -7,7 +7,9 @@ import { changedMaterials, type MyinMaterials } from "@/lib/myin-materials";
 import { myinStop } from "@/lib/myin-stop";
 import { planVoiceFix } from "@/lib/myin-voice-plan";
 import { applySubtitleEdits, subtitleIssues, subtitleLines, subtitleTextProblem } from "@/lib/myin-subtitles";
-import { applyMyinSoundPlan, MYIN_METAPHOR_TYPES, myinDriftPairs, myinOnlySoundChanged, myinTextPairs, myinPhotoFetchUrl, myinPhotoFolders, myinPrepPhotos, myinSceneStarts, myinSoundIssues, myinSoundPlan, myinStoryboardSchema, type MyinSoundPlan } from "@/lib/myin-storyboard";
+import { applyMyinSoundPlan, MYIN_METAPHOR_TYPES, myinDriftPairs, myinOnlySoundChanged, myinTextPairs, myinPhotoFetchUrl, myinPhotoFolders, myinPrepPhotos, myinSceneStarts, myinSoundIssues, myinSoundPlan, myinCuesAsScript, myinStoryboardSchema, type MyinSoundPlan } from "@/lib/myin-storyboard";
+import { diagramCatalogTypes } from "@/lib/diagram-catalog";
+import { checkMyinStory } from "./myin-storyboard-job";
 import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { RequestActor } from "./auth";
@@ -114,7 +116,9 @@ const runSchema = z.object({
     summary: z.object({ title: z.string(), points: z.array(z.string()) }).strict().nullable(),
     reasons: z.object({ metaphors: z.string(), cta: z.string(), summary: z.string() }).strict(),
     assets: z.array(z.object({ kind: z.enum(["people", "situations", "bgm"]), file: z.string(), url: z.string(), source: z.string(), license: z.string(), use: z.string() }).strict()),
-    fuzzy: z.array(z.string()), notes: z.array(z.string()), reading: z.array(z.string()).optional() }).strict().optional(),
+    fuzzy: z.array(z.string()), notes: z.array(z.string()), reading: z.array(z.string()).optional(),
+    // 고친 원고 (요청 3번, 2026-11-17): lent by the video's earlier run — how many paragraphs the edit changed, how many scenes went to the AI.
+    carried: z.object({ changed: z.number().int().min(0), scenes: z.number().int().min(0) }).strict().optional() }).strict().optional(),
   // scenes: 점검 시트 장면 의견 (직원 요청 11-12) — the scenes the note names, so the staff AI changes only those in the storyboard it is given.
   review: z.object({ decision: z.enum(["confirmed", "revise"]), by: z.string().uuid(), name: z.string(), note: z.string(), at: z.string().datetime(),
     scenes: z.array(z.object({ n: z.number().int().positive(), at: z.string(), type: z.string(), who: z.string(), text: z.string() }).strict()).max(20).optional() }).strict().optional(),
@@ -274,15 +278,17 @@ export async function myinRunWithWords(service: Service, sourceId: string) {
 }
 
 /** A storyboard the OS checked goes to Logan: kept as a file, summarised for the ③ panel. */
-export async function saveMyinStoryboard(service: Service, record: OsRecord, run: MyinRun, value: {
+type StoryboardValue = {
   storyboard: Record<string, unknown>; assets: NonNullable<MyinRun["storyboard"]>["assets"]; reasons: NonNullable<MyinRun["storyboard"]>["reasons"];
-  fuzzy: string[]; notes: string[]; model: string; reading?: string[];
-}) {
-  const path = `${record.owner_id}/${run.sourceId}/${record.id}/myin-storyboard-${Date.now().toString(36)}.json`;
-  const { error } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).upload(path, Buffer.from(JSON.stringify(value.storyboard)), { contentType: "application/json", upsert: true });
-  if (error) throw new ApiError(502, "MYIN_STORYBOARD_UPLOAD_FAILED", "기획표를 저장하지 못했습니다.");
-  const next: MyinRun = { ...run, storyboard: { path, ...storyboardFields(value.storyboard), model: value.model, at: new Date().toISOString(),
-    reasons: value.reasons, assets: value.assets, fuzzy: value.fuzzy.slice(0, 60), notes: value.notes, ...(value.reading?.length ? { reading: value.reading.slice(0, 40) } : {}) } };
+  fuzzy: string[]; notes: string[]; model: string; reading?: string[]; carried?: NonNullable<MyinRun["storyboard"]>["carried"];
+};
+const storyboardEntry = (path: string, value: StoryboardValue): NonNullable<MyinRun["storyboard"]> => ({ path, ...storyboardFields(value.storyboard), model: value.model,
+  at: new Date().toISOString(), reasons: value.reasons, assets: value.assets, fuzzy: value.fuzzy.slice(0, 60), notes: value.notes,
+  ...(value.reading?.length ? { reading: value.reading.slice(0, 40) } : {}), ...(value.carried ? { carried: value.carried } : {}) });
+export async function saveMyinStoryboard(service: Service, record: OsRecord, run: MyinRun, value: StoryboardValue) {
+  // The AI that fixed the scenes an edit took away keeps the line that the rest is the earlier run's.
+  const carried = value.carried ?? (run.review?.name === MYIN_CARRY_NAME ? run.storyboard?.carried : undefined);
+  const next: MyinRun = { ...run, storyboard: storyboardEntry(await storyboardFile(service, record, run, value.storyboard), { ...value, carried }) };
   delete next.review;
   const saved = await save(service, record, "backlog", "storyboard_review", next);
   return autoConfirms(next) ? confirmByItself(service, saved).catch((error) => {
@@ -397,7 +403,7 @@ export async function myinRunReplaced(runId: string, service: Service = createSe
 }
 
 /**
- * 고친 문장만 다시 (로건 11-16 46efb0b9): earlier runs of the video whose voice the render PC may borrow paragraphs from — made there,
+ * 고친 문장만 다시 (2026-11-16): earlier runs of the video whose voice the render PC may borrow paragraphs from — made there,
  * finished (words), with the same voice — newest first. The PC that has one of their folders reuses each paragraph whose text is unchanged.
  */
 async function voiceDonors(service: Service, sourceId: string, like: Pick<MyinRun, "voiceReferenceFingerprint" | "voiceModel" | "layout">, before?: string) {
@@ -699,6 +705,72 @@ const resendStoryboard = (sourceId: string, runId: string, first?: string) => im
   .then(async (module) => await module.resendStoryboard(sourceId) ?? (first ? module.requestFirstStoryboard(sourceId, first) : null))
   .catch((error) => console.error(JSON.stringify({ event: "storyboard_resend_failed", runId, message: error instanceof Error ? error.message : String(error) })));
 
+/** Who sends an edited script's storyboard scenes to the AI (the panel and the AI card name it). */
+export const MYIN_CARRY_NAME = "원고 고친 곳";
+/** More scenes than this (or a problem that is not a scene's) and the AI writes the storyboard again, as before. */
+const CARRY_SCENES_MAX = 20;
+
+/**
+ * 고친 원고로 다시 만든 영상 (요청 3번, 2026-11-17): the newest earlier run of the video with a storyboard lends it — cues are words, so
+ * they are carried over the script to this voice's transcript (myinCuesAsScript, then the usual check) instead of an AI writing all
+ * of it again (35 minutes of a member's AI for 99 scenes). The scenes whose words the edit took away go to the AI alone, with the
+ * rest as it is. That run's subtitle edits (matched by the line's words) and the our-images its storyboard names come along.
+ * Nothing to lend: null, and the AI writes the storyboard as before.
+ */
+async function earlierLoan(service: Service, record: OsRecord, run: MyinRun, bundle: { words: [number, number, string][]; speech: string; subtitlesAss: string }, spoken: string[]) {
+  if (run.layout || run.storyboard || run.subtitleEdits) return null;
+  const { data } = await service.from("os_records").select("*").eq("parent_id", run.sourceId).eq("record_type", "ai_job").eq("metadata->>kind", MYIN_RUN_KIND)
+    .is("archived_at", null).lt("created_at", record.created_at).order("created_at", { ascending: false }).limit(6);
+  const readable = (row: OsRecord) => { try { return parse(row); } catch { return null; } };
+  const donor = (data ?? []).map((row) => readable(row as OsRecord)).find((r) => r && !r.layout && r.storyboard && r.words);
+  if (!donor?.storyboard || !donor.words) return null;
+  const lines = subtitleLines(bundle.subtitlesAss), edits = new Map<number, { i: number; from: string; to: string }>();
+  for (const edit of donor.subtitleEdits?.lines ?? []) {
+    const line = lines.filter((l) => l.text === edit.from).sort((a, b) => Math.abs(a.i - edit.i) - Math.abs(b.i - edit.i))[0];
+    if (line && !edits.has(line.i)) edits.set(line.i, { i: line.i, from: edit.from, to: edit.to });
+  }
+  const subtitleEdits = edits.size && donor.subtitleEdits ? { lines: [...edits.values()].sort((a, b) => a.i - b.i), at: new Date().toISOString(), by: donor.subtitleEdits.by, name: donor.subtitleEdits.name } : undefined;
+  const kept = new Set(donor.paragraphs.map((p) => p.textHash));
+  const changed = run.paragraphs.filter((p) => !kept.has(p.textHash));
+  // ponytail: past half the paragraphs it is a new script, not an edit — the AI writes it again; a share from use if this misjudges.
+  const [{ data: file }, catalog] = await Promise.all([service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).download(donor.words.path), readDiagramCatalog().catch(() => null)]);
+  if (!file || changed.length * 2 > run.paragraphs.length) return subtitleEdits ? { subtitleEdits } : null;
+  const earlier = JSON.parse(await file.text()) as { words: [number, number, string][]; speech?: string };
+  const story = myinCuesAsScript(await storyboardJson(service, donor), earlier.words, earlier.speech ?? "") as Record<string, unknown>;
+  const checked = checkMyinStory(story, bundle.words, diagramCatalogTypes(catalog), bundle.speech);
+  const scenes = new Map<number, string[]>();
+  for (const issue of checked.issues) {
+    const n = Number(issue.match(/^\[장면 (\d+)\] /)?.[1]);
+    if (!n) return subtitleEdits ? { subtitleEdits } : null;
+    scenes.set(n, [...scenes.get(n) ?? [], issue.replace(/^\[장면 \d+\] /, "")]);
+  }
+  if (scenes.size > CARRY_SCENES_MAX) return subtitleEdits ? { subtitleEdits } : null;
+  const files = myinReferencedFiles(checked.storyboard);
+  const ours = Object.fromEntries(Object.entries(donor.ours ?? {}).filter(([file]) => files.has(file)));
+  const changedText = spoken.filter((text) => !kept.has(sha(text))).map((text) => `「${text.slice(0, 80)}${text.length > 80 ? "…" : ""}」`).join(" ");
+  const sceneList = checked.storyboard.scenes as Record<string, unknown>[];
+  return { subtitleEdits, ours, changed: changed.length, story: checked, storyboard: donor.storyboard,
+    scenes: [...scenes].map(([n, problems]) => ({ n, at: String(sceneList[n - 1]?.at ?? ""), type: String(sceneList[n - 1]?.type ?? ""), who: MYIN_CARRY_NAME,
+      text: `원고를 고쳐 이 장면의 문구를 새 받아쓰기에서 못 찾았어요(${problems.join(" · ")}). 이 장면만 새 원고에 맞게 고쳐 주세요. 바뀐 문단: ${changedText}`.slice(0, 2000) })) };
+}
+
+/**
+ * The loan taken: the whole storyboard as a new storyboard (confirmed by itself under 「자동」, as the AI's would be) — "whole"; or, with
+ * scenes the edit took away, this storyboard kept on the run with those scenes as a 수정 요청 for the AI (점검 시트 장면 의견) — "scenes".
+ */
+async function lendStoryboard(service: Service, record: OsRecord, loan: NonNullable<Awaited<ReturnType<typeof earlierLoan>>>) {
+  if (!loan.story || !loan.storyboard || !loan.scenes) return "none";
+  const run = parse(record);
+  const value: StoryboardValue = { storyboard: loan.story.storyboard, assets: loan.storyboard.assets, reasons: loan.storyboard.reasons, fuzzy: loan.story.fuzzy,
+    notes: loan.story.notes, reading: loan.story.reading, model: loan.storyboard.model, carried: { changed: loan.changed, scenes: loan.scenes.length } };
+  if (!loan.scenes.length) { await saveMyinStoryboard(service, record, run, value); return "whole"; }
+  const next: MyinRun = { ...run, storyboard: storyboardEntry(await storyboardFile(service, record, run, value.storyboard), value),
+    review: { decision: "revise", by: run.settings?.by ?? record.owner_id ?? record.created_by ?? "", name: MYIN_CARRY_NAME, note: `원고를 고친 곳 ${loan.scenes.length}장면만 AI가 고쳐요`,
+      at: new Date().toISOString(), scenes: loan.scenes } };
+  await save(service, record, "done", "words_ready", next);
+  return "scenes";
+}
+
 export async function completeMyinWords(input: { runId: string; lease: string; voice?: { parts: number; bytes: number; sha256: string }; preview?: { bytes: number } }, service: Service = createServiceSupabase()) {
   const { record, run } = await leased(service, input.runId, input.lease);
   const path = bundlePath(record, run, input.lease);
@@ -718,8 +790,17 @@ export async function completeMyinWords(input: { runId: string; lease: string; v
   // A fix asked from 최종 검토 returns to ④, where 「전체 영상 만들기」 makes the video again with the new voice.
   const stage = run.voiceResume ?? "words_ready";
   if (run.voiceResume) next.voiceChanged = { at: new Date().toISOString(), count: run.voiceFixes?.length ?? 0 };
-  await save(service, record, "done", stage, next);
-  if (stage === "words_ready") await resendStoryboard(run.sourceId, record.id, autoConfirms(run) ? run.settings?.by ?? record.owner_id ?? undefined : undefined);
+  // 고친 원고 (요청 3번): what the video's earlier run lends; when it cannot, the AI writes the storyboard as before.
+  const failedLoan = (error: unknown) => {
+    console.error(JSON.stringify({ event: "myin_storyboard_loan_failed", runId: record.id, message: error instanceof Error ? error.message : String(error) }));
+    return null;
+  };
+  const loan = stage === "words_ready" ? await earlierLoan(service, record, run, bundle.data, spoken).catch(failedLoan) : null;
+  if (loan?.subtitleEdits) next.subtitleEdits = loan.subtitleEdits;
+  if (loan?.ours && Object.keys(loan.ours).length) next.ours = { ...loan.ours, ...next.ours };
+  const saved = await save(service, record, "done", stage, next);
+  if (stage === "words_ready" && (loan ? await lendStoryboard(service, saved, loan).catch(failedLoan) : null) !== "whole")
+    await resendStoryboard(run.sourceId, record.id, autoConfirms(run) ? run.settings?.by ?? record.owner_id ?? undefined : undefined);
   // His dictionaries as the render PC left them (new lines from voice_fix, or his starting set): the OS keeps what it does not have.
   await reportVoiceDictionary((bundle.data as { dictionary?: Partial<VoiceDictionaryFiles> }).dictionary, { id: record.owner_id ?? "", team: record.team ?? "" }, service)
     .catch((error) => console.error(JSON.stringify({ event: "voice_dictionary_report_failed", message: error instanceof Error ? error.message : String(error) })));
@@ -883,10 +964,13 @@ export async function saveMyinSceneEdit(service: Service, record: OsRecord, run:
 
 /** A changed storyboard (its sound only) as a new file — storage serves a replaced file's old bytes for a while. */
 async function putStoryboard(service: Service, record: OsRecord, run: MyinRun, value: unknown) {
+  return { ...run.storyboard!, path: await storyboardFile(service, record, run, value) };
+}
+async function storyboardFile(service: Service, record: OsRecord, run: MyinRun, value: unknown) {
   const path = `${record.owner_id}/${run.sourceId}/${record.id}/myin-storyboard-${Date.now().toString(36)}.json`;
   const { error } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).upload(path, Buffer.from(JSON.stringify(value)), { contentType: "application/json", upsert: true });
   if (error) throw new ApiError(502, "MYIN_STORYBOARD_UPLOAD_FAILED", "기획표를 저장하지 못했습니다.");
-  return { ...run.storyboard!, path };
+  return path;
 }
 /** File names the storyboard points at: photo/music "file", opening "image", site_ad "capture" (made by the render PC). */
 export function myinReferencedFiles(storyboard: unknown) {
@@ -1793,11 +1877,13 @@ export async function myinMakingNews(service: Service, projectId: string) {
   const run = parse(record), out: { at: string; kind: string; text: string }[] = [];
   out.push({ at: record.created_at, kind: "making", text: `영상 만들기를 시작했어요: 음성 ${run.paragraphs.length}문단 · 받아쓰기 · 자막.` });
   if (run.words) out.push({ at: run.words.at, kind: "making", text: `음성 · 받아쓰기 · 자막이 끝났어요(낭독 ${Math.round(run.words.durationSeconds / 60)}분).${autoConfirms(run) ? " 내 AI가 장면 기획표를 써요." : ""}` });
-  if (run.storyboard) out.push({ at: run.storyboard.at, kind: "making", text: `장면 기획표가 나왔어요(장면 ${run.storyboard.scenes}개).` });
+  if (run.storyboard) out.push({ at: run.storyboard.at, kind: "making", text: run.storyboard.carried && !run.storyboard.carried.scenes
+    ? `원고를 고친 뒤라 전 작업의 장면 기획표를 그대로 썼어요(장면 ${run.storyboard.scenes}개 · 바뀐 문단 ${run.storyboard.carried.changed}개).` : `장면 기획표가 나왔어요(장면 ${run.storyboard.scenes}개).` });
   const review = run.review;
   if (review) out.push({ at: review.at, kind: review.decision === "confirmed" ? "making" : "gate", text: review.decision === "confirmed"
     ? review.name === MYIN_AUTO_CONFIRM_NAME ? "OS 검사를 통과해 기획표를 자동으로 확인했어요. 장면 그림을 만들어요." : `${review.name}님이 기획표를 확인했어요. 장면 그림을 만들어요.`
-    : review.name === MYIN_GATE_NAME ? `렌더 전 관문에서 걸린 곳을 내 AI가 고쳐요(${run.gateRounds ?? 1}회차).` : `${review.name}님이 기획표 수정을 요청했어요: “${review.note.slice(0, 120)}”` });
+    : review.name === MYIN_GATE_NAME ? `렌더 전 관문에서 걸린 곳을 내 AI가 고쳐요(${run.gateRounds ?? 1}회차).`
+    : review.name === MYIN_CARRY_NAME ? `원고를 고친 곳 ${review.scenes?.length ?? 0}장면만 내 AI가 고쳐요. 나머지 장면은 전 작업의 기획표 그대로예요.` : `${review.name}님이 기획표 수정을 요청했어요: “${review.note.slice(0, 120)}”` });
   if (run.stills) out.push({ at: run.stills.at, kind: "making", text: "장면 그림이 편집 화면 타임라인에 깔렸어요(v0). 보고 고친 뒤 「완성」을 누르면 움직이는 최종본을 만들어요." });
   const prepared = run.prepared;
   if (prepared?.needsPerson?.length) out.push({ at: prepared.at, kind: "person", text: `관문에서 ${MYIN_GATE_ROUNDS}번 넘게 걸린 곳이 있어 여기서 사람 확인이 필요해요: ${prepared.needsPerson.slice(0, 6).join(" / ")}` });
