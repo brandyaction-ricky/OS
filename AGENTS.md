@@ -51,6 +51,7 @@ At the end of every development task, update the matching project in the company
 - Resolve the project by its existing repository mapping. Keep OS, Edu, and Myin work under their own project IDs; never create duplicates or store another project's work under OS by default.
 - Record the change, verification performed and not performed, local commit, remote PR if created, environment, actual deployment state, remaining work, and risks.
 - Update the original request using its current version when applicable and save a development log linked to the same project and request.
+- When a change is actually live in production, save that development log with environment `production` and status `completed` (the OS bot announces exactly those to the business's Telegram room). Use `tested`, `review` or `working` only for work that is not yet live, and never mark a log `completed` in `production` before the production deployment is verified.
 - Read the saved record back before claiming it was recorded.
 - If access is read-only or a write is rejected, do not bypass it. Preserve the completion note locally and report that OS recording is pending.
 
