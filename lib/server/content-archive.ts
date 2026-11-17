@@ -137,10 +137,11 @@ export async function addArchiveToMeeting(actor: RequestActor, input: z.infer<ty
 // 기획안 takes it; the 기획안's own save (who may edit, 컨펌 대기, version) decides the rest.
 const v1On = async (actor: RequestActor) => { if (!(await youtubeV1Allowed(actor))) throw new ApiError(404, "YOUTUBE_V1_DISABLED", "유튜브 공정 화면을 사용할 수 없습니다."); };
 
-/** The videos in 기획안 the member can see, the one worked on last first. */
+/** The 롱폼 videos (실사 · 애니메이션) in 기획안 the member can see, the one worked on last first — 숏폼 · 카드뉴스 have no YouTube thumbnail
+ *  (대표 2026-11-17 「롱폼만으로 좁혀줘」). */
 export async function planVideos(actor: RequestActor) {
   await v1On(actor);
-  const videos = (await listYoutubeProjects(actor)).filter((project) => project.yp.stage === "draft")
+  const videos = (await listYoutubeProjects(actor)).filter((project) => project.yp.stage === "draft" && ["live", "anim"].includes(project.yp.topic.type ?? ""))
     .sort((a, b) => b.yp.contentUpdatedAt.localeCompare(a.yp.contentUpdatedAt)).slice(0, 30);
   return { videos: videos.map((project) => ({ id: project.id, title: projectName(project), kind: project.yp.topic.type ? YP_KIND_LABEL[project.yp.topic.type] : "" })) };
 }
