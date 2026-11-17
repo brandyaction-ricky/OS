@@ -37,6 +37,13 @@ export function isReleaseLog(record: { record_type?: string | null; stage?: stri
   return record.record_type === "development_log" && record.stage === "production" && record.status === "completed";
 }
 
-export function releaseLogText(input: { project: string; title: string; summary: string; url: string }) {
-  return `🚀 개발 반영 · ${input.project}\n「${input.title.slice(0, 120)}」\n\n${excerpt(input.summary)}\n\nOS에서 보기: ${input.url}`;
+/** A log's room: its project's business; a company-wide project (브랜디액션 OS, TIPS) goes to the requester's room — 액션팀 when there is no request. */
+export function releaseLogRooms(project: { title?: string | null; brand?: string | null }, requesterAffiliation?: string | null) {
+  return requestCommentRooms(project, [requesterAffiliation ?? ""]);
+}
+
+/** Staff read plain words only: the 쉬운 설명 (the log's own, else its request's), never the developer summary; none → the title alone. */
+export function releaseLogText(input: { project: string; title: string; plain?: string | null; url: string }) {
+  const plain = input.plain?.trim() ? `\n\n${excerpt(input.plain)}` : "";
+  return `🚀 개발 반영 · ${input.project}\n「${input.title.slice(0, 120)}」${plain}\n\nOS에서 보기: ${input.url}`;
 }
