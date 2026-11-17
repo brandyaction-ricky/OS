@@ -82,12 +82,12 @@ export function MyinOurImages({ runId, token, onSaved, onScene, open = false }: 
 
   return <details className="yt-details" open={open || undefined} onToggle={(event) => { if ((event.target as HTMLDetailsElement).open && !state) void load(); }}>
     <summary>장면 그림 바꾸기 (우리 이미지 · 사진 후보)</summary>
-    <p className="yt-note">장면에 들어간 사진을 우리가 가진 이미지(워크북 캡처, 직접 받은 인물 사진 등)나 Unsplash · 위키미디어 사진 후보로 바꿔 넣어요. 올리는 이미지는 직접 찍었거나 쓸 권리를 받은 것만 올려 주세요. 후보는 찾아보기만 해서는 아무것도 바뀌지 않고, [사용하기]를 눌러야 바뀌어요. 장면 길이와 목소리는 그대로예요. 길이나 말을 바꾸려면 구성안 원고를 고쳐 음성부터 다시 만들어요.</p>
+    <p className="yt-note">장면에 들어간 사진을 우리가 가진 이미지(워크북 캡처, 직접 받은 인물 사진 등)나 Unsplash · 위키미디어 사진 후보로 바꿔 넣어요. 움직임이 중요한 장면은 MP4 · MOV 영상(20MB 이하)을 올려도 돼요: 그 장면에서 영상이 흘러가고, 영상 소리는 목소리 아래로 작게 깔려요. 올리는 이미지 · 영상은 직접 찍었거나 쓸 권리를 받은 것만 올려 주세요. 후보는 찾아보기만 해서는 아무것도 바뀌지 않고, [사용하기]를 눌러야 바뀌어요. 장면 길이와 목소리는 그대로예요. 길이나 말을 바꾸려면 구성안 원고를 고쳐 음성부터 다시 만들어요.</p>
     {state ? <ul className="yt-list">{rows.map(({ scene, photo }) => { const row = `${scene}-${photo.file}`; return <li key={row}>
       {scene ? `${scene}번 장면 · ` : ""}{photo.file} · {from(photo)}{" "}
       {state.open ? <>
         <button type="button" className="secondary-button compact" disabled={Boolean(busy)} onClick={() => pick(photo, scene)}>
-          {busy === photo.file ? "바꾸는 중…" : photo.from === "ours" ? "이미지로 바꾸기" : "이미지 올리기"}</button>
+          {busy === photo.file ? "바꾸는 중…" : photo.from === "ours" ? "이미지 · 영상으로 바꾸기" : "이미지 · 영상 올리기"}</button>
         <button type="button" className="secondary-button compact" disabled={Boolean(busy)}
           onClick={() => setFinding(finding?.row === row ? null : { row, photo, scene, query: wordsOf(photo.file), results: null, missing: [] })}>{finding?.row === row ? "후보 닫기" : "후보 찾기"}</button>
       </> : null}
@@ -114,7 +114,7 @@ export function MyinOurImages({ runId, token, onSaved, onScene, open = false }: 
     </li>; })}</ul> : <p>불러오는 중…</p>}
     {state && !state.open ? <small>전체 영상을 만드는 중이에요. 끝난 뒤에 바꿀 수 있어요.</small> : null}
     {state?.finished ? <small>완성 영상이 있어요. 바꾸면 4단계에서 자료를 다시 준비한 뒤 새 완성본을 만들고, 지금 완성본은 예전 버전으로 남아요.</small> : null}
-    <input ref={picker} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(event) => {
+    <input ref={picker} type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime" hidden onChange={(event) => {
       const image = event.target.files?.[0];
       event.target.value = "";
       if (image) upload(image);
