@@ -47,7 +47,7 @@ print(json.dumps(F.timing(scenes, plan, idx, words, 20.0, lambda t: t, 1), ensur
   assert.ok(!kinds.some((k) => k.startsWith("1:")), "the deck the engine made from the opening is the opening");
   const check = read("tools/myin_frame_check.py");
   assert.match(check, /no = lambda j: 1 if j <= decks else j - decks \+ 1/);
-  assert.match(read("lib/server/myin-run.ts"), /\/못 찾음\|빈 화면\|그리기 오류\|늦게 바뀜\|초 미만 장면\/\.test\(line\)/);
+  assert.match(read("lib/server/myin-run.ts"), /\/못 찾음\|빈 화면\|그리기 오류\|늦게 바뀜\|초 미만 장면\|문장 중간\/\.test\(line\)/);
 });
 
 test("③'s pictures carry no baked subtitle: the editor gets them bare, the 정지 그림 영상 gets the engine's subtitle box and the voice", () => {

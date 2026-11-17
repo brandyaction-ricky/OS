@@ -6,9 +6,16 @@ import { apiRequest } from "@/lib/api-client";
 import { CostTag } from "./cost-notice";
 
 interface VoiceCheckData {
-  sentences: number | null; listen: { at: number; sentence: string; issues: string[]; score: number; long: number }[] | null;
+  sentences: number | null; listen: { at: number; p?: number; sentence: string; issues: string[]; score: number; long: number; joins?: string[] }[] | null;
   fixes: { memo: string; ok: boolean; report: string }[]; previewUrl: string | null;
+  /** 요청 2번 (2026-11-17): every sentence, and the takes asked for one of them (put up by the render PC that made the voice). */
+  all?: { at: number; p: number; sentence: string }[] | null;
+  takes?: { p: number; text: string; state: "pending" | "listing" | "ready" | "failed"; code: string | null; files: { name: string; url: string; current: boolean }[] } | null;
 }
+type Line = { at: number; p?: number; sentence: string };
+/** Where 「음성 확인 · 수정」 may change a sentence: stage 1, and wherever the video waits for a person after it (the server says where it goes back to). */
+const FIXABLE_AT = ["words_ready", "storyboard_review", "clips_review", "prep_ready", "final_ready"];
+const takeNo = (name: string) => Number(/_(\d+)_t\.wav$/.exec(name)?.[1] ?? 0) + 1;
 export interface MyinVoiceFixView { memo: string; say: string | null; read: string | null; name: string }
 export interface MyinVoiceCheckView { skipped: boolean; name: string; at: string }
 type Memo = { memo: string; say?: string; read?: string; video?: true };
@@ -49,7 +56,7 @@ export function MyinVoiceCheck({ runId, stage, fixable, pending, check, token, o
   const [busy, setBusy] = useState(""), [error, setError] = useState("");
   const [plan, setPlan] = useState<VoiceFixPlan | null>(null);
   const audio = useRef<HTMLAudioElement>(null);
-  const open = stage === "words_ready";
+  const open = FIXABLE_AT.includes(stage);
   const call = (method: "GET" | "PATCH", body?: Record<string, unknown>) => apiRequest<VoiceCheckData>(`/api/v1/content/youtube-automation/myin${method === "GET" ? `?voicecheck=${runId}` : ""}`,
     { token, ...(body ? { method, body: JSON.stringify({ runId, ...body }) } : {}) });
   const load = async () => { setError(""); try { setData(await call("GET")); } catch (reason) { setError(reason instanceof Error ? reason.message : "음성 확인을 열지 못했어요."); } };
@@ -65,6 +72,35 @@ export function MyinVoiceCheck({ runId, stage, fixable, pending, check, token, o
     catch (reason) { setError(reason instanceof Error ? reason.message : "처리하지 못했어요."); }
     finally { setBusy(""); }
   };
+  // 테이크 고르기: the render PC puts them up in a few seconds; the box looks again until they are there.
+  const asking = data?.takes && (data.takes.state === "pending" || data.takes.state === "listing");
+  useEffect(() => { if (!asking) return; const timer = setTimeout(() => void load(), 4000); return () => clearTimeout(timer); });
+  const askTakes = async (line: Line) => {
+    if (line.p === undefined) return;
+    setBusy("takes"); setError("");
+    try { await call("PATCH", { action: "voice_takes", p: line.p, text: line.sentence }); await load(); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "테이크를 부르지 못했어요."); }
+    finally { setBusy(""); }
+  };
+  const label = (line: Line, what: string) => `${mmss(line.at)} ${line.sentence.slice(0, 60)} · ${what}`;
+  const tools = (line: Line) => open && fixable && line.p !== undefined ? <>
+    <button type="button" className="secondary-button compact" disabled={Boolean(busy)} onClick={() => void askTakes(line)}>테이크 고르기</button>
+    <button type="button" className="secondary-button compact" disabled={Boolean(busy)} title="이 문장 앞과 뒤에 0.2초씩 더 쉬어요(누를 때마다 더해요, 1초까지)"
+      onClick={() => void act("pause", { action: "voice_fix", fixes: [{ memo: label(line, "앞뒤 쉼 +0.2초"), pause: { p: line.p, text: line.sentence, before: 0.2, after: 0.2 } }] })}>쉼 +0.2초</button>
+  </> : null;
+  const takesBox = data?.takes ? <div className="yt-note yt-takes">
+    <strong>테이크 고르기 · {data.takes.text.slice(0, 60)}</strong>
+    {asking ? <p>영상 만드는 컴퓨터가 이 문장의 테이크를 꺼내는 중이에요…</p>
+      : data.takes.state === "failed" ? <p className="yt-warn">{data.takes.code === "MYIN_TAKES_UNAVAILABLE" ? "이 영상의 음성 패키지는 테이크 바꾸기를 못 해요(11/17 전 패키지). 메모로 다시 만들어 주세요."
+        : data.takes.code === "MYIN_TAKES_NO_VOICE" ? "영상 만드는 컴퓨터에 이 영상의 음성 작업 폴더가 없어요." : "테이크를 꺼내지 못했어요. 다시 눌러 주세요."}</p>
+      : <><ul className="yt-take-list">{data.takes.files.map((file) => <li key={file.name}>
+          <span className="yt-take-no">테이크 {takeNo(file.name)}</span><audio controls preload="none" src={file.url} />
+          {file.current ? <small>지금 쓰는 것</small> : open && fixable ? <button type="button" className="secondary-button compact" disabled={Boolean(busy)}
+            onClick={() => { const line = data.all?.find((row) => row.p === data.takes!.p && row.sentence === data.takes!.text) ?? { at: 0, p: data.takes!.p, sentence: data.takes!.text };
+              void act("take", { action: "voice_fix", fixes: [{ memo: label(line, `테이크 ${takeNo(file.name)}로 바꾸기`), take: { p: data.takes!.p, text: data.takes!.text, name: file.name } }] }); }}>이걸로 바꾸기</button> : null}
+        </li>)}</ul>
+        <small>음성을 만들 때 이 문장으로 만들어 둔 테이크예요. 바꿔도 Fish 비용은 들지 않아요. 새로 만들려면 「메모」로 남겨요(유료).</small></>}
+  </div> : null;
   const memoKey = JSON.stringify(memos);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- memoKey stands for memos
   useEffect(() => { setPlan(null); if (memos.length) askVoicePlan(token, runId, memos).then(setPlan, () => setPlan(null)); }, [memoKey, runId, token]);
@@ -89,10 +125,19 @@ export function MyinVoiceCheck({ runId, stage, fixable, pending, check, token, o
         : <><p><strong>들어 볼 문장 {data.listen.length}개</strong>{data.sentences ? <small> · 전체 {data.sentences}문장 중</small> : null}</p>
           {data.listen.length ? <ul className="yt-voice-list" style={{ listStyle: "none", padding: 0, display: "grid", gap: 6 }}>{data.listen.map((row, at) => <li key={at} style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
             <button type="button" className="secondary-button compact" disabled={!data.previewUrl} onClick={() => play(row.at)}>▶ {mmss(row.at)}</button>
-            <span style={{ flex: "1 1 260px", minWidth: 0 }}>{row.sentence}<br /><small>{[row.score >= 0.8 ? `끊김 의심 ${row.issues.map(issue => issue.split(" ")[0]).join(" · ")}` : "", row.long ? `긴 한 호흡 ${row.long}음절` : ""].filter(Boolean).join(" · ")}</small></span>
+            <span style={{ flex: "1 1 260px", minWidth: 0 }}>{row.sentence}<br /><small>{[row.score >= 0.8 ? `끊김 의심 ${row.issues.map(issue => issue.split(" ")[0]).join(" · ")}` : "", row.long ? `긴 한 호흡 ${row.long}음절` : "",
+              row.joins?.length ? `이음 고침 ${row.joins.join(" · ")}` : ""].filter(Boolean).join(" · ")}</small></span>
+            {tools(row)}
             {open && fixable ? <button type="button" className="secondary-button compact" onClick={() => { setTime(mmss(row.at)); setText(row.sentence.slice(0, 40)); }}>메모</button> : null}
-          </li>)}</ul> : <p>기계가 찾은 어색한 문장이 없어요. 무작위로 두 문단만 들어 봐요.</p>}</>}
+          </li>)}</ul> : <p>기계가 찾은 어색한 문장이 없어요. 무작위로 두 문단만 들어 봐요.</p>}
+          {data.all?.length ? <details><summary>모든 문장 {data.all.length}개 — 테이크 고르기 · 쉼 더하기</summary>
+            <ul className="yt-take-list yt-all-lines">{data.all.map((row) => <li key={`${row.p}-${row.at}`}>
+              <button type="button" className="secondary-button compact" disabled={!data.previewUrl} onClick={() => play(row.at)}>▶ {mmss(row.at)}</button>
+              <span className="yt-line-text">{row.sentence}</span>{tools(row)}
+            </li>)}</ul></details> : null}
+          {takesBox}</>}
       {open && !fixable ? <p>이 영상은 10/30 16시 전에 시작해 문장만 다시 만들 수 없어요. 고칠 곳은 최종 검토 피드백에 남겨요.</p> : null}
+      {open && fixable && stage !== "words_ready" ? <p><small>여기서 고치면 받아쓰기 · 자막을 다시 만들어요. 장면 그림 단계면 장면 그림도 다시, 완성 영상이 있으면 ④로 돌아가 「전체 영상 만들기」로 새 음성을 넣어요.</small></p> : null}
       {open && fixable ? <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <input className="input" style={{ width: 80 }} value={time} placeholder="02:03" aria-label="시각" onChange={event => setTime(event.target.value)} />
@@ -109,7 +154,7 @@ export function MyinVoiceCheck({ runId, stage, fixable, pending, check, token, o
         {memos.length ? plan ? <VoiceFixScope plan={plan} /> : <small>다시 만들 문장을 찾는 중…</small> : null}
         <div className="yt-actions">
           {memos.length ? <><button type="button" className="primary-button" disabled={Boolean(busy) || !plan || plan.conflicts.length > 0} onClick={() => void send()}>{busy === "fix" ? "보내는 중…" : `문장 ${plan?.fixes.length ?? memos.length}개 다시 만들기`}</button><small><CostTag kind="paid" /> 그 문장만 두 번 만들어 더 나은 것을 골라요</small></> : null}
-          {!check ? <><button type="button" className="secondary-button" disabled={Boolean(busy) || memos.length > 0} onClick={() => void act("ok", { action: "voice_check", skipped: false })}>음성 확인 완료</button>
+          {!check && stage === "words_ready" ? <><button type="button" className="secondary-button" disabled={Boolean(busy) || memos.length > 0} onClick={() => void act("ok", { action: "voice_check", skipped: false })}>음성 확인 완료</button>
             <button type="button" className="text-button" disabled={Boolean(busy) || memos.length > 0} onClick={() => void act("skip", { action: "voice_check", skipped: true })}>확인 없이 바로 넘어가기</button></> : null}
         </div>
       </div> : null}

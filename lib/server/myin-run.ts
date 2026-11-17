@@ -80,6 +80,9 @@ const finalSchema = z.object({ video: z.string(), summary: z.string().optional()
 // not taken (유쓰 요청 2/8 · 3/8). stage: the stage it was claimed at; a run that moved on (수정 요청, a new start) takes no late result.
 const leaseSchema = z.object({ token: z.string().uuid(), expiresAt: z.string().datetime(), startedAt: z.string().datetime().optional(), input: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   stage: z.string().max(40).optional(), engine: engineFp.optional() }).strict();
+const takeName = z.string().regex(/^p\d{2}_s\d{2}_\d{1,3}_t\.wav$/);
+const takeFix = z.object({ p: z.number().int().min(0).max(150), text: z.string().trim().min(1).max(300), name: takeName }).strict();
+const pauseFix = z.object({ p: z.number().int().min(0).max(150), text: z.string().trim().min(1).max(300), before: z.number().min(0).max(1), after: z.number().min(0).max(1) }).strict();
 const runSchema = z.object({
   kind: z.literal(MYIN_RUN_KIND), runKey: hex, sourceId: z.string().uuid(), inputKey: hex, script: versionRef, scriptMarkdownHash: hex,
   // 숏폼 (2026-10-28): drawn 9:16 by the render PC's vertical copy of Logan's engine (MYIN_PKG_SHORT); no handouts, no staff-Mac drafts.
@@ -102,11 +105,18 @@ const runSchema = z.object({
   // 음성 확인·수정 (로건 OS 요청 2026-10-30): memos left on stage 1 wait here for the render PC, which redoes only those sentences with his
   // voice_fix (two new takes, the better one swapped in, the sentence added to his dictionary) and transcribes again; the check itself
   // (or skipping it) is recorded and never blocks stage 2.
+  // 테이크 바꾸기 · 앞뒤 쉼 (요청 2번, 2026-11-17): a sentence put back with another take the voice already made, or given more pause, with no Fish.
   voiceFixes: z.array(z.object({ memo: z.string().min(1).max(300), say: z.string().max(300).optional(), read: z.string().max(100).optional(),
-    video: z.literal(true).optional(), by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict()).max(20).optional(),
+    video: z.literal(true).optional(), take: takeFix.optional(), pause: pauseFix.optional(),
+    by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict()).max(20).optional(),
   // 최종 검토 음성 피드백 (phase ③): a fix asked after the full video goes back to ④ when done, and says the voice changed until the
   // full video is made again.
-  voiceResume: z.literal("prep_ready").optional(),
+  // Where a fix asked after the words goes back to: ④ (최종 검토 · after the preparation), the storyboard to confirm, or ③ drawn again (draft).
+  voiceResume: z.enum(["prep_ready", "storyboard_review", "draft"]).optional(),
+  // 테이크 고르기 (요청 2번, 2026-11-17): one sentence's takes, put up to listen to by the render PC that made the voice (nothing paid).
+  takes: z.object({ p: z.number().int().min(0).max(150), text: z.string().max(300), state: z.enum(["pending", "listing", "ready", "failed"]), at: z.string().datetime(),
+    attempts: z.number().int().min(0).max(5), token: z.string().uuid().optional(), expiresAt: z.string().datetime().optional(), code: z.string().max(80).optional(),
+    files: z.array(z.object({ name: takeName, path: z.string(), current: z.boolean() }).strict()).max(12).optional() }).strict().optional(),
   voiceChanged: z.object({ at: z.string().datetime(), count: z.number().int().min(0) }).strict().optional(),
   voiceCheck: z.object({ skipped: z.boolean(), by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict().optional(),
   // Stage 2: the staff AI's storyboard (kept in the voice-timing bucket) and what Logan sees to confirm it.
@@ -678,7 +688,8 @@ export async function claimMyinWords(service: Service = createServiceSupabase(),
       ...(earlier.length ? { earlier } : {}),
       ...(preview ? { previewUploadUrl: preview.signedUrl } : {}), ...(run.layout ? { layout: run.layout } : {}),
       ...(dictionary?.exists ? { dictionary: dictionaryFiles(dictionary.dictionary) } : {}),
-      ...(run.voiceFixes?.length ? { fixes: run.voiceFixes.map(({ memo, say, read, video }) => ({ memo, ...(say ? { say } : {}), ...(read ? { read } : {}), ...(video ? { video } : {}) })) } : {}) };
+      ...(run.voiceFixes?.length ? { fixes: run.voiceFixes.map(({ memo, say, read, video, take, pause }) => ({ memo, ...(say ? { say } : {}), ...(read ? { read } : {}), ...(video ? { video } : {}),
+        ...(take ? { take } : {}), ...(pause ? { pause } : {}) })) } : {}) };
   } catch (error) {
     await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_CLAIM_FAILED");
     throw error;
@@ -787,8 +798,10 @@ export async function completeMyinWords(input: { runId: string; lease: string; v
     ...(input.voice ? { voice: { path: voicePrefix(record, run, input.lease), ...input.voice } } : {}),
     ...(input.preview ? { preview: { path: previewPath(voicePrefix(record, run, input.lease)), bytes: input.preview.bytes } } : {}) } };
   delete next.lease; delete next.lastError; delete next.voiceFixes; delete next.voiceResume;
-  // A fix asked from 최종 검토 returns to ④, where 「전체 영상 만들기」 makes the video again with the new voice.
-  const stage = run.voiceResume ?? "words_ready";
+  // A fix asked from 최종 검토 returns to ④, where 「전체 영상 만들기」 makes the video again with the new voice; one asked at ③ draws ③ again
+  // (the storyboard's cues are words, so it stays); one asked while the storyboard waits for its 확인 waits there again.
+  const resume = run.voiceResume;
+  const stage = resume === "draft" ? "storyboard_confirmed" : resume ?? "words_ready";
   if (run.voiceResume) next.voiceChanged = { at: new Date().toISOString(), count: run.voiceFixes?.length ?? 0 };
   // 고친 원고 (요청 3번): what the video's earlier run lends; when it cannot, the AI writes the storyboard as before.
   const failedLoan = (error: unknown) => {
@@ -799,6 +812,8 @@ export async function completeMyinWords(input: { runId: string; lease: string; v
   if (loan?.subtitleEdits) next.subtitleEdits = loan.subtitleEdits;
   if (loan?.ours && Object.keys(loan.ours).length) next.ours = { ...loan.ours, ...next.ours };
   const saved = await save(service, record, "done", stage, next);
+  if (resume === "draft") await beginDraft(service, saved, parse(saved)).catch((error) => console.error(JSON.stringify({ event: "myin_redraft_failed", runId: record.id,
+    message: error instanceof Error ? error.message : String(error) })));
   if (stage === "words_ready" && (loan ? await lendStoryboard(service, saved, loan).catch(failedLoan) : null) !== "whole")
     await resendStoryboard(run.sourceId, record.id, autoConfirms(run) ? run.settings?.by ?? record.owner_id ?? undefined : undefined);
   // His dictionaries as the render PC left them (new lines from voice_fix, or his starting set): the OS keeps what it does not have.
@@ -817,7 +832,7 @@ export async function failMyinWords(input: { runId: string; lease: string; code:
   if (run.voiceFixes?.length && run.words && (input.code === "MYIN_VOICE_FIX_NO_VOICE" || run.attempts >= 3)) {
     const next: MyinRun = { ...run, attempts: 0, lastError: { code: input.code.replace(/[^A-Z0-9_]/g, "").slice(0, 60) || "MYIN_FAILED", at: new Date().toISOString() } };
     delete next.lease; delete next.voiceFixes; delete next.voiceResume;
-    await save(service, record, "done", run.voiceResume ?? "words_ready", next);
+    await save(service, record, "done", run.voiceResume === "draft" ? "clips_review" : run.voiceResume ?? "words_ready", next);
     return { runId: record.id, retry: false };
   }
   await failed(service, record, run, input.code);
@@ -849,10 +864,17 @@ export async function myinVoiceCheck(actor: RequestActor, runId: string) {
   if (!data) throw new ApiError(404, "MYIN_BUNDLE_MISSING", "받아쓰기 결과 파일을 찾지 못했습니다.");
   const bundle = JSON.parse(await data.text()) as { audit?: unknown; fixes?: unknown };
   const rows = z.array(auditRow).safeParse(bundle.audit);
-  const listen = rows.success ? rows.data.filter((row) => row.점수 >= 0.8 || row.긴호흡 > 0).sort((a, b) => a.시각 - b.시각).slice(0, 80)
-    .map((row) => ({ at: row.시각, sentence: row.문장.slice(0, 300), issues: row.문제.slice(0, 6).map((issue) => issue.slice(0, 80)), score: row.점수, long: row.긴호흡 })) : null;
+  // 이음 (2026-11-17, 영상 피드백 71): sentences whose join the engine fixed (끝소리 잘림 · 앞 조각) are worth a listen too.
+  const joins = (row: z.infer<typeof auditRow>) => z.array(z.string()).catch([]).parse((row as { 이음?: unknown }).이음).slice(0, 4);
+  const listen = rows.success ? rows.data.filter((row) => row.점수 >= 0.8 || row.긴호흡 > 0 || joins(row).length).sort((a, b) => a.시각 - b.시각).slice(0, 80)
+    .map((row) => ({ at: row.시각, p: row.문단, sentence: row.문장.slice(0, 300), issues: row.문제.slice(0, 6).map((issue) => issue.slice(0, 80)), score: row.점수, long: row.긴호흡, joins: joins(row) })) : null;
+  // 요청 2번: every sentence, to pick another take or add a pause to any of them.
+  const all = rows.success ? [...rows.data].sort((a, b) => a.시각 - b.시각).slice(0, 400).map((row) => ({ at: row.시각, p: row.문단, sentence: row.문장.slice(0, 300) })) : null;
+  const asked = run.takes;
+  const takes = asked ? { p: asked.p, text: asked.text, state: asked.state, code: asked.code ?? null,
+    files: asked.state === "ready" ? await Promise.all((asked.files ?? []).map(async (file) => ({ name: file.name, current: file.current, url: await sign(service, YOUTUBE_VOICE_BUCKET, file.path) }))) : [] } : null;
   const fixes = z.array(z.object({ memo: z.string(), ok: z.boolean(), report: z.string() }).passthrough()).safeParse(bundle.fixes);
-  return { sentences: rows.success ? rows.data.length : null, listen, fixes: fixes.success ? fixes.data.map(({ memo, ok, report }) => ({ memo, ok, report })) : [],
+  return { sentences: rows.success ? rows.data.length : null, listen, all, takes, fixes: fixes.success ? fixes.data.map(({ memo, ok, report }) => ({ memo, ok, report })) : [],
     previewUrl: run.words.preview ? await sign(service, YOUTUBE_VOICE_BUCKET, run.words.preview.path) : null };
 }
 
@@ -1144,7 +1166,9 @@ export async function myinDownloads(actor: RequestActor, runId: string) {
 export const myinVoiceFixSchema = z.object({ memo: z.string().trim().min(1).max(300), say: z.string().trim().min(1).max(300).optional(),
   read: z.string().trim().max(100).regex(/^[^=]+=[^=]+$/, "「원래말=읽는소리」로 써 주세요").optional(),
   // 최종 검토 음성 피드백: the memo's time is the video's; the render PC turns it into the voice's with the time map his render left.
-  video: z.literal(true).optional() }).strict();
+  video: z.literal(true).optional(),
+  // 요청 2번 (2026-11-17): another take of the sentence the voice already made, or more pause around it — the render PC, no Fish.
+  take: takeFix.optional(), pause: pauseFix.optional() }).strict();
 // The render PC's package with his voice_fix and voice_audit went live 2026-10-30 15:46 KST; a run keeps the engine it was cloned with,
 // so only runs started after it can have one sentence made again.
 const MYIN_VOICE_FIX_SINCE = "2026-10-30T06:46:00Z";
@@ -1157,6 +1181,10 @@ async function voiceSentences(service: Service, run: MyinRun) {
   return rows.success ? rows.data.map((row) => ({ at: row.시각, text: row.문장 })) : [];
 }
 
+/** The stages the 음성 확인 panel may fix a sentence at, and where the video goes back to once the words are made again (none = stage 1). */
+const VOICE_FIX_STAGES: Record<string, MyinRun["voiceResume"] | null> = { words_ready: null, storyboard_review: "storyboard_review", clips_review: "draft",
+  prep_ready: "prep_ready", final_ready: "prep_ready" };
+
 /** 음성 고치기 범위 (0dfd9a37 보완 ①): what the memos would make again, before anything is sent or paid. Reading it changes nothing. */
 export async function myinVoiceFixPlan(actor: RequestActor, runId: string, fixes: z.infer<typeof myinVoiceFixSchema>[]) {
   const { run } = await visibleRun(actor, runId);
@@ -1168,23 +1196,87 @@ export async function requestMyinVoiceFix(actor: RequestActor, runId: string, me
   const service = createServiceSupabase();
   const { record, run } = await visibleRun(actor, runId);
   await assertCurrent(service, run);
-  // Memos at the same sentence go as one fix (made and paid once); two different 읽는 글 or 발음 for one sentence are settled first.
-  const plan = planVoiceFix(memos, await voiceSentences(service, run));
+  // Memos at the same sentence go as one fix (made and paid once); two different 읽는 글 or 발음 for one sentence are settled first. A take
+  // or a pause names its sentence itself and costs nothing, so it goes as it is.
+  const direct = memos.filter((memo) => memo.take || memo.pause);
+  const plan = planVoiceFix(memos.filter((memo) => !memo.take && !memo.pause), await voiceSentences(service, run));
   if (plan.conflicts.length) throw new ApiError(400, "MYIN_VOICE_FIX_CONFLICT", `같은 문장에 읽는 글이나 발음이 둘 이상이에요. 하나만 남겨 주세요: ${plan.conflicts[0].join(" / ").slice(0, 200)}`);
-  const fixes = plan.fixes;
-  // Stage 1's memos before the storyboard; 최종 검토's (video: true) once the full video exists, from ④ or after it.
+  const fixes = [...plan.fixes, ...direct];
+  // 최종 검토's (video: true) once the full video exists, from ④ or after it; the 음성 확인 panel's from stage 1 on, wherever the video
+  // waits for a person (요청 2번, 2026-11-17 — with 자동 확인 stage 1 lasts seconds, and the voice is heard on the editor screen).
   const video = fixes.some((fix) => fix.video);
-  if (video ? !["final_ready", "prep_ready"].includes(record.stage ?? "") || !run.final : record.stage !== "words_ready")
-    throw new ApiError(409, "MYIN_VOICE_FIX_CLOSED", video ? "완성 영상이 나온 뒤에 최종 검토 피드백으로 음성을 고칠 수 있어요." : "받아쓰기·자막이 끝난 뒤, 기획표를 쓰기 전까지 고칠 수 있어요.");
+  const resume = VOICE_FIX_STAGES[record.stage ?? ""];
+  if (video ? !["final_ready", "prep_ready"].includes(record.stage ?? "") || !run.final : resume === undefined)
+    throw new ApiError(409, "MYIN_VOICE_FIX_CLOSED", video ? "완성 영상이 나온 뒤에 최종 검토 피드백으로 음성을 고칠 수 있어요." : "지금 만드는 중이에요. 끝난 뒤에 고쳐 주세요.");
   // His voice_fix works on the sentence files the render PC's own voice leaves; a 숏폼's package does not have it yet.
   if (!run.words || !voiceFixable(record, run)) throw new ApiError(409, "MYIN_VOICE_FIX_UNAVAILABLE", "이 영상은 문장 하나만 다시 만들 수 없어요(10/30 16시 전에 시작한 영상 · 숏폼).");
   if (!fixes.length) throw new ApiError(400, "MYIN_VOICE_FIX_EMPTY", "고칠 곳 메모를 하나 이상 남겨 주세요.");
   const at = new Date().toISOString();
+  const back = video ? "prep_ready" as const : resume;
   const next: MyinRun = { ...run, attempts: 0, voiceFixes: fixes.slice(0, 20).map((fix) => ({ ...fix, ...(video ? { video: true as const } : {}), by: actor.id, name: actor.name, at })),
-    ...(video ? { voiceResume: "prep_ready" as const } : {}) };
+    ...(back ? { voiceResume: back } : {}) };
+  delete next.takes;
   if (!video) delete next.voiceCheck;
   return presentMyinRun(await save(service, record, "backlog", "words_pending", next));
 }
+// ── 테이크 고르기 (요청 2번, 2026-11-17): the takes the voice made for one sentence, put up by the render PC that has them, to pick one by ear ──
+const TAKES_LEASE_MS = 5 * 60_000;
+export const myinTakeFile = z.string().regex(/^p\d{2}_s\d{2}_\d{1,3}\.mp3$/);
+const takesPath = (record: OsRecord, run: MyinRun, token: string, file: string) => `${record.owner_id}/${run.sourceId}/${record.id}/takes-${token}/${file}`;
+
+/** 「다른 테이크 듣기」: free — the takes are files the voice already made. One sentence at a time (a new ask replaces the last). */
+export async function requestMyinTakes(actor: RequestActor, runId: string, p: number, text: string) {
+  const { record, run } = await visibleRun(actor, runId);
+  if (!run.words || !voiceFixable(record, run) || VOICE_FIX_STAGES[record.stage ?? ""] === undefined)
+    throw new ApiError(409, "MYIN_TAKES_CLOSED", "지금은 테이크를 들을 수 없어요. 만드는 중이면 끝난 뒤에 해 주세요.");
+  if (p >= run.paragraphs.length) throw new ApiError(400, "MYIN_TAKES_SENTENCE", "없는 문단이에요.");
+  const next: MyinRun = { ...run, takes: { p, text: text.slice(0, 300), state: "pending", at: new Date().toISOString(), attempts: 0 } };
+  return presentMyinRun(await save(createServiceSupabase(), record, record.status ?? "done", record.stage ?? "", next));
+}
+
+/** Render PC: a sentence whose takes are asked for, on this PC (the one that made the voice keeps them). */
+export async function claimMyinTakes(service: Service = createServiceSupabase(), pc?: string) {
+  const { data } = await service.from("os_records").select("*").eq("record_type", "ai_job").eq("metadata->>kind", MYIN_RUN_KIND)
+    .not("metadata->takes", "is", null).is("archived_at", null).order("updated_at").limit(10);
+  for (const candidate of (data ?? []) as OsRecord[]) {
+    let run: MyinRun; try { run = parse(candidate); } catch { continue; }
+    const asked = run.takes;
+    if (!asked || asked.state === "ready" || asked.state === "failed" || (asked.state === "listing" && Date.parse(asked.expiresAt ?? "") > Date.now())) continue;
+    if (run.pc && run.pc !== pc) continue;
+    const token = randomUUID();
+    const takes = asked.attempts >= 3 ? { ...asked, state: "failed" as const, code: asked.code ?? "MYIN_TAKES_FAILED" }
+      : { ...asked, state: "listing" as const, attempts: asked.attempts + 1, token, expiresAt: new Date(Date.now() + TAKES_LEASE_MS).toISOString() };
+    const saved = await save(service, candidate, candidate.status ?? "done", candidate.stage ?? "", { ...run, takes }).catch(() => null);
+    if (saved && takes.state === "listing") return { runId: candidate.id, lease: token, p: takes.p, text: takes.text };
+  }
+  return { idle: true as const };
+}
+
+const takesLease = async (service: Service, runId: string, token: string) => {
+  const { record, run } = await runRecord(service, runId);
+  const takes = run.takes;
+  if (!takes || takes.state !== "listing" || takes.token !== token) throw new ApiError(409, "MYIN_LEASE_LOST", "테이크를 올리는 권한이 만료됐습니다.");
+  return { record, run, takes };
+};
+export async function myinTakesUpload(input: { runId: string; lease: string; files: string[] }, service: Service = createServiceSupabase()) {
+  const { record, run } = await takesLease(service, input.runId, input.lease);
+  return { uploads: await Promise.all(input.files.map(async (file) => ({ name: file, url: await uploadUrl(service, YOUTUBE_VOICE_BUCKET, takesPath(record, run, input.lease, file)) }))) };
+}
+export async function completeMyinTakes(input: { runId: string; lease: string; takes: { name: string; file: string; current: boolean }[] }, service: Service = createServiceSupabase()) {
+  const { record, run, takes } = await takesLease(service, input.runId, input.lease);
+  const next: MyinRun = { ...run, takes: { p: takes.p, text: takes.text, state: "ready", at: takes.at, attempts: takes.attempts,
+    files: input.takes.map(({ name, file, current }) => ({ name, path: takesPath(record, run, input.lease, file), current })) } };
+  await save(service, record, record.status ?? "done", record.stage ?? "", next);
+  return { runId: record.id, takes: input.takes.length };
+}
+export async function failMyinTakes(input: { runId: string; lease: string; code: string }, service: Service = createServiceSupabase()) {
+  const { record, run, takes } = await takesLease(service, input.runId, input.lease);
+  const code = input.code.replace(/[^A-Z0-9_]/g, "").slice(0, 60) || "MYIN_TAKES_FAILED";
+  const next: MyinRun = { ...run, takes: { p: takes.p, text: takes.text, at: takes.at, attempts: takes.attempts, code, state: takes.attempts >= 3 || code === "MYIN_TAKES_UNAVAILABLE" ? "failed" : "pending" } };
+  await save(service, record, record.status ?? "done", record.stage ?? "", next);
+  return { runId: record.id, retry: next.takes!.state === "pending" };
+}
+
 /** 「음성 확인 완료」 or 「확인 없이 바로 넘어가기」: who and when, for the record; stage 2 opens either way. */
 export async function checkMyinVoice(actor: RequestActor, runId: string, skipped: boolean) {
   const service = createServiceSupabase();
@@ -1327,7 +1419,8 @@ export async function completeMyinPrep(input: { runId: string; lease: string }, 
   // 렌더 전 관문 (로건 개발 문서 v3 7.2-3): at ③ a phrase the engine cannot place or a blank scene goes straight back to the storyboard
   // as its 수정 요청 (the next staff-AI pass gets the list); ④ still stops for a person, who sees the same list.
   // 덱 배치 v2 (2026-11-10): the render PC also times each cut against the voice with the engine's scene times (늦게 바뀜 · 빈 화면 · N초 미만 장면).
-  const gate = draft ? bundle.misses.filter((line) => /못 찾음|빈 화면|그리기 오류|늦게 바뀜|초 미만 장면/.test(line)) : [];
+  // 2026-11-17: a hold the engine could not put at a sentence end (멈춤이 문장 중간) too.
+  const gate = draft ? bundle.misses.filter((line) => /못 찾음|빈 화면|그리기 오류|늦게 바뀜|초 미만 장면|문장 중간/.test(line)) : [];
   // 로건 11-13: the same problem sent back again and again stops nothing — past MYIN_GATE_ROUNDS it goes on, marked for a person.
   const rounds = gate.length ? (run.gateRounds ?? 0) + 1 : 0;
   const goOn = gate.length > 0 && rounds > MYIN_GATE_ROUNDS;
