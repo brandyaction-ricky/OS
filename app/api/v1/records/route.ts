@@ -4,7 +4,9 @@ import { assertReviewedMeetingTask } from "@/lib/server/meeting-review";
 import { decodeHtmlEntities } from "@/lib/html-entities";
 import { contentOrigin } from "@/lib/content-origin";
 import { assertSkillSource } from "@/lib/server/skill-source";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
+import { isReleaseLog } from "@/lib/development-comment-telegram";
+import { shareReleaseLog } from "@/lib/server/development-comment-telegram";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
@@ -156,6 +158,8 @@ export async function POST(request: Request) {
     };
     const { data, error } = await actor.supabase.from("os_records").insert(payload).select("*").single();
     if (error || !data) throw new ApiError(400, "RECORD_CREATE_FAILED", "운영 기록을 저장하지 못했습니다.", error?.message);
+    // 운영 · 완료 개발 로그는 응답 뒤에 봇이 업무 소통방에 알린다(마이인 → 액션팀, 에듀 → 마케팅). 실패해도 로그는 그대로.
+    if (isReleaseLog(data)) after(() => shareReleaseLog(data, new URL(request.url).origin).catch((cause) => console.warn("[telegram] release log", cause)));
     return NextResponse.json({ record: data }, { status: 201 });
   } catch (error) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "INVALID_RECORD", "입력 내용을 확인해 주세요.", error.flatten()));

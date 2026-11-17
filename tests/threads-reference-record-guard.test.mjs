@@ -50,7 +50,8 @@ async function harness(path, metadata = referenceMetadata, recordOwner = owner, 
   const validation = await load("lib/record-validation.ts", { zod, "./record-types": types });
   const noOp = async () => {};
   const api = await load(path, {
-    "next/server": { NextResponse: Response }, zod,
+    "next/server": { NextResponse: Response, after: () => {} }, zod,
+    "@/lib/development-comment-telegram": { isReleaseLog: () => false }, "@/lib/server/development-comment-telegram": { shareReleaseLog: async () => 0 },
     "@/lib/http": { ApiError, parseJson: request => request.json(), apiErrorResponse: error => Response.json({ error: { code: error.code } }, { status: error.status ?? 500 }) },
     "@/lib/server/auth": { authenticateRequest: async () => ({ id: owner, ownerId: owner, type: path.includes("agent-records") ? "agent" : "user", supabase: db }), requireAgentScope: () => {} },
     "@/lib/supabase/server": { createServiceSupabase: () => db }, "@/lib/server/organization": { assertOrganization: noOp },
