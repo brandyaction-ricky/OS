@@ -285,7 +285,7 @@ test("the purchase routes stay behind finance access and the 부가세 page show
   assert.equal(purchaseRoute.match(/apiErrorResponse\(financeError\(error\)\)/g).length, 2);
   assert.ok(!/console\./.test(purchaseRoute + readFileSync("lib/server/finance-purchase.ts", "utf8")), "no payload logging");
   const page = readFileSync("components/finance/vat-reference.tsx", "utf8");
-  for (const text of ["예상 납부세액", "매출 합계 세액 (A)", "매입 합계 세액 (B)", "전자세금계산서 (매입)", "신용카드 (공제 예상)", "예상 납부세액 (A) − (B)", "참고용", "예정고지", "1/11", 'href="/finance/cards"']) assert.ok(page.includes(text), text);
+  for (const text of ["예상 납부세액", "매출 합계 세액 (A)", "매입 합계 세액 (B)", "전자세금계산서 (매입)", "신용카드 (공제 예상)", "예상 납부세액 (A) − (B)", "참고용", "예정고지", "1/11", 'href={cards}', "cardsHref(result.period, biz"]) assert.ok(page.includes(text), text);
   assert.match(readFileSync("components/finance/purchase-invoice-panel.tsx", "utf8"), /매입 세금계산서 저장 공간이 아직 준비되지 않았어요\. 관리자 승인 후 사용할 수 있어요\./);
   // 연습용 화면 draws the summary from a fixture and never calls the API.
   assert.match(readFileSync("components/finance/finance-workspace.tsx", "utf8"), /demo \? <VatReferenceDemo \/> : <VatReference token=\{accessToken\} \/>/);
