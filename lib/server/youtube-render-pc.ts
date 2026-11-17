@@ -114,6 +114,9 @@ export async function assertLocalEngine(engine: string) {
   if (pcEngine !== engine) throw new ApiError(409, "MYIN_ENGINE_DIFFERENT", "내 컴퓨터의 엔진이 영상 만드는 컴퓨터와 달라요. 새 엔진을 받은 뒤 다시 켜 주세요.");
 }
 
+/** Each render PC that is on, with the job it reported last (대기 순서, 2026-11-17). */
+export const renderPcJobs = async () => (await readPcs()).filter(online).map((pc) => ({ name: pc.name, job: pc.job ?? null }));
+
 /** What the 영상 제작 screen shows: on or off, last signal, current job, disk, and the queue in front of new work, for every render PC. */
 export async function readRenderPcStatus() {
   const service = createServiceSupabase();
