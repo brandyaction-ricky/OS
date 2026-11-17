@@ -14,6 +14,7 @@ import { feedbackNotice, compareTime, parseClock, FEEDBACK_KIND_LABEL, feedbackK
 import { YtCard, YtLookPicker } from "./youtube-process-media";
 import { VoiceFeedbackBox } from "./youtube-process-voice-feedback";
 import { FeedbackTodo } from "./youtube-process-feedback-todo";
+import { FixedCheck } from "./youtube-process-fixed-check";
 import { ReviewersBar } from "./youtube-process-reviewers";
 
 /** 영상 편집기 (v2 ④ · v3 6-6): where a 최종 검토 video comment is on the way to a fixed video. */
@@ -320,6 +321,10 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
         <div className="yp-fbsearch"><div className="yp-fbsearch-field"><Search size={14} aria-hidden="true" /><input className="yp-in" value={query} onChange={event => setQuery(event.target.value)} placeholder="피드백·답글·쓴 사람 찾기" aria-label="피드백 찾기" /></div>
           <div className="yp-seg2 yp-sm" role="group" aria-label="상태">{(Object.keys(FEEDBACK_FILTER_LABEL) as FeedbackFilter[]).map(key => <button key={key} type="button" className={filter === key ? "yp-on" : ""} aria-pressed={filter === key} onClick={() => setFilter(key)}>{FEEDBACK_FILTER_LABEL[key]}</button>)}</div></div>
         {view === "video" && !short && !page.demo && project ? <VoiceFeedbackBox projectId={project.id} final={finals.find(item => item.v === ver)} items={items} token={page.accessToken} onSeek={seek} /> : null}
+        {view === "video" && !searching ? <FixedCheck items={items} ver={ver} finals={finals} finalSrt={page.client?.finalSrt} duration={duration}
+          onSeek={seconds => { video.current?.pause(); seek(seconds); }}
+          onCompare={(oldVer, at) => { video.current?.pause(); setCompareVer(oldVer); setOffset(0); seek(at); }}
+          act={(item, action) => act(item, action)} /> : null}
         {view === "video" && !searching ? <FeedbackTodo items={openItems} total={items.length} ver={ver} onPick={item => {
           setOpen(item.id); seek(item.t ?? item.range?.[0] ?? 0); window.setTimeout(() => document.getElementById(`fb-${item.id}`)?.scrollIntoView({ block: "center", behavior: "smooth" }), 50);
         }} /> : null}
