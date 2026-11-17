@@ -608,7 +608,7 @@ test("A/B 프로젝트에서 소구점을 직접 입력해 공통 레퍼런스�
   await expect(page.getByRole("heading",{name:"카피 작성",exact:true})).toBeVisible();
   expect(actions).toEqual(["create","select-appeals","approve-format"]);
   await page.getByRole("button",{name:"AI 카피 초안 받기",exact:true}).click();
-  await expect(page.getByText(/구독 AI가 초안을 준비하고 있어요/)).toBeVisible();
+  await expect(page.getByText(/AI가 초안을 준비하고 있어요/)).toBeVisible();
   // The copy queue is independent of manually entered appeals. Resume the editor after the fixture job disappears.
   copyJob=undefined;
   await page.getByRole("button",{name:"상태 새로고침",exact:true}).click();
