@@ -24,7 +24,8 @@ import { EditorScreenEntry } from "./editor-screen";
 
 interface Storyboard { scenes: number; model: string; at: string; metaphors: { scene: number; type: string; at: string }[]; cta: { after: string; line: string }[];
   summary: { title: string; points: string[] } | null; reasons: { metaphors: string; cta: string; summary: string };
-  assets: { kind: string; file: string; url: string; source: string; license: string; use: string }[]; fuzzy: string[]; notes: string[]; reading?: string[] }
+  assets: { kind: string; file: string; url: string; source: string; license: string; use: string }[]; fuzzy: string[]; notes: string[]; reading?: string[];
+  /** 고친 원고 (요청 3번): lent by the video's earlier run — paragraphs the edit changed, scenes the AI fixed. */ carried?: { changed: number; scenes: number } }
 interface MyinRun { id: string; status: string; stage: string; layout?: "short" | null; paragraphs: number; paragraphsReady: number; voiceOnPc?: boolean; lastErrorCode: string | null; waitingPhotos?: string[];
   words: { words: number; subtitleLines: number; durationSeconds: number } | null; storyboard: Storyboard | null;
   review: { decision: "confirmed" | "revise"; name: string; note: string; at: string } | null;
@@ -36,7 +37,7 @@ interface MyinRun { id: string; status: string; stage: string; layout?: "short" 
   /** 장면 그림 v0 (편집기 3차 요청 11-09): a longform's ③ as each scene's finished picture, on the editor screen. */ stills?: { at: string; files: number } | null;
   screenCheckAuto?: boolean;
   final: { bytes: number; durationSeconds: number; lufs: number; peak: number; at: string } | null; scriptChanged?: boolean; workingSince?: string | null; pc?: string | null;
-  /** 고친 문장만 다시 (로건 11-16): with a changed script, how many paragraphs the earlier voice already has, and the text to make. */
+  /** 고친 문장만 다시 (2026-11-16): with a changed script, how many paragraphs the earlier voice already has, and the text to make. */
   voiceReuse?: { keep: number; make: number; text: string } | null;
   sound: { report: string; at: string; edited?: { name: string; at: string } } | null; local: { by: string; name: string } | null; localFinish?: { by: string; name: string } | null; localReady: boolean;
   clipsStale?: string[] | null; photoCredits?: Record<string, { source: string; license: string; url: string | null }>;
@@ -304,7 +305,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
     const pick = styleId ?? run?.style?.id ?? channelOf(styles, channel)?.id ?? "";
     const fresh = !(run && !run.scriptChanged);
     const together = fresh && !short && settings.confirm === "auto";
-    // 고친 문장만 다시 (로건 11-16): only the paragraphs the earlier voice lacks are paid for; the rest is that voice as it was.
+    // 고친 문장만 다시 (2026-11-16): only the paragraphs the earlier voice lacks are paid for; the rest is that voice as it was.
     const reuse = run?.scriptChanged ? run.voiceReuse : null;
     const kept = reuse ? `바뀐 문단 ${reuse.make}개만 새로 만들어요(안 바뀐 ${reuse.keep}문단은 전에 만든 음성 그대로) · ` : "";
     const text = reuse ? reuse.text : voiceText ?? "";
@@ -359,11 +360,12 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
         {run.stage === "voice_pending" ? <progress max={run.paragraphs} value={run.paragraphsReady} aria-label="음성 진행" /> : <RunWait run={run} />}</div>;
     } else if (stepNo === 2) {
       const gate = run.review?.decision === "revise" && run.review.name === "렌더 전 관문";
+      const carry = run.review?.decision === "revise" && run.review.name === "원고 고친 곳";
       if (run.stage === "storyboard_review") { head = "2/4 기획표 확인 대기 (로건, 유쓰)"; body = look(2, "기획표 보고 확인하기"); }
       else {
-        head = gate ? `2/4 렌더 전 관문 · 내 AI가 고치는 중 (${run.gateRounds ?? 1}회차)` : "2/4 장면 기획표 · 내 AI가 써요";
+        head = gate ? `2/4 렌더 전 관문 · 내 AI가 고치는 중 (${run.gateRounds ?? 1}회차)` : carry ? "2/4 장면 기획표 · 원고 고친 장면만 내 AI가 고쳐요" : "2/4 장면 기획표 · 내 AI가 써요";
         const other = run.storyboardJob && !run.storyboardJob.mine ? run.storyboardJob : null;
-        body = <>{gate ? <p className="yt-note">{run.review!.note}</p> : null}
+        body = <>{gate || carry ? <p className="yt-note">{run.review!.note}</p> : null}
           {other ? <div className="yt-run"><div className="yt-run-head"><span className="status-pill" data-status={other.status === "active" ? "scheduled" : "waiting"}>{other.name}님 AI · {other.status === "active" ? "쓰는 중" : "가져가기를 기다리는 중"}</span>
             {other.status === "active" && other.claimedAt ? <WaitBar minutes={Math.floor((Date.now() - Date.parse(other.claimedAt)) / 60_000)} typical={storyboardMinutes(run)} /> : null}</div></div>
             : <StaffDesign status={job} busy={busy === "send"} typical={storyboardMinutes(run)} onSend={() => void act("send", () => post("/ai-jobs", "POST", { task: "storyboard", sourceId }))} />}</>;
@@ -447,14 +449,15 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
     <Step index={1} state={step2} title={autoMode ? "장면 기획표 (내 AI → OS 검사 → 자동 확인)" : "장면 기획표 (내 AI → 로건, 유쓰 확인)"} idBase="myin-step">
       {!run?.words ? <p>받아쓰기·자막이 끝나면 내 AI에 보낼 수 있습니다.</p> : null}
       {run?.stage === "words_ready" ? <>
-        {run.review?.decision === "revise" ? <div className="yt-note yt-warn"><strong>{run.review.name === "렌더 전 관문" ? "렌더 전 관문 · 자동 수정 요청" : "로건, 유쓰 수정 요청"} · {when(run.review.at)}</strong><p>{run.review.note}</p></div> : null}
+        {run.review?.decision === "revise" ? <div className="yt-note yt-warn"><strong>{run.review.name === "렌더 전 관문" ? "렌더 전 관문 · 자동 수정 요청" : run.review.name === "원고 고친 곳" ? "원고를 고친 곳만 내 AI에게" : "로건, 유쓰 수정 요청"} · {when(run.review.at)}</strong><p>{run.review.note}</p>
+          {run.review.name === "원고 고친 곳" ? <small>나머지 장면은 전 작업의 기획표를 그대로 써요. 새 받아쓰기에서 문구를 못 찾은 장면만 고쳐요.</small> : null}</div> : null}
         <p>{short ? "내 AI가 세로 화면 규칙과 세로 도식 목록으로 숏폼 기획표를 써요. 첫 화면에는 확정한 헤드 카피가 떠요." : "내 AI가 영상 제작 매뉴얼·기획표 문서와 음악 창고 목록을 읽고, 위 받아쓰기의 철자 그대로 장면 기획표와 사진 후보를 만듭니다. OS가 문구 위치와 형식을 검사합니다."}</p>
         {autoMode && run.review?.decision !== "revise" ? <p className="yt-note">받아쓰기가 끝나면 OS가 시작한 분의 내 AI에 기획표를 바로 보내요. OS 검사를 통과하면 저절로 확인돼 장면 그림으로 넘어가요(제작 설정 · 기획표 확인 「자동」).</p> : null}
         <StaffDesign status={job} busy={busy === "send"} typical={storyboardMinutes(run)} onSend={() => void act("send", () => post("/ai-jobs", "POST", { task: "storyboard", sourceId }))} />
       </> : null}
       {board && run && run.stage !== "words_ready" ? <>
         <div className="yt-run"><div className="yt-run-head"><span className="status-pill" data-status={run.review?.decision === "confirmed" ? "approved" : "review"}>{run.review?.decision === "confirmed" ? "로건, 유쓰 확인 완료" : "로건, 유쓰 확인 대기"}</span>
-          <small>장면 {board.scenes}개 · 직원 AI {board.model} · {when(board.at)}</small></div></div>
+          <small>장면 {board.scenes}개 · {board.carried ? `전 작업 기획표 그대로(바뀐 문단 ${board.carried.changed}개${board.carried.scenes ? ` · ${board.carried.scenes}장면은 직원 AI가 고침` : ""})` : `직원 AI ${board.model}`} · {when(board.at)}</small></div></div>
         <details className="yt-details" open={run.stage === "storyboard_review"}><summary>{short ? "도식" : "비유 포인트"} {board.metaphors.length}곳</summary>
           <ul className="yt-list">{board.metaphors.map((m) => <li key={m.scene}>{m.scene}번 장면 · {m.type} · “{m.at}”</li>)}</ul>
           <p className="yt-note">{board.reasons.metaphors}</p></details>

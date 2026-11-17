@@ -149,8 +149,10 @@ export function anchorMyinCues(raw: unknown, words: [number, number, string][], 
   const fix = (phrase: string, tpos: number, spos: number, limit: number, label: string) => {
     const p = myinNorm(phrase);
     const exact = p ? T.indexOf(p, tpos) : -1;
-    if (!p || (exact >= 0 && exact <= tpos + limit)) return phrase;
-    const s0 = S.indexOf(p, spos);
+    const s0 = p ? S.indexOf(p, spos) : -1;
+    // Found as written, unless the script says that place reads otherwise and the same words come again further on (발표를 줄였던 heard
+    // 지렀던 there, found at a later 「발표를 줄였던」 — every later scene then looked past its place).
+    if (!p || (exact >= 0 && exact <= tpos + limit && (s0 < 0 || Math.abs(exact - toT(s0)) <= 2))) return phrase;
     if (s0 < 0) return phrase;
     const t0 = toT(s0), cand = T.slice(t0, toT(s0 + p.length));
     if (!cand || cand.length * 2 < p.length || cand.length > p.length * 2 || T.indexOf(cand, tpos) !== t0 || t0 > tpos + limit) return phrase;
@@ -184,6 +186,63 @@ export function anchorMyinCues(raw: unknown, words: [number, number, string][], 
   });
   (story.cta ?? []).forEach((cta, k) => { if (typeof cta.after === "string") cta.after = fix(cta.after, 0, 0, 400_000, `[구독 ${k + 1}] after 문구`); });
   return { storyboard: story as unknown, changed };
+}
+
+/**
+ * 고친 원고로 다시 만든 영상 (2026-11-17): an earlier run's storyboard has its cues as that voice's transcript heard them, and a new voice is
+ * heard a little otherwise (one cue missed there sends every later scene looking past its place). Each cue found in the earlier
+ * transcript is written back as the script spells that place; anchorMyinCues then writes it as the new transcript hears it. The same
+ * places as anchorMyinCues; a cue not found stays as it was, and shown text is never touched.
+ */
+export function myinCuesAsScript(raw: unknown, words: [number, number, string][], speech: string) {
+  const text = speech.split("\n").filter((line) => !line.startsWith("#SECTION")).join("");
+  const at: number[] = []; // each kept letter's place in `text`
+  for (let r = 0; r < text.length; r++) if (myinNorm(text[r])) at.push(r);
+  const S = myinNorm(text), T = words.map(([, , word]) => myinNorm(word)).join("");
+  if (!S || !T || !raw || typeof raw !== "object" || !Array.isArray((raw as { scenes?: unknown }).scenes)) return raw;
+  const story = structuredClone(raw) as { scenes: Record<string, unknown>[]; cta?: { after?: unknown }[] };
+  const blocks = matchingBlocks(T, S);
+  const toS = (ti: number) => {
+    let pe = 0, se = 0;
+    for (const [i, j, k] of blocks) {
+      if (ti < i) return se + Math.round((ti - pe) * (j - se) / Math.max(1, i - pe));
+      if (ti < i + k) return j + ti - i;
+      pe = i + k; se = j + k;
+    }
+    return Math.min(S.length, se + ti - pe);
+  };
+  const back = (phrase: string, tpos: number, limit: number) => {
+    const p = myinNorm(phrase), t0 = p ? T.indexOf(p, tpos) : -1;
+    if (t0 < 0 || t0 > tpos + limit) return { phrase, t: -1 };
+    const s0 = toS(t0), s1 = toS(t0 + p.length);
+    if (S.slice(s0, s0 + p.length) === p || s1 <= s0 || (s1 - s0) * 2 < p.length || s1 - s0 > p.length * 2) return { phrase, t: t0 };
+    return { phrase: text.slice(at[s0], at[s1 - 1] + 1).trim() || phrase, t: t0 };
+  };
+  let pos = 0;
+  story.scenes.forEach((sc) => {
+    if (sc.at_time !== undefined || typeof sc.at !== "string") return;
+    const start = back(sc.at, pos, 2500);
+    sc.at = start.phrase;
+    const from = start.t >= 0 ? start.t : pos;
+    const walk = (o: unknown): void => {
+      if (Array.isArray(o)) {
+        for (const v of o) {
+          if (Array.isArray(v) && v.length >= 2 && typeof v[0] === "string" && typeof v[1] === "string") v[1] = back(v[1], from, 1400).phrase;
+          else walk(v);
+        }
+      } else if (o && typeof o === "object") {
+        const obj = o as Record<string, unknown>;
+        for (const [k, v] of Object.entries(obj)) {
+          if ((k === "cue" || k.startsWith("cue_")) && typeof v === "string") obj[k] = back(v, from, 1400).phrase;
+          else if (k !== "at") walk(v);
+        }
+      }
+    };
+    walk(sc);
+    pos = from + 1;
+  });
+  (story.cta ?? []).forEach((cta) => { if (typeof cta.after === "string") cta.after = back(cta.after, 0, 400_000).phrase; });
+  return story as unknown;
 }
 
 /** When each scene starts (seconds), found the way resolve() finds its at; at_time scenes keep theirs, an unfound one is null. */

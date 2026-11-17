@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
-// 로건 11-16 (46efb0b9): one changed line re-voiced the whole script (about an hour, every paragraph paid).
+// 2026-11-16: one changed line re-voiced the whole script (about an hour, every paragraph paid).
 const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
 
 function runFolder(root, id, paragraphs, readings = {}) {
