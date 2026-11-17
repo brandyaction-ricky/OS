@@ -5,9 +5,11 @@ import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { ARCHIVE_FOLDER, ARCHIVE_STATES, ARCHIVE_TOPICS, cardTitle, readArchive, withArchiveChange } from "@/lib/telegram-archive";
-import { parseYoutubeRef } from "@/lib/youtube-process/project";
+import { parseYoutubeRef, projectName, sameRef, YP_KIND_LABEL } from "@/lib/youtube-process/project";
 import { teamV1Enabled } from "@/lib/team/gate";
 import type { RequestActor } from "./auth";
+import { getYoutubeProject, listYoutubeProjects, youtubeV1Allowed } from "./youtube-process";
+import { readStages, saveYoutubeStage } from "./youtube-process-stages";
 
 // ponytail: one page of cards (≈0.4 KB each); a paged list when the rooms pass this.
 const LIMIT = 2_000;
@@ -30,8 +32,10 @@ export async function listArchive(actor: RequestActor) {
   const topicOf = (folder: string, header: string) => (ARCHIVE_TOPICS as readonly string[]).includes(folder) ? folder : header;
   return { cards: rows.map(({ doc, card }, i) => {
     const folderTopic = String(doc.folder ?? "").slice(ARCHIVE_FOLDER.length + 1);
+    // The temporary collection kept no picture: a YouTube video shows its own thumbnail.
+    const videoId = card.thumbnail ? "" : parseYoutubeRef(card.link)?.videoId;
     return { id: doc.id as string, version: doc.current_version as number, title: cardTitle(doc.title), folderTopic, createdAt: String(doc.created_at ?? ""),
-      ...card, topic: topicOf(folderTopic, card.topic), image: images[i] };
+      ...card, topic: topicOf(folderTopic, card.topic), image: images[i], thumbnail: videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : card.thumbnail };
   }),
     topics: ARCHIVE_TOPICS, states: ARCHIVE_STATES, truncated: rows.length === LIMIT };
 }
@@ -94,6 +98,10 @@ export async function upcomingMeetings(actor: RequestActor) {
     startsAt: (row.starts_at as string | null) ?? null })) };
 }
 
+/** A login wall's 「Instagram」 is no title: the note's first line (or the link) names the card instead. */
+const cardName = (title: unknown, card: { platform: string; note: string; link: string }) =>
+  String(title ?? "").trim() && String(title) !== card.platform ? String(title) : card.note.split("\n")[0] || card.link;
+
 /** The 안건 line for a card: what it is, where, who brought it and why. */
 export const agendaLine = (card: { link: string; who: string; note: string }, title: string) =>
   `- [레퍼런스] ${title.replace(/\s+/g, " ").slice(0, 80)}${card.link ? ` · ${card.link}` : ""} · ${card.who || "구성원"}${card.note ? `: ${card.note.split("\n")[0].slice(0, 120)}` : ""}`;
@@ -110,7 +118,7 @@ export async function addArchiveToMeeting(actor: RequestActor, input: z.infer<ty
   if (error) throw new ApiError(500, "ARCHIVE_MEETINGS_READ_FAILED", "회의를 읽지 못했어요.");
   if (!meeting) throw new ApiError(404, "ARCHIVE_MEETING_NOT_FOUND", "볼 수 있는 회의가 아니에요.");
   const agenda = String((meeting.metadata as { agenda?: unknown } | null)?.agenda ?? "");
-  const title = String(doc.title ?? "").trim() && String(doc.title) !== card.platform ? String(doc.title) : card.note.split("\n")[0] || card.link;
+  const title = cardName(doc.title, card);
   if (card.link ? agenda.includes(card.link) : agenda.includes(agendaLine(card, title))) return { meetingId: meeting.id as string, added: false };
   const next = `${agenda.trimEnd()}${agenda.trim() ? "\n" : ""}${agendaLine(card, title)}`;
   const { error: saveError } = await actor.supabase.rpc("os_team_command", { p: { action: "meeting.save", id: meeting.id, expectedVersion: meeting.version, agenda: next } });
@@ -122,6 +130,34 @@ export async function addArchiveToMeeting(actor: RequestActor, input: z.infer<ty
     throw new ApiError(502, "ARCHIVE_MEETING_SAVE_FAILED", "회의 안건에 붙이지 못했어요.");
   }
   return { meetingId: meeting.id as string, added: true };
+}
+
+// ── 썸네일 참고로 (요청 C 「썸네일 후보로 보내기」, 대표 2026-11-17 「썸네일 후보까지 만들자」): a YouTube video card joins a 기획안's
+// 참고 영상 — what the 썸네일 후보 AI reads with each video's thumbnail (「왜 눌렸는지」), and the 기획안 AI too. Only a video still in
+// 기획안 takes it; the 기획안's own save (who may edit, 컨펌 대기, version) decides the rest.
+const v1On = async (actor: RequestActor) => { if (!(await youtubeV1Allowed(actor))) throw new ApiError(404, "YOUTUBE_V1_DISABLED", "유튜브 공정 화면을 사용할 수 없습니다."); };
+
+/** The videos in 기획안 the member can see, the one worked on last first. */
+export async function planVideos(actor: RequestActor) {
+  await v1On(actor);
+  const videos = (await listYoutubeProjects(actor)).filter((project) => project.yp.stage === "draft")
+    .sort((a, b) => b.yp.contentUpdatedAt.localeCompare(a.yp.contentUpdatedAt)).slice(0, 30);
+  return { videos: videos.map((project) => ({ id: project.id, title: projectName(project), kind: project.yp.topic.type ? YP_KIND_LABEL[project.yp.topic.type] : "" })) };
+}
+
+export const archivePlanSchema = z.object({ id: z.string().uuid(), projectId: z.string().uuid() }).strict();
+export async function addArchiveToPlan(actor: RequestActor, input: z.infer<typeof archivePlanSchema>) {
+  await v1On(actor);
+  const doc = await readCard(actor, input.id);
+  const card = readArchive(String(doc.content_md ?? ""));
+  const ref = parseYoutubeRef(card.link);
+  if (!ref) throw new ApiError(422, "ARCHIVE_NOT_YOUTUBE_VIDEO", "유튜브 영상 링크만 기획안 참고 영상에 넣을 수 있어요.");
+  const project = await getYoutubeProject(actor, input.projectId);
+  const { plan } = await readStages(actor.supabase, project);
+  if ([...project.yp.topic.refs, ...plan.data.extraRefs].some((row) => sameRef(row, ref))) return { projectId: project.id, added: false };
+  await saveYoutubeStage(actor, project.id, "plan", { expectedVersion: plan.version,
+    patch: { extraRefs: [...plan.data.extraRefs, { ...ref, title: cardName(doc.title, card).slice(0, 200) }] } });
+  return { projectId: project.id, added: true };
 }
 
 /** 상태 or 주제 (the folder moves with it — a person moving a card is the answer); stale versions are refused, never overwritten. */

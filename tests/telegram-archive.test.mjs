@@ -126,6 +126,17 @@ test("회의 안건으로: a card is one line at the end of a chosen upcoming me
   assert.match(server, /\.in\("status", \["planned", "active"\]\)/, "only meetings not held yet are offered");
 });
 
+test("썸네일 참고로: a YouTube video card joins a 기획안's 참고 영상 (what the 썸네일 후보 AI reads) through the 기획안's own save", () => {
+  const server = read("lib/server/content-archive.ts");
+  const add = server.slice(server.indexOf("export async function addArchiveToPlan"), server.indexOf("/** 상태 or 주제"));
+  assert.match(add, /saveYoutubeStage\(actor, project\.id, "plan", \{ expectedVersion: plan\.version,/, "who may edit, 컨펌 대기 and the version are the 기획안's own rules");
+  assert.match(add, /\.some\(\(row\) => sameRef\(row, ref\)\)\) return \{ projectId: project\.id, added: false \}/, "a video already there is not added twice");
+  assert.match(server, /filter\(\(project\) => project\.yp\.stage === "draft"\)/, "only videos still in 기획안 are offered");
+  assert.match(read("lib/server/youtube-thumbs.ts"), /references: refsWithThumbs\(\[\.\.\.project\.yp\.topic\.refs, \.\.\.plan\.data\.extraRefs\]\)/, "the 썸네일 후보 job reads 참고 영상");
+  // the temporary collection kept no picture: a YouTube card shows the video's own thumbnail
+  assert.match(server, /thumbnail: videoId \? `https:\/\/i\.ytimg\.com\/vi\/\$\{videoId\}\/hqdefault\.jpg` : card\.thumbnail/);
+});
+
 test("cards the temporary collection wrote read like the room hook's: link-derived 플랫폼 · 형식, 「-」 is no link, the 「## 코멘트」 note", () => {
   const legacy = (header, comment) => `---\ndate: 2026-11-13\ntype: 텔레그램 아카이브\n방: 방A\n올린사람: 직원A\n${header}\n상태: 새로 들어옴\n---\n\n# 제목\n\n## 코멘트\n${comment}\n\n## 링크\n- x\n\n## 출처\n- 메시지\n`;
   const reel = readArchive(legacy("플랫폼: instagram\n분류: 영상\n링크: https://www.instagram.com/reel/AB1/", "첫 줄\n둘째 줄"));
