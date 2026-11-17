@@ -162,7 +162,7 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
   }
   function chooseReference() {
     if (!bundle || !picked || !chosenRef || !saved?.appeals?.length) return;
-    if (custom && (!isReferenceLayout(referenceLayout) || (referenceLayout.photo && (!photo || photo.path===referenceLayout.source.path)) || (needsDetail && !detail))) return;
+    if (custom && (!isReferenceLayout(referenceLayout) || (photo && photo.path===referenceLayout.source.path) || (needsDetail && !detail))) return;
     const needsAsset = custom ? Boolean(referenceLayout?.photo) : chosenRef.supportsAsset;
     const request:ImageBatchRequest = {mode,count:saved.appeals.length,size:custom?outputSize:saved.size,formatIds:[picked],assetPaths:needsAsset && photo ? [photo.path] : [],
       ...(custom && {referenceLayout}),...(custom && detail && {detailAssetPath:detail.path})};
@@ -293,7 +293,7 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
   </fieldset>;
   const brandIssue=referenceLayout ? referenceBrandProblem(referenceLayout,brief.brand) : undefined;
   const referenceReady=!!chosenRef && (custom
-    ? isReferenceLayout(referenceLayout) && !brandIssue && (!needsDetail || !!detail) && (!referenceLayout.photo || (!!photo && photo.path!==referenceLayout.source.path))
+    ? isReferenceLayout(referenceLayout) && !brandIssue && (!needsDetail || !!detail) && (!photo || photo.path!==referenceLayout.source.path)
     : !chosenRef.assetRequired || !!photo || (!demo && picked!=="report_crop"));
   const referenceDialogView = <dialog ref={referenceDialog} className="ic-flow-reference-dialog" onClose={()=>setEnlargedReference(undefined)}>
     <div><strong>{enlargedReference?.name}</strong><button className="secondary-button" type="button" onClick={()=>referenceDialog.current?.close()}>닫기</button></div>
@@ -439,6 +439,7 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
         <ReferenceComparison sourceUrl={original.url} detailUrl={detail?.url} photo={referenceLayout.photo ? photo?.url : undefined} caption="교체 시안 · 첫 소구점"
           variant={{formatId:"reference_image",formatVersion:1,referenceLayout,detailAsset:detail,brand:referenceLayout.master?.brandSlots?.length ? brief.brand : undefined,size:outputSize,asset:referenceLayout.photo ? photo : undefined,appeal:saved.appeals[0],
             copy:copyDraft?.[0] ?? {headline:saved.appeals[0].meaning,body:"",cta:""},id:"draft",by:"",at:""}}/>}
+      {custom && referenceLayout?.photo && !photo && <p className="ic-muted">사진은 지금 골라도 되고, 카피를 확정한 뒤 골라도 돼요.</p>}
       {custom && brandIssue && <p role="alert">{brandIssue}</p>}
       {custom && referenceLayout && <label className="ic-field">출력 규격<select className="field" disabled={referenceBusy} value={outputSize}
         onChange={e=>setReferenceSize(e.target.value as CreativeSize)}>{(Object.keys(CREATIVE_SIZES) as CreativeSize[]).map(key=>
@@ -478,7 +479,7 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
       sourceUrl={format==="reference_image" ? bundle.assets.find(a=>a.path===copyLayout?.source.path)?.url : undefined}
       layout={copyLayout} detail={copyDetail} photo={bundle.assets.find(a=>a.path===copyPhotoPath)}
       hasBody={format!=="reference_image" || Boolean(copyLayout?.body)}
-      needsPhoto={!batch && (format==="reference_image" ? !!approved?.referenceLayout?.photo : !!IMAGE_FORMATS[format].assetRequired) && !approved?.assetPaths?.length} pending={!!pendingCopy}
+      needsPhoto={!batch && format!=="reference_image" && !!IMAGE_FORMATS[format].assetRequired && !approved?.assetPaths?.length} pending={!!pendingCopy}
       suggestCopy={suggestCopy} saveDraft={saveDraft} confirm={confirm} run={run} refresh={refresh}
       changeReference={batch || pendingCopy ? undefined : ()=>{setPicked(format);setReferenceLayout(approved?.referenceLayout);setReferenceSize(approved?.size);setAssetPaths(approved?.assetPaths??[]);setDetailAssetPath(approved?.detailAssetPath);setStep(2);}}/>}
   </>;

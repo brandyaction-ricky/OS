@@ -204,7 +204,9 @@ test("새 WebP 광고에서 교체 영역을 지정하고 원본·사진·승인
   await expect(page.getByRole("combobox",{name:"출력 규격"})).toHaveValue("square");
   await page.getByLabel("사진 교체",{exact:true}).check();
   const next=page.getByRole("button",{name:"카피 작성하기",exact:true});
-  await expect(next).toBeDisabled();
+  // The photo may come now or after the copy is confirmed.
+  await expect(page.getByText("사진은 지금 골라도 되고, 카피를 확정한 뒤 골라도 돼요.")).toBeVisible();
+  await expect(next).toBeEnabled();
   await page.getByLabel("교체 사진 올리기").setInputFiles("public/image-format-test/master.jpg");
   const preview=page.getByRole("group",{name:"원본 광고와 교체 시안"});
   await expect(preview.locator('[data-image-master="1"]')).toBeVisible();
@@ -366,7 +368,7 @@ for (const source of ["직접 업로드", "창고 보관본"] as const) {
       await expect(page.getByRole("combobox",{name:"구도",exact:true})).toHaveValue("split");
     }
     const writeCopy = page.getByRole("button",{name:"카피 작성하기",exact:true});
-    await expect(writeCopy).toBeDisabled();
+    await expect(writeCopy).toBeEnabled();
     await page.getByLabel("교체 사진 올리기").setInputFiles("public/image-format-test/thumbnail-subject.jpg");
     await writeCopy.click();
 
@@ -430,4 +432,43 @@ test("레퍼런스 창고에서 카드를 골라 시작하면 원본을 가져�
   await expect(page.getByRole("heading",{name:"레퍼런스 창고에서 고르기",exact:true})).toHaveCount(0);
   await page.getByRole("button",{name:"디자인 견본으로 돌아가기"}).click();
   await expect(page.getByRole("heading",{name:"레퍼런스 창고에서 고르기",exact:true})).toBeVisible();
+});
+
+test("사진 자리가 있는 레퍼런스는 카피를 먼저 확정하고, 미리보기 전에 공통 사진을 넣는다", async ({page})=>{
+  await page.goto("/content/images");
+  await page.getByRole("button",{name:"광고 한 장 만들기",exact:true}).click();
+  const products=page.getByRole("combobox",{name:"상품 선택",exact:true});
+  const sample=products.locator('option[value="__demo"], option[value="myin-free"]').first();
+  await expect(sample).toBeAttached();
+  await products.selectOption((await sample.getAttribute("value"))!);
+  await page.getByRole("button",{name:"소구점 선택하기",exact:true}).click();
+  await page.getByLabel("소구점 직접 작성",{exact:true}).fill("직접 만든 컵을 선물하기");
+  await page.getByRole("button",{name:"레퍼런스 선택하기",exact:true}).click();
+  await page.getByRole("button",{name:"새 레퍼런스 이미지 사용"}).click();
+  const original=await page.evaluate(()=>{
+    const canvas=document.createElement("canvas");canvas.width=240;canvas.height=240;
+    const ctx=canvas.getContext("2d")!;ctx.fillStyle="#f6e4b9";ctx.fillRect(0,0,240,300);
+    ctx.fillStyle="#593f32";ctx.font="bold 20px sans-serif";ctx.fillText("SAMPLE",20,44);
+    return canvas.toDataURL("image/webp").split(",")[1];
+  });
+  await page.getByLabel("레퍼런스 원본 올리기").setInputFiles({name:"sample.webp",mimeType:"image/webp",buffer:Buffer.from(original,"base64")});
+  await page.getByLabel("사진 교체",{exact:true}).check();
+  await expect(page.getByText("사진은 지금 골라도 되고, 카피를 확정한 뒤 골라도 돼요.")).toBeVisible();
+  await page.getByRole("button",{name:"카피 작성하기",exact:true}).click();
+  await expect(page.getByRole("heading",{name:"카피 작성",exact:true})).toBeVisible();
+  await expect(page.getByRole("button",{name:"공통 이미지를 먼저 선택해 주세요"})).toHaveCount(0);
+  await page.getByLabel("제목",{exact:true}).fill("직접 빚은 컵");
+  await page.getByLabel("버튼 문구",{exact:true}).fill("수업 살펴보기");
+  await page.getByRole("button",{name:"카피 확정 · 디자인 수정하기",exact:true}).click();
+  const picker=page.getByRole("region",{name:"시안에 넣을 사진"});
+  await expect(picker).toBeVisible();
+  const group=page.getByRole("region",{name:"1번째 묶음 검토",exact:true});
+  await expect(group.getByRole("button",{name:"수정하기",exact:true})).toBeDisabled();
+  await expect(group.getByRole("button",{name:/미리보기 확인/})).toBeDisabled();
+  await picker.getByLabel("사진 올리기").setInputFiles("public/image-format-test/master.jpg");
+  await picker.getByRole("button",{name:/이 사진 넣기/}).click();
+  await expect(picker).toHaveCount(0);
+  await expect(page.getByText("사진 바꾸기",{exact:true})).toBeVisible();
+  await expect(group.getByRole("button",{name:"수정하기",exact:true})).toBeEnabled();
+  await expect(group.getByRole("button",{name:/미리보기 확인/})).toBeEnabled({timeout:15_000});
 });

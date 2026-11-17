@@ -51,9 +51,10 @@ interface Props {
   returnReview:(batchId:string,step:ReturnStep,reason:string)=>void;
   edit:(id:string)=>void; select:(id:string)=>void; download:(id:string,kind?:"batch"|"variant")=>void;
   keepBlob:(variantId:string,blob:Blob|null)=>void;
+  attachPhoto?:(batchId:string,assetPath:string)=>void; uploadPhoto?:(file:File|null)=>void;
 }
 export function ImageApprovalBatch({ batch, index, variants, assets, projectId, target, render, demo, guided, busy, showGuide, selectedId,
-  experimentRound, winner, control, revisions = [], registerWinner, rendered, reviewable, review, returnReview, edit, select, download, keepBlob }:Props) {
+  experimentRound, winner, control, revisions = [], registerWinner, rendered, reviewable, review, returnReview, edit, select, download, keepBlob, attachPhoto, uploadPhoto }:Props) {
   const alternateCandidates = [...(control ? [control] : []), ...revisions];
   const recorded = batch.winner;
   const recordedVariant = recorded && [...variants,...alternateCandidates].find(v=>v.id===recorded.variantId);
@@ -67,6 +68,19 @@ export function ImageApprovalBatch({ batch, index, variants, assets, projectId, 
   const done=Boolean(confirmed && render?.id === confirmed.runId && render.status === "done");
   const final=Boolean(done && stages?.final?.runId === confirmed?.runId);
   const copyReady=Boolean(stages?.copy);
+  // A reference design's common photo can come after the copy; the preview waits for it.
+  const photoSlot=variants.length>0 && variants.every(v=>v.referenceLayout?.photo);
+  const photoPending=photoSlot && variants.some(v=>!v.asset);
+  const photoChoices=assets.filter(a=>!variants.some(v=>v.referenceLayout?.source.path===a.path || v.detailAsset?.path===a.path));
+  const photoPicker=attachPhoto && <div className="ic-photo-pick" role="group" aria-label="공통 사진 고르기">
+    <p>원본 디자인의 사진 자리에 들어갈 사진이에요. 모든 시안에 같은 사진이 들어가요.</p>
+    <div className="ic-row">{photoChoices.map((a,i)=><button key={a.path} type="button" className="secondary-button" disabled={busy}
+      aria-pressed={variants.every(v=>v.asset?.path===a.path)} onClick={()=>attachPhoto(batch.id,a.path)}>
+      {/* eslint-disable-next-line @next/next/no-img-element -- authenticated project asset */}
+      <img src={a.url} alt={`올린 사진 ${i+1}`} width={56} height={56}/> 이 사진 넣기</button>)}
+      {uploadPhoto && <label className="secondary-button">사진 올리기<input className="ic-sr" type="file" accept="image/png,image/jpeg" disabled={busy}
+        onChange={e=>{uploadPhoto(e.target.files?.[0] ?? null);e.target.value="";}}/></label>}</div>
+  </div>;
   const markPreview=(id:string,ok:boolean)=>setPreviewReady(old=>old[id]===ok ? old : {...old,[id]:ok});
   const canPreview=variants.length>0 && variants.every(v=>previewReady[v.id]);
   const canFinal=done && (demo ? canPreview : variants.every(v=>reviewable?.[v.id]===render?.id && finalReady[render!.id+v.id]));
@@ -82,6 +96,8 @@ export function ImageApprovalBatch({ batch, index, variants, assets, projectId, 
     </details>}
     {experimentRound && recorded && <p><strong>{winner ? "승리 소재" : "이전 출력본 승리 기록"} · {recordedVariant?.copy.headline || recorded.variantId}</strong>
       {recorded.note && <span> · {recorded.note}</span>}</p>}
+    {copyReady && photoPending && photoPicker && <section className="ic-panel" aria-label="시안에 넣을 사진"><h4>시안에 넣을 사진을 골라 주세요</h4>{photoPicker}</section>}
+    {copyReady && photoSlot && !photoPending && !confirmed && photoPicker && <details className="ic-details"><summary>사진 바꾸기</summary>{photoPicker}</details>}
     <div className="ic-preview-grid">
       {experimentRound && alternateCandidates.map(candidate=><article key={candidate.id} className={`ic-card ${winner?.variantId===candidate.id ? "ic-selected" : ""}`}>
         <WinnerArtwork variant={candidate} projectId={projectId} url={rendered?.[candidate.id]} demo={demo} photo={assets.find(a=>a.path===candidate.asset?.path)?.url} referenceUrl={assets.find(a=>a.path===candidate.referenceLayout?.source.path)?.url} detailUrl={assets.find(a=>a.path===candidate.detailAsset?.path)?.url}/>
@@ -96,7 +112,7 @@ export function ImageApprovalBatch({ batch, index, variants, assets, projectId, 
       const showFinal=Boolean(!demo && done && !final && reviewable?.[v.id]===render?.id);
       const readyKey=(render?.id || "")+v.id;
       return <article className={`ic-card ${(experimentRound ? v.id===winner?.variantId : v.id===selectedId)?"ic-selected":""}`} key={v.id}>
-        {copyReady && <div className="ic-artboard" onLoadCapture={e=>{
+        {copyReady && !photoPending && <div className="ic-artboard" onLoadCapture={e=>{
           if (e.target instanceof HTMLImageElement && e.target.naturalWidth > 0) markPreview(v.id,true);
         }} onErrorCapture={()=>markPreview(v.id,false)}>
           {final && !demo && rendered?.[v.id] ?
@@ -116,7 +132,7 @@ export function ImageApprovalBatch({ batch, index, variants, assets, projectId, 
             <dt>본문</dt><dd>{v.copy.body || "본문 없음"}</dd><dt>CTA</dt><dd>{v.copy.cta}</dd></dl></>}
           {v.design && <p className="ic-muted">{designSummary(v)}</p>}
           <div className="ic-row">
-            {copyReady && <button className="secondary-button" disabled={busy} onClick={()=>edit(v.id)}>수정하기</button>}
+            {copyReady && <button className="secondary-button" disabled={busy || photoPending} onClick={()=>edit(v.id)}>수정하기</button>}
             {final && experimentRound && registerWinner && <button type="button" className="secondary-button" disabled={busy} aria-pressed={winner?.variantId===v.id}
               onClick={()=>registerWinner(batch.id,v.id,resultNote)}>승리 소재로 지정</button>}
             {final && (!experimentRound || !guided) && <button className="secondary-button" aria-pressed={v.id===selectedId} disabled={busy} onClick={()=>select(v.id)}>{v.id===selectedId?"기준으로 선택됨":"기준 시안 선택"}</button>}

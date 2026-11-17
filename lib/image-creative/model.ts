@@ -160,7 +160,8 @@ export function validWarehouseBrand(brand: unknown): brand is string {
   return typeof brand === "string" && Boolean(brand.trim()) && brand === brand.trim() && chars(brand) <= 15 && LOCAL_TEXT.test(brand) && !brand.includes("\n");
 }
 /** Return concrete rendering constraints; no font shrinking or silent text clipping to make a result appear valid. */
-export function imageVariantProblems(value: unknown): string[] {
+/** `photoPending`: a reference design whose common photo is chosen after the copy (copy steps only; preview and render stay strict). */
+export function imageVariantProblems(value: unknown, photoPending = false): string[] {
   const problems: string[] = [];
   try {
     keys(value, ["id", "parentId", "formatId", "formatVersion", "brand", "size", "asset", "detailAsset", "design", "referenceLayout", "promptEdit", "appeal", "copy", "at", "by"], ["formatId", "formatVersion", "size", "appeal", "copy"], "소재");
@@ -208,7 +209,7 @@ export function imageVariantProblems(value: unknown): string[] {
       if (usesReferenceDetailAsset(layout) !== (value.detailAsset !== undefined) ||
           (value.detailAsset !== undefined && asset(value.detailAsset).path === layout.source.path))
         problems.push("디테일 칸에 넣을 상품 이미지를 확인해 주세요.");
-      if (Boolean(layout.photo) !== Boolean(value.asset) ||
+      if ((photoPending ? !layout.photo && value.asset !== undefined : Boolean(layout.photo) !== Boolean(value.asset)) ||
           (value.asset && asset(value.asset, true).path === layout.source.path))
         problems.push("사진 교체 영역에는 레퍼런스와 다른 이미지를 사용해 주세요.");
       if (value.brand !== undefined && (!layout.master?.brandSlots?.length || !validWarehouseBrand(value.brand)))
@@ -362,7 +363,7 @@ export function normalizeImageRequest(state: ImageCreativeState, value: ImageBat
     if (base && value.referenceLayout && layoutKey(layout) !== layoutKey(value.referenceLayout))
       fail("테스트에서는 기준 소재의 레퍼런스와 교체 영역을 유지해 주세요.");
     if (assetPaths.includes(layout.source.path) || (!layout.photo && (assetPaths.length || mode === "image")) ||
-        (layout.photo && (!base ? assetPaths.length !== 1 : mode === "image" && assetPaths.length !== value.count)))
+        (layout.photo && (!base ? assetPaths.length > 1 : mode === "image" && assetPaths.length !== value.count)))
       fail("사진 교체 영역에 사용할 별도의 프로젝트 이미지를 선택해 주세요.");
     referenceLayout = JSON.parse(layoutKey(layout)) as ReferenceLayout;
   } else if (value.referenceLayout !== undefined) {
@@ -490,12 +491,31 @@ export function reviewImageBatch(state: ImageCreativeState, batchId: string, ste
     throw new ImageCreativeError("IMAGE_DRAFT_REVIEW_REQUIRED","카피 작성 화면에서 저장한 초안을 확인하고 확정해 주세요.",409);
   if (step === "preview" && (!review.format || !review.copy || !output))
     throw new ImageCreativeError("IMAGE_COPY_APPROVAL_REQUIRED", "전체 카피를 먼저 승인해 주세요.", 409);
+  if (step === "preview" && referencePhotoPending(state, batch))
+    throw new ImageCreativeError("IMAGE_PHOTO_REQUIRED", "시안에 넣을 공통 사진을 먼저 골라 주세요.", 409);
   if (step === "final" && (!output || !review.preview || review.preview.runId !== output.runId || review.preview.target !== output.target))
     throw new ImageCreativeError("IMAGE_PREVIEW_REQUIRED", "이 출력본의 미리보기 확인 이력을 확인해 주세요.", 409);
   const decision = { ...stamp, ...output };
   const next = { ...review, [step]: decision, history: [...review.history, { ...decision, step, decision: "approved" as const }] };
   if (step === "preview") delete next.final;
   return { ...state, batches: state.batches.map(b => b.id === batchId ? { ...b, review: next } : b) };
+}
+/** A reference design that replaces a photo waits for it until the common photo is attached. */
+export function referencePhotoPending(state: Pick<ImageCreativeState,"variants">, batch: Pick<ImageBatch,"variantIds">) {
+  return batch.variantIds.some(id => { const v = state.variants.find(row => row.id === id); return Boolean(v?.referenceLayout?.photo && !v.asset); });
+}
+/** The common photo of a reference design is chosen after the copy, any time before the preview is confirmed. Every variant of the batch takes it. */
+export function attachReferencePhoto(state: ImageCreativeState, batchId: string, photo: ImageAsset): ImageCreativeState {
+  const batch = state.batches.find(row => row.id === batchId);
+  const variants = batch?.variantIds.map(id => state.variants.find(row => row.id === id));
+  if (!batch || !variants?.length || variants.some(v => !v?.referenceLayout?.photo) || batch.baseId || batch.designRevision || !state.formatRecommendation?.referenceFirst)
+    throw new ImageCreativeError("IMAGE_PHOTO_UNAVAILABLE", "사진 칸이 있는 레퍼런스 시안에서만 공통 사진을 넣을 수 있어요.", 409);
+  if (batch.review?.preview) throw new ImageCreativeError("IMAGE_PHOTO_LOCKED", "미리보기를 확인한 뒤에는 사진을 바꿀 수 없어요.", 409);
+  const picked = asset(photo, true), ref = {path:picked.path,w:picked.w,h:picked.h};
+  const next = variants.map(v => ({...v!, asset:ref}));
+  next.forEach((v, index) => { const problem = imageVariantProblems(v)[0]; if (problem) fail(`${index + 1}번: ${problem}`); });
+  const byId = new Map(next.map(v => [v.id, v]));
+  return {...state, variants:state.variants.map(v => byId.get(v.id) ?? v), batches:state.batches.map(b => b === batch ? {...b, assetPaths:[ref.path]} : b)};
 }
 export function confirmReferenceCopy(state:ImageCreativeState, batchId:string, copies:CreativeVariant["copy"][], stamp:ApprovalStamp):ImageCreativeState {
   const batch = state.batches.find(row=>row.id === batchId);
@@ -507,7 +527,7 @@ export function confirmReferenceCopy(state:ImageCreativeState, batchId:string, c
     if (!original) throw new ImageCreativeError("IMAGE_BATCH_MISSING","이 작업의 시안을 다시 불러와 주세요.",409);
     const words = copy(copies[index]);
     const next = {...original,copy:words};
-    const problem = imageVariantProblems(next)[0];
+    const problem = imageVariantProblems(next, true)[0];
     if (problem) fail(`${index+1}번: ${problem}`);
     return COPY_FIELDS.every(field=>words[field] === original.copy[field]) ? original : next;
   });
@@ -676,7 +696,7 @@ export function createImageBatch(state: ImageCreativeState, request: ImageBatchR
       const box = context.assets?.find(row => row.path === item.asset!.path && row.w === item.asset!.w && row.h === item.asset!.h)?.subjectBox;
       if (box) item.asset = { ...item.asset, subjectBox: box };
     }
-    const problems = imageVariantProblems(item); if (problems.length) fail(`${index + 1}번: ${problems.join(" / ")}`);
+    const problems = imageVariantProblems(item, !base && !req.assetPaths.length && Boolean(req.referenceLayout?.photo)); if (problems.length) fail(`${index + 1}번: ${problems.join(" / ")}`);
     if (base && signature(item) === signature(base)) fail("기준과 똑같은 후보는 테스트에 넣을 수 없어요.");
     return item;
   });
