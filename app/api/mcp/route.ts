@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { MCP_TOOLS, callMcpTool } from "@/lib/server/mcp";
+import { createServiceSupabase } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,6 +29,27 @@ function jsonRpcError(id: string | number | null | undefined, code: number, mess
   });
 }
 
+// The entry canon tells every new session where company rules start (it says "MCP가 지정한 이 문서의 고정 doc_id").
+// Its id stays out of git: the server finds it by its canonical title.
+const START_CANON_TITLE = "BRANDYACTION AI 에이전트 운영 정본 — OS ONLY";
+const BASE_INSTRUCTIONS = "브랜디 OS의 지식·Skill·운영 기록을 검색·관리합니다. 업무 시작 전 list_skills로 적용할 회사 표준이 있는지 확인하고 get_skill로 절차와 품질 기준을 읽으세요. 프로젝트 작업 전 get_project_context로 현재 상태를 읽고, 작업 후 create_development_log로 검증·브랜치·다음 단계를 기록하세요. 새 지식은 개인 초안으로 만들고 모든 수정은 버전·감사를 남기며 삭제는 휴지통 이동만 허용합니다. 권한 변경, 외부 예약·발행, 영구 삭제는 OS에서 사람이 직접 승인해야 합니다. delete 도구는 confirm=true일 때만 호출하세요.";
+let startCanon: Promise<string | null> | undefined;
+async function startCanonId() {
+  startCanon ??= Promise.resolve(createServiceSupabase().from("os_documents").select("id").eq("title", START_CANON_TITLE)
+    .eq("status", "canonical").is("archived_at", null).limit(2))
+    .then(({ data, error }) => !error && data?.length === 1 ? String(data[0].id) : null, () => null);
+  const id = await startCanon;
+  if (!id) startCanon = undefined;
+  return id;
+}
+async function instructions() {
+  const id = await startCanonId();
+  const first = id
+    ? `새 세션은 다른 일보다 먼저 get_document(document_id: "${id}")로 「${START_CANON_TITLE}」 원문을 읽고 따르세요.`
+    : `새 세션은 다른 일보다 먼저 search_knowledge로 「${START_CANON_TITLE}」을 찾아 get_document로 원문을 읽고 따르세요.`;
+  return `${first} 회사 업무는 그 문서가 연결한 업무 라우팅·역할 색인에서 담당 정본을 찾습니다. 그 문서를 읽지 못했으면 사용자에게 알리고, 읽었다고 말하지 마세요. ${BASE_INSTRUCTIONS}`;
+}
+
 class UpstreamToolError extends Error {
   constructor(readonly status: number, message: string) { super(message); }
 }
@@ -52,7 +74,7 @@ export async function POST(request: Request) {
       protocolVersion,
       capabilities: { tools: { listChanged: false } },
       serverInfo: { name: "brandy-os", version: "3.3.0" },
-      instructions: "브랜디 OS의 지식·Skill·운영 기록을 검색·관리합니다. 업무 시작 전 list_skills로 적용할 회사 표준이 있는지 확인하고 get_skill로 절차와 품질 기준을 읽으세요. 프로젝트 작업 전 get_project_context로 현재 상태를 읽고, 작업 후 create_development_log로 검증·브랜치·다음 단계를 기록하세요. 새 지식은 개인 초안으로 만들고 모든 수정은 버전·감사를 남기며 삭제는 휴지통 이동만 허용합니다. 권한 변경, 외부 예약·발행, 영구 삭제는 OS에서 사람이 직접 승인해야 합니다. delete 도구는 confirm=true일 때만 호출하세요.",
+      instructions: await instructions(),
     });
   }
   if (body.method === "notifications/initialized") return new NextResponse(null, { status: 202 });

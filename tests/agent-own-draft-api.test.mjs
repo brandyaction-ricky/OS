@@ -112,7 +112,7 @@ async function fixture(documents, options = {}) {
   const searchRoute = await load("app/api/v1/search/route.ts", apiModules);
   const mcpTools = await load("lib/server/mcp.ts", { "../kosis.ts": kosis });
   const forwarded = [];
-  const mcp = await load("app/api/mcp/route.ts", { "@/lib/server/mcp": mcpTools }, {
+  const mcp = await load("app/api/mcp/route.ts", { "@/lib/server/mcp": mcpTools, "@/lib/supabase/server": { createServiceSupabase() { throw Error("tools/call never reads the service client"); } } }, {
     fetch: async (url, init) => {
       forwarded.push({ url, init });
       const request = new Request(url, init);

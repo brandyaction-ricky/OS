@@ -20,3 +20,33 @@ test("remote MCP route exposes the five guarded knowledge tools", async () => {
   assert.doesNotMatch(route, /bos_pat_[A-Za-z0-9_-]{16,}/);
   assert.doesNotMatch(tools, /bos_pat_[A-Za-z0-9_-]{16,}/);
 });
+
+test("a new MCP session is told to read the operating canon first, by the id the server looks up", async () => {
+  const { default: ts } = await import("typescript");
+  const zod = await import("zod");
+  const { runInNewContext } = await import("node:vm");
+  const code = ts.transpileModule(await read("app/api/mcp/route.ts"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const route = (rows) => {
+    const queries = [];
+    const chain = { select: () => chain, eq: (k, v) => (queries.push([k, v]), chain), is: () => chain, limit: () => Promise.resolve({ data: rows, error: null }) };
+    const mod = { exports: {} };
+    runInNewContext(code, { module: mod, exports: mod.exports, URL, Response, process: { env: {} },
+      require: (id) => ({ "next/server": { NextResponse: Response }, zod, "@/lib/server/mcp": { MCP_TOOLS: [], callMcpTool() {} },
+        "@/lib/supabase/server": { createServiceSupabase: () => ({ from: () => chain }) } })[id] });
+    return { POST: mod.exports.POST, queries };
+  };
+  const init = async (r) => (await (await r.POST(new Request("http://localhost/api/mcp", { method: "POST",
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize" }) }))).json()).result.instructions;
+  const found = route([{ id: "11111111-2222-4333-8444-555555555555" }]);
+  const text = await init(found);
+  assert.match(text, /^새 세션은 다른 일보다 먼저 get_document\(document_id: "11111111-2222-4333-8444-555555555555"\)로 「BRANDYACTION AI 에이전트 운영 정본 — OS ONLY」/);
+  assert.match(text, /읽었다고 말하지 마세요/);
+  assert.match(text, /list_skills/);
+  assert.deepEqual(found.queries, [["title", "BRANDYACTION AI 에이전트 운영 정본 — OS ONLY"], ["status", "canonical"]]);
+  // Two matches, or none, never point a session at a guessed document.
+  for (const rows of [[], [{ id: "a" }, { id: "b" }]]) {
+    const fallback = await init(route(rows));
+    assert.match(fallback, /search_knowledge로 「BRANDYACTION AI 에이전트 운영 정본 — OS ONLY」을 찾아/);
+    assert.doesNotMatch(fallback, /document_id:/);
+  }
+});
