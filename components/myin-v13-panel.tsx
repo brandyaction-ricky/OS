@@ -1,5 +1,6 @@
 "use client";
 
+import { queueText, type VoiceQueue } from "@/lib/myin-voice-queue";
 import { DIAGRAM_CATALOG } from "@/lib/shortform-diagram-catalog";
 import { personName } from "@/lib/youtube-process/project";
 import { channelOf } from "@/lib/youtube-process/channel-style";
@@ -42,7 +43,8 @@ interface MyinRun { id: string; status: string; stage: string; layout?: "short" 
   sound: { report: string; at: string; edited?: { name: string; at: string } } | null; local: { by: string; name: string } | null; localFinish?: { by: string; name: string } | null; localReady: boolean;
   clipsStale?: string[] | null; photoCredits?: Record<string, { source: string; license: string; url: string | null }>;
   voiceFixes?: MyinVoiceFixView[]; voiceCheck?: MyinVoiceCheckView | null; voiceFixable?: boolean; voiceChanged?: { at: string; count: number } | null;
-  style?: { id: string; name: string; version: number; channel: string } | null; settings?: RunSettings | null }
+  style?: { id: string; name: string; version: number; channel: string } | null; settings?: RunSettings | null;
+  /** 대기 순서 (2026-11-17): a voice waiting for the render PC — what it is on now and the voices ahead. */ voiceQueue?: VoiceQueue | null }
 interface Outputs { clips: { label: string; url: string | null }[]; stills?: string | null; video: string | null; summary: string | null; deck: string | null; srt: string | null }
 
 const PHASE: Record<string, string> = { breath_pending: "영상 만드는 컴퓨터가 숨 자리 고르는 중", voice_pending: "음성 만드는 중", words_pending: "영상 만드는 컴퓨터가 받아쓰기·자막 만드는 중", words_ready: "받아쓰기·자막 완료",
@@ -107,7 +109,7 @@ function RunWait({ run }: { run: MyinRun }) {
   return run.status === "blocked" || (run.lastErrorCode && minutes === null) ? <StopNote run={run} />
     : minutes !== null ? <><small>시작 {started}{run.stage === "clips_pending" && run.layout !== "short" ? ` · 미리보기 ${(run.storyboard?.metaphors.length ?? 0) + 1}개` : ""}</small>
       {typical ? <WaitBar minutes={minutes} typical={typical} /> : <small>{minutes}분째</small>}</>
-    : typical && run.status === "backlog" ? <small>{maker(run)} 차례를 기다리는 중</small> : null;
+    : typical && run.status === "backlog" ? <small>{run.voiceQueue ? queueText(run.voiceQueue) : `${maker(run)} 차례를 기다리는 중`}</small> : null;
 }
 // The staff AI's storyboard (claimed → handed in, 11-11~11-16): a first one 9 minutes for 8 paragraphs, 13 for 26, 19 for 39; a fix 2–9.
 const storyboardMinutes = (run: MyinRun) => run.storyboard ? 5 : Math.ceil(6 + run.paragraphs / 3);

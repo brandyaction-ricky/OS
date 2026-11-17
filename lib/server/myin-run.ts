@@ -17,7 +17,7 @@ import { MYIN_VOICE_TUNING, synthesizeFishWav } from "./fish-audio";
 import { readDiagramCatalog } from "./diagram-catalog";
 import { readSoundCatalog } from "./sound-catalog";
 import { readYoutubeAutomationInput } from "./youtube-automation-input";
-import { RENDER_PC_NAME, renderPcEngine, renderPcGone } from "./youtube-render-pc";
+import { RENDER_PC_NAME, renderPcEngine, renderPcGone, renderPcJobs } from "./youtube-render-pc";
 import { readChannelStyles } from "./youtube-channel-styles";
 import { channelOf, channelToneSchema, pinStyle, type ChannelStyle } from "@/lib/youtube-process/channel-style";
 import { assertSpokenScript } from "./youtube-script-canon";
@@ -431,6 +431,40 @@ async function voiceDonors(service: Service, sourceId: string, like: Pick<MyinRu
   return ((data ?? []) as { id: string; metadata: MyinRun }[]).filter(({ metadata: m }) => m.voiceOn && m.words && m.voiceModel === like.voiceModel
     && m.voiceReferenceFingerprint === like.voiceReferenceFingerprint && (m.layout ?? null) === (like.layout ?? null)).slice(0, 3);
 }
+// 대기 순서 (로건 요청 94ba5545, 2026-11-17): the render PC makes one voice at a time and a new video's takes an hour, so a voice that
+// waits says what the PC is on and how many voices are ahead. Minutes as the panel's: 1.4 a paragraph made (two at a time, 11-13), the
+// paragraphs an earlier voice of the video has are kept (#606), words and the check of kept paragraphs take a minute or two (#612).
+const VOICE_FIXED_MIN = 3, VOICE_PARAGRAPH_MIN = 1.4;
+const RENDER_STAGE_MIN: Record<string, number> = { breath_pending: 5, cta_pending: 2, prep_pending: 5, clips_pending: 4 };
+
+/** About how many minutes the render PC spends on a run's step now; a voice counts only the paragraphs it has to make. */
+async function stageMinutes(service: Service, record: OsRecord, run: MyinRun) {
+  if (record.stage === "final_pending") return Math.ceil((run.words?.durationSeconds ?? 780) / 60 * 5);
+  if (record.stage !== "words_pending") return RENDER_STAGE_MIN[record.stage ?? ""] ?? 5;
+  if (run.voiceFixes?.length) return VOICE_FIXED_MIN;
+  const [donor] = run.layout ? [] : await voiceDonors(service, run.sourceId, run, record.created_at);
+  const kept = new Set(donor?.metadata.paragraphs.map((p) => p.textHash) ?? []);
+  return Math.ceil(VOICE_FIXED_MIN + VOICE_PARAGRAPH_MIN * run.paragraphs.filter((p) => !kept.has(p.textHash)).length);
+}
+
+/** A voice waiting for the render PC: what it is doing now (video, step, minutes left) and the voices ahead of this one, with a rough start. */
+async function voiceQueue(service: Service, record: OsRecord) {
+  if (record.status !== "backlog" || record.stage !== "words_pending") return null;
+  const [pcs, { data }] = await Promise.all([renderPcJobs(), service.from("os_records").select("*").eq("record_type", "ai_job").eq("metadata->>kind", MYIN_RUN_KIND)
+    .in("status", ["backlog", "in_progress"]).is("archived_at", null).order("created_at").limit(50)]);
+  const rows = ((data ?? []) as OsRecord[]).flatMap((row) => { try { return [{ row, run: parse(row) }]; } catch { return []; } });
+  const busy = pcs.find((pc) => pc.job && pc.job.runId !== record.id);
+  const doing = busy?.job?.runId ? rows.find((item) => item.row.id === busy.job!.runId) : undefined;
+  const since = doing?.run.lease?.startedAt;
+  const left = doing ? Math.max(1, await stageMinutes(service, doing.row, doing.run) - (since ? Math.floor((Date.now() - Date.parse(since)) / 60_000) : 0)) : busy ? 10 : 0;
+  const ahead = rows.filter((item) => item.row.id !== record.id && item.row.id !== doing?.row.id && item.row.stage === "words_pending" && item.row.status === "backlog"
+    && item.row.created_at < record.created_at);
+  const minutes = left + (await Promise.all(ahead.map((item) => stageMinutes(service, item.row, item.run)))).reduce((sum, value) => sum + value, 0);
+  const titleOf = async (sourceId: string) => (await service.from("os_records").select("title").eq("id", sourceId).maybeSingle()).data?.title as string | undefined;
+  return { pcOn: pcs.length > 0, ahead: ahead.length, minutes,
+    now: busy ? { title: doing ? (await titleOf(doing.run.sourceId))?.slice(0, 80) ?? "" : "", stage: doing?.row.stage ?? busy.job?.step ?? "", left } : null };
+}
+
 /** Before 「바뀐 원고로 다시 만들기」: the paragraphs the newest earlier voice does not have, which are the ones Fish is paid for. */
 async function voiceReuse(service: Service, sourceId: string, run: MyinRun) {
   if (!run.voiceOn || run.layout) return null;
@@ -448,7 +482,7 @@ export async function latestMyinRun(actor: RequestActor, sourceId: string) {
   const record = data?.[0] as OsRecord | undefined;
   if (!record) return null;
   const changed = await scriptChanged(actor.supabase, parse(record));
-  return { ...presentMyinRun(record), scriptChanged: changed,
+  return { ...presentMyinRun(record), scriptChanged: changed, voiceQueue: await voiceQueue(createServiceSupabase(), record).catch(() => null),
     ...(changed ? { voiceReuse: await voiceReuse(createServiceSupabase(), sourceId, parse(record)).catch(() => null) } : {}),
     storyboardJob: record.stage === "words_ready" ? await storyboardJobNow(sourceId, actor.id).catch(() => null) : null };
 }
