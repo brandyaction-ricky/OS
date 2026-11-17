@@ -14,7 +14,7 @@ test("an updated Mac can still poll an older OS without claiming a second job af
     return {idle:true};
   };
   assert.equal(await processAdRender(call,process.cwd()),false);
-  assert.deepEqual(versions,[8,7,6,5,4,3,2,1]);
+  assert.deepEqual(versions,[9,8,7,6,5,4,3,2,1]);
   let attempts=0;
   await assert.rejects(processAdRender(async()=>{attempts++;throw new Error("lost response");},"unused"),/lost response/);
   assert.equal(attempts,1);
@@ -76,7 +76,7 @@ test("a staff video bundle renders offline without the OS checkout and uploads o
   const dispatch=async body=>{
     sent.push(body.action);
     switch(body.action){
-      case "image_creative_claim":assert.equal(body.rendererVersion,8);return {jobId:"j",lease:"lease",variantIds:["v"]};
+      case "image_creative_claim":assert.equal(body.rendererVersion,9);return {jobId:"j",lease:"lease",variantIds:["v"]};
       case "image_creative_scene":assert.equal(body.variantId,"v");return scene("v");
       case "image_creative_prepare":return {signedUrl:"https://example.test/storage/v1/object/upload/sign/owned-result"};
       case "image_creative_complete":
@@ -97,6 +97,45 @@ test("a staff video bundle renders offline without the OS checkout and uploads o
   await assert.rejects(processAdRender(dispatch,installed),/완료 응답/);
   assert.equal(sent.includes("image_creative_fail"),false);
   assert.equal(await processAdRender(async()=>({idle:true}),installed),false);
+});
+
+test("prompt-edited artwork travels through the offline Mac worker byte-for-byte without text overlays", async t => {
+  const {getSharp} = await import("next/dist/server/image-optimizer.js");
+  const sharp = getSharp();
+  const root = mkdtempSync(path.join(os.tmpdir(),"ad-edited-bundle-"));
+  const originalFetch = globalThis.fetch;
+  t.after(()=>{globalThis.fetch=originalFetch;rmSync(root,{recursive:true,force:true});});
+  const runtime = buildAdRuntime(process.cwd(),path.join(root,"image-renderer"));
+  const bytes = await sharp({create:{width:1080,height:1350,channels:4,background:{r:27,g:76,b:149,alpha:.7}}}).png().toBuffer();
+  const dataUrl = "data:image/png;base64,"+bytes.toString("base64");
+  const variant = {id:"v",formatId:"M01",formatVersion:2,size:"portrait",brand:"원본 브랜드",
+    copy:{headline:"이 글자는 덧그리지 않음",body:"원본 기록",cta:"원본 CTA"},asset:{path:"unused.png",w:1,h:1},
+    design:{font:"serif",card:"frame",placement:"feed-portrait"},
+    promptEdit:{prompt:"색상 수정",model:"test",image:{path:"edited.png",w:1080,h:1350}}};
+  const {renderAdPng} = await import("../tools/image-ad-renderer.mjs");
+  assert.deepEqual(await renderAdPng(runtime,variant,undefined,{promptEditDataUrl:dataUrl}),bytes);
+  await assert.rejects(renderAdPng(runtime,variant),/수정 PNG/);
+  await assert.rejects(renderAdPng(runtime,{...variant,promptEdit:{...variant.promptEdit,image:{...variant.promptEdit.image,w:100}}},undefined,{promptEditDataUrl:dataUrl}),/규격/);
+  let uploaded;
+  globalThis.fetch = async (url,init) => {
+    if (String(url).includes("/storage/v1/object/sign/")) return new Response(bytes,{headers:{"content-type":"image/png"}});
+    assert.equal(String(url),"https://example.test/storage/v1/object/upload/sign/result");
+    uploaded=Buffer.from(init.body);return new Response(null,{status:200});
+  };
+  await processAdRender(async body=>{
+    switch(body.action) {
+      case "image_creative_claim":assert.equal(body.rendererVersion,9);return {jobId:"j",lease:"lease",variantIds:["v"]};
+      case "image_creative_scene":return {variant,promptEditUrl:"https://example.test/storage/v1/object/sign/edited",width:1080,height:1350};
+      case "image_creative_prepare":return {signedUrl:"https://example.test/storage/v1/object/upload/sign/result"};
+      case "image_creative_complete":assert.equal(body.files[0].sha256,createHash("sha256").update(bytes).digest("hex"));return {done:true};
+      default:throw new Error("unexpected action "+body.action);
+    }
+  },root);
+  assert.deepEqual(uploaded,bytes);
+  const oldRoot=path.join(root,"old");
+  buildAdRuntime(root,path.join(oldRoot,"image-renderer"));
+  rmSync(path.join(oldRoot,"image-renderer/prompt-edit-render.mjs"));
+  assert.equal(await processAdRender(async body=>{assert.equal(body.rendererVersion,8);return {idle:true};},oldRoot),false);
 });
 
 test("uploaded reference pixels survive outside the replacement slots on the actual Mac PNG", async t => {

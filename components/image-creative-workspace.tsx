@@ -1,10 +1,11 @@
 "use client";
 import "./image-creative-workspace.css";
+import type { ImageFlowPreview } from "@/lib/image-creative/flow-preview";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "./session-provider";
 import { apiRequest } from "@/lib/api-client";
 import { CREATIVE_SIZES, IMAGE_FORMATS, IMAGE_FORMAT_IDS, WAREHOUSE_FORMAT_IDS, isImageFormat, isWarehouseFormat, recommendImageFormats, type ImageFormatId } from "@/lib/image-creative/formats";
-import { activeImageWinner, imageExperimentCandidateIds, imageExperimentSummary, latestImageExperimentBatch, recordImageWinner, approveImageFormat, formatApprovalKey, startImageCopyBatch, reviewImageBatch, returnImageReview, canSaveImageBrief, createImageBatch, reviseImageDesign, type ImageDesign, emptyImageCreative, productionBrief, imageCreativePrompt, imageBriefProblems, type ImageBatchRequest, type ImageCreativeState, type CreativeVariant, type ImageAsset } from "@/lib/image-creative/model";
+import { activeImageWinner, imageExperimentCandidateIds, imageExperimentSummary, latestImageExperimentBatch, recordImageWinner, approveImageFormat, formatApprovalKey, startImageCopyBatch, reviewImageBatch, returnImageReview, canSaveImageBrief, createImageBatch, reviseImageDesign, applyImagePromptEdit, type ImageDesign, emptyImageCreative, productionBrief, imageCreativePrompt, imageBriefProblems, type ImageBatchRequest, type ImageCreativeState, type CreativeVariant, type ImageAsset } from "@/lib/image-creative/model";
 import { LocalConnect, useLocalRender } from "./myin-local-render";
 import { GuidedImageCreative, type ImagePreviewProduct } from "./guided-image-creative";
 import { ImageReferenceSteps } from "./reference-image-creation";
@@ -12,15 +13,19 @@ import { photoSubjectBox } from "@/lib/image-creative/subject-box";
 import { ImageFormatSample } from "./image-format-choice";
 import { ImageFormatLibrary } from "./image-format-library";
 import { FormatBoard, ImageApprovalBatch, targetNames, type MachineRender, type RenderTarget, type ReviewStep } from "./image-approval-batch";
+import type { ImageEditProposal } from "./image-prompt-editor";
 import { ImageDesignEditor, LegacyPreview } from "./image-design-editor";
 import { downloadWarehouseSelection } from "@/lib/image-creative/warehouse-output";
+import { changeDemoImageTrash, type ImageTrashProject } from "@/lib/image-creative/project-trash";
+import { ImageProjectTrash,ImageProjectTrashConfirm } from "./image-project-trash";
+import { ImageSavedSteps } from "./image-saved-steps";
 
 type Asset = ImageAsset & { url:string };
-export type ImageProjectRow = { id:string; title:string; version:number; updatedAt?:string; experiment?: ReturnType<typeof imageExperimentSummary> };
+export type ImageProjectRow = { id:string; title:string; version:number; archivedAt?:string|null; updatedAt?:string; experiment?: ReturnType<typeof imageExperimentSummary> };
 type Project = ImageProjectRow;
 export type ImageProjectBundle = {
   project: Project; state: ImageCreativeState; assets: Asset[];
-  jobs: { phase?: "formats" | "copy"; currentInput?: boolean; id: string; status: string; target?: RenderTarget; model?: string; failReason?: string }[];
+  jobs: { phase?: "formats" | "copy"; currentInput?: boolean; id: string; status: string; processing?:boolean; target?: RenderTarget; model?: string; executor?:string; failReason?: string }[];
   renders?: MachineRender[]; rendered?: Record<string, string>; reviewable?: Record<string,string>;
 };
 const jobLabels: Record<string, string> = { backlog: "AI 작업 대기", active: "AI 작업 중", done: "시안 준비 완료", blocked: "AI 작업 중단" };
@@ -45,12 +50,15 @@ function loadDemo(): ImageProjectBundle[] { try { const saved: unknown = JSON.pa
 const projectRow = (bundle: ImageProjectBundle): Project => ({...bundle.project, experiment:imageExperimentSummary(bundle.state)});
 const blankCopy = { appeal: "", headline: "", body: "", cta: "" };
 
-export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=false}: {previewProducts?:ImagePreviewProduct[];localDirectionPlanner?:boolean} = {}) {
+export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=false, flowPreview}: {previewProducts?:ImagePreviewProduct[];localDirectionPlanner?:boolean;flowPreview?:ImageFlowPreview} = {}) {
   const { demo, accessToken } = useSession();
   const linkedProject = useRef("");
   const [showTools, setShowTools] = useState(false);
   const [experimentList,setExperimentList] = useState(false);
   const [listReady,setListReady] = useState(false);
+  const [trashOpen,setTrashOpen] = useState(false);
+  const [trashProjects,setTrashProjects] = useState<ImageTrashProject[]>([]);
+  const [trashTarget,setTrashTarget] = useState<ImageTrashProject>();
   const [wizardEpoch, setWizardEpoch] = useState(0);
   const [editingId, setEditingId] = useState("");
   const [showSafeZone, setShowSafeZone] = useState(false);
@@ -96,7 +104,7 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
   const readList = async (signal?:AbortSignal) => {
     if (!demo && !accessToken) return;
     const list = new URLSearchParams(window.location.search).get("view") === "tests" ? "?experiment=true" : "";
-    const rows = demo ? loadDemo().map(projectRow) : (await apiRequest<{projects:Project[]}>("/api/v1/content/image-creatives"+list,{token:accessToken,signal})).projects;
+    const rows = demo ? loadDemo().filter(row=>!row.project.archivedAt).map(projectRow) : (await apiRequest<{projects:Project[]}>("/api/v1/content/image-creatives"+list,{token:accessToken,signal})).projects;
     if (signal?.aborted) return;
     setProjects(rows);
     setListReady(true);
@@ -118,6 +126,11 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
     if (ids.length && ids.every(isWarehouseFormat)) { setFixFormatInputs(ids.length > 1); setCount(ids.length); }
   };
   const applyBundle=(next:ImageProjectBundle,expectedVersion?:number)=>{
+    if(demo) {
+      const previous=loadDemo().find(row=>row.project.id===next.project.id);
+      if(previous?.project.archivedAt || next.project.archivedAt) throw new Error("휴지통에 있는 프로젝트입니다. 먼저 복구해 주세요.");
+      if(previous && previous.project.version>next.project.version) throw new Error("다른 창에서 바뀌었어요. 프로젝트를 다시 열어 주세요.");
+    }
     if (next.project.id !== bundle?.project.id) {
       rememberProject(next.project.id);
       setTarget("render-pc"); setShowConnect(false); setFormatIds([]); setMode("initial"); setSize("portrait"); setCount(5); setResult("");
@@ -139,7 +152,7 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
       const all = [next,...stored.filter(item=>item.project.id!==next.project.id)];
       try { localStorage.setItem(key,JSON.stringify(all)); }
       catch { throw new Error("브라우저 저장 공간이 부족해요. 더 작은 이미지를 사용해 주세요."); }
-      setProjects(all.map(projectRow));
+      setProjects(all.filter(row=>!row.project.archivedAt).map(projectRow));
     }
     setBundle(next);
     setBrief(next.state.brief);
@@ -147,6 +160,32 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
   };
   const inFlight = useRef(false);
   const run=async(fn:()=>Promise<void>)=>{if(inFlight.current)return;inFlight.current=true;setBusy(true);setError("");setMessage("");try{await fn();}catch(e){setError(e instanceof Error?e.message:"작업을 완료하지 못했어요.");}finally{inFlight.current=false;setBusy(false);}};
+  const showTrash=()=>void run(async()=>{
+    const rows=demo ? loadDemo().filter(row=>row.project.archivedAt).map(row=>row.project)
+      : (await apiRequest<{projects:ImageTrashProject[]}>("/api/v1/content/image-creatives/trash",{token:accessToken})).projects;
+    setTrashProjects(rows);setTrashOpen(true);
+  });
+  const changeTrash=(project:ImageTrashProject,action:"trash"|"restore")=>void run(async()=>{
+    let changed:ImageTrashProject;
+    let jobsCancelled=true;
+    if(demo) {
+      const all=changeDemoImageTrash(loadDemo(),project.id,project.version,action);
+      try {localStorage.setItem(key,JSON.stringify(all));} catch {throw new Error("브라우저에 저장하지 못했어요. 기존 프로젝트는 유지됩니다.");}
+      changed=all.find(row=>row.project.id===project.id)!.project;
+      setProjects(all.filter(row=>!row.project.archivedAt).map(projectRow));
+    } else {
+      const result=await apiRequest<{project:ImageTrashProject;jobsCancelled:boolean}>(`/api/v1/content/image-creatives/${encodeURIComponent(project.id)}/trash`,{
+        method:"POST",token:accessToken,body:JSON.stringify({action,version:project.version})});
+      changed=result.project;jobsCancelled=result.jobsCancelled;
+      setProjects(rows=>rows.filter(row=>row.id!==project.id));
+    }
+    setTrashProjects(rows=>action==="trash" ? [changed,...rows.filter(row=>row.id!==project.id)] : rows.filter(row=>row.id!==project.id));
+    setTrashTarget(undefined);
+    if(action==="trash" && bundle?.project.id===project.id) leaveProject();
+    setMessage(action==="trash" ? "휴지통으로 이동했어요. 시안과 승인 기록은 보관됩니다." : "프로젝트를 복구했어요. 기존 작업을 이어서 확인할 수 있습니다.");
+    if(!jobsCancelled) setError("프로젝트는 휴지통으로 이동했습니다. 이전 작업 결과는 차단했지만 AI 작업 목록의 상태 정리는 완료하지 못했어요.");
+    if(!demo) await readList();
+  });
   function rememberProject(id: string) {
     const url = new URL(window.location.href);
     if (id) url.searchParams.set("project", id);
@@ -156,6 +195,11 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
   }
   function leaveProject() {
     rememberProject("");
+    if(bundle?.state.experiment) {
+      setExperimentList(true);
+      const url=new URL(window.location.href);url.searchParams.set("view","tests");
+      window.history.replaceState(window.history.state,"",url);
+    }
     setBundle(null); setBrief(emptyImageCreative().brief); setAssetPaths([]); setFormatIds([]);
     setWizardEpoch(n => n + 1); setMessage(""); setError("");
   }
@@ -175,7 +219,7 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
     await createProject(name, bundle ? emptyImageCreative().brief : brief);
     setTitle("");
   });
-  const open=(id:string)=>void run(async()=>{if(demo){const found=loadDemo().find(x=>x.project.id===id);if(!found)throw new Error("작업을 찾을 수 없어요.");applyBundle(found);return;}applyBundle(await apiRequest<ImageProjectBundle>(`/api/v1/content/image-creatives/${encodeURIComponent(id)}`,{token:accessToken}));});
+  const open=(id:string)=>void run(async()=>{if(demo){const found=loadDemo().find(x=>x.project.id===id && !x.project.archivedAt);if(!found)throw new Error("작업을 찾을 수 없어요. 휴지통에서 복구할 수 있습니다.");applyBundle(found);return;}applyBundle(await apiRequest<ImageProjectBundle>(`/api/v1/content/image-creatives/${encodeURIComponent(id)}`,{token:accessToken}));});
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setExperimentList(params.get("view") === "tests");
@@ -193,6 +237,7 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
     ? bundle?.jobs.find(job => job.currentInput !== false && job.phase === "formats") : undefined;
   // The project read can precede the worker's commit while the subsequent job lookup already sees completion.
   const completedWithoutOptions = missingAppealResult?.status === "done" ? missingAppealResult.id : undefined;
+  // Read-only polling stays active while a manually restarted worker reacquires its lease.
   const waiting = bundle?.jobs.some(job => (showTools || job.currentInput !== false) && ["backlog", "active"].includes(job.status)) ||
     bundle?.renders?.some(render => ["queued", "active"].includes(render.status));
   useEffect(() => {
@@ -216,7 +261,7 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
     if (!waiting) void refreshJob();
     return () => { controller.abort(); window.clearInterval(timer); };
   }, [demo, accessToken, projectId, waiting, completedWithoutOptions]);
-  const refresh=()=>void run(async()=>{if(!bundle)return;if(demo){setBundle(loadDemo().find(x=>x.project.id===bundle.project.id)||bundle);return;}const next=await apiRequest<ImageProjectBundle>(`/api/v1/content/image-creatives/${encodeURIComponent(bundle.project.id)}`,{token:accessToken});setBundle(current=>current?.project.id===next.project.id && current.project.version<=next.project.version ? next : current);});
+  const refresh=()=>void run(async()=>{if(!bundle)return;if(demo){const current=loadDemo().find(x=>x.project.id===bundle.project.id);if(!current || current.project.archivedAt){leaveProject();return;}applyBundle(current);return;}const next=await apiRequest<ImageProjectBundle>(`/api/v1/content/image-creatives/${encodeURIComponent(bundle.project.id)}`,{token:accessToken});setBundle(current=>current?.project.id===next.project.id && current.project.version<=next.project.version ? next : current);});
   const outputNote = " 전체 문구를 확인하고 카피를 승인해 주세요.";
   const patch=async(body:Record<string,unknown>, current=bundle)=>{
     if (!current) throw new Error("먼저 작업을 만들어 주세요.");
@@ -312,6 +357,50 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
       }
       setEditingId(""); setMessage(refFlow ? "디자인 수정본을 저장했습니다. 미리보기를 확인해 주세요." : "수정본을 새 묶음으로 저장했습니다. 포맷부터 확인해 주세요.");
     } finally { setBusy(false); }
+  }
+  async function proposePromptEdit(baseId:string,prompt:string,png:Blob):Promise<ImageEditProposal> {
+    if(!bundle) throw new Error("먼저 작업을 선택해 주세요.");
+    setBusy(true);
+    try {
+      if(demo) {
+        const hash=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",await png.arrayBuffer())),b=>b.toString(16).padStart(2,"0")).join("");
+        const example=process.env.NODE_ENV==="development" && flowPreview?.promptEditExamples?.find(row=>row.sourceSha256===hash && row.prompt===prompt);
+        if(!example) throw new Error("이 원본·수정 요청과 일치하는 예시가 아직 없어요. 자유로운 AI 수정은 회사 AI가 연결된 개발 환경에서 사용할 수 있습니다. 원본은 그대로입니다.");
+        return {baseId,prompt,model:example.model,image:{path:example.image.path,w:example.image.w,h:example.image.h},url:example.image.url};
+      }
+      const base=bundle.state.variants.find(row=>row.id===baseId);
+      if(!base) throw new Error("수정할 원본을 다시 선택해 주세요.");
+      let body:BodyInit=JSON.stringify({variantId:baseId,version:bundle.project.version,prompt});
+      if(isWarehouseFormat(base.formatId) && !base.promptEdit) {
+        const sourceHash=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(JSON.stringify(base)))),b=>b.toString(16).padStart(2,"0")).join("");
+        const form=new FormData();form.set("metadata",JSON.stringify({variantId:baseId,version:bundle.project.version,prompt,sourceHash}));
+        form.set("sourcePng",png,"current-ad.png");body=form;
+      }
+      const result=await apiRequest<{bundle:ImageProjectBundle;proposal:ImageEditProposal}>(`/api/v1/content/image-creatives/${encodeURIComponent(bundle.project.id)}/prompt-edit`,{
+        method:"POST",token:accessToken,body});
+      applyBundle(result.bundle);return result.proposal;
+    } catch(cause) {
+      if(!demo) {
+        // A failed provider request can still consume the server's version reservation.
+        try {const next=await apiRequest<ImageProjectBundle>(`/api/v1/content/image-creatives/${encodeURIComponent(bundle.project.id)}`,{token:accessToken});
+          setBundle(current=>current?.project.id===next.project.id && current.project.version<=next.project.version ? next : current);
+        } catch {setError("작업 상태를 새로 불러오지 못했어요. 새로고침 후 수정 상태를 확인해 주세요.");}
+      }
+      throw cause;
+    } finally {setBusy(false);}
+  }
+  async function applyPromptEdit(id:string,proposal:ImageEditProposal) {
+    if(!bundle) throw new Error("먼저 작업을 선택해 주세요.");
+    setBusy(true);
+    try {
+      const {image,prompt,model}=proposal;
+      if(demo) {
+        const assets=Array.from(new Map([...bundle.assets,{...image,url:proposal.url}].map(asset=>[asset.path,asset])).values());
+        const state=applyImagePromptEdit(bundle.state,proposal.baseId,id,{image,prompt,model},{now:new Date().toISOString(),by:"브라우저 체험"},assets);
+        applyBundle({...bundle,assets,state,project:{...bundle.project,version:bundle.project.version+1}},bundle.project.version);
+      } else applyBundle(await patch({action:"apply-prompt-edit",baseId:proposal.baseId,id,edit:{image,prompt,model}}));
+      setEditingId("");setMessage("수정본을 별도로 저장했습니다. 원본과 기존 테스트 기록은 유지됩니다. 미리보기와 최종 검수를 이어 주세요.");
+    } finally {setBusy(false);}
   }
   async function saveVariants(batchRequest: ImageBatchRequest, result: Parameters<typeof createImageBatch>[2]) {
     if (!bundle) throw new Error("먼저 작업을 선택해 주세요.");
@@ -440,15 +529,22 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
       </section>
   );
   return <div className="ic-page">
-    <h1>이미지 광고</h1>
-    {demo&&<p className="os-callout" data-tone="info">{localDirectionPlanner
+    <div className="ic-row"><h1>이미지 광고</h1><button type="button" className="secondary-button" disabled={busy} onClick={showTrash}>휴지통</button></div>
+    {demo&&<p className="os-callout" data-tone="info">{flowPreview ? "반영 전 테스트 · 작업은 이 브라우저에만 저장됩니다. AI 생성과 Mac 출력은 실행하지 않습니다." : localDirectionPlanner
       ? "개발 화면 · 작업은 이 브라우저에 저장됩니다."
       : "체험 모드 · 시안과 PNG를 이 브라우저에서 만듭니다. 실제 AI와 Mac 작업은 연결된 OS에서 실행됩니다."}</p>}
+    {demo && flowPreview && <details className="ic-details"><summary>테스트 순서와 연결 범위</summary>
+      <p>핵심 보고서 → 소구점 5개 → ‘시안까지 확인 가능’ 레퍼런스 2종 중 선택 → 카피 확인 → 시안·말로 수정 → 최종 확인 순서로 진행하세요.</p>
+      <p className="ic-muted">메뉴·상품 선택·뒤로 이동·삭제·휴지통 복구를 확인할 수 있습니다. AI 카피와 이미지 수정은 준비된 예시만 사용하며 실제 AI 생성·운영 저장·Mac 출력은 연결하지 않았습니다.</p>
+    </details>}
     {error&&<p role="alert" className="os-callout" data-tone="danger">{error}</p>}{message&&<p role="status" className="os-callout" data-tone="info">{message}</p>}
+    {trashTarget && <ImageProjectTrashConfirm project={trashTarget} busy={busy} cancel={()=>setTrashTarget(undefined)} confirm={()=>changeTrash(trashTarget,"trash")}/>}
+    {trashOpen && <ImageProjectTrash projects={trashProjects} busy={busy} restore={project=>changeTrash(project,"restore")} close={()=>setTrashOpen(false)}/>}
+    <div hidden={trashOpen}>
     {!showTools && <>
       <GuidedImageCreative projects={projects} listReady={listReady} experimentList={experimentList}
-        reloadList={()=>void run(readList)} openProject={open} previewProducts={demo ? previewProducts : undefined} localDirectionPlanner={localDirectionPlanner} key={wizardEpoch} bundle={bundle} brief={brief} setBrief={setBrief} demo={demo} busy={busy}
-        createProject={createProject} patch={guidedPatch} receive={applyBundle} run={run} refresh={refresh}
+        reloadList={()=>void run(readList)} openProject={open} flowPreview={demo ? flowPreview : undefined} previewProducts={demo ? previewProducts : undefined} localDirectionPlanner={localDirectionPlanner} key={wizardEpoch} bundle={bundle} brief={brief} setBrief={setBrief} demo={demo} busy={busy}
+        createProject={createProject} patch={guidedPatch} receive={applyBundle} run={run} refresh={refresh} trashProject={setTrashTarget}
         assetPaths={assetPaths} setAssetPaths={setAssetPaths} upload={upload} leave={leaveProject}
         openTools={toggleTools} />
     </>}
@@ -486,13 +582,15 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
       </div>}</section>
     </>}
     </>}
-    {bundle && !firstDraft && (showTools || Boolean(saved?.batches.length)) && <>
+    {bundle && !firstDraft && (showTools || Boolean(saved?.batches.length)) && <ImageSavedSteps key={bundle.project.id} bundle={bundle} busy={busy} leave={leaveProject} enabled={!showTools && !!refReview}>
       {refReview && <ImageReferenceSteps current={refReview.preview ? 5 : refReview.copy ? 4 : 3}/>}
       {(!demo || !refFlow) && (showTools || saved?.batches.some(batch=>batch.review?.copy && !batch.review.final && (!batch.review.preview || bundle.renders?.some(row=>row.id===batch.review?.preview?.runId && row.status==="failed")))) && machinePicker}
       <section id="image-creative-results" className="panel panel-pad-lg ic-panel" aria-labelledby="creative-results-title"><h2 id="creative-results-title">{showTools ? "4. 시안 비교·선택" : refReview ? refReview.preview ? "확정" : refReview.copy ? "디자인 수정" : "카피 작성" : "광고 시안 검토"}</h2>
         {editing && <ImageDesignEditor key={editing.id} projectId={bundle.project.id} base={editing}
           assetUrl={bundle.assets.find(a => a.path === editing.asset?.path)?.url} referenceUrl={bundle.assets.find(a => a.path === editing.referenceLayout?.source.path)?.url} detailUrl={bundle.assets.find(a => a.path === editing.detailAsset?.path)?.url}
-          onSave={saveDesign} onClose={() => setEditingId("")}/>}
+          promptEditUrl={bundle.assets.find(a=>a.path===editing.promptEdit?.image.path)?.url} demo={demo}
+          examplePrompt={process.env.NODE_ENV==="development" && demo ? flowPreview?.promptEditExamples?.[0]?.prompt : undefined}
+          propose={proposePromptEdit} apply={applyPromptEdit} onSave={saveDesign} onClose={() => setEditingId("")}/>}
         {saved?.batches.some(batch=>batch.review?.copy) && <label className="ic-check ic-guide-switch"><input type="checkbox" checked={showSafeZone}
           onChange={event => setShowSafeZone(event.target.checked)}/> 결과에 세이프 존 표시</label>}
         {saved?.batches.length ? saved.batches.map((batch,index)=>{const review = <ImageApprovalBatch key={[batch.id,batch.review?.copy?.at,batch.review?.preview?.runId,batch.review?.final?.runId].join("-")} batch={batch} index={index}
@@ -511,7 +609,8 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
         }) :
           <p className="ic-muted">포맷을 승인하고 첫 카피 후보를 만들어 주세요.</p>}
       </section>
-    </>}
-    {(!experimentList || bundle) && <button type="button" className="secondary-button ic-actions" disabled={busy} onClick={toggleTools}>{showTools?"단계별 제작으로 돌아가기":"작업 도구"}</button>}
+    </ImageSavedSteps>}
+    {!flowPreview && (!experimentList || bundle) && <button type="button" className="secondary-button ic-actions" disabled={busy} onClick={toggleTools}>{showTools?"단계별 제작으로 돌아가기":"작업 도구"}</button>}
+    </div>
   </div>;
 }

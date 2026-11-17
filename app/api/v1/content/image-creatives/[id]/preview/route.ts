@@ -13,7 +13,7 @@ export const maxDuration = 120;
 const inputSchema = z.object({ variantId: z.string().min(1).max(100), design: z.custom<ImageDesign>(isImageDesign).optional() }).strict();
 const imageInput = z.string().max(Math.ceil(IMAGE_FILE_MAX / 3) * 4 + 100).optional();
 const demoSchema = z.object({ variant: z.custom<CreativeVariant>(v => !imageVariantProblems(v).length),
-  photo: imageInput, reference: imageInput, detail: imageInput }).strict();
+  photo: imageInput, reference: imageInput, detail: imageInput, editedImage: imageInput }).strict();
 const headers = { "cache-control": "private, no-store", "content-type": "image/png" };
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -25,7 +25,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       ["localhost", "127.0.0.1", "[::1]"].includes(hostname) &&
       (process.env.NEXT_PUBLIC_DEMO_MODE === "true" || !process.env.NEXT_PUBLIC_SUPABASE_URL);
     if (localDemo) {
-      const { variant, photo, reference, detail } = demoSchema.parse(await parseJson(request, 3 * Math.ceil(IMAGE_FILE_MAX / 3) * 4 + 16_384));
+      const { variant, photo, reference, detail, editedImage } = demoSchema.parse(await parseJson(request, 3 * Math.ceil(IMAGE_FILE_MAX / 3) * 4 + 16_384));
       async function normalized(source: CreativeVariant["asset"], value?: string) {
         if (!source && !value) return undefined;
         const prefix = value?.match(/^data:image\/(?:jpeg|png);base64,/i)?.[0];
@@ -41,6 +41,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         if (info.width !== source.w || info.height !== source.h) throw new ApiError(422,"IMAGE_PREVIEW_ASSET","등록한 원본의 가로·세로 크기를 확인해 주세요.");
         return "data:image/png;base64," + data.toString("base64");
       }
+      if (variant.promptEdit) {
+        if (photo || reference || detail) throw new ApiError(422,"IMAGE_PREVIEW_ASSET","수정 이미지 한 장만 전달해 주세요.");
+        const promptEditUrl = await normalized(variant.promptEdit.image, editedImage);
+        return new Response(new Uint8Array(await imagePng(variant, undefined, undefined, undefined, promptEditUrl)).buffer, { headers });
+      }
+      if (editedImage) throw new ApiError(422,"IMAGE_PREVIEW_ASSET","저장된 수정 이미지 정보를 확인해 주세요.");
       const [assetUrl, referenceUrl, detailUrl] = await Promise.all([normalized(variant.asset,photo),normalized(variant.referenceLayout?.source,reference),normalized(variant.detailAsset,detail)]);
       return new Response(new Uint8Array(await imagePng(variant, assetUrl, referenceUrl, detailUrl)).buffer, { headers });
     }

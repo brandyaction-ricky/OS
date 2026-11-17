@@ -26,12 +26,13 @@ test("all legacy pages resolve to their new group and one authoritative name", (
   const groups = {
     home: ["/home"],
     content: ["/content/topics", "/content/scripts", "/content/packages", "/content/shorts", "/content/publishing", "/content/youtube", "/content/performance"],
+    ads: ["/content/images"],
     knowledge: ["/knowledge", "/knowledge/search", "/knowledge/review", "/knowledge/graph"],
     team: ["/home/decisions", "/organization/meetings", "/knowledge/meetings", "/organization/tasks", "/organization/schedule", "/organization/leave", "/organization/members"],
     development: ["/knowledge/development", "/organization/agents"],
     settings: ["/settings/connections", "/settings/access", "/settings/audit", "/settings/company"],
   };
-  assert.equal(NAV_STAGES.filter(stage=>!stage.requiresHr).length, 7);
+  assert.equal(NAV_STAGES.filter(stage=>!stage.requiresHr).length, 8);
   assert.ok(NAV_STAGES.every(stage => stage.label.replaceAll(" ", "").length <= 6));
   assert.equal(findStage("/content/comments").id, "automation");
   assert.equal(findPage("/content/comments").processNumber, 7);
@@ -55,7 +56,11 @@ test("command palette finds both new labels and former menu labels", () => {
 });
 
 test('company documents and finance menus coexist with gated HR navigation',()=>{
-  assert.deepEqual(NAV_STAGES.filter(stage=>!stage.requiresHr).map(stage=>stage.pages.length),[8,12,4,4,10,3,4]);
+  assert.deepEqual(NAV_STAGES.filter(stage=>!stage.requiresHr).map(stage=>stage.pages.length),[8,11,1,4,4,10,3,4]);
+  assert.equal(NAV_STAGES.find(stage=>stage.id==='ads').label,'광고');
+  assert.deepEqual(NAV_STAGES.find(stage=>stage.id==='ads').pages.map(page=>page.href),['/content/images']);
+  assert.ok(!NAV_STAGES.find(stage=>stage.id==='automation').pages.some(page=>page.href==='/content/images'));
+  assert.equal(searchNavigation('이미지 광고')[0].stage,'광고');
   assert.deepEqual(NAV_STAGES.find(stage=>stage.id==='knowledge').pages.map(page=>page.href),['/knowledge/vault','/knowledge/notes','/knowledge/canon','/knowledge/trash']);
   assert.equal(NAV_STAGES.find(stage=>stage.id==='team').label,'업무 기록');
   assert.equal(NAV_STAGES.find(stage=>stage.id==='finance').requiresFinance,true);

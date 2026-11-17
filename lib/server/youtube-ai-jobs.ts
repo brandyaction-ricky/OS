@@ -151,7 +151,7 @@ export function publicStaffJob(job: OsRecord) {
   const m = meta(job);
   return { id: job.id, status: job.status, task: m.task, inputKey: m.inputKey, requestedAt: m.requestedAt, claimedAt: m.claimedAt ?? null,
     model: m.model ?? null, issues: m.issues ?? [], failReason: m.failReason ?? null, doneAt: m.doneAt ?? null, processing: job.status === "active" && leaseLive(m.lease),
-    targetMinutes: m.targetMinutes ?? null, role: m.role ?? null, slot: m.slot ?? null, executor: m.executor ?? "staff", notes: m.noteIds ?? null };
+    targetMinutes: m.targetMinutes ?? null, role: m.role ?? null, slot: m.slot ?? null, executor: m.executor ?? "staff", tier: m.tier ?? null, notes: m.noteIds ?? null };
 }
 
 async function saveJob(job: OsRecord, changes: { status?: string; stage?: string; metadata: JobMeta }) {
@@ -189,12 +189,13 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
   let pool: NicheVideo[] | undefined;
   let marketFor: { query: string; short: boolean; topic?: string } | undefined;
   if (input.task === "image-creative") {
-    if (gpt) throw new ApiError(403, "IMAGE_SUBSCRIPTION_ONLY", "이미지 소재는 연결된 내 AI로만 만들어요.");
-    if (!canUseYoutubeStaffScript(process.env)) throw new ApiError(409, "IMAGE_WORKER_UNAVAILABLE", "개인 AI 작업 연결이 꺼져 있어요. OS 담당자에게 연결을 요청한 뒤 다시 시도해 주세요.");
+    if (gpt && !process.env.OPENAI_API_KEY?.trim()) throw new ApiError(503, "IMAGE_API_UNAVAILABLE", "OS의 회사 GPT 연결을 확인하지 못했어요. 담당자에게 연결 확인을 요청해 주세요.");
+    if (!gpt && !canUseYoutubeStaffScript(process.env)) throw new ApiError(409, "IMAGE_WORKER_UNAVAILABLE", "개인 AI 작업 연결이 꺼져 있어요. OS 담당자에게 연결을 요청한 뒤 다시 시도해 주세요.");
     // Take the queue snapshot first: an older project read must never cancel a newer direction's job.
     imageJobs = await openJobs(actor.ownerId,input.sourceId,input.task);
     source = await imageRecord(actor.supabase, actor.ownerId, input.sourceId); title = source.title;
-    try { inputKey = imageInputKey(source, input.request); imagePhase = imageJobPhase(source,input.request,input.guided); } catch (error) { throw imageError(error); }
+    try { inputKey = imageInputKey(source, input.request); imagePhase = imageJobPhase(source,input.request,gpt ? true : input.guided); } catch (error) { throw imageError(error); }
+    if (gpt && !imagePhase) throw new ApiError(409, "IMAGE_API_IMAGE_REQUIRED", "카피에 사용할 이미지를 먼저 선택해 주세요. 새 사진 제작은 이 카피 요청에서 실행하지 않습니다.");
     taskName = imagePhase === "concepts" ? "광고 소구점과 컨셉 제안" : imagePhase === "scene" ? "광고 장면 기획과 포맷 추천" :
       imagePhase === "appeals" || imagePhase === "appeal-options" ? "광고 소구점 제안" : "phase" in input.request ? "광고 포맷 추천" :
       input.guided && !imagePhase ? "광고 사진 원본 제작" : "광고 카피 작성";
@@ -365,7 +366,7 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
     tags: ["유튜브", gpt ? "GPT" : "직원AI"], metadata,
   }).select("*").maybeSingle();
   if (input.task === "image-creative" && error?.code === "23505") {
-    const same = (await openJobs(jobOwner,input.sourceId,input.task)).find(job => meta(job).inputKey === inputKey);
+    const same = (await openJobs(jobOwner,input.sourceId,input.task)).find(job => meta(job).inputKey === inputKey && Boolean(meta(job).executor) === Boolean(gpt) && meta(job).target === input.target);
     if (same) return publicStaffJob(same);
     throw new ApiError(409, "IMAGE_JOB_BUSY", "다른 이미지 작업이 접수됐어요. 현재 진행 상황을 불러와 주세요.");
   }
@@ -704,8 +705,11 @@ async function claimJob(agent: RequestActor, jobId: string, byGpt: boolean) {
     return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: await shortScriptCard(service(), state, minutes, m.market, brief) };
   }
   if (m.task === "image-creative") {
-    const { record, request } = await currentImageInput(job), lease = await take();
-    return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, ...(m.imagePhase ? {imagePhase:m.imagePhase} : {}), instructions: imageJobInstructions(record, request, m.imagePhase === "copy", jobId) };
+    const { record, request } = await currentImageInput(job);
+    if (byGpt && (!m.imagePhase || imageJobPhase(record, request, true) !== m.imagePhase))
+      throw new ApiError(409, "IMAGE_API_IMAGE_REQUIRED", "현재 입력으로 카피를 만들 수 없어요. 사용할 이미지와 기획을 확인해 주세요.");
+    const lease = await take();
+    return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, ...(m.imagePhase ? {imagePhase:m.imagePhase} : {}), instructions: imageJobInstructions(record, request, m.imagePhase === "copy", jobId, byGpt ? "company-api" : "subscription") };
   }
   if (m.task === "card") {
     const { project, cards, canon, formats } = await currentCardInput(job);

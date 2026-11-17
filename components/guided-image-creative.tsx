@@ -1,10 +1,11 @@
 "use client";
 
+import type { ImageFlowPreview } from "@/lib/image-creative/flow-preview";
 import { useState } from "react";
 import { ImageSubscriptionHelp } from "./image-subscription-help";
 import { apiRequest, ApiRequestError } from "@/lib/api-client";
 import { CREATIVE_SIZES, IMAGE_FORMAT_IDS, IMAGE_FORMATS, isImageFormat, isWarehouseFormat, type ImageFormatId } from "@/lib/image-creative/formats";
-import { activeImageWinner, imageExperimentSummary, latestImageExperimentBatch, approveImageFormat, createImageBatch, selectedImageResults, startImageCopyBatch, imageBriefProblems, type FormatRecommendation, type ImageBatchRequest, type ImageBrief, type ImageFormatPlan } from "@/lib/image-creative/model";
+import { imageJobPending, activeImageWinner, imageExperimentSummary, latestImageExperimentBatch, approveImageFormat, createImageBatch, selectedImageResults, startImageCopyBatch, imageBriefProblems, type FormatRecommendation, type ImageBatchRequest, type ImageBrief, type ImageFormatPlan } from "@/lib/image-creative/model";
 import type { ImageAdProduct } from "@/lib/image-creative/products";
 import { ReferenceImageCreation } from "./reference-image-creation";
 import { ImageProductFields, ProductCanonNotice } from "./image-product-fields";
@@ -16,8 +17,9 @@ import type { ImageProjectBundle, ImageProjectRow } from "./image-creative-works
 export type ImagePreviewProduct = ImageAdProduct & { appealPreview?: FormatRecommendation["appeals"] };
 export type GuidedImageProps = {
   bundle: ImageProjectBundle | null; brief: ImageBrief; setBrief: (brief: ImageBrief) => void;
-  previewProducts?: ImagePreviewProduct[]; localDirectionPlanner?: boolean; demo: boolean; busy: boolean; receive: (next: ImageProjectBundle, expectedVersion?:number) => void;
+  flowPreview?: ImageFlowPreview; previewProducts?: ImagePreviewProduct[]; localDirectionPlanner?: boolean; demo: boolean; busy: boolean; receive: (next: ImageProjectBundle, expectedVersion?:number) => void;
   projects: ImageProjectRow[]; listReady:boolean; experimentList:boolean; reloadList:()=>void; openProject:(id:string)=>void;
+  trashProject?:(project:ImageProjectRow)=>void;
   createProject: (name: string, brief: ImageBrief, experiment?:true) => Promise<ImageProjectBundle>;
   patch: (body: Record<string, unknown>, current: ImageProjectBundle) => Promise<ImageProjectBundle>;
   run: (fn: () => Promise<void>) => Promise<void>; refresh: () => void;
@@ -58,7 +60,7 @@ function DirectionFields({concepts, value, busy, onPlan, onCancel}: {
   </form>;
 }
 
-export function GuidedImageCreative({projects,listReady,experimentList,reloadList,openProject,bundle,brief,setBrief,previewProducts,localDirectionPlanner,demo,busy,createProject,patch,receive,run,refresh,
+export function GuidedImageCreative({projects,listReady,experimentList,reloadList,openProject,trashProject,bundle,brief,setBrief,previewProducts,flowPreview,localDirectionPlanner,demo,busy,createProject,patch,receive,run,refresh,
   assetPaths,setAssetPaths,upload,leave,openTools}:GuidedImageProps) {
   const [draft, setDraft] = useState<ImageFormatPlan | null>(null);
   const [selection, setSelection] = useState<{ id: ImageFormatId; proposal: string } | null>(null);
@@ -83,7 +85,7 @@ export function GuidedImageCreative({projects,listReady,experimentList,reloadLis
   const catalog = useImageProductCatalog(Boolean(localDirectionPlanner),previewProducts,Boolean(plan));
   const sample = demo && !localDirectionPlanner && !previewProducts;
   const recheckProduct = bundle && !approved && !state?.variants.length &&
-    !bundle.jobs.some(job=>job.currentInput!==false && ["backlog","active"].includes(job.status)) ? (nextBrief:ImageBrief)=>{
+    !bundle.jobs.some(job=>job.currentInput!==false && imageJobPending(job)) ? (nextBrief:ImageBrief)=>{
       void run(async()=>{
         await catalog.verify(nextBrief);
         const next = demo ? {...bundle,project:{...bundle.project,version:bundle.project.version+1},state:{...bundle.state,brief:nextBrief}}
@@ -187,7 +189,8 @@ export function GuidedImageCreative({projects,listReady,experimentList,reloadLis
   const job = (phase:"formats"|"copy") => bundle?.jobs.find(row => row.currentInput !== false && (row.phase ?? "copy") === phase);
   function jobPanel(phase:"formats"|"copy") {
     const current = job(phase);
-    const working = current && ["backlog","active"].includes(current.status);
+    const companyApi = !current || current.executor === "gpt";
+    const working = current && imageJobPending(current);
     const imagePhase = phase === "copy" && approved?.mode === "image";
     const direction = recommendation?.direction;
     const newPhoto = phase === "copy" && Boolean(approved && !approved.baseId && !approved.assetPaths?.length &&
@@ -203,8 +206,8 @@ export function GuidedImageCreative({projects,listReady,experimentList,reloadLis
     return <section className="panel panel-pad-lg ic-panel" aria-live="polite">
       <h2>{working ? (current.status === "active" ? activeTitle : `${subject} 요청이 대기 중이에요`) : `${subject} 요청을 확인해 주세요`}</h2>
       {phase==="formats" && direction && <p>{direction.concept} · {mediumNames[direction.medium]}</p>}
-      {working ? <p>{current.status==="backlog" ? "연결된 개인 AI가 요청을 받으면 시작합니다. " : ""}완료되면 이 작업에 표시됩니다.</p>
-        : <p>{current?.failReason || "연결된 개인 AI에서 작업을 이어갈 수 있습니다."}</p>}
+      {working ? <p>{companyApi ? "OS에 연결된 회사 AI가 처리합니다. " : current.status==="backlog" ? "연결된 개인 AI가 요청을 받으면 시작합니다. " : ""}완료되면 이 작업에 표시됩니다.</p>
+        : <p>{current?.failReason || (current?.status === "active" && current.processing === false ? "이전 요청의 처리 시간이 끝났어요. 다시 요청하면 이어서 처리합니다." : "OS에 연결된 회사 AI로 요청합니다.")}</p>}
       {working && phase === "formats" && plan?.appealFirst && !recommendation?.appeals?.length &&
         <button type="button" className="primary-button" disabled={busy} onClick={editPlan}>소구점 직접 작성</button>}
       {working ? <button className="secondary-button" disabled={busy} onClick={refresh}>상태 새로고침</button>
@@ -214,14 +217,14 @@ export function GuidedImageCreative({projects,listReady,experimentList,reloadLis
           else if (imagePhase && experiment && approved && approved.assetPaths?.length === approved.count) approve(approved);
           else if (approved && bundle) void run(async()=>receive(await patch({action:"generate",request:approved,guided:true},bundle)));
         }}>{subject} 다시 요청하기</button>}
-      {newPhoto && current && current.status === "backlog" && <div>
+      {!companyApi && newPhoto && current && current.status === "backlog" && <div>
         <p>원본을 만들려면 OS에 연결한 Codex 채팅에 아래 문장을 보내세요.</p>
         <pre><code>{photoRequest}</code></pre>
         <button type="button" className="secondary-button" disabled={busy} onClick={()=>void run(async()=>{
           await navigator.clipboard.writeText(photoRequest!); setCopiedJob(current.id);
         })}>{copiedJob === current.id ? "요청문 복사됨" : "요청문 복사"}</button>
       </div>}
-      {current?.status !== "active" && <ImageSubscriptionHelp jobId={current?.status==="backlog" ? current.id : undefined} needsImage={newPhoto}/>}
+      {!companyApi && current?.status !== "active" && <ImageSubscriptionHelp jobId={current?.status==="backlog" ? current.id : undefined} needsImage={newPhoto}/>}
     </section>;
   }
   function chooseImages(multiple:boolean, allowNewPhoto = false) {
@@ -250,7 +253,7 @@ export function GuidedImageCreative({projects,listReady,experimentList,reloadLis
   };
   const firstBatch = state?.batches[0];
   const legacyAppeals = recommendation?.appealFirst && !recommendation.referenceFirst && !approved && !firstBatch;
-  const waitingForAppeals = ["backlog","active"].includes(job("formats")?.status ?? "");
+  const waitingForAppeals = imageJobPending(job("formats"));
   const writeLegacyAppeals = legacyAppeals && (editing || (!recommendation.appeals?.length && !waitingForAppeals));
   const referenceFlow = writeLegacyAppeals || Boolean((recommendation?.referenceFirst || (!recommendation && plan?.referenceFirst)) &&
     (!firstBatch || (state?.batches.length === 1 && !firstBatch.review?.copy && !firstBatch.review?.history.some(h=>h.step==="copy" && h.decision==="approved") && !approved?.baseId)));
@@ -258,12 +261,13 @@ export function GuidedImageCreative({projects,listReady,experimentList,reloadLis
     <div><strong>{bundle.project.title}</strong>{experiment && <p className="ic-muted">{statusLabel(experiment)}</p>}</div>
     {experiment ? <a href={listHref} className="secondary-button" role="button">프로젝트 목록</a>
       : <button type="button" className="secondary-button" disabled={busy} onClick={restart}>다른 작업</button>}
+    {trashProject && <button type="button" className="secondary-button" disabled={busy} onClick={()=>trashProject(bundle.project)}>프로젝트 삭제</button>}
   </header>{!editing && !referenceFlow && state?.brief.productSource &&
     <ProductCanonNotice brief={state.brief} catalog={catalog} disabled={busy}
       onRecheck={recheckProduct} onReview={!approved && !state.variants.length ? editPlan : undefined}/>}</>;
   if (referenceFlow) {
     return <>{projectTitle}<ReferenceImageCreation plan={plan!} brief={brief} setBrief={setBrief} bundle={bundle}
-      catalog={catalog} sample={sample} recheckProduct={recheckProduct} localDirectionPlanner={localDirectionPlanner} demo={demo} busy={busy}
+      flowPreview={flowPreview} catalog={catalog} sample={sample} recheckProduct={recheckProduct} localDirectionPlanner={localDirectionPlanner} demo={demo} busy={busy}
       createProject={createProject} patch={patch} receive={next=>{setEditing(false);receive(next);}} run={run} refresh={refresh}
       assetPaths={assetPaths} setAssetPaths={setAssetPaths} upload={upload} leave={restart}/></>;
   }
@@ -302,7 +306,8 @@ export function GuidedImageCreative({projects,listReady,experimentList,reloadLis
         <button type="button" className="primary-button" onClick={()=>setDraft({...appeals})}>새 테스트 프로젝트</button></div>
       {!!tests.length && <ul className="ic-experiment-list">{tests.map(row=>
         <li key={row.id}><a href={`/content/images?project=${encodeURIComponent(row.id)}`}><strong>{row.title}</strong>
-          <span>{statusLabel(row.experiment!)}</span>{row.updatedAt && <time dateTime={row.updatedAt}>{new Date(row.updatedAt).toLocaleString("ko-KR",{dateStyle:"short",timeStyle:"short"})}</time>}</a></li>)}</ul>}
+          <span>{statusLabel(row.experiment!)}</span>{row.updatedAt && <time dateTime={row.updatedAt}>{new Date(row.updatedAt).toLocaleString("ko-KR",{dateStyle:"short",timeStyle:"short"})}</time>}</a>
+          {trashProject && <button type="button" className="secondary-button" disabled={busy} aria-label={`${row.title} 삭제`} onClick={()=>trashProject(row)}>삭제</button>}</li>)}</ul>}
       {!tests.length && <p className="ic-muted">{listReady ? "아직 A/B 테스트 프로젝트가 없습니다." : "프로젝트 목록을 불러오는 중이에요."}</p>}
       {!listReady && <button type="button" className="secondary-button" disabled={busy} onClick={reloadList}>목록 다시 불러오기</button>}
       {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- the workspace restores the project view from the URL on entry. */}

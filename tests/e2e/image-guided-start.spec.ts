@@ -51,16 +51,16 @@ test("레퍼런스 선택에서 광고 원본과 로드 실패 시 대체한 구
   await expect(page.getByRole("button",{name:"카피 작성하기",exact:true})).toBeEnabled();
 });
 
-test("반응·성과에서 콘텐츠 자동화를 통해 이미지 광고와 A/B 프로젝트를 연다", async ({page}) => {
+test("반응·성과에서 광고를 통해 이미지 광고와 A/B 프로젝트를 연다", async ({page}) => {
   await page.goto("/automation/performance");
-  const group = page.getByRole("button", {name:"콘텐츠 자동화", exact:true});
+  const group = page.getByRole("button", {name:"광고", exact:true});
   await expect(group).toBeVisible();
   if (await group.getAttribute("aria-expanded") === "false") await group.click();
-  await page.locator('[data-stage="automation"]').getByRole("link", {name:"이미지 광고", exact:true}).click();
-  await expect(page.getByRole("navigation", {name:"현재 위치"}).getByRole("link", {name:"콘텐츠 자동화"})).toBeVisible();
+  await page.locator('[data-stage="yt-ad"], [data-stage="ads"]').getByRole("link", {name:"이미지 광고", exact:true}).click();
+  await expect(page.getByRole("navigation", {name:"현재 위치"}).getByRole("link", {name:"광고"})).toBeVisible();
   await page.getByRole("button", {name:"여러 안 테스트하기", exact:true}).click();
   await expect(page.getByRole("heading", {name:"A/B 테스트 프로젝트", exact:true})).toBeVisible();
-  await expect(page.locator('[data-stage="automation"] a.page-link[aria-current="page"]')).toHaveText("이미지 광고");
+  await expect(page.locator('[data-stage="yt-ad"] a.page-link[aria-current="page"], [data-stage="ads"] a.page-link[aria-current="page"]')).toHaveText("이미지 광고");
 });
 
 test("첫 화면은 모바일에서도 한 장 제작과 여러 안 테스트를 바로 시작할 수 있다", async ({page}) => {
@@ -109,8 +109,9 @@ test("단독 광고를 소구점 직접 작성부터 디자인 수정과 최종 
   const review=page.getByRole("region",{name:"1번째 묶음 검토",exact:true});
   await expect(review.getByText(motive,{exact:true})).toBeVisible();
   await expect(review.getByText("퇴근 후 공방에서 쉬어가요",{exact:true})).toBeVisible();
-  await review.getByRole("button",{name:"디자인 편집",exact:true}).click();
+  await review.getByRole("button",{name:"수정하기",exact:true}).click();
   const editor=page.getByRole("region",{name:"디자인 편집",exact:true});
+  await editor.getByRole("button",{name:"글꼴 · 크기 직접 조절",exact:true}).click();
   await editor.getByLabel("제목 글꼴").selectOption("serif");
   await editor.getByRole("button",{name:"수정본 저장",exact:true}).click({timeout:45000});
   const revision=page.getByRole("region",{name:"2번째 묶음 검토",exact:true});

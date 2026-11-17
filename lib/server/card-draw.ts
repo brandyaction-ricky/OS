@@ -81,6 +81,32 @@ function drawError(status: number, body: { error?: { code?: unknown; message?: u
   return new ApiError(502, "CARD_DRAW_FAILED", "그림을 그리지 못했어요. 잠시 뒤 다시 그려 주세요.");
 }
 
+/** Shared provider transport only: callers own project access, review and saving. Never retries or changes provider. */
+export async function drawImageBytes(input: { prompt: string; files: File[]; size: string; quality: "medium" | "high" }) {
+  const key = process.env.OPENAI_API_KEY?.trim();
+  if (!key) throw new ApiError(503, "OPENAI_NOT_CONFIGURED", "OpenAI 연결이 아직 없어서 그림을 수정하거나 만들 수 없어요.");
+  const model = imageModel(), files = input.files;
+  const common = { model, prompt: input.prompt, size: input.size, quality: input.quality, n: 1, output_format: "png" };
+  let body: BodyInit;
+  const headers: Record<string, string> = { authorization: `Bearer ${key}` };
+  if (files.length) {
+    const form = new FormData();
+    for (const [name, value] of Object.entries(common)) form.append(name, String(value));
+    for (const file of files) form.append("image[]", file);
+    body = form;
+  } else {
+    headers["content-type"] = "application/json";
+    body = JSON.stringify(common);
+  }
+  const response = await fetch(`https://api.openai.com/v1/images/${files.length ? "edits" : "generations"}`, { method: "POST", headers, body, cache: "no-store", signal: AbortSignal.timeout(240_000) })
+    .catch(() => { throw new ApiError(504, "CARD_DRAW_TIMEOUT", "그림 요청이 끝나지 않아 멈췄어요. 결과를 저장하지 않았습니다."); });
+  const result = await response.json().catch(() => ({})) as { data?: { b64_json?: string }[]; error?: { code?: unknown; message?: unknown } };
+  if (!response.ok) throw drawError(response.status, result);
+  const b64 = result.data?.[0]?.b64_json;
+  if (!b64) throw new ApiError(502, "CARD_DRAW_EMPTY", "그림이 비어 있어요. 다시 그려 주세요.");
+  return { bytes: Buffer.from(b64, "base64"), model };
+}
+
 /** 그리기: one picture for 카드 만들기, saved where an uploaded photo goes; the PD puts it on the card the way a photo is put. */
 export async function drawCardImage(actor: RequestActor, projectId: string, input: z.infer<typeof cardDrawSchema>) {
   const project = await getYoutubeProject(actor, projectId);
@@ -98,26 +124,9 @@ export async function drawCardImage(actor: RequestActor, projectId: string, inpu
     return new File([data], `ref-${index + 1}.${row!.path.endsWith(".png") ? "png" : "jpg"}`, { type: row!.path.endsWith(".png") ? "image/png" : "image/jpeg" });
   }));
   const prompt = cardDrawPrompt(input.scene, input.style, refs.map(row => row!.name));
-  const common = { model: imageModel(), prompt, size: `${CARD_DRAW_SIZE.width}x${CARD_DRAW_SIZE.height}`, quality: input.quality, n: 1, output_format: "png" };
-  let body: BodyInit;
-  const headers: Record<string, string> = { authorization: `Bearer ${key}` };
-  if (files.length) {   // the edits endpoint is the one that takes reference pictures (image[])
-    const form = new FormData();
-    for (const [name, value] of Object.entries(common)) form.append(name, String(value));
-    for (const file of files) form.append("image[]", file);
-    body = form;
-  } else {
-    headers["content-type"] = "application/json";
-    body = JSON.stringify(common);
-  }
-  const response = await fetch(`https://api.openai.com/v1/images/${files.length ? "edits" : "generations"}`, { method: "POST", headers, body, cache: "no-store", signal: AbortSignal.timeout(240_000) })
-    .catch(() => { throw new ApiError(504, "CARD_DRAW_TIMEOUT", "그림이 너무 오래 걸려 멈췄어요. 다시 그려 주세요."); });
-  const result = await response.json().catch(() => ({})) as { data?: { b64_json?: string }[]; error?: { code?: unknown; message?: unknown } };
-  if (!response.ok) throw drawError(response.status, result);
-  const b64 = result.data?.[0]?.b64_json;
-  if (!b64) throw new ApiError(502, "CARD_DRAW_EMPTY", "그림이 비어 있어요. 다시 그려 주세요.");
+  const { bytes } = await drawImageBytes({ prompt, files, size: `${CARD_DRAW_SIZE.width}x${CARD_DRAW_SIZE.height}`, quality: input.quality });
   const path = `youtube/${project.id}/card/${randomUUID()}.png`;
-  const { error } = await service.storage.from(MEDIA_BUCKET).upload(path, Buffer.from(b64, "base64"), { contentType: "image/png", upsert: false });
+  const { error } = await service.storage.from(MEDIA_BUCKET).upload(path, bytes, { contentType: "image/png", upsert: false });
   if (error) throw new ApiError(502, "CARD_DRAW_SAVE_FAILED", "그린 그림을 저장하지 못했어요. 다시 그려 주세요.");
   return { path, w: CARD_DRAW_SIZE.width, h: CARD_DRAW_SIZE.height };
 }

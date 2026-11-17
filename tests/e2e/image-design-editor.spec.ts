@@ -39,8 +39,9 @@ test("제작한 광고의 글꼴·카드·규격을 바꿔 원본과 별도 보�
   const base=cards.first();
   await expect(base.getByRole("img")).toBeVisible();
   const original=await png(base.getByRole("img"));
-  await base.getByRole("button",{name:"디자인 편집",exact:true}).click();
+  await base.getByRole("button",{name:"수정하기",exact:true}).click();
   const editor=page.getByRole("region",{name:"디자인 편집", exact:true});
+  await editor.getByRole("button",{name:"글꼴 · 크기 직접 조절",exact:true}).click();
   const draft=editor.getByRole("img");
   await expect(editor.getByRole("button",{name:"수정본 저장"})).toBeDisabled();
   await editor.getByLabel("제목 글꼴").selectOption("serif");await expect(draft).toBeVisible();
@@ -82,7 +83,8 @@ test("제작한 광고의 글꼴·카드·규격을 바꿔 원본과 별도 보�
   const [bundle]=await Promise.all([page.waitForEvent("download"),results.getByRole("button",{name:"2번째 묶음 ZIP"}).click()]);
   const archive=await JSZip.loadAsync(await readFile((await bundle.path())!));const entry=Object.values(archive.files).find(file=>file.name.endsWith(".png"))!;
   expect((await entry.async("nodebuffer")).equals(bytes)).toBe(true);
-  await revised.getByRole("button",{name:"디자인 편집",exact:true}).click();
+  await revised.getByRole("button",{name:"수정하기",exact:true}).click();
+  await editor.getByRole("button",{name:"글꼴 · 크기 직접 조절",exact:true}).click();
   await expect(editor.getByLabel("제목 글꼴")).toHaveValue("serif");await expect(editor.getByLabel("출력 해상도")).toHaveValue("1440");
 });
 
@@ -104,8 +106,9 @@ test("기존 범용 포맷도 디자인 수정 후 미리보기와 같은 정사
   await finishDemoBatch(page,1);
   const results=page.getByRole("region",{name:"4. 시안 비교·선택"});
   const cards=results.locator("article.ic-card");await expect(cards).toHaveCount(1);
-  await cards.first().getByRole("button",{name:"디자인 편집",exact:true}).click();
+  await cards.first().getByRole("button",{name:"수정하기",exact:true}).click();
   const editor=page.getByRole("region",{name:"디자인 편집",exact:true});
+  await editor.getByRole("button",{name:"글꼴 · 크기 직접 조절",exact:true}).click();
   await editor.getByLabel("제목 글꼴").selectOption("hand");await editor.getByLabel("카드 디자인").selectOption("paper");
   await editor.getByLabel("게재 위치와 비율").selectOption("feed-square");
   await expect(editor.getByRole("button",{name:"수정본 저장"})).toBeEnabled({timeout:30000});

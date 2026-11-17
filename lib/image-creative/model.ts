@@ -19,6 +19,7 @@ export interface ImageDesign {
 }
 export interface ImageAsset { path: string; w: number; h: number; subjectBox?: import("./subject-box.ts").SubjectBox }
 export interface CreativeVariant {
+  promptEdit?: { prompt: string; model: string; image: ImageAsset };
   detailAsset?: ImageAsset;
   referenceLayout?: ReferenceLayout;
   id: string; parentId?: string; formatId: ImageFormatId; formatVersion: 1 | 2; brand?: string; size: CreativeSize; asset?: ImageAsset; design?: ImageDesign;
@@ -88,6 +89,10 @@ const text = (value: unknown, max: number, label: string, empty = false) => {
   if (typeof value !== "string" || (!empty && !value.trim()) || chars(value) > max || /[\u0000-\u0009\u000b-\u001f\u2028\u2029]/u.test(value)) fail(`${label}의 내용과 길이를 확인해 주세요.`);
   return value as string;
 };
+/** Old clients may omit processing; an explicit false means an active lease expired. */
+export function imageJobPending(job: {status:string;processing?:boolean}|undefined) {
+  return job?.status === "backlog" || (job?.status === "active" && job.processing !== false);
+}
 export function emptyImageCreative(): ImageCreativeState {
   return { v: 1, brief: { objective: "", funnel: "", audience: "", product: "", offer: "", facts: "" }, variants: [], batches: [], selectedId: "" };
 }
@@ -115,6 +120,10 @@ function appeal(value: unknown) {
 function copy(value: unknown, fields = COPY_FIELDS) {
   keys(value, fields, fields, "문구");
   return Object.fromEntries(fields.map(key => [key, text(value[key], key === "body" ? 200 : 100, key, key === "body")])) as Record<CopyField, string>;
+}
+function promptEdit(value: unknown): NonNullable<CreativeVariant["promptEdit"]> {
+  keys(value, ["prompt", "model", "image"], ["prompt", "model", "image"], "이미지 수정");
+  return { prompt: text(value.prompt, 2000, "수정 요청"), model: text(value.model, 100, "수정 모델"), image: asset(value.image) };
 }
 // Older signed briefs retain their exact identity. The address is never part of creative input or exports.
 export function productionBrief(brief: ImageBrief) {
@@ -154,7 +163,7 @@ export function validWarehouseBrand(brand: unknown): brand is string {
 export function imageVariantProblems(value: unknown): string[] {
   const problems: string[] = [];
   try {
-    keys(value, ["id", "parentId", "formatId", "formatVersion", "brand", "size", "asset", "detailAsset", "design", "referenceLayout", "appeal", "copy", "at", "by"], ["formatId", "formatVersion", "size", "appeal", "copy"], "소재");
+    keys(value, ["id", "parentId", "formatId", "formatVersion", "brand", "size", "asset", "detailAsset", "design", "referenceLayout", "promptEdit", "appeal", "copy", "at", "by"], ["formatId", "formatVersion", "size", "appeal", "copy"], "소재");
     if (!isImageFormat(value.formatId) || value.formatVersion !== IMAGE_FORMATS[value.formatId].version) return ["지원하는 포맷과 버전을 골라 주세요."];
     if (typeof value.size !== "string" || !Object.hasOwn(CREATIVE_SIZES, value.size)) problems.push("이미지 규격을 골라 주세요.");
     if (value.design !== undefined) {
@@ -165,6 +174,21 @@ export function imageVariantProblems(value: unknown): string[] {
     const spec = IMAGE_FORMATS[value.formatId];
     appeal(value.appeal);
     const words = copy(value.copy);
+    if (value.id !== undefined) text(value.id, 100, "소재 ID");
+    if (value.parentId !== undefined) text(value.parentId, 100, "기준 소재 ID");
+    if (value.promptEdit !== undefined) {
+      const edit = promptEdit(value.promptEdit);
+      const design = value.design as ImageDesign | undefined;
+      const output = resolvePlacement(value.size as CreativeSize, design?.placement, design?.outputWidth);
+      if (edit.image.w !== output.width || edit.image.h !== output.height)
+        problems.push("수정 이미지의 픽셀 크기가 원본 출력 규격과 달라요. 원본 크기로 수정해 주세요.");
+      if (value.asset !== undefined) asset(value.asset, true);
+      if (value.detailAsset !== undefined) asset(value.detailAsset);
+      if (value.referenceLayout !== undefined && !isReferenceLayout(value.referenceLayout))
+        problems.push("원본 레퍼런스의 저장 정보를 확인해 주세요.");
+      // The inherited copy/layout records the source. Only the edited full image is rendered.
+      return problems;
+    }
     if (COPY_FIELDS.some(key => !LOCAL_TEXT.test(words[key]))) problems.push("문구에는 한글·영문·숫자·일반 문장부호만 쓸 수 있어요. 이모지와 지원하지 않는 특수문자는 빼 주세요.");
     if (spec.assetRequired && !value.asset) problems.push(`${spec.name}은 실제 이미지가 필요해요.`);
     if (value.asset) { asset(value.asset, true); if (!spec.supportsAsset) problems.push(`${spec.name}은 이미지 칸이 없는 포맷이에요.`); }
@@ -204,8 +228,6 @@ export function imageVariantProblems(value: unknown): string[] {
       if (!fits(words.headline, slots.headline)) problems.push("제목이 정해진 칸을 넘어요. 문장이나 줄바꿈을 줄여 주세요.");
       if ((spec.bodyLines ? lines : [words.body]).some(line => !fits(line, slots.body))) problems.push("본문이 정해진 칸을 넘어요. 문장이나 줄바꿈을 줄여 주세요.");
     }
-    if (value.id !== undefined) text(value.id, 100, "소재 ID");
-    if (value.parentId !== undefined) text(value.parentId, 100, "기준 소재 ID");
   } catch (error) { problems.push(error instanceof Error ? error.message : "소재 내용을 확인해 주세요."); }
   return problems;
 }
@@ -288,6 +310,7 @@ export function normalizeImageRequest(state: ImageCreativeState, value: ImageBat
   const firstAppeal = mode === "appeal" && !baseId && !state.variants.length && value.formatIds?.length === 1;
   if (!initial && !base && !firstAppeal) fail("먼저 기준으로 쓸 소재를 골라 주세요.", "IMAGE_BASE_MISSING");
   if (base) {
+    if (base.promptEdit) throw new ImageCreativeError("IMAGE_PROMPT_EDIT_TEST_UNSUPPORTED", "이미지 전체를 수정한 소재는 기존 카피 정보로 후속 테스트를 만들 수 없어요. 새 제작으로 시작해 주세요.", 409);
     const problem = imageVariantProblems(base)[0];
     if (problem) fail(`기준 소재를 먼저 완성해 주세요. ${problem}`);
     const origin = state.batches.find(batch => batch.variantIds.includes(base.id));
@@ -529,6 +552,7 @@ export function reviseImageDesign(state: ImageCreativeState, baseId: string, id:
   const base = state.variants.find(v => v.id === baseId);
   const source = state.batches.find(b => b.variantIds.includes(baseId));
   if (!base || !source) return fail("저장된 원본 시안을 선택해 주세요.", "IMAGE_BASE_MISSING");
+  if (base.promptEdit) throw new ImageCreativeError("IMAGE_PROMPT_EDIT_DESIGN_UNSUPPORTED", "이미지 전체를 수정한 소재는 요청 문구로 다시 수정해 주세요. 기존 글꼴·카드 설정은 적용할 수 없어요.", 409);
   const batchId = "design-" + id;
   if (state.variants.some(v => v.id === batchId) || state.batches.some(b => b.id === id)) fail("기존 작업 ID와 겹칩니다.", "IMAGE_REVISION_CONFLICT");
   if (state.variants.some(v => v.id === id) || state.batches.some(b => b.id === batchId)) {
@@ -550,6 +574,42 @@ export function reviseImageDesign(state: ImageCreativeState, baseId: string, id:
     batch.review = {format:source.review.format, copy:source.review.copy,
       history:source.review.history.filter(event=>event.step === "format" || event.step === "copy")};
   }
+  return { ...state, variants: [...state.variants, revision], batches: [...state.batches, batch] };
+}
+
+/** Applying a reviewed full-image edit creates its own approved content without changing an A/B round. */
+export function applyImagePromptEdit(state: ImageCreativeState, baseId: string, id: string, edit: NonNullable<CreativeVariant["promptEdit"]>,
+  context: Pick<ImageBatchContext, "now" | "by">, assets: readonly ImageAsset[]): ImageCreativeState {
+  const normalized = promptEdit(edit);
+  if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(id)) fail("수정본 ID를 확인해 주세요.");
+  const base = state.variants.find(variant => variant.id === baseId);
+  const source = state.batches.find(batch => batch.variantIds.includes(baseId));
+  if (!base || !source) return fail("저장된 원본 시안을 선택해 주세요.", "IMAGE_BASE_MISSING");
+  if (!assets.some(image => image.path === normalized.image.path && image.w === normalized.image.w && image.h === normalized.image.h))
+    fail("이 프로젝트에 등록한 수정 이미지를 골라 주세요.", "IMAGE_ASSET_NOT_OWNED");
+  const output = resolvePlacement(base.size, base.design?.placement, base.design?.outputWidth);
+  if (normalized.image.w !== output.width || normalized.image.h !== output.height)
+    fail("수정 이미지의 픽셀 크기가 원본 출력 규격과 달라요. 원본 크기로 수정해 주세요.", "IMAGE_PROMPT_EDIT_SIZE");
+  const batchId = "prompt-" + id;
+  if (state.variants.some(variant => variant.id === batchId) || state.batches.some(batch => batch.id === id))
+    fail("기존 작업 ID와 겹칩니다.", "IMAGE_REVISION_CONFLICT");
+  if (state.variants.some(variant => variant.id === id) || state.batches.some(batch => batch.id === batchId)) {
+    const prior = state.variants.find(variant => variant.id === id);
+    if (prior?.parentId === baseId && prior.promptEdit && JSON.stringify(promptEdit(prior.promptEdit)) === JSON.stringify(normalized) &&
+        state.batches.some(batch => batch.id === batchId && batch.mode === "standalone" && batch.baseId === baseId && !batch.designRevision && batch.variantIds.length === 1 && batch.variantIds[0] === id)) return state;
+    fail("이미 다른 수정본에 쓰인 ID예요.", "IMAGE_REVISION_CONFLICT");
+  }
+  if (!source.review?.format || !source.review.copy)
+    throw new ImageCreativeError("IMAGE_COPY_APPROVAL_REQUIRED", "전체 카피 승인 후 이미지를 수정해 주세요.", 409);
+  if (!Number.isFinite(Date.parse(context.now)) || typeof context.by !== "string" || !context.by.trim()) fail("작성자와 생성 시각을 확인해 주세요.");
+  const revision: CreativeVariant = { ...structuredClone(base), id, parentId: baseId, promptEdit: normalized, at: context.now, by: context.by };
+  const problem = imageVariantProblems(revision)[0];
+  if (problem) fail(problem);
+  const stamp = { by: context.by, at: context.now };
+  const batch: ImageBatch = { id: batchId, mode: "standalone", baseId, count: 1, formatIds: [revision.formatId], copyFields: [], variantIds: [id], at: context.now,
+    review: { format: { ...stamp }, copy: { ...stamp }, history: [
+      { ...stamp, step: "format", decision: "approved" }, { ...stamp, step: "copy", decision: "approved" },
+    ] } };
   return { ...state, variants: [...state.variants, revision], batches: [...state.batches, batch] };
 }
 export function selectedImageResults(assets: ImageAsset[], paths: string[]): ImageBatchResult {

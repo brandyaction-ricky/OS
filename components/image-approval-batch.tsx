@@ -105,17 +105,18 @@ export function ImageApprovalBatch({ batch, index, variants, assets, projectId, 
             : showFinal ? <MacReviewPreview key={readyKey} projectId={projectId} variantId={v.id} runId={render!.id} title={v.copy.headline}
               onReady={ok=>setFinalReady(old=>old[readyKey]===ok?old:{...old,[readyKey]:ok})}/>
             : !demo && done ? <p role="status">검수용 출력본을 불러오는 중입니다.</p>
-            : isWarehouseFormat(v.formatId) ? <WarehouseVariantPreview variant={v} assetUrl={url} onReady={keep} onCheck={onCheck}/>
-            : <LegacySavedPng projectId={projectId} variant={v} assetUrl={url} referenceUrl={assets.find(a=>a.path===v.referenceLayout?.source.path)?.url} detailUrl={assets.find(a=>a.path===v.detailAsset?.path)?.url} onReady={keep} onCheck={onCheck}/>}
+            : isWarehouseFormat(v.formatId) && !v.promptEdit ? <WarehouseVariantPreview variant={v} assetUrl={url} onReady={keep} onCheck={onCheck}/>
+            : <LegacySavedPng projectId={projectId} variant={v} promptEditUrl={assets.find(a=>a.path===v.promptEdit?.image.path)?.url} assetUrl={url} referenceUrl={assets.find(a=>a.path===v.referenceLayout?.source.path)?.url} detailUrl={assets.find(a=>a.path===v.detailAsset?.path)?.url} onReady={keep} onCheck={onCheck}/>}
           {showGuide && <SafeZoneOverlay size={v.size} design={v.design}/>}
         </div>}
-        <div className="ic-card-body"><strong>{IMAGE_FORMATS[v.formatId].name}</strong>
-          {stages?.format && <><h3>{v.copy.headline}</h3><dl className="ic-copy-lines">
+        <div className="ic-card-body"><strong>{v.promptEdit ? "프롬프트 수정본" : IMAGE_FORMATS[v.formatId].name}</strong>
+          {v.promptEdit && <><p>{v.promptEdit.prompt}</p><small>기준 소구 · {v.appeal.meaning}</small></>}
+          {stages?.format && !v.promptEdit && <><h3>{v.copy.headline}</h3><dl className="ic-copy-lines">
             {v.brand && <><dt>브랜드</dt><dd>{v.brand}</dd></>}<dt>소구</dt><dd>{v.appeal.meaning}</dd>
             <dt>본문</dt><dd>{v.copy.body || "본문 없음"}</dd><dt>CTA</dt><dd>{v.copy.cta}</dd></dl></>}
           {v.design && <p className="ic-muted">{designSummary(v)}</p>}
           <div className="ic-row">
-            {copyReady && <button className="secondary-button" disabled={busy} onClick={()=>edit(v.id)}>디자인 편집</button>}
+            {copyReady && <button className="secondary-button" disabled={busy} onClick={()=>edit(v.id)}>수정하기</button>}
             {final && experimentRound && registerWinner && <button type="button" className="secondary-button" disabled={busy} aria-pressed={winner?.variantId===v.id}
               onClick={()=>registerWinner(batch.id,v.id,resultNote)}>승리 소재로 지정</button>}
             {final && (!experimentRound || !guided) && <button className="secondary-button" aria-pressed={v.id===selectedId} disabled={busy} onClick={()=>select(v.id)}>{v.id===selectedId?"기준으로 선택됨":"기준 시안 선택"}</button>}

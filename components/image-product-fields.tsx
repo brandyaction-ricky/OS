@@ -19,6 +19,7 @@ export function ProductCanonNotice({brief,catalog,disabled,onReview,onRecheck,ap
   if (result.error) return <p role="status" className="ic-muted">{result.error} <button type="button" className="secondary-button"
     disabled={disabled} onClick={()=>void catalog.refresh().catch(()=>{})}>다시 불러오기</button></p>;
   const current = result.items.find(item=>item.id===ref.productId);
+  if (current?.needsData) return <div role="status" className="os-callout" data-tone="info"><strong>상품 정보 확인 필요</strong><p>{current.needsData}</p></div>;
   if (imageBriefMatchesProduct(brief,current)) return null;
   const next = current && briefForImageProduct(brief,current);
   const versionOnly = next && onlyImageProductVersionChanged(brief,next);
@@ -72,7 +73,7 @@ export function ImageProductFields({brief,setBrief,catalog,sample,onProductChose
       chosen = briefForImageProduct(ref?.productId===id ? brief : {...next,...defaults},item);
     }
     setBrief(chosen);
-    onProductChosen?.(chosen);
+    if (!items.find(row=>row.id===id)?.needsData) onProductChosen?.(chosen);
   }
   function changeForAd() {
     const next = {...brief};
@@ -87,7 +88,7 @@ export function ImageProductFields({brief,setBrief,catalog,sample,onProductChose
     <label className="ic-field">상품 선택<select required disabled={disabled} className="field" value={selectedId}
       onChange={event=>choose(event.target.value)}>
       <option disabled value="">광고할 상품을 선택하세요</option>
-      {items.map(row=><option key={row.id} value={row.id}>{row.product}</option>)}
+      {items.map(row=><option key={row.id} value={row.id}>{row.product}{row.needsData ? " · 정보 확인 필요" : ""}</option>)}
       {ref && !selected && <option value={ref.productId}>{brief.product} · 저장된 기획</option>}
       {sample && <option value={demoOption}>{demoProduct.product} · 체험 상품</option>}
       <option value={manualOption}>직접 입력</option>
@@ -103,12 +104,12 @@ export function ImageProductFields({brief,setBrief,catalog,sample,onProductChose
         <dt>제공 내용</dt><dd>{brief.offer || "직접 입력 필요"}</dd>
         {!showGoalInput && <><dt>광고 목표</dt><dd>{brief.objective}</dd></>}
       </dl>
-      {demo && <small>{isSample ? "체험용 예시 상품" : "OS 정본 조회본"}</small>}
+      {demo && <small>{isSample ? "체험용 예시 상품" : selected?.needsData ? "상품 원문 확인 필요" : "OS 정본 조회본"}</small>}
       <ProductCanonNotice brief={brief} catalog={catalog} disabled={disabled} apply onReview={()=>choose(selectedId)}/>
       <details className="ic-details"><summary>{isSample ? "상품 정보 · 수정" : "정본 정보 · 수정"}</summary>
         {brief.funnel && <p>고객 단계 · {brief.funnel}</p>}
         <div className="ic-row">
-          {ref && <Link href={docLink(ref.source.id)} target="_blank" rel="noreferrer">상품 정본 v{ref.source.version}</Link>}
+          {ref?.source.id && <Link href={docLink(ref.source.id)} target="_blank" rel="noreferrer">{ref.source.version ? `상품 정본 v${ref.source.version}` : "연결할 상품 문서"}</Link>}
           {ref?.audienceSource && <Link href={docLink(ref.audienceSource.id)} target="_blank" rel="noreferrer">타겟 정본 v{ref.audienceSource.version}</Link>}
           {requireGoal && !onProductChosen && !showGoalInput && <button type="button" className="secondary-button" onClick={()=>setEditGoal(true)}>광고 목표 변경</button>}
           <button type="button" className="secondary-button" onClick={changeForAd}>이번 광고에서 수정</button>
