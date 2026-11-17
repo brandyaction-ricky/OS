@@ -45,7 +45,7 @@ export const IMAGE_PRODUCT_CANON_TITLES = [channelTitle, audienceTitle, listTitl
 export const IMAGE_PRODUCT_OPERATING_SOURCES = {
   core: {title:"마이인 맞춤형 핵심 보고서 — 현재 운영 기준 (상품·맞춤 장·동선·환불)"},
   precision: {title:"마이인 맞춤형 정밀 보고서 — 현재 운영 기준 (구성·생성·검사)"},
-  strength: {title:"강점 공략집 — 상품 기획·제작 기준"},
+  strength: {title:"강점 해설집 — 상품 기획·제작 기준"},
 } as const;
 export const IMAGE_PRODUCT_OPERATING_TITLES = Object.values(IMAGE_PRODUCT_OPERATING_SOURCES).map(row=>row.title);
 
@@ -55,7 +55,7 @@ export function withImageProductChoices(products:ImageAdProduct[]):ImageAdProduc
     {id:"myin-free",product:"무료 진단",source:{title:channelTitle}},
     {id:"myin-core",product:"맞춤형 핵심 보고서",source:IMAGE_PRODUCT_OPERATING_SOURCES.core},
     {id:"myin-precision",product:"맞춤형 정밀 보고서",source:IMAGE_PRODUCT_OPERATING_SOURCES.precision},
-    {id:"myin-strength",product:"강점 설명서",source:IMAGE_PRODUCT_OPERATING_SOURCES.strength},
+    {id:"myin-strength",product:"강점 공략집",source:IMAGE_PRODUCT_OPERATING_SOURCES.strength},
   ];
   return [...choices.map(choice=>products.find(row=>row.id===choice.id) ?? {...choice,brand:"마이인",audience:"",offer:"",
     source:{...choice.source,id:"",version:0},needsData:"이 상품의 현재 제공 내용을 확인하지 못했어요. 연결된 문서를 확인한 뒤 사용할 수 있어요."}),
@@ -119,7 +119,17 @@ export function imageAdProductsFromCanon(documents: ImageProductDocument[]): Ima
     if (product.length>2000 || offer.length>2000) continue;
     products.push({id:"myin-"+key,product,brand:"마이인",audience,offer,objective:product+" 확인",source:source(doc),audienceSource:source(target)});
   }
-  // The strength guide's structure has not been verified; do not turn related-report mentions into its offer.
+  // 강점 공략집: the customer name, the page count and the page list of the 현행 판 section. Its price table is a September record, so no price.
+  const guide = operating("strength");
+  if (guide) {
+    const name = guide.content_md.match(/고객에게 보이는 상품 명칭은 \*\*‘([^’\n]+)’\*\*/)?.[1];
+    const current = unique(sections(markdownSections(guide.content_md)).filter(s=>/^현행 판 v[\d.]+/.test(s.title)));
+    const pages = current?.body.match(/PDF 한 권은 (\d+)쪽/)?.[1];
+    const parts = current ? table(current, /^현행 판 v[\d.]+/, "쪽").filter(row=>/^\d/.test(row["쪽"])).map(row=>row["이름"]).filter(Boolean) : [];
+    const offer = `강점 한 개를 깊게 읽는 해설 · 한 권 ${pages}쪽, 웹에서 읽고 PDF로 받기 · ${parts.join(" · ")}`;
+    if (name && pages && parts.length && name.length <= 2000 && offer.length <= 2000)
+      products.push({id:"myin-strength",product:name,brand:"마이인",audience,offer,objective:name+" 확인",source:source(guide),audienceSource:source(target)});
+  }
   if (!channel) return products;
   const root = markdownSections(channel.content_md);
   const catalogSection = unique(sections(root).filter(s=>/^12\. myinlab 개발 상품 기준과 출시 준비/.test(s.title)));
