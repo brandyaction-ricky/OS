@@ -16,12 +16,27 @@ export function requestCommentRooms(project: { title?: string | null; brand?: st
 const EXCERPT_LINES = 3;
 const EXCERPT_CHARS = 300;
 
+/** The start of a text: its first 3 non-empty lines, at most 300 characters, "…" when cut. */
+function excerpt(body: string) {
+  const lines = body.replace(/\r/g, "").split("\n").map((line) => line.trim()).filter(Boolean);
+  let text = lines.slice(0, EXCERPT_LINES).join("\n");
+  const cut = lines.length > EXCERPT_LINES || text.length > EXCERPT_CHARS;
+  if (text.length > EXCERPT_CHARS) text = text.slice(0, EXCERPT_CHARS - 1);
+  return `${text}${cut ? "…" : ""}`;
+}
+
 /** One message: who wrote to whom (their Telegram @username when linked, so Telegram rings them), the request, the comment's start, the link. */
 export function requestCommentText(input: { author: string; mentions: { name: string; username?: string | null }[]; title: string; body: string; url: string }) {
   const who = input.mentions.map((m) => m.username ? `@${m.username.replace(/^@/, "")}` : `${m.name}님`).join(" ");
-  const lines = input.body.replace(/\r/g, "").split("\n").map((line) => line.trim()).filter(Boolean);
-  let excerpt = lines.slice(0, EXCERPT_LINES).join("\n");
-  const cut = lines.length > EXCERPT_LINES || excerpt.length > EXCERPT_CHARS;
-  if (excerpt.length > EXCERPT_CHARS) excerpt = excerpt.slice(0, EXCERPT_CHARS - 1);
-  return `💬 수정 요청 댓글 · ${input.author} → ${who}\n「${input.title.slice(0, 120)}」\n\n${excerpt}${cut ? "…" : ""}\n\nOS에서 보기: ${input.url}`;
+  return `💬 수정 요청 댓글 · ${input.author} → ${who}\n「${input.title.slice(0, 120)}」\n\n${excerpt(input.body)}\n\nOS에서 보기: ${input.url}`;
+}
+
+// 운영 반영 공지 (2026-11-17 대표): a development log saved as 운영 · 완료 goes, as the bot, to the same business room.
+// Only the log — a deployment record (record_deployment) holds test results, not a summary, and would announce the same release twice.
+export function isReleaseLog(record: { record_type?: string | null; stage?: string | null; status?: string | null }) {
+  return record.record_type === "development_log" && record.stage === "production" && record.status === "completed";
+}
+
+export function releaseLogText(input: { project: string; title: string; summary: string; url: string }) {
+  return `🚀 개발 반영 · ${input.project}\n「${input.title.slice(0, 120)}」\n\n${excerpt(input.summary)}\n\nOS에서 보기: ${input.url}`;
 }
