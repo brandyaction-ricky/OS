@@ -253,3 +253,16 @@ test("migration declares private receipt storage, RLS, atomic CAS and non-self a
   assert.doesNotMatch(sql,/delete from|truncate |drop table|grant .* to anon/i);
   assert.match(sql,/revoke all on function public.os_fin_refund_finish_mock\(uuid,integer\) from public,anon,authenticated/);
 });
+test("one column cannot be read as both 원화 and 외화: won amounts never become dollars",()=>{
+  const table=parseCsv("이용일,카드번호,가맹점,이용금액,승인번호\n2026-07-10,1234,네이버페이,180000,A1");
+  const mapping=inferMapping(table.headers,"cards");
+  assert.equal(mapping.fx,-1);assert.equal(previewImport(table,mapping,"cards",[]).valid[0].fx,0);
+  assert.throws(()=>previewImport(table,{...mapping,fx:mapping.krw},"cards",[]),/한 열을 두 항목에/);
+  const schema=fs.readFileSync(new URL("../lib/server/finance-imports.ts",import.meta.url),"utf8");
+  assert.match(schema,/mapping:z\.record\([^\n]*new Set\(used\)\.size===used\.length/);
+});
+test("부가세 reads a foreign-currency card use as 해당 없음(해외), as the 카드지출 list does",()=>{
+  const row=(id,extra={})=>({id,archived_at:null,canceled:false,merchant:"Shop",amount_krw:11000,used_date:"2026-07-10",manual_vat:null,...extra});
+  const [won,usd]=classifiedCards({card_rules:[],card_transactions:[row("a"),row("b",{currency:"USD",foreign_amount:8,manual_vat:"공제 예상"})]});
+  assert.equal(won.vat,"판단 필요");assert.equal(usd.vat,"해당 없음(해외)");
+});
