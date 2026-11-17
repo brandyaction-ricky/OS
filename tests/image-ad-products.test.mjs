@@ -126,9 +126,26 @@ test("four MYIN choices keep unknown offers empty and unusable instead of invent
   const choices=withImageProductChoices(imageAdProductsFromCanon([channelDoc,audienceDoc]));
   assert.deepEqual(choices.slice(0,4).map(row=>row.id),["myin-free","myin-core","myin-precision","myin-strength"]);
   assert.ok(choices[2].needsData,"do not substitute old channel precision facts when its operating source is unreadable");
-  assert.equal(choices[3].product,"강점 설명서");assert.ok(choices[3].needsData);
+  assert.equal(choices[3].product,"강점 공략집");assert.ok(choices[3].needsData);
   assert.equal(choices[3].offer,"");assert.equal(choices[3].source.version,0);
   const brief=briefForImageProduct({product:"",audience:"",offer:"",objective:"",message:""},choices[3]);
   assert.equal(imageBriefMatchesProduct(brief,choices[3]),false);
   assert.equal(choices[0].offer,"공개 결과 견본 기준 · 공개된 견본의 요약");
+});
+
+test("the strength guide supplies its customer name and current page list, never the September price table",()=>{
+  const md=["# 강점 해설집 — 상품 기획·제작 기준","","## 이번에 만드는 상품","","고객에게 보이는 상품 명칭은 **‘강점 공략집’**으로 둔다.","",
+    "## 확정한 상품 구성과 가격 — 2026-09-15","","| 옵션 | 가격 |","| --- | ---: |","| TOP3 해설집 3권 | 30,000원 |","",
+    "## 현행 판 v1.6 — 2026-11-03 (운영)","","운영 중인 해설집은 v1.6이다. 30권 모두 같은 구성이며, PDF 한 권은 18쪽이다.","",
+    "| 쪽 | 이름 |","| --- | --- |","| 표지 | 강점 이름과 한 줄 |","| 01\\~10 | 내 모습 · 원하는 것 |","| 11 | 나만의 업 |","| 12 | 일하는 방식 |","",
+    "### 2. 해설집 쪽 구성 (11\\~13쪽)","","| 쪽 | 제목 | 담는 것 |","| -- | -- | -- |","| 11 | 다른 표 | 무시 |"].join("\n");
+  const guide={...document("source-strength",IMAGE_PRODUCT_OPERATING_SOURCES.strength.title,md),status:"team"};
+  const row=imageAdProductsFromCanon([channelDoc,audienceDoc,guide]).find(item=>item.id==="myin-strength");
+  assert.equal(row.product,"강점 공략집");
+  assert.equal(row.offer,"강점 한 개를 깊게 읽는 해설 · 한 권 18쪽, 웹에서 읽고 PDF로 받기 · 내 모습 · 원하는 것 · 나만의 업 · 일하는 방식");
+  assert.doesNotMatch(row.offer,/30,000/);
+  assert.equal(row.source.id,guide.id);assert.equal(row.audienceSource.id,audienceDoc.id);
+  assert.equal(withImageProductChoices(imageAdProductsFromCanon([channelDoc,audienceDoc,guide]))[3].needsData,undefined);
+  for (const broken of [{...guide,status:"draft"},{...guide,content_md:md.replace("PDF 한 권은 18쪽이다.","")},{...guide,content_md:md.replace(/고객에게[^\n]+/,"")}])
+    assert.ok(!imageAdProductsFromCanon([channelDoc,audienceDoc,broken]).some(item=>item.id==="myin-strength"));
 });
