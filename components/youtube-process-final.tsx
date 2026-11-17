@@ -189,15 +189,17 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
   const goTo = () => { const seconds = jump === null ? null : parseClock(jump); if (seconds !== null) { video.current?.pause(); seek(Math.min(seconds, duration || seconds)); } setJump(null); };
   const toggle = () => { const el = video.current; if (!el || tool) return; if (el.paused) { void el.play(); setRange(null); setDraftMarks([]); } else el.pause(); };
   const at = (clientX: number) => { const rect = bar.current!.getBoundingClientRect(); return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * (duration || 0); };
+  // Ctrl+Enter skips the disabled button, and a Korean IME fires Enter twice: one save at a time, guarded synchronously (busy only lands next render).
+  const sending = useRef(false);
   const add = async (reaction = false) => {
-    if (!page.client || !project || (!reaction && !text.trim())) return;
-    setBusy(true); page.setError("");
+    if (sending.current || !page.client || !project || (!reaction && !text.trim())) return;
+    sending.current = true; setBusy(true); page.setError("");
     try {
       const item = await page.client.addFeedback(project.id, view === "video"
         ? { target: "video", ver, t: range ? null : Math.round(time * 10) / 10, range: range ? [Math.round(range[0]), Math.round(range[1])] : null, text: text.trim(), reaction, marks: draftMarks, files }
         : { target: thumbTarget, ver: 1, text: text.trim(), kind, sug: sug.trim(), reaction, files });
       setItems(list => [...list, item]); setText(""); setSug(""); setRange(null); setDraftMarks([]); setTool(null); setFiles([]);
-    } catch (reason) { page.fail(reason); } finally { setBusy(false); }
+    } catch (reason) { page.fail(reason); } finally { sending.current = false; setBusy(false); }
   };
   const attach = async (picked: FileList | null) => {
     if (!picked?.length || !page.client || !project) return;
@@ -372,10 +374,12 @@ function FeedbackItem({ item, open, latest, onOpen, onSeek, onAct, onOpenFile }:
   const [saving, setSaving] = useState(false);
   const done = closed(item);
   const mine = item.whoId === me;
+  const pending = useRef(false);
   const run = async (action: FeedbackAction, value = "", replyId?: string) => {
-    setSaving(true); setError("");
+    if (pending.current) return false;
+    pending.current = true; setSaving(true); setError("");
     const message = await onAct(action, value, replyId);
-    setSaving(false);
+    pending.current = false; setSaving(false);
     if (message) { setError(message); return false; }
     return true;
   };
