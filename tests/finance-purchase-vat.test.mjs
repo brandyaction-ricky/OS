@@ -306,3 +306,8 @@ test("홈택스 목록 .xlsx · .csv: the shared reader hands the parser every r
   const fromCsv = parseHometaxRows(await readImportRows(new File([csv], "매출.csv")));
   assert.deepEqual([fromCsv.errors, fromCsv.invoices.map(row => row.approval_no)], [[], ["C1"]]);
 });
+
+test("the 부가세 card read carries currency, so a foreign use is labelled as the 카드지출 list labels it", () => {
+  const source = readFileSync(new URL("../lib/server/finance-purchase.ts", import.meta.url), "utf8");
+  assert.match(source, /os_fin_card_transactions"\)\.select\("[^"]*\bcurrency\b/);
+});
