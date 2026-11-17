@@ -10,6 +10,7 @@ const requestId = "80950395-23b2-4b5a-bd0f-c3d8b8b78d92";
 const otherRequestId = "8abcb821-b9c9-49ff-96a2-b116030b6edf";
 const authorId = "1eecc49f-13ea-4c53-96c6-6f36dcb6d034";
 const mentionId = "74c2ada6-6a89-4560-8484-1df8c14b9690";
+const shared = [];
 const source = await readFile(new URL("../app/api/v1/development-request-comments/route.ts", import.meta.url), "utf8");
 const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 
@@ -73,7 +74,8 @@ function setup(extraRows = []) {
   ]);
   const actor = { id: authorId, ownerId: authorId, name: "brand@example.com", role: "admin", team: "개발", supabase: database };
   const modules = {
-    "next/server": { NextResponse: Response }, zod,
+    "next/server": { NextResponse: Response, after: (task) => task() }, zod,
+    "@/lib/server/development-comment-telegram": { shareRequestComment: async (input) => { shared.push(input); return 0; } },
     "@/lib/development-comments": comments,
     "@/lib/server/auth": { authenticateRequest: async (request) => {
       if (!request.headers.has("authorization")) throw new ApiError(401, "AUTH_REQUIRED", "로그인이 필요합니다.");
@@ -123,6 +125,8 @@ test("comment API validates active mentions and stores server-owned names", asyn
   assert.equal(response.status, 201);
   assert.deepEqual(rows.at(-1).metadata.mentionIds, [mentionId]);
   assert.deepEqual(rows.at(-1).metadata.mentionNames, ["리키"]);
+  // 함께 볼 사람이 있는 댓글은 텔레그램 업무 소통방으로(2026-11-17), 누구를 불렀는지와 글을 그대로.
+  assert.deepEqual([shared.at(-1).requestId, shared.at(-1).mentionIds, shared.at(-1).body], [requestId, [mentionId], "리키님 확인 부탁드립니다."]);
   const missing = await routes.POST(request("POST", { requestId, body: "없는 멤버", mentionIds: ["f2ae8c57-168b-46f7-85c2-d72d3f8fcd89"] }));
   assert.equal(missing.status, 404);
 });
