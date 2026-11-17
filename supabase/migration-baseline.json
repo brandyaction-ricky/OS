@@ -1133,9 +1133,9 @@
       "purpose": "Allow the yt_voice_start notification reason (a waiting voice tells its owner when the render PC starts it).",
       "requiresApproval": true,
       "developmentApprovedAt": null,
-      "productionApprovedAt": null,
-      "appliedEnvironments": [],
-      "notes": "Additive and idempotent: reads the deployed os_notification_guard with pg_get_functiondef and adds yt_voice_start next to yt_upload in its two reason lists; stops with an error if the deployed guard does not have exactly two such lists. No rows, policies or grants change. Not applied anywhere yet; the app code tolerates its absence (the notice insert is rejected and logged)."
+      "productionApprovedAt": "2026-11-17",
+      "appliedEnvironments": ["production"],
+      "notes": "Additive and idempotent: reads the deployed os_notification_guard with pg_get_functiondef and adds yt_voice_start next to yt_upload in its two reason lists; stops with an error if the deployed guard does not have exactly two such lists. No rows, policies or grants change. Owner ran it in the Production SQL Editor on 2026-11-17 before the code (#628) went live; the check query (yt_voice_start present in the guard) returned true. Not applied to DEV."
     }
   ],
   "legacyMigrations": [
