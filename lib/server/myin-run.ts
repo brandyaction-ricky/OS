@@ -153,7 +153,14 @@ const runSchema = z.object({
     /** 렌더 전 관문 lines still there after MYIN_GATE_ROUNDS fixes: shown on the editor as 「여기서 사람 확인 필요」 (로건 11-13). */ needsPerson: z.array(z.string().max(300)).max(60).optional(),
     drawn: z.object({ at: z.string().datetime(), scenes: z.array(z.number().int().min(1).max(400)).max(600), lines: z.array(z.string().max(300)).max(60) }).strict().optional(),
     redraw: z.object({ state: z.enum(["pending", "drawing", "failed"]), at: z.string().datetime(), attempts: z.number().int().min(0).max(20), token: z.string().uuid().optional(),
-      expiresAt: z.string().datetime().optional(), storyboardAt: z.string().max(40).optional(), path: z.string().optional(), code: z.string().max(80).optional() }).strict().optional() }).strict().optional(),
+      expiresAt: z.string().datetime().optional(), storyboardAt: z.string().max(40).optional(), path: z.string().optional(), code: z.string().max(80).optional() }).strict().optional(),
+    /** 바뀐 장면만 (요청 3번): scenes whose cells came from the sheets of `from` ([now, then] storyboard numbers); its screen check carries them. */
+    kept: z.array(z.tuple([z.number().int().min(1).max(400), z.number().int().min(1).max(400)])).max(600).optional(),
+    from: z.object({ runId: z.string().uuid(), at: z.string().datetime() }).strict().optional() }).strict().optional(),
+  // 바뀐 장면만 (요청 3번, 2026-11-17): the sheets this video had before a new ③ (this run's before a voice fix or the 렌더 전 관문's
+  // round, or the earlier run that lent its storyboard) — the next ③ draws and checks only the scenes that differ from them.
+  lastPrep: z.object({ runId: z.string().uuid(), at: z.string().datetime(), engine: engineFp, sheets: z.array(z.string()).min(1).max(60), storyboardPath: z.string(),
+    lines: z.array(z.string()).max(60) }).strict().optional(),
   // Stage 4: Logan's 720p clips (opening + reel, each metaphor), his OK, then the full render, mix and handouts.
   clips: z.object({ items: z.array(z.object({ name: z.string(), label: z.string(), path: z.string() }).strict()), at: z.string().datetime(), used: materialsSchema.optional(),
     engine: engineFp.optional() }).strict().optional(),
@@ -733,8 +740,9 @@ async function earlierLoan(service: Service, record: OsRecord, run: MyinRun, bun
   const { data } = await service.from("os_records").select("*").eq("parent_id", run.sourceId).eq("record_type", "ai_job").eq("metadata->>kind", MYIN_RUN_KIND)
     .is("archived_at", null).lt("created_at", record.created_at).order("created_at", { ascending: false }).limit(6);
   const readable = (row: OsRecord) => { try { return parse(row); } catch { return null; } };
-  const donor = (data ?? []).map((row) => readable(row as OsRecord)).find((r) => r && !r.layout && r.storyboard && r.words);
-  if (!donor?.storyboard || !donor.words) return null;
+  const found = (data ?? []).map((row) => ({ id: (row as OsRecord).id, run: readable(row as OsRecord) })).find(({ run: r }) => r && !r.layout && r.storyboard && r.words);
+  const donor = found?.run;
+  if (!found || !donor?.storyboard || !donor.words) return null;
   const lines = subtitleLines(bundle.subtitlesAss), edits = new Map<number, { i: number; from: string; to: string }>();
   for (const edit of donor.subtitleEdits?.lines ?? []) {
     const line = lines.filter((l) => l.text === edit.from).sort((a, b) => Math.abs(a.i - edit.i) - Math.abs(b.i - edit.i))[0];
@@ -760,7 +768,7 @@ async function earlierLoan(service: Service, record: OsRecord, run: MyinRun, bun
   const ours = Object.fromEntries(Object.entries(donor.ours ?? {}).filter(([file]) => files.has(file)));
   const changedText = spoken.filter((text) => !kept.has(sha(text))).map((text) => `「${text.slice(0, 80)}${text.length > 80 ? "…" : ""}」`).join(" ");
   const sceneList = checked.storyboard.scenes as Record<string, unknown>[];
-  return { subtitleEdits, ours, changed: changed.length, story: checked, storyboard: donor.storyboard,
+  return { subtitleEdits, ours, changed: changed.length, story: checked, storyboard: donor.storyboard, sheets: prepRef(found.id, donor),
     scenes: [...scenes].map(([n, problems]) => ({ n, at: String(sceneList[n - 1]?.at ?? ""), type: String(sceneList[n - 1]?.type ?? ""), who: MYIN_CARRY_NAME,
       text: `원고를 고쳐 이 장면의 문구를 새 받아쓰기에서 못 찾았어요(${problems.join(" · ")}). 이 장면만 새 원고에 맞게 고쳐 주세요. 바뀐 문단: ${changedText}`.slice(0, 2000) })) };
 }
@@ -771,7 +779,8 @@ async function earlierLoan(service: Service, record: OsRecord, run: MyinRun, bun
  */
 async function lendStoryboard(service: Service, record: OsRecord, loan: NonNullable<Awaited<ReturnType<typeof earlierLoan>>>) {
   if (!loan.story || !loan.storyboard || !loan.scenes) return "none";
-  const run = parse(record);
+  // Its ③ draws only the scenes that differ from the earlier run's sheets (바뀐 장면만).
+  const run: MyinRun = { ...parse(record), ...(loan.sheets ? { lastPrep: loan.sheets } : {}) };
   const value: StoryboardValue = { storyboard: loan.story.storyboard, assets: loan.storyboard.assets, reasons: loan.storyboard.reasons, fuzzy: loan.story.fuzzy,
     notes: loan.story.notes, reading: loan.story.reading, model: loan.storyboard.model, carried: { changed: loan.changed, scenes: loan.scenes.length } };
   if (!loan.scenes.length) { await saveMyinStoryboard(service, record, run, value); return "whole"; }
@@ -1019,9 +1028,26 @@ function photosInUse(run: MyinRun, story: Awaited<ReturnType<typeof storyboardJs
 /** ③ 시안: the render PC lays the storyboard out with its photos (placeholders only where one cannot be fetched), runs Logan's music match and preview check, then the drafts. */
 async function beginDraft(service: Service, record: OsRecord, run: MyinRun) {
   photosInUse(run, await storyboardJson(service, run));
-  const next: MyinRun = { ...run, attempts: 0 };
+  const before = prepRef(record.id, run);
+  const next: MyinRun = { ...run, attempts: 0, ...(before ? { lastPrep: before } : {}) };
   delete next.prepared; delete next.lastError; delete next.clips; delete next.stills; delete next.clipsReview; delete next.sound; delete next.lease; retireFinal(next);
   return save(service, record, "backlog", "prep_pending", next);
+}
+
+/** 바뀐 장면만 (요청 3번, 2026-11-17): a run's sheets as a later ③ starts from them — ours (with cells), drawn from the storyboard the run
+ *  still names (not one a 장면 수정안 redrew), with the engine that drew them. */
+function prepRef(runId: string, run: MyinRun): MyinRun["lastPrep"] {
+  const prepared = run.prepared;
+  if (!prepared?.cells || !prepared.sheets.length || !prepared.engine || prepared.storyboardPath || !run.storyboard) return undefined;
+  if ((prepared.used?.storyboard ?? run.storyboard.at) !== run.storyboard.at) return undefined;
+  return { runId, at: prepared.at, engine: prepared.engine, sheets: prepared.sheets.slice(0, 60), storyboardPath: run.storyboard.path,
+    lines: prepared.misses.filter((line) => /^\[장면 \d+\] (빈 화면|그리기 오류)/.test(line)).slice(0, 60) };
+}
+
+/** The sheets a ③ starts from, as the render PC takes them: the storyboard they show, where to fetch them, their check's lines. */
+async function priorSheets(service: Service, run: MyinRun, prior: NonNullable<MyinRun["lastPrep"]>) {
+  const story = await storyboardJson(service, { ...run, storyboard: { ...run.storyboard!, path: prior.storyboardPath } });
+  return { storyboard: await renderStory(story), sheets: await Promise.all(prior.sheets.map((path) => sign(service, SHEET_BUCKET, path))), lines: prior.lines };
 }
 
 /** GPT 화면 검사 on or off for this video's next 점검 시트 (11-09); the button in the card still checks by hand. */
@@ -1366,7 +1392,10 @@ export async function claimMyinPrep(service: Service = createServiceSupabase(), 
     }
     const { data: bundle } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).createSignedUploadUrl(prepBundlePath(record, run, lease.token), { upsert: true });
     if (!bundle) throw new ApiError(503, "MYIN_SIGN_FAILED", "결과 업로드 주소를 만들지 못했습니다.");
-    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), draft, placeholders, storyboard: await renderStory(story), assets, cta, ...(cta.some((c) => !c.url) ? { fishVoice: fishVoice(run) } : {}), siteCapture: story.scenes.some((sc) => sc.type === "site_ad"),
+    // 바뀐 장면만 (요청 3번): the sheets before, drawn by the same engine; without them (or when they cannot be read) every scene is drawn.
+    const prior = draft && run.lastPrep && run.lastPrep.engine === lease.engine ? run.lastPrep : undefined;
+    const previous = prior ? await priorSheets(service, run, prior).catch(() => null) : null;
+    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), draft, placeholders, ...(previous ? { previous } : {}), storyboard: await renderStory(story), assets, cta, ...(cta.some((c) => !c.url) ? { fishVoice: fishVoice(run) } : {}), siteCapture: story.scenes.some((sc) => sc.type === "site_ad"),
       sheetUploadUrls: sheetUploads, bundleUploadUrl: bundle.signedUrl, ...(owner ? { seed: await localSeed(service, run) } : await seedFor(service, run)), ...await subtitlesFor(service, run), ...styleFor(run) };
   } catch (error) {
     await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_PREP_CLAIM_FAILED");
@@ -1391,7 +1420,8 @@ export async function completeMyinPrep(input: { runId: string; lease: string }, 
   const { data } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).download(prepBundlePath(record, run, input.lease));
   if (!data) throw new ApiError(409, "MYIN_BUNDLE_MISSING", "준비 결과 파일을 찾지 못했습니다.");
   const bundle = z.object({ misses: z.array(z.string()), sheets: z.number().int().min(0), musicCredits: z.array(z.string()).default([]),
-    storyboard: z.record(z.unknown()).optional(), soundReport: z.string().optional(), cells: z.array(z.number().int().min(1).max(400)).max(600).nullish() }).passthrough().parse(JSON.parse(await data.text()));
+    storyboard: z.record(z.unknown()).optional(), soundReport: z.string().optional(), cells: z.array(z.number().int().min(1).max(400)).max(600).nullish(),
+    kept: z.array(z.tuple([z.number().int().min(1).max(400), z.number().int().min(1).max(400)])).max(600).optional() }).passthrough().parse(JSON.parse(await data.text()));
   const draft = !run.clipsReview;
   let { storyboard, sound } = run;
   if (draft && bundle.storyboard) {
@@ -1413,7 +1443,8 @@ export async function completeMyinPrep(input: { runId: string; lease: string }, 
     ...(bundle.cells ? { cells: bundle.cells } : {}) } };
   if (!draft) { const standIns = ourStandIns(run, myinPhotoFolders(await storyboardJson(service, run))); if (standIns.length) next.prepared!.standIns = standIns.slice(0, 60); }
   next.prepared!.used = materials(next);
-  delete next.lease; delete next.lastError;
+  if (bundle.kept?.length && run.lastPrep) { next.prepared!.kept = bundle.kept; next.prepared!.from = { runId: run.lastPrep.runId, at: run.lastPrep.at }; }
+  delete next.lease; delete next.lastError; delete next.lastPrep;
   if (draft) { delete next.clips; delete next.stills; delete next.clipsReview; retireFinal(next); }
   if (!next.sound) delete next.sound;
   // 렌더 전 관문 (로건 개발 문서 v3 7.2-3): at ③ a phrase the engine cannot place or a blank scene goes straight back to the storyboard
@@ -1428,6 +1459,9 @@ export async function completeMyinPrep(input: { runId: string; lease: string }, 
   if (gate.length && !goOn) {
     const back: MyinRun = { ...next, gateRounds: rounds, review: { decision: "revise", by: record.owner_id ?? run.review?.by ?? record.created_by ?? "", name: MYIN_GATE_NAME,
       note: `렌더 전 관문에서 걸린 곳 ${gate.length}개를 고쳐 주세요: ${gate.slice(0, 12).join(" / ")}`.slice(0, 2000), at: new Date().toISOString() } };
+    // The AI fixes a few scenes; the ③ after it draws only those again (바뀐 장면만, 요청 3번).
+    const sheetsNow = prepRef(record.id, next);
+    if (sheetsNow) back.lastPrep = sheetsNow;
     delete back.prepared; delete back.clips; delete back.stills; delete back.clipsReview; delete back.sound;
     await save(service, record, "backlog", "words_ready", back);
     await resendStoryboard(run.sourceId, record.id);
@@ -1979,6 +2013,7 @@ export async function myinMakingNews(service: Service, projectId: string) {
     : review.name === MYIN_CARRY_NAME ? `원고를 고친 곳 ${review.scenes?.length ?? 0}장면만 내 AI가 고쳐요. 나머지 장면은 전 작업의 기획표 그대로예요.` : `${review.name}님이 기획표 수정을 요청했어요: “${review.note.slice(0, 120)}”` });
   if (run.stills) out.push({ at: run.stills.at, kind: "making", text: "장면 그림이 편집 화면 타임라인에 깔렸어요(v0). 보고 고친 뒤 「완성」을 누르면 움직이는 최종본을 만들어요." });
   const prepared = run.prepared;
+  if (prepared?.kept?.length) out.push({ at: prepared.at, kind: "making", text: `점검 시트와 렌더 전 검사는 바뀐 장면 ${new Set(prepared.cells ?? []).size - prepared.kept.length}개만 다시 했어요. 나머지 ${prepared.kept.length}장면은 전 결과 그대로예요.` });
   if (prepared?.needsPerson?.length) out.push({ at: prepared.at, kind: "person", text: `관문에서 ${MYIN_GATE_ROUNDS}번 넘게 걸린 곳이 있어 여기서 사람 확인이 필요해요: ${prepared.needsPerson.slice(0, 6).join(" / ")}` });
   const standIns = (prepared?.standIns ?? []).filter((file) => !run.ours?.[file]);
   if (prepared && standIns.length) out.push({ at: prepared.at, kind: "person", text: `우리 이미지 ${standIns.length}장이 없어 회색 사진 자리로 넣었어요: ${standIns.join(" · ")}. 올리면 다시 만들어요.` });

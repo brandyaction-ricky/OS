@@ -4,7 +4,7 @@ import { createServiceSupabase } from "@/lib/supabase/server";
 import { GPT_TIERS, type GptTier } from "@/lib/youtube-process/gpt-draft";
 import { projectFromRecord } from "@/lib/youtube-process/project";
 import type { YpScreenCheck } from "@/lib/youtube-process/stages";
-import { parseScreen, sceneHints, SCREEN_SCHEMA, screenPrompt } from "@/lib/youtube-screen-check";
+import { carriedScreens, parseScreen, sceneHints, SCREEN_SCHEMA, screenPrompt } from "@/lib/youtube-screen-check";
 import type { RequestActor } from "./auth";
 import { generateContentText } from "./content-model";
 import { myinSheetSources } from "./myin-run";
@@ -31,6 +31,7 @@ export async function checkMyinScreens(runId: string, tier: GptTier, timeoutMs =
   const current = (await readStages(service, project)).screenCheck;
   const same = current.data.runId === runId && current.data.sheetsAt === source.sheetsAt;
   if (same && current.data.state === "running" && Date.now() - Date.parse(current.data.at) < RUNNING_MS) return current;
+  const part = carriedScreens(source.run.prepared, current.data, source.urls);
   const { model, effort } = GPT_TIERS[tier];
   const base = { at: new Date().toISOString(), model, runId, sheetsAt: source.sheetsAt, scenes: [], note: "" };
   const who = { id: source.record.owner_id ?? project.assigneeId ?? "", team: source.record.team ?? "" };
@@ -38,9 +39,15 @@ export async function checkMyinScreens(runId: string, tier: GptTier, timeoutMs =
   let data: YpScreenCheck;
   try {
     // A look at pictures, not a long argument: one step less thinking than the 원고 review on the same tier.
-    const text = await generateContentText({ model, effort: effort === "high" ? "medium" : "low", maxTokens: 16_000, timeoutMs, jsonSchema: SCREEN_SCHEMA,
-      prompt: screenPrompt(sceneHints(source.scenes), source.short), images: source.urls });
+    const text = part && !part.fresh.length ? JSON.stringify({ scenes: [], note: "바뀐 장면이 없어요." }) : await generateContentText({ model, effort: effort === "high" ? "medium" : "low",
+      maxTokens: 16_000, timeoutMs, jsonSchema: SCREEN_SCHEMA, images: part?.urls ?? source.urls,
+      prompt: screenPrompt(sceneHints(source.scenes), source.short) + (part ? `\n\n이번 시트에는 다시 그린 장면만 새로 봅니다: #${part.fresh.join(", #")}. 이 장면들만 적고, 시트의 다른 칸은 적지 않습니다.` : "") });
     const result = parseScreen(text, source.scenes.length);
+    if (result && part) {
+      result.scenes = [...result.scenes.filter((item) => part.fresh.includes(item.scene)), ...part.carried].sort((a, b) => a.scene - b.scene);
+      result.note = (part.fresh.length ? `${result.note} (바뀐 장면 ${part.fresh.length}개만 새로 봤어요 · 나머지 ${part.kept}개는 전 검사 그대로)`
+        : `바뀐 장면이 없어 전 검사 그대로예요. ${part.note}`).slice(0, 400);
+    }
     data = result ? { ...base, state: "done", ...result } : { ...base, state: "failed", error: "GPT 답을 읽지 못했어요. 다시 검사해 주세요." };
   } catch (error) {
     data = { ...base, state: "failed", error: error instanceof ApiError ? error.message : "화면 검사를 끝내지 못했어요. 다시 검사해 주세요." };

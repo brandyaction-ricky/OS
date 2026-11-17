@@ -9,8 +9,11 @@ Logan's 덱 배치 로직 v2 (2026-11-10, his beat_metrics2.py): a screen that c
 content comes more than 1 s after it starts (0.3 s for the first screen), and a scene shorter than 3 s on the video (2.5 s for a chapter mark).
 Scene numbers are the storyboard's: the engine turns an opening's acts into decks, and those count as the opening.
 
-  cd <MYIN_PKG>/tools/myin_pipeline && python myin_frame_check.py <video job> <out.json> [moments per scene = 5]
+  cd <MYIN_PKG>/tools/myin_pipeline && python myin_frame_check.py <video job> <out.json> [moments per scene = 5] [redraw.json old-lines.json]
   (the preview's environment: STORY, SRC, PYTHONPATH with the diagram folder, MYIN_FONT_DIR)
+
+바뀐 장면만 (요청 3번, 2026-11-17): with the 점검 시트's redraw.json (the scenes it kept from the sheets before) and the lines of that check,
+a kept scene is not drawn again — its 빈 화면 · 그리기 오류 lines come along under its number now. The time checks look at every scene.
 """
 import json, os, re, sys, time
 
@@ -20,13 +23,13 @@ MOST = 0.6            # a scene is blank when most of its moments are (early on,
 SKIP = {"endscreen"}  # YouTube puts its own end cards on this plain screen
 
 
-def flat_moments(scenes, M, points, errors=None):
+def flat_moments(scenes, M, points, errors=None, kept=()):
     """The blank moments (most of a scene's); a moment the engine cannot draw goes to `errors` instead (11-09 request: a diagram that breaks
-    only while it moves stopped the 10/28 preview, so every moment is drawn, not only the finished look)."""
+    only while it moves stopped the 10/28 preview, so every moment is drawn, not only the finished look). Scenes in `kept` are not drawn."""
     import numpy as np
     out = []
     for i, sc in enumerate(scenes):
-        if sc["type"] in SKIP: continue
+        if sc["type"] in SKIP or i in kept: continue
         a, b = sc["t0"] + 0.5, sc["t1"] - 0.2      # past the cross-fade in, before the next scene's
         if b <= a: continue
         for k in range(points):
@@ -125,16 +128,29 @@ def timing(scenes, plan, idx, words, end, out_time, decks):
     return out
 
 
+def carried(redraw_file, lines_file):
+    """(engine scenes not to draw, the earlier check's 빈 화면 · 그리기 오류 lines of kept scenes under their numbers now)."""
+    if not redraw_file: return set(), []
+    redraw, lines = json.load(open(redraw_file, encoding="utf-8")), json.load(open(lines_file, encoding="utf-8"))
+    now = {o: n for n, o in redraw.get("kept", [])}
+    out = []
+    for line in lines:
+        m = re.match(r"^\[장면 (\d+)\] (빈 화면|그리기 오류)", line)
+        if m and int(m.group(1)) in now: out.append(f"[장면 {now[int(m.group(1))]}]{line[m.end(1) + 1:]}")
+    return {int(i) for i in redraw.get("keep", {})}, out
+
+
 def main():
     job, out = sys.argv[1], sys.argv[2]
     points = int(sys.argv[3]) if len(sys.argv) > 3 else 5
+    skip, before = carried(*sys.argv[4:6]) if len(sys.argv) > 5 else (set(), [])
     t0 = time.time()
     sys.path.insert(0, os.getcwd())          # run from the release's tools folder, inside the engine's myin_pipeline
     import render_myin as R
     M = R.M
     wd, scenes, st = R.load(job)
     errors = []
-    flat = flat_moments(scenes, M, points, errors)
+    flat = flat_moments(scenes, M, points, errors, skip)
     # The storyboard as the OS keeps it: the engine replaces an opening's acts with decks (its plan = opening + decks + the rest) and leaves
     # some scenes out, so each drawn scene is matched to its plan entry, and plan entry j is storyboard scene j − decks (the decks count as the opening).
     try: written = len(json.load(open(os.path.join(wd, os.environ.get("STORY", "myin_storyboard.json")), encoding="utf-8"))["scenes"])
@@ -155,14 +171,15 @@ def main():
     lines = [f"[장면 {drawn(s - 1)}] 빈 화면: {', '.join(str(f['t']) + '초' for f in flat if f['scene'] == s)}" for s in sorted({f["scene"] for f in flat})]
     lines += [f"[장면 {drawn(s - 1)}] 그리기 오류: {', '.join(str(f['t']) + '초' for f in errors if f['scene'] == s)} ({next(f['error'] for f in errors if f['scene'] == s)})"
               for s in sorted({f["scene"] for f in errors})]
+    lines += before
     lines += [f"[장면 {no(j)}] {text}" for j, _, text in timed]
     # 멈춤이 문장 중간 (2026-11-17, 영상 피드백 73): 엔진이 원고의 문장 끝에 놓지 못한 멈춤(render_myin.HOLD_PROBLEMS — 그 엔진부터).
     holds = [(n, t, why) for n, t, why in getattr(R, "HOLD_PROBLEMS", [])]
     lines += [f"[장면 {drawn(n)}] 멈춤이 문장 중간: {t}초 — {why}. 다음 장면 문구를 문장 첫 말로" for n, t, why in holds]
-    json.dump({"scenes": len(scenes), "points": points, "flat": flat, "errors": errors, "timing": [{"scene": no(j), "kind": kind, "text": text} for j, kind, text in timed],
+    json.dump({"scenes": len(scenes), "points": points, "kept": len(skip), "flat": flat, "errors": errors, "timing": [{"scene": no(j), "kind": kind, "text": text} for j, kind, text in timed],
                "holds": [{"scene": drawn(n), "t": t, "why": why} for n, t, why in holds],
                "lines": lines, "sec": round(time.time() - t0, 1)}, open(out, "w", encoding="utf-8"), ensure_ascii=False)
-    print(f"빈 화면 · 그리기 오류 · 시간 검사: 장면 {len(scenes)}개 × {points}순간 · 빈 화면 {len({f['scene'] for f in flat})}장면 · 오류 {len({f['scene'] for f in errors})}장면"
+    print(f"빈 화면 · 그리기 오류 · 시간 검사: 장면 {len(scenes) - len(skip)}개 × {points}순간(전 검사 그대로 {len(skip)}개) · 빈 화면 {len({f['scene'] for f in flat})}장면 · 오류 {len({f['scene'] for f in errors})}장면"
           f" · 시간 {len(timed)}곳 · {round(time.time() - t0, 1)}초", flush=True)
 
 

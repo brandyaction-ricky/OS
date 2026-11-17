@@ -48,11 +48,13 @@ def main():
     from PIL import Image, ImageDraw
     M = R.M
     story = os.environ.get("STORY", "myin_storyboard.json")
-    before = []
+    before, old_numbers = [], None
     if old_story != "-":
         os.environ["STORY"] = old_story
-        before = R.load(job)[1]
+        old_wd, before, old_st = R.load(job)
         os.environ["STORY"] = story
+        try: old_numbers = numbers(before, old_st, len(json.load(open(os.path.join(old_wd, old_story), encoding="utf-8"))["scenes"]))
+        except Exception: old_numbers = None
     wd, scenes, st = R.load(job)
     keep = same([key(s) for s in before], [key(s) for s in scenes])
     tw, th = (640, 360) if M.W >= M.H else (270, 480)
@@ -89,7 +91,16 @@ def main():
         sheet = Image.new("RGB", (tw * 3, th * 4), (128, 128, 128))
         for j, im in enumerate(shots[k:k + PER]): sheet.paste(im, ((j % 3) * tw, (j // 3) * th))
         sheet.save(os.path.join(out, f"preview_{k // PER + 1:02d}.png"))
-    json.dump({"scenes": len(scenes), "drawn": drawn, "cells": cells, "errors": errors, "sec": round(time.time() - t0, 1)},
+    # 바뀐 장면만 (요청 3번, 2026-11-17): the cells kept, as engine scenes (the frame check skips drawing them) and as storyboard numbers
+    # {now: before} for a scene whose every cell was kept (the OS carries its GPT screen check, the frame check its 빈 화면 · 그리기 오류).
+    # ponytail: a kept cell shows the subtitle line of the sheets it came from; next to an edited sentence that line may be the old one
+    # (the picture is the same). Draw scenes that touch a changed paragraph too if that ever matters.
+    kept = {}
+    if old_numbers and cells:
+        for i, k in keep.items():
+            if no(i) not in drawn: kept.setdefault(no(i), old_numbers[k])
+    json.dump({"scenes": len(scenes), "drawn": drawn, "cells": cells, "errors": errors, "keep": {str(i): k for i, k in keep.items() if no(i) not in drawn},
+               "kept": [[n, o] for n, o in sorted(kept.items())], "sec": round(time.time() - t0, 1)},
               open(os.path.join(out, "redraw.json"), "w", encoding="utf-8"), ensure_ascii=False)
     print(f"점검 시트: 칸 {len(scenes)}개 중 {len(scenes) - len(keep)}개 그림 · 오류 {len(errors)} · {round(time.time() - t0, 1)}초", flush=True)
 

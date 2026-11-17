@@ -697,8 +697,13 @@ export async function processMyinWords() {
     const fixed = [];
     const hasVoice = existsSync(path.join(voiceDir, "voice.wav")), hasTool = existsSync(path.join(timing, "voice_fix.py"));
     if (job.dictionary && existsSync(timing)) writeVoiceDictionaries(timing, job.dictionary);
+    // 바뀐 문단만 다시 듣기 (요청 3번의 5): what the voice before this one was heard as, per paragraph sound — the words and the voice
+    // check keep it for the paragraphs whose sound stays the same (tools/myin_words.py).
+    const out = path.join(work, "voice", videoJob), before = path.join(voiceDir, "before.json");
+    rmSync(before, { force: true });
     if (fixes.length && hasVoice && hasTool) {
       current.step = "voice fix";
+      await runOut(myinPython, [wordsScript, "snap", voiceDir, out, before]);
       for (const fix of fixes) {
         // 테이크 바꾸기 · 앞뒤 쉼 (요청 2번, 2026-11-17): our script with the engine's own joins — another take the voice made, or more pause; no Fish.
         if (fix.take || fix.pause) {
@@ -722,6 +727,8 @@ export async function processMyinWords() {
       const earlier = (Array.isArray(job.earlier) ? job.earlier : []).filter((id) => /^[0-9a-f-]{36}$/.test(id)).map((id) => path.join(myinWork, id));
       const reused = earlier.length && !existsSync(path.join(voiceDir, "voice.wav")) ? reuseEarlierVoice(work, job.paragraphs.map((p) => p.text), earlier) : 0;
       if (reused) console.log(`myin voice: ${reused}/${job.paragraphs.length} paragraphs kept from an earlier voice of this video`);
+      const donor = reused ? earlier.find((dir) => existsSync(path.join(dir, "voice", "os_voice", "speech.txt"))) : null;   // as reuseEarlierVoice picks it
+      if (donor) await runOut(myinPython, [wordsScript, "snap", path.join(donor, "voice", "os_voice"), path.join(donor, "voice", "os_myin"), before]);
       current.step = "narration";
       try { await runAsync(speaker.python, ["stage_voice.py", script, voiceJob], { cwd: path.join(work, "tools", "mindmap_pipeline"), env }); }
       finally { for (const name of readdirSync(voiceDir)) if (name.endsWith(REUSE_MARK)) rmSync(path.join(voiceDir, name), { force: true }); }
@@ -731,7 +738,8 @@ export async function processMyinWords() {
     if (speaker.onPc && existsSync(path.join(timing, "voice_audit.py"))) {
       current.step = "voice check";
       const file = path.join(voiceDir, "audit.json");
-      const result = await runOut(speaker.python, ["voice_audit.py", voiceDir, file], { cwd: timing, env });
+      const some = existsSync(before) && (await runOut(speaker.python, [wordsScript, "audit", voiceDir, before, file], { cwd: timing, env })).ok;
+      const result = some ? { ok: true } : await runOut(speaker.python, ["voice_audit.py", voiceDir, file], { cwd: timing, env });
       try { if (result.ok) audit = JSON.parse(readFileSync(file, "utf8")); } catch { audit = null; }
     }
     const speech = readFileSync(path.join(voiceDir, "speech.txt"), "utf8");
@@ -740,9 +748,9 @@ export async function processMyinWords() {
       throw Object.assign(new Error("speech.txt differs from the OS paragraphs"), { code: "MYIN_PARAGRAPHS_MISMATCH" });
     current.step = "drawing";
     const myinDir = path.join(work, "tools", "myin_pipeline");
-    await runAsync(myinPython, ["stage_words.py", voiceJob, videoJob], { cwd: myinDir, env });
+    const heard = existsSync(before) && (await runOut(myinPython, [wordsScript, "words", voiceDir, out, before], { cwd: myinDir, env })).ok;
+    if (!heard) await runAsync(myinPython, ["stage_words.py", voiceJob, videoJob], { cwd: myinDir, env });
     await runAsync(myinPython, ["stage_subs_myin.py", voiceJob, videoJob, script], { cwd: myinDir, env });
-    const out = path.join(work, "voice", videoJob);
     const bundle = path.join(out, "myin-words.json");
     writeFileSync(bundle, JSON.stringify({ words: JSON.parse(readFileSync(path.join(out, "words.json"), "utf8")),
       subtitlesAss: readFileSync(path.join(out, "subs_myin.ass"), "utf8"), subtitleQc: readFileSync(path.join(out, "subs_qc.md"), "utf8"),
@@ -899,8 +907,14 @@ export async function processMyinPrep() {
     if (job.siteCapture) await runAsync(myinPython, ["capture_site.py"], { cwd: myinDir, env });
     current.step = "drawing";
     const previewEnv = { ...env, STORY: styleStoryboard(videoDir, myinDir, job.style) };
-    const { log, cells, sheets } = await drawSheets(myinDir, videoDir, previewEnv, job.sheetUploadUrls.length);
-    const misses = [...missingMusic, ...log.split("\n").filter((line) => line.includes("못 찾음")), ...await blankScenes(myinDir, videoDir, previewEnv)];
+    // 바뀐 장면만 (요청 3번, 2026-11-17): with the sheets this video had before (the storyboard they show, their check's lines), only the
+    // scenes that resolve otherwise now are drawn and checked for blank screens; any trouble with them and all of it is drawn as before.
+    const old = job.previous ? await oldSheets(job.previous, videoDir, myinDir, job.style).catch((error) => { console.error(`myin sheets before: ${error.message}`); return null; }) : null;
+    const { log, cells, sheets, kept, keep } = old ? await drawSheets(myinDir, videoDir, previewEnv, job.sheetUploadUrls.length, old)
+      .catch(() => drawSheets(myinDir, videoDir, previewEnv, job.sheetUploadUrls.length)) : await drawSheets(myinDir, videoDir, previewEnv, job.sheetUploadUrls.length);
+    const carry = keep ? [path.join(videoDir, "redraw.json"), path.join(videoDir, "lines-before.json")] : [];
+    if (keep) writeFileSync(carry[1], JSON.stringify(job.previous.lines ?? []));
+    const misses = [...missingMusic, ...log.split("\n").filter((line) => line.includes("못 찾음")), ...await blankScenes(myinDir, videoDir, previewEnv, carry)];
     current.step = "upload";
     for (const [i, name] of sheets.entries()) await upload(job.sheetUploadUrls[i], path.join(videoDir, name), "image/png");
     const bundle = path.join(videoDir, "myin-prep.json");
@@ -908,7 +922,7 @@ export async function processMyinPrep() {
     const creditLines = [path.join(bgmDir, "CREDITS.md"), path.join(myinLibrary, "bgm", "CREDITS.md")].filter(existsSync)
       .flatMap((file) => readFileSync(file, "utf8").split("\n")).map((line) => line.replace(/^-\s*/, "").trim());
     const musicCredits = [...new Set(music)].map((file) => creditLines.find((line) => line.startsWith(`${file} `)) ?? `${file} — 출처 기록 없음`);
-    writeFileSync(bundle, JSON.stringify({ misses, sheets: sheets.length, cells, musicCredits, log: log.slice(-20_000),
+    writeFileSync(bundle, JSON.stringify({ misses, sheets: sheets.length, cells, musicCredits, log: log.slice(-20_000), ...(kept?.length ? { kept } : {}),
       ...(soundReport !== undefined ? { storyboard: JSON.parse(readFileSync(storyFile, "utf8")), soundReport } : {}) }));
     await upload(job.bundleUploadUrl, bundle, "application/json");
     await call({ action: "myin_prep_complete", ...lease });
@@ -957,13 +971,22 @@ export async function drawSheets(myinDir, out, env, most, old) {
     const log = await runCapture(myinPython, [redrawScript, "os_myin", ...(old ?? ["-", "-"]), out], { cwd: myinDir, env });
     const report = JSON.parse(readFileSync(path.join(out, "redraw.json"), "utf8"));
     const sheets = Array.from({ length: Math.min(most, Math.ceil(report.scenes / 12)) }, (_, i) => `preview_${String(i + 1).padStart(2, "0")}.png`);
-    return { log, cells: report.cells ?? null, drawn: report.drawn ?? [], errors: report.errors ?? [], sheets };
+    return { log, cells: report.cells ?? null, drawn: report.drawn ?? [], errors: report.errors ?? [], sheets, kept: report.kept ?? [], keep: Object.keys(report.keep ?? {}).length > 0 };
   } catch (error) {
     if (old) throw error;   // a redraw: the sheets stay as they are
     console.error(`myin sheets: our drawing failed, his preview draws them: ${error.message}`);
     const log = await runCapture(myinPython, ["render_myin.py", "os_myin", "preview"], { cwd: myinDir, env });
     return { log, cells: null, drawn: [], errors: [], sheets: readdirSync(out).filter((name) => /^preview_\d+\.png$/.test(name)).sort().slice(0, most) };
   }
+}
+
+/** The sheets drawn before and the storyboard they show, in the video's folder, as drawSheets takes them. */
+async function oldSheets(previous, videoDir, myinDir, style) {
+  const dir = path.join(videoDir, "sheets-old");
+  rmSync(dir, { recursive: true, force: true }); mkdirSync(dir, { recursive: true });
+  for (const [i, url] of previous.sheets.entries()) await fetchTo(url, path.join(dir, `preview_${String(i + 1).padStart(2, "0")}.png`));
+  writeFileSync(path.join(videoDir, "myin_storyboard_sheets.json"), JSON.stringify(previous.storyboard, null, 1));
+  return [styleStoryboard(videoDir, myinDir, style, "myin_storyboard_sheets.json"), dir];
 }
 
 /**
@@ -984,14 +1007,7 @@ export async function processMyinRedraw() {
     writeFileSync(path.join(videoDir, "myin_storyboard.json"), JSON.stringify(job.storyboard, null, 1));
     writeSubtitles(videoDir, job.subtitlesAss);
     await fetchPhotos(job, work, videoDir, env);
-    let old = ["-", "-"];
-    if (job.previous) {
-      const dir = path.join(videoDir, "sheets-old");
-      rmSync(dir, { recursive: true, force: true }); mkdirSync(dir, { recursive: true });
-      for (const [i, url] of job.sheets.entries()) await fetchTo(url, path.join(dir, `preview_${String(i + 1).padStart(2, "0")}.png`));
-      writeFileSync(path.join(videoDir, "myin_storyboard_sheets.json"), JSON.stringify(job.previous, null, 1));
-      old = [styleStoryboard(videoDir, myinDir, job.style, "myin_storyboard_sheets.json"), dir];
-    }
+    const old = job.previous ? await oldSheets({ storyboard: job.previous, sheets: job.sheets }, videoDir, myinDir, job.style) : ["-", "-"];
     const out = path.join(videoDir, "sheets-new");
     const drawEnv = { ...env, STORY: styleStoryboard(videoDir, myinDir, job.style) };
     const { log, cells, drawn, errors, sheets } = await drawSheets(myinDir, out, drawEnv, job.sheetUploadUrls.length, old);
@@ -1014,11 +1030,11 @@ export async function processMyinRedraw() {
  * above the subtitles at most of them is listed like a 「문구 못 찾음」 (so the run stops before any video is drawn). The check never
  * stops a run by failing itself.
  */
-async function blankScenes(myinDir, videoDir, env) {
+async function blankScenes(myinDir, videoDir, env, carry = []) {
   const script = path.join(path.dirname(fileURLToPath(import.meta.url)), "myin_frame_check.py");
   if (!existsSync(script)) return [];
   const out = path.join(videoDir, "frame-check.json");
-  const result = await runOut(myinPython, [script, "os_myin", out, "5"], { cwd: myinDir, env });
+  const result = await runOut(myinPython, [script, "os_myin", out, "5", ...carry], { cwd: myinDir, env });
   try { return result.ok ? JSON.parse(readFileSync(out, "utf8")).lines ?? [] : []; }
   catch { return []; }
 }
@@ -1067,6 +1083,7 @@ print("TIMES " + json.dumps([[s["t0"], s["t1"]] for s in M.resolve(st, w)]))`;
 
 // 문장 하나 고치기 (요청 2번, 2026-11-17): our script next to this file, run in the voice's engine folder — takes to listen to, a take swapped, a pause added.
 const voiceEditScript = path.join(path.dirname(fileURLToPath(import.meta.url)), "myin_voice_edit.py");
+const wordsScript = path.join(path.dirname(fileURLToPath(import.meta.url)), "myin_words.py");
 
 /** 테이크 고르기: one sentence's takes from a voice this PC made, up to the OS to listen to (nothing paid). */
 export async function processMyinTakes() {

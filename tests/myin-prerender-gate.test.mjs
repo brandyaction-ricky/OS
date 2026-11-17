@@ -29,7 +29,7 @@ print(sorted({f["scene"] for f in F.flat_moments(scenes, M, 5)}))`;
 
 test("the render PC adds blank scenes to the preview's misses, and never stops a run by failing itself", () => {
   const worker = readFileSync(new URL("../tools/youtube-media-worker.mjs", import.meta.url), "utf8");
-  assert.match(worker, /\.\.\.log\.split\("\\n"\)\.filter\(\(line\) => line\.includes\("못 찾음"\)\), \.\.\.await blankScenes\(myinDir, videoDir, previewEnv\)\]/);
+  assert.match(worker, /\.\.\.log\.split\("\\n"\)\.filter\(\(line\) => line\.includes\("못 찾음"\)\), \.\.\.await blankScenes\(myinDir, videoDir, previewEnv, carry\)\]/);
   const blank = worker.slice(worker.indexOf("async function blankScenes"), worker.indexOf("export async function processMyinCta"));
   assert.match(blank, /if \(!existsSync\(script\)\) return \[\];/);
   assert.match(blank, /result\.ok \? JSON\.parse\(readFileSync\(out, "utf8"\)\)\.lines \?\? \[\] : \[\]/);

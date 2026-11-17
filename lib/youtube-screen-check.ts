@@ -88,3 +88,17 @@ export function groupScreenIssues(scenes: YpScreenCheck["scenes"]) {
   }
   return [...groups.values()].sort((a, b) => a.scenes.length - b.scenes.length || a.scenes[0] - b.scenes[0]);
 }
+
+/**
+ * 바뀐 장면만 (요청 3번, 2026-11-17): sheets drawn from earlier ones (prepared.kept, [now, then]) whose check is the one stored — GPT looks
+ * only at the sheets with a scene drawn again, and the stored lines of the kept scenes come along under their numbers now. Null: all of it.
+ */
+export function carriedScreens(prepared: { kept?: [number, number][]; from?: { runId: string; at: string }; cells?: number[] } | undefined,
+  stored: YpScreenCheck, urls: string[]) {
+  if (!prepared?.kept?.length || !prepared.from || !prepared.cells || stored.state !== "done" || stored.runId !== prepared.from.runId || stored.sheetsAt !== prepared.from.at) return null;
+  const now = new Map(prepared.kept), then = new Map(prepared.kept.map(([n, o]) => [o, n] as const));
+  const cells = prepared.cells;
+  const fresh = [...new Set(cells)].filter((n) => !now.has(n));
+  return { fresh, kept: now.size, urls: urls.filter((_, k) => cells.slice(k * 12, k * 12 + 12).some((n) => !now.has(n))),
+    carried: stored.scenes.flatMap((item) => then.has(item.scene) ? [{ ...item, scene: then.get(item.scene)! }] : []), note: stored.note };
+}
