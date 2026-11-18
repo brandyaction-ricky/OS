@@ -22,3 +22,17 @@ test("the request comment box starts taller and grows with what is written", () 
   assert.match(css, /\.dev-comment-form textarea, \.dev-comment-edit textarea \{ min-height: 120px; max-height: 50vh; field-sizing: content; \}/);
   assert.equal((read("components/project-hub-workspace.tsx").match(/rows=\{5\} maxLength=\{5000\}/g) ?? []).length, 2);
 });
+
+// 최종 검토 전체화면 (직원 요청 2026-11-18): one button at the right end of the play bar fills the screen with the picture and its controls.
+test("최종 검토 has a fullscreen button that fills the screen with the player, and an iPhone falls back to the video's own player", () => {
+  const final = read("components/youtube-process-final.tsx");
+  assert.match(final, /<div className="yp-player" ref=\{playerBox\}>/);
+  assert.match(final, /if \(document\.fullscreenElement\) \{ void document\.exitFullscreen\(\); return; \}/);
+  assert.match(final, /if \(box\?\.requestFullscreen\) void box\.requestFullscreen\(\)\.catch\(\(\) => undefined\);/);
+  assert.match(final, /\?\.webkitEnterFullscreen\?\.\(\);/);
+  assert.match(final, /className="yp-cb yp-fs" aria-label=\{full \? "전체화면 나가기" : "전체화면"\}/);
+  const css = read("components/youtube-process.css");
+  assert.match(css, /\.yp-ctrl \.yp-fs\{margin-left:auto\}/, "right end even when the controls wrap on a phone");
+  assert.match(css, /\.yp-player:fullscreen \.yp-stage:not\(\.yp-compare\) \.yp-frame\{width:min\(100cqw,calc\(100cqh \* 16 \/ 9\)\);max-height:none\}/, "the picture keeps 16:9 so drawn marks stay on it");
+  assert.match(css, /\.yp-player:fullscreen \.yp-ctrl2/);
+});
