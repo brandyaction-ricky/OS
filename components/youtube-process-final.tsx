@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
-import { ArrowUpRight, ChevronDown, ChevronUp, Columns2, Download, Eraser, MapPin, MessageSquare, Paperclip, Pause, Pencil, Play, Search, Square, ThumbsUp, Trash2, Upload, Waypoints } from "lucide-react";
+import { ArrowUpRight, ChevronDown, ChevronUp, Columns2, Download, Eraser, MapPin, Maximize, MessageSquare, Minimize, Paperclip, Pause, Pencil, Play, Search, Square, ThumbsUp, Trash2, Upload, Waypoints } from "lucide-react";
 import { personName, stepHref } from "@/lib/youtube-process/project";
 import { finalPair, reviewOkAt, SLOTS, uploadFinal, type YpSlot } from "@/lib/youtube-process/stages";
 import { GateBanner, gateAction, gateSub, LockedStep, ReplyForm, Subject, useGate, useYpBundle, YpFrame } from "./youtube-process-frame";
@@ -186,6 +186,21 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [view]);
+  // 전체화면 (2026-11-18 직원 요청): the player — picture and its controls — fills the screen on a computer or phone; Esc or the same button leaves.
+  // An iPhone has no fullscreen for a page part, only for the video itself (its own player).
+  const playerBox = useRef<HTMLDivElement>(null);
+  const [full, setFull] = useState(false);
+  useEffect(() => {
+    const onChange = () => setFull(Boolean(document.fullscreenElement) && document.fullscreenElement === playerBox.current);
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+  const fullscreen = () => {
+    if (document.fullscreenElement) { void document.exitFullscreen(); return; }
+    const box = playerBox.current;
+    if (box?.requestFullscreen) void box.requestFullscreen().catch(() => undefined);
+    else (video.current as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null)?.webkitEnterFullscreen?.();
+  };
   const goTo = () => { const seconds = jump === null ? null : parseClock(jump); if (seconds !== null) { video.current?.pause(); seek(Math.min(seconds, duration || seconds)); } setJump(null); };
   const toggle = () => { const el = video.current; if (!el || tool) return; if (el.paused) { void el.play(); setRange(null); setDraftMarks([]); } else el.pause(); };
   const at = (clientX: number) => { const rect = bar.current!.getBoundingClientRect(); return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * (duration || 0); };
@@ -250,10 +265,10 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
         <button type="button" className="yp-btn yp-sm yp-pc-only" onClick={() => setHidePanel(value => !value)}>{hidePanel ? "피드백 보이기" : "피드백 숨기기"}</button>
         <div className="yp-seg2 yp-sm yp-pc-only" role="group" aria-label="플레이어 크기"><button type="button" className={size === "s" ? "yp-on" : ""} onClick={() => setSize("s")}>작게</button><button type="button" className={size === "l" ? "yp-on" : ""} onClick={() => setSize("l")}>크게</button></div></div>
       <div className={`yp-rv yp-sz-${size}${hidePanel ? " yp-nop" : ""}`}><div>
-        <div className="yp-player">
+        <div className="yp-player" ref={playerBox}>
           {short ? null : <div className="yp-vtabs"><button type="button" className={view === "video" ? "yp-on" : ""} onClick={() => setView("video")}>영상</button><button type="button" className={view === "thumb" ? "yp-on" : ""} onClick={() => setView("thumb")}>썸네일</button></div>}
           {view === "video" ? <>
-            <div className={compareVer !== null ? "yp-compare" : undefined}>
+            <div className={`yp-stage${compareVer !== null ? " yp-compare" : ""}`}>
             <div className={`yp-frame${short ? " yp-vert" : ""}`} onClick={toggle} role="button" tabIndex={0} aria-label={playing ? "멈추고 쓰기" : "재생"} onKeyDown={event => { if (event.key === " " || event.key.toLowerCase() === "f") { event.preventDefault(); toggle(); } }}>
               {src ? <video ref={video} src={`${src}#t=0.1`} preload="metadata" style={{ width: "100%", height: "100%", display: "block" }} onLoadedData={() => setDrawn(map => ({ ...map, [src]: true }))} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
                 onTimeUpdate={event => setTime(event.currentTarget.currentTime)} onLoadedMetadata={event => { setDuration(event.currentTarget.duration); event.currentTarget.playbackRate = rate; }} />
@@ -287,7 +302,8 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
                 {hover !== null && duration ? <span className="yp-hovt" style={{ left: `${hover / duration * 100}%` }}>{fmt(hover)}</span> : null}</div>
               {jump !== null ? <input className="yp-in yp-tm-in" autoFocus value={jump} onFocus={event => event.currentTarget.select()} onChange={event => setJump(event.target.value)} onBlur={goTo} aria-label="갈 시각 (예: 3:20)" placeholder="3:20"
                   onKeyDown={event => { if (event.key === "Enter") goTo(); if (event.key === "Escape") setJump(null); }} />
-                : <button type="button" className="yp-tm yp-tm-btn" title="눌러서 갈 시각을 써요 (예: 3:20)" onClick={() => setJump(fmt(time))}>{fmt(time)} / {fmt(duration)}</button>}</div>
+                : <button type="button" className="yp-tm yp-tm-btn" title="눌러서 갈 시각을 써요 (예: 3:20)" onClick={() => setJump(fmt(time))}>{fmt(time)} / {fmt(duration)}</button>}
+              <button type="button" className="yp-cb yp-fs" aria-label={full ? "전체화면 나가기" : "전체화면"} title={full ? "전체화면 나가기 (Esc)" : "전체화면"} onClick={fullscreen}>{full ? <Minimize size={16} /> : <Maximize size={16} />}</button></div>
             <div className="yp-ctrl2"><label className="yp-vsel">버전 <select value={ver} onChange={event => { setVerSel(Number(event.target.value)); setRange(null); setTime(0); }} aria-label="영상 버전">
               {[...finals].reverse().map(item => <option key={item.v} value={item.v}>v{item.v}{item.v === latest ? " (최신)" : ""} · {item.source === "myin" || item.source === "short" ? "자동 제작" : item.name}{item.v === active?.v ? " · 올라갈 영상" : item.source !== "upload" && okAt && item.at > okAt ? " · 컨펌 뒤 후보" : ""}</option>)}</select></label>
               <label className="yp-vsel">속도 <select value={rate} onChange={event => { const value = Number(event.target.value); setRate(value); if (video.current) video.current.playbackRate = value; if (videoB.current) videoB.current.playbackRate = value; }} aria-label="재생 속도">
