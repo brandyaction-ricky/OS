@@ -29,7 +29,8 @@ export function useCostModels() {
   const [models, setModels] = useState(DEFAULT_COST_MODELS);
   useEffect(() => {
     if (demo || !accessToken) return;
-    loaded ??= apiRequest<{ models: CostModels }>("/api/v1/costs", { token: accessToken }).then(result => result.models)
+    // A reply without models (an older server, a test fixture) keeps the defaults instead of leaving every price undefined.
+    loaded ??= apiRequest<{ models?: Partial<CostModels> }>("/api/v1/costs", { token: accessToken }).then(result => ({ ...DEFAULT_COST_MODELS, ...result?.models }))
       .catch(() => { loaded = null; return DEFAULT_COST_MODELS; });
     let live = true;
     void loaded.then(next => { if (live) setModels(next); });

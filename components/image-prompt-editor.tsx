@@ -5,6 +5,8 @@ import type {CreativeVariant} from "@/lib/image-creative/model";
 import {isWarehouseFormat} from "@/lib/image-creative/formats";
 import {LegacySavedPng} from "./legacy-saved-png";
 import {WarehouseVariantPreview} from "./warehouse-variant-preview";
+import {CostTag, useCostModels} from "./cost-notice";
+import {imageEstimate} from "@/lib/cost";
 
 export type ImageEditProposal = NonNullable<CreativeVariant["promptEdit"]> & {baseId:string;url:string;sizeNote?:string};
 export type ImagePromptEditorProps = {
@@ -37,6 +39,7 @@ export function ImagePromptEditor({projectId,base,assetUrl,referenceUrl,detailUr
     catch(cause){setError(cause instanceof Error ? cause.message : "수정본을 저장하지 못했어요.");}
     finally{setBusy(false);onBusy?.(false);}
   }
+  const cost=imageEstimate(useCostModels().image,"high",1);
   return <div className="ic-prompt-editor">
     <h3>말로 수정하기</h3>
     <p>카피, 숫자, 이미지 속 문구까지 바꿀 내용을 적어 주세요. 이 시안 한 장만 수정합니다.</p>
@@ -47,6 +50,7 @@ export function ImagePromptEditor({projectId,base,assetUrl,referenceUrl,detailUr
     <div className="ic-row">
       {demo && examplePrompt && <button className="secondary-button" type="button" disabled={busy} onClick={()=>setPrompt(examplePrompt)}>예시 문구 넣기</button>}
       <button type="button" className="primary-button" disabled={busy || !sourceReady || !prompt.trim()} onClick={()=>void request()}>{busy ? "수정본 준비 중…" : demo ? "수정 예시 확인" : "AI로 수정본 만들기"}</button>
+      {!demo && <CostTag kind="paid" amount={cost}/>}
     </div>
     {error && <p role="alert">{error}</p>}
     <div className="ic-prompt-comparison">

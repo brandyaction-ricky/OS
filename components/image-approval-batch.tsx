@@ -8,6 +8,8 @@ import { designSummary, LegacyPreview, SafeZoneOverlay } from "./image-design-ed
 import { WarehouseVariantPreview } from "./warehouse-variant-preview";
 import { LegacySavedPng } from "./legacy-saved-png";
 import { MacReviewPreview } from "./mac-review-preview";
+import { CostTag, useCostModels } from "./cost-notice";
+import { imageEstimate } from "@/lib/cost";
 
 export type RenderTarget = "render-pc" | "local";
 export const targetNames = { "render-pc": "공용 맥미니", local: "내 Mac" } as const;
@@ -73,6 +75,9 @@ export function ImageApprovalBatch({ batch, index, variants, assets, projectId, 
   const aiReference=variants.some(v=>v.referenceLayout && (!confirmed || v.referenceLayout.reproduction==="image-ai"));
   const generationPending=aiReference && variants.some(v=>!v.referenceArtwork && !v.promptEdit);
   const generationActive=generating || (referenceRun?.status==="active" && referenceRun.expiresAt>Date.now() && variants.some(v=>v.id===referenceRun.variantId));
+  // One high-quality company image AI call per draft still to make; up to 3 attached images each (original, product material, guide).
+  const imageModel=useCostModels().image;
+  const generationCost=variants.filter(v=>v.referenceLayout && !v.referenceArtwork && !v.promptEdit).length*(imageEstimate(imageModel,"high",3) ?? 0);
   const generationFailed=referenceRun?.status==="failed" && variants.some(v=>v.id===referenceRun.variantId && !v.referenceArtwork && !v.promptEdit);
   const photoSlot=variants.length>0 && variants.every(v=>v.referenceLayout?.photo);
   const photoPending=!aiReference && photoSlot && variants.some(v=>!v.asset);
@@ -122,6 +127,7 @@ export function ImageApprovalBatch({ batch, index, variants, assets, projectId, 
         <p role="status">{generationActive ? "원본 디자인으로 시안을 만들고 있어요. 완료된 시안부터 아래에 표시합니다." : generationFailed ? "생성이 중단됐어요. 완료된 시안은 보존됩니다. 상태를 확인한 뒤 남은 시안만 다시 요청할 수 있어요." : "아직 시안을 만들지 않았어요. 상품 자료 없이도 원본의 그림과 장식을 유지해 만들 수 있어요."}</p>
         <div className="ic-row"><button type="button" className="primary-button" disabled={busy || generationActive || demo || !generateReference}
           onClick={()=>generateReference?.(batch.id)}>{generationActive ? "시안 만드는 중…" : generationFailed ? "남은 시안 다시 만들기" : "레퍼런스로 시안 만들기"}</button>
+          {!demo && generationCost>0 && <CostTag kind="paid" amount={generationCost} upTo/>}
           {refresh && <button type="button" className="secondary-button" disabled={busy} onClick={refresh}>상태 새로고침</button>}
         </div>
       </>}
