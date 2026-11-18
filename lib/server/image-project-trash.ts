@@ -41,6 +41,7 @@ export async function actOnImageTrash(actor:RequestActor,id:string,input:z.infer
   const meta=imageMeta(record);
   const archivedAt=trash ? new Date().toISOString() : null;
   const next=trash ? {...meta,lifecycleRevision:randomUUID(),renders:cancelImageRenders(meta.renders),
+    ...(meta.referenceRun?.status==="active" && {referenceRun:{...meta.referenceRun,status:"failed" as const,expiresAt:0,failure:IMAGE_TRASH_REASON}}),
     ...(meta.promptEditRun?.status==="active" && {promptEditRun:{...meta.promptEditRun,status:"failed" as const,expiresAt:0,failure:IMAGE_TRASH_REASON}})} : meta;
   let update=service.from("os_records").update({archived_at:archivedAt,metadata:next,updated_by:actor.ownerId})
     .eq("id",id).eq("owner_id",actor.ownerId).eq("record_type","content_package").eq("metadata->>kind",IMAGE_CREATIVE_KIND).eq("version",input.version);

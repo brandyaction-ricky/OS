@@ -30,7 +30,8 @@ export async function proposeImagePromptEdit(actor:RequestActor,projectId:string
   const base=meta.state.variants.find(row=>row.id===input.variantId);
   if (!base) throw new ApiError(404,"IMAGE_VARIANT_NOT_FOUND","수정할 소재를 다시 선택해 주세요.");
   if (!canPreviewVariant(meta,base.id)) throw new ApiError(409,"IMAGE_COPY_APPROVAL_REQUIRED","전체 카피 승인 후 수정을 요청해 주세요.");
-  if (meta.promptEditRun?.status==="active" && meta.promptEditRun.expiresAt>Date.now())
+  if ((meta.promptEditRun?.status==="active" && meta.promptEditRun.expiresAt>Date.now()) ||
+      (meta.referenceRun?.status==="active" && meta.referenceRun.expiresAt>Date.now()))
     throw new ApiError(409,"IMAGE_PROMPT_BUSY","이 작업의 AI 수정이 진행 중이에요. 완료 후 새로 불러와 주세요.");
   if (!process.env.OPENAI_API_KEY?.trim()) throw new ApiError(503,"OPENAI_NOT_CONFIGURED","OS의 OpenAI 연결이 없어 AI 이미지 수정을 실행하지 않았어요.");
   const sourceHash=imagePromptSourceHash(base);

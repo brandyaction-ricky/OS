@@ -4,8 +4,7 @@ import { useRef, useState } from "react";
 import { apiRequest, ApiRequestError } from "@/lib/api-client";
 import { CREATIVE_SIZES, IMAGE_FORMATS, isImageFormat, isWarehouseFormat, type CreativeSize, type ImageFormatId } from "@/lib/image-creative/formats";
 import { referenceSnapshot, warehouseDocumentUrl } from "@/lib/image-creative/reference-canon";
-import { isReferenceLayout, usesReferenceDetailAsset, referenceBrandProblem, type ReferenceLayout } from "@/lib/image-creative/reference-layout";
-import { LegacyPreview } from "./image-design-editor";
+import { isReferenceLayout, usesReferenceDetailAsset, type ReferenceLayout } from "@/lib/image-creative/reference-layout";
 import { ReferenceLayoutEditor, prepareReferenceDesign, warehouseReferenceFile } from "./reference-layout-editor";
 import { useImageReferenceCatalog } from "./use-image-reference-catalog";
 import { selectedReferencePlan } from "@/lib/image-creative/direction";
@@ -34,16 +33,6 @@ function closestSize({w,h}:ReferenceLayout["source"]):CreativeSize {
 export function ImageReferenceSteps({current}:{current:number}) {
   return <ol className="ic-reference-steps" aria-label="제작 순서">{steps.map((label,index)=>
     <li key={label} aria-current={current===index ? "step" : undefined}>{label}</li>)}</ol>;
-}
-
-function ReferenceComparison({sourceUrl,photo,detailUrl,variant,caption}:{sourceUrl:string;photo?:string;detailUrl?:string;variant:CreativeVariant;caption:string}) {
-  return <div className="ic-reference-comparison" role="group" aria-label="원본 광고와 교체 시안">
-    <figure><figcaption>원본 광고</figcaption>
-      {/* eslint-disable-next-line @next/next/no-img-element -- actual project reference */}
-      <img alt="선택한 레퍼런스 원본" src={sourceUrl}/></figure>
-    <figure><figcaption>{caption}</figcaption>
-      <LegacyPreview variant={variant} url={photo} detailUrl={detailUrl} referenceUrl={sourceUrl}/></figure>
-  </div>;
 }
 
 export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sample,recheckProduct,localDirectionPlanner,demo,busy,createProject,patch,receive,run,refresh,
@@ -137,7 +126,6 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
   const photo = bundle?.assets.find(asset=>asset.path===assetPaths.at(-1));
   const needsDetail = usesReferenceDetailAsset(referenceLayout);
   const detail = needsDetail ? bundle?.assets.find(asset=>asset.path===detailAssetPath && asset.path!==referenceLayout?.source.path) : undefined;
-  const original = bundle?.assets.find(a=>a.path===referenceLayout?.source.path);
   const hasWarehouseImage = Boolean(selectedEntry?.originalImageUrl || selectedEntry?.archivedThumbnail || selectedEntry?.thumbnail);
   // 레퍼런스 창고 gallery: one group at a time; a search looks through every group.
   const galleryEntries = warehouse.catalog?.entries ?? [];
@@ -153,7 +141,7 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
     try {
       const file=await warehouseReferenceFile(entry);
       await upload(file,async asset=>{
-        const layout=await prepareReferenceDesign(asset,entry.masterRecipe,brief.brand);
+        const layout=await prepareReferenceDesign(asset);
         setReferenceLayout(layout);setReferenceSize(undefined);setDetailAssetPath(undefined);setPicked("reference_image");
       });
     } catch (cause) {
@@ -189,7 +177,6 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
   });
   const format = approved?.formatIds?.[0] ?? variants[0]?.formatId;
   const copyLayout = approved?.referenceLayout ?? variants[0]?.referenceLayout;
-  const copyPhotoPath = approved?.assetPaths?.[0] ?? variants[0]?.asset?.path;
   const copyDetailPath = approved?.detailAssetPath ?? variants[0]?.detailAsset?.path;
   const copyDetail = bundle?.assets.find(asset=>asset.path===copyDetailPath);
   const editingCopy = step===3 && bundle && saved?.appeals && isImageFormat(format);
@@ -291,9 +278,8 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
     <label className="secondary-button">이미지 올리기<input className="ic-sr" type="file" accept="image/png,image/jpeg" disabled={referenceBusy}
       onChange={e=>{upload(e.target.files?.[0] ?? null);e.target.value="";}}/></label>
   </fieldset>;
-  const brandIssue=referenceLayout ? referenceBrandProblem(referenceLayout,brief.brand) : undefined;
   const referenceReady=!!chosenRef && (custom
-    ? isReferenceLayout(referenceLayout) && !brandIssue && (!needsDetail || !!detail) && (!photo || photo.path!==referenceLayout.source.path)
+    ? isReferenceLayout(referenceLayout) && (!needsDetail || !!detail) && (!photo || photo.path!==referenceLayout.source.path)
     : !chosenRef.assetRequired || !!photo || (!demo && picked!=="report_crop"));
   const referenceDialogView = <dialog ref={referenceDialog} className="ic-flow-reference-dialog" onClose={()=>setEnlargedReference(undefined)}>
     <div><strong>{enlargedReference?.name}</strong><button className="secondary-button" type="button" onClick={()=>referenceDialog.current?.close()}>닫기</button></div>
@@ -422,31 +408,25 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
         {!galleryShown.length && <p role="status">조건에 맞는 레퍼런스가 없어요. 검색어나 묶음을 바꿔 주세요.</p>}
         {galleryEntry && <div className="ic-row"><button type="button" className="primary-button" disabled={referenceBusy} onClick={()=>void importWarehouseSource(galleryEntry)}>
           {preparing ? "원본을 준비하고 있어요" : "이 디자인으로 시작하기"}</button>
-          <span className="ic-muted">{galleryEntry.id} · {galleryEntry.name} 원본에서 바꿀 자리를 자동으로 잡아요.</span></div>}
+          <span className="ic-muted">{galleryEntry.id} · {galleryEntry.name} 원본 전체를 기준으로 디자인을 유지해요.</span></div>}
         {galleryEntry && referenceError && <p role="alert">{referenceError}</p>}
         {referenceDialogView}
         <h3>다른 방법으로 만들기</h3>
       </div>}
       <button type="button" className="secondary-button" disabled={referenceBusy} aria-pressed={custom}
         onClick={()=>{setReferenceError("");setPicked("reference_image");}}>새 레퍼런스 이미지 사용</button>
-      {custom && <ReferenceLayoutEditor brand={brief.brand} onPreparing={setPreparing} layout={referenceLayout} onChange={next=>{
+      {custom && <ReferenceLayoutEditor onPreparing={setPreparing} layout={referenceLayout} onChange={next=>{
         if(next.source.path!==referenceLayout?.source.path){setReferenceSize(undefined);setDetailAssetPath(undefined);}
         setReferenceLayout(next);
       }}
-        assets={bundle?.assets ?? []} detail={detail} onDetail={setDetailAssetPath} replacement={photo} onPhoto={path=>setAssetPaths(path?[path]:[])}
+        assets={bundle?.assets ?? []} replacement={photo} onPhoto={path=>setAssetPaths(path?[path]:[])}
         upload={upload} entries={warehouse.catalog?.entries ?? []} disabled={referenceBusy}/>}
-      {custom && original && referenceLayout && (photo || !referenceLayout.photo) && (!needsDetail || detail) && saved.appeals?.[0] &&
-        <ReferenceComparison sourceUrl={original.url} detailUrl={detail?.url} photo={referenceLayout.photo ? photo?.url : undefined} caption="교체 시안 · 첫 소구점"
-          variant={{formatId:"reference_image",formatVersion:1,referenceLayout,detailAsset:detail,brand:referenceLayout.master?.brandSlots?.length ? brief.brand : undefined,size:outputSize,asset:referenceLayout.photo ? photo : undefined,appeal:saved.appeals[0],
-            copy:copyDraft?.[0] ?? {headline:saved.appeals[0].meaning,body:"",cta:""},id:"draft",by:"",at:""}}/>}
-      {custom && referenceLayout?.photo && !photo && <p className="ic-muted">사진은 지금 골라도 되고, 카피를 확정한 뒤 골라도 돼요.</p>}
-      {custom && brandIssue && <p role="alert">{brandIssue}</p>}
       {custom && referenceLayout && <label className="ic-field">출력 규격<select className="field" disabled={referenceBusy} value={outputSize}
         onChange={e=>setReferenceSize(e.target.value as CreativeSize)}>{(Object.keys(CREATIVE_SIZES) as CreativeSize[]).map(key=>
           <option key={key} value={key}>{CREATIVE_SIZES[key].label} · {CREATIVE_SIZES[key].width} × {CREATIVE_SIZES[key].height}{key===suggestedSize?" · 원본 비율 추천":""}</option>
         )}</select>
         {Math.abs(referenceLayout.source.w/referenceLayout.source.h-CREATIVE_SIZES[outputSize].width/CREATIVE_SIZES[outputSize].height)>.001 &&
-          <small>{referenceLayout.composition ? "선택한 규격에 맞춰 사진과 문구의 위치를 다시 계산합니다." : "원본 전체를 유지하고 비율이 다른 부분에는 여백이 생깁니다."}</small>}
+          <small>선택한 광고 규격으로 생성하며, 원본과 다른 비율은 결과를 확인해 주세요.</small>}
       </label>}
       {custom && <button type="button" className="secondary-button" disabled={referenceBusy} onClick={()=>setPicked(undefined)}>디자인 견본으로 돌아가기</button>}
       {!custom && <ImageFormatPicker reference recommendations={exampleRefs.filter(id=>availableIds.includes(id)).map(id=>({id,reason:IMAGE_FORMATS[id].when}))}
@@ -473,11 +453,10 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
       <div className="ic-row">{!hasWarehouseImage && <button type="button" className="primary-button" disabled={referenceBusy || !referenceReady}
         onClick={chooseReference}>카피 작성하기</button>}{!approved && <button type="button" className="secondary-button" disabled={referenceBusy} onClick={backToAppeals}>소구점 변경</button>}</div>
     </section>}
-    {editingCopy && <ReferenceCopyEditor key={JSON.stringify([format,saved.appeals,batch?.id ?? approved])} format={format} brand={bundle.state.brief.brand} size={approved?.size ?? variants[0]?.size ?? saved.size} referenceName={warehouseChoices.find(entry=>entry.id===approvedPreviewReference?.id)?.name ?? approvedPreviewReference?.name ?? saved.referenceSnapshot?.name}
+    {editingCopy && <ReferenceCopyEditor key={JSON.stringify([format,saved.appeals,batch?.id ?? approved])} format={format} size={approved?.size ?? variants[0]?.size ?? saved.size} referenceName={warehouseChoices.find(entry=>entry.id===approvedPreviewReference?.id)?.name ?? approvedPreviewReference?.name ?? saved.referenceSnapshot?.name}
       flowPreview={!!preview} referenceImageUrl={approvedPreviewReference?.imageUrl}
       appeals={saved.appeals!} draft={copyDraft} initial={copyDraft ?? variants.map(v=>v.copy)} busy={busy} canSuggest={!preview && !batch && (!demo || !!localDirectionPlanner)}
       sourceUrl={format==="reference_image" ? bundle.assets.find(a=>a.path===copyLayout?.source.path)?.url : undefined}
-      layout={copyLayout} detail={copyDetail} photo={bundle.assets.find(a=>a.path===copyPhotoPath)}
       hasBody={format!=="reference_image" || Boolean(copyLayout?.body)}
       needsPhoto={!batch && format!=="reference_image" && !!IMAGE_FORMATS[format].assetRequired && !approved?.assetPaths?.length} pending={!!pendingCopy}
       suggestCopy={suggestCopy} saveDraft={saveDraft} confirm={confirm} run={run} refresh={refresh}
@@ -485,15 +464,13 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
   </>;
 }
 
-function ReferenceCopyEditor({format,brand,size,referenceName,sourceUrl,layout,photo,detail,hasBody,appeals,draft,initial,busy,canSuggest,needsPhoto,pending,suggestCopy,saveDraft,confirm,run,refresh,changeReference,flowPreview,referenceImageUrl}:{
-  layout?:ReferenceLayout;brand?:string;photo?:ImageProjectBundle["assets"][number];detail?:ImageProjectBundle["assets"][number];
+function ReferenceCopyEditor({format,size,referenceName,sourceUrl,hasBody,appeals,draft,initial,busy,canSuggest,needsPhoto,pending,suggestCopy,saveDraft,confirm,run,refresh,changeReference,flowPreview,referenceImageUrl}:{
   format:ImageFormatId;referenceName?:string;sourceUrl?:string;hasBody:boolean;size:ImageFormatPlan["size"];appeals:Appeal[];draft?:AdCopy[];initial:AdCopy[];busy:boolean;canSuggest:boolean;needsPhoto:boolean;pending:boolean;
   suggestCopy:()=>Promise<AdCopy[]|undefined>;saveDraft:(copies:AdCopy[])=>Promise<void>;confirm:(copies:AdCopy[])=>Promise<void>;run:Props["run"];refresh:()=>void;changeReference?:()=>void;
   flowPreview?:boolean;referenceImageUrl?:string;
 }) {
   const [rows,setRows] = useState(appeals.map((_a,i)=>initial[i] ?? {headline:"",body:"",cta:""}));
   const [cta,setCta] = useState(initial[0]?.cta ?? "");
-  const [previewIndex,setPreviewIndex]=useState(0);
   const spec=IMAGE_FORMATS[format];
   const copies = rows.map(row=>({...row,cta:cta.trim()}));
   const isSaved = draft?.length === copies.length && copies.every((row,i)=>
@@ -504,15 +481,8 @@ function ReferenceCopyEditor({format,brand,size,referenceName,sourceUrl,layout,p
     {flowPreview && <p className="ic-muted">선택한 소구점을 제목으로 넣은 예시 카피입니다. 전체 문구를 확인·수정하고 확정하면 시안으로 이어집니다.</p>}
     <div className="ic-reference-summary">{format!=="reference_image" && <ImageFormatSample id={format} size={size}/>}<strong>{referenceName ?? spec.name}</strong>
       {/* eslint-disable-next-line @next/next/no-img-element -- chosen original, not a generated result */}
-      {flowPreview && referenceImageUrl && <img className="ic-flow-copy-reference" src={referenceImageUrl} alt="선택한 원본 디자인"/>}
+      {(flowPreview ? referenceImageUrl : sourceUrl) && <img className="ic-flow-copy-reference" src={flowPreview ? referenceImageUrl : sourceUrl} alt="선택한 원본 디자인"/>}
       {changeReference && <button className="secondary-button" type="button" disabled={busy} onClick={()=>flowPreview ? void run(async()=>{await saveDraft(copies);changeReference();}) : changeReference()}>{flowPreview ? "레퍼런스로 돌아가기" : "레퍼런스 변경"}</button>}</div>
-    {!flowPreview && layout && sourceUrl && (!layout.photo || photo) && (!usesReferenceDetailAsset(layout) || detail) && <div>
-      {copies.length>1 && <label className="ic-field">확인할 소구점<select className="field" value={previewIndex}
-        onChange={e=>setPreviewIndex(Number(e.target.value))}>{appeals.map((a,i)=><option key={a.id} value={i}>{a.meaning}</option>)}</select></label>}
-      <ReferenceComparison sourceUrl={sourceUrl} detailUrl={detail?.url} photo={layout.photo ? photo?.url : undefined} caption="교체 시안 · 작성 중인 카피"
-        variant={{formatId:"reference_image",formatVersion:1,referenceLayout:layout,detailAsset:detail,brand:layout.master?.brandSlots?.length ? brand : undefined,size,asset:layout.photo ? photo : undefined,
-          appeal:appeals[previewIndex],copy:copies[previewIndex],id:"draft",by:"",at:""}}/>
-    </div>}
     {pending ? <div className="ic-row" role="status">AI가 초안을 준비하고 있어요.<button className="secondary-button" type="button" onClick={refresh}>상태 새로고침</button></div>
       : canSuggest && <button className="secondary-button" type="button" disabled={busy || needsPhoto} onClick={()=>void run(async()=>{const values=await suggestCopy();
         if(values){setRows(values);setCta(values[0]?.cta ?? "");}})}>{needsPhoto?"공통 이미지를 먼저 선택해 주세요":"AI 카피 초안 받기"}</button>}
@@ -530,7 +500,7 @@ function ReferenceCopyEditor({format,brand,size,referenceName,sourceUrl,layout,p
       <button type="button" className="secondary-button" disabled={busy || pending || isSaved}
         onClick={()=>void run(()=>saveDraft(copies))}>초안 저장</button>
       {isSaved && <span role="status">초안 저장됨 · 카피 승인 대기</span>}
-      <button className="primary-button" disabled={busy || pending || needsPhoto || rows.some(r=>!r.headline.trim()) || !cta.trim()}>{flowPreview ? "카피 확정 · 시안 보기" : "카피 확정 · 디자인 수정하기"}</button>
+      <button className="primary-button" disabled={busy || pending || needsPhoto || rows.some(r=>!r.headline.trim()) || !cta.trim()}>{flowPreview ? "카피 확정 · 시안 보기" : format==="reference_image" ? "카피 확정 · 시안 만들기로" : "카피 확정 · 디자인 수정하기"}</button>
     </div>
   </form>;
 }

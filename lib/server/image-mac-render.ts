@@ -52,7 +52,7 @@ async function claim(computer: Computer, rendererVersion: number) {
         const run = meta.renders?.find(r => r.target === computer.target && r.status === status &&
           (status === "queued" || (r.expires ?? 0) <= Date.now()) && isApprovedRender(meta, r) &&
           meta.state.variants.every(v => !r.variantIds.includes(v.id) ||
-            rendererVersion >= (v.promptEdit ? 9 : usesReferencePhotoStyling(v.referenceLayout) ? 8 : usesReferenceDetailRendering(v.referenceLayout) ? 7 : v.referenceLayout?.master ? 6 : v.referenceLayout?.composition ? 5 : v.formatId === "reference_image" ? 4 : v.formatId === "thumbnail_subject" ? 3 : usesBackgroundPhoto(v) ? 2 : 1)));
+            rendererVersion >= (v.referenceArtwork || v.promptEdit ? 9 : usesReferencePhotoStyling(v.referenceLayout) ? 8 : usesReferenceDetailRendering(v.referenceLayout) ? 7 : v.referenceLayout?.master ? 6 : v.referenceLayout?.composition ? 5 : v.formatId === "reference_image" ? 4 : v.formatId === "thumbnail_subject" ? 3 : usesBackgroundPhoto(v) ? 2 : 1)));
         if (!run) continue;
         const token = randomUUID();
         try {
@@ -96,6 +96,13 @@ export async function imageMacWork(computer: Computer, input: Action) {
   const bucket = createServiceSupabase().storage.from(MEDIA_BUCKET);
   if (input.action === "image_creative_scene") {
     const variant = variantOf(record,run,input.variantId);
+    if (variant.referenceArtwork) {
+      const {width,height}=resolvePlacement(variant.size,variant.design?.placement,variant.design?.outputWidth);
+      const promptEditUrl=await macPhotoUrl(record,variant,variant.referenceArtwork.image);
+      // v9 already forwards a saved PNG. Adapt only the wire payload; never save it as a user revision.
+      const {referenceArtwork:artwork,...wire}=variant;
+      return {variant:{...wire,promptEdit:{image:artwork.image,model:artwork.model,prompt:"저장된 PNG 출력"}},promptEditUrl,width,height};
+    }
     if (variant.promptEdit) {
       const {width,height} = resolvePlacement(variant.size,variant.design?.placement,variant.design?.outputWidth);
       return {variant, promptEditUrl:await macPhotoUrl(record,variant,variant.promptEdit.image),width,height};
@@ -141,7 +148,7 @@ export async function imageMacWork(computer: Computer, input: Action) {
       if (info.format !== "png" || info.width !== width || info.height !== height || (info.pages ?? 1) !== 1) throw Error();
       await decoder.raw().toBuffer();
     } catch { throw new ApiError(422,"IMAGE_RENDER_SIZE","PNG가 손상되었거나 시안의 규격과 달라요."); }
-    if (variant.promptEdit && sha(bytes) !== sha(await savedDesignPreview(record, variant.id)))
+    if ((variant.promptEdit || variant.referenceArtwork) && sha(bytes) !== sha(await savedDesignPreview(record, variant.id)))
       throw new ApiError(422,"IMAGE_RENDER_HASH","완성 PNG가 승인한 수정 이미지와 다릅니다.");
   }
   // Re-read after network downloads. An expired/reclaimed lease must not publish the older computer's files.

@@ -42,6 +42,7 @@ export interface ImagePromptEditProposal { baseId: string; prompt: string; model
   inputSha256?: string; inputKind?: "saved-preview" | "mac-output" | "owner-browser-preview" }
 export interface ImageMeta { renders?: ImageMacRun[]; space: "personal"; kind: typeof IMAGE_CREATIVE_KIND; state: ImageCreativeState; assets: (ImageAsset & { blank?: true; sha256?: string; upload?: ImageUpload })[]; appliedJobs: Record<string, string>;
   lifecycleRevision?: string;
+  referenceRun?: {id:string;variantId:string;inputHash:string;status:"active"|"done"|"failed";expiresAt:number;failure?:string};
   promptEditProposals?: ImagePromptEditProposal[];
   promptEditRun?: {id:string;baseId:string;sourceHash:string;sourceVersion:number;status:"active"|"done"|"failed";expiresAt:number;failure?:string};
   pendingAssets?: { path: string; receipt: string; leaseHash: string; size: number; mimeType: string; expiresAt: number }[]; }
@@ -191,7 +192,7 @@ export async function imageBundle(record: OsRecord) {
   if (urls?.error || paths.some(path => !signed.get(path)))
     throw new ApiError(503, "IMAGE_RENDER_URL", "컴퓨터에서 완성한 이미지를 열지 못했어요.");
   const rendered = Object.fromEntries(ready.map(([id], i) => [id, signed.get(paths[i])!]));
-  return { project: { id: record.id, title: record.title, version: record.version, updatedAt:record.updated_at, experiment:imageExperimentSummary(value.state) }, state: value.state, assets, rendered, reviewable,
+  return { project: { id: record.id, title: record.title, version: record.version, updatedAt:record.updated_at, experiment:imageExperimentSummary(value.state) }, state: value.state, assets, rendered, reviewable, referenceRun:value.referenceRun,
     renders: runs.filter(run => isApprovedRender(value,run)).map(({id, batchId, target, status, variantIds, reason}) => ({id, batchId, target, status, variantIds, reason})),
     jobs: (jobs ?? []).map(row => ({ id: row.id, status: row.status, processing: row.status === "active" && Date.parse(row.metadata?.lease?.expiresAt ?? "") > Date.now(), task: "image-creative", phase: row.metadata?.imageRequest?.phase === "formats" ? "formats" : "copy", currentInput: matchesCurrentJob(record,row.metadata ?? {}), failReason: row.metadata?.failReason ?? null, issues: row.metadata?.issues ?? [],
       target: row.metadata?.target ?? null, model: row.metadata?.model ?? null, executor: row.metadata?.executor === "gpt" ? "gpt" : "staff", requestedAt: row.metadata?.requestedAt, doneAt: row.metadata?.doneAt ?? null })) };
@@ -718,13 +719,17 @@ async function renderFonts(design: ImageDesign | undefined, useBlackWeight: bool
   }
   return [...primary,{ name: "Ad-" + name, data: await file, weight: 600 as const, style: "normal" as const }];
 }
-export async function imagePng(variant: CreativeVariant, assetUrl?: string, referenceUrl?: string, detailUrl?: string, promptEditUrl?: string) {
+export async function imagePng(variant: CreativeVariant, assetUrl?: string, referenceUrl?: string, detailUrl?: string, promptEditUrl?: string, referenceArtworkUrl?: string) {
   const problem = imageVariantProblems(variant)[0];
   if (problem) throw new ApiError(422, "IMAGE_RENDER_INVALID", problem);
   const { width, height } = resolvePlacement(variant.size, variant.design?.placement, variant.design?.outputWidth);
   if (variant.promptEdit) {
     try { return promptEditPng(variant, promptEditUrl, {width,height}); }
     catch (error) { throw new ApiError(422, "IMAGE_PROMPT_EDIT_SOURCE", error instanceof Error ? error.message : "수정 이미지 원본을 확인해 주세요."); }
+  }
+  if (variant.referenceArtwork) {
+    try { return promptEditPng({...variant,promptEdit:{image:variant.referenceArtwork.image,model:variant.referenceArtwork.model,prompt:"저장된 PNG 출력"}},referenceArtworkUrl,{width,height}); }
+    catch(error) { throw new ApiError(422,"IMAGE_REFERENCE_SOURCE",error instanceof Error ? error.message : "생성한 시안 원본을 확인해 주세요."); }
   }
   if (isWarehouseFormat(variant.formatId)) throw new ApiError(422, "IMAGE_BROWSER_RENDER", "이 포맷은 작업 화면에서 표시한 PNG로 내보내세요.");
   if (variant.asset && !assetUrl) throw new ApiError(422, "IMAGE_ASSET_MISSING", "이미지 원본을 확인한 뒤 내보내 주세요.");
@@ -746,6 +751,18 @@ async function downloadPhoto(path: string) {
   if (error || !data) throw new ApiError(503, "IMAGE_ASSET_MISSING", "원본 이미지를 읽지 못했어요.");
   return new Uint8Array(await data.arrayBuffer());
 }
+/** Read the registered full source, never a rendered template or a client-supplied URL. */
+export async function readOwnedImageBytes(record:OsRecord, image:ImageAsset) {
+  const owned=ownedPhoto(record,image);
+  if(!owned) throw new ApiError(422,"IMAGE_ASSET_MISSING","선택한 이미지 원본을 확인해 주세요.");
+  const bytes=await downloadPhoto(owned.path);
+  if(bytes.length>IMAGE_FILE_MAX) throw new ApiError(422,"IMAGE_ASSET_INVALID","저장한 이미지 크기를 확인해 주세요.");
+  const info=await validateImage(bytes);
+  if(info.w!==owned.w || info.h!==owned.h ||
+      (owned.sha256 && createHash("sha256").update(bytes).digest("hex")!==owned.sha256))
+    throw new ApiError(422,"IMAGE_ASSET_INVALID","저장한 이미지와 원본이 달라요. 다시 선택해 주세요.");
+  return bytes;
+}
 async function normalizedPhoto(path: string) {
   return getSharp(undefined)(await downloadPhoto(path), {failOn:"warning",limitInputPixels:20_000_000}).rotate().png().toBuffer();
 }
@@ -755,6 +772,8 @@ async function renderProjectPng(record: OsRecord, variant: CreativeVariant) {
     return asset ? "data:image/png;base64," + (await normalizedPhoto(asset.path)).toString("base64") : undefined;
   }
   if (variant.promptEdit) return imagePng(variant, undefined, undefined, undefined, await dataUrl(variant.promptEdit.image));
+  if (variant.referenceArtwork) return imagePng(variant, undefined, undefined, undefined, undefined,
+    "data:image/png;base64,"+Buffer.from(await readOwnedImageBytes(record,variant.referenceArtwork.image)).toString("base64"));
   const [photo, reference, detail] = await Promise.all([dataUrl(variant.asset), dataUrl(variant.referenceLayout?.source), dataUrl(variant.detailAsset)]);
   return imagePng(variant, photo, reference, detail);
 }
@@ -763,7 +782,7 @@ export async function macPhotoUrl(record: OsRecord, variant: CreativeVariant, im
   if (!asset) return undefined;
   const bucket = createServiceSupabase().storage.from(MEDIA_BUCKET);
   let path = asset.path;
-  if (variant.promptEdit || !isWarehouseFormat(variant.formatId)) {
+  if (!variant.referenceArtwork && (variant.promptEdit || !isWarehouseFormat(variant.formatId))) {
     // The legacy renderer normalizes EXIF orientation and color before handing PNG pixels to ImageResponse.
     // Input paths are immutable; older assets without a recorded content hash still have distinct paths.
     const key = createHash("sha256").update(asset.sha256 || asset.path).digest("hex");
@@ -783,7 +802,7 @@ export async function savedDesignPreview(record: OsRecord, baseId: string, desig
   const base = imageMeta(record).state.variants.find(row => row.id === baseId);
   if (!base) throw new ApiError(404, "IMAGE_VARIANT_NOT_FOUND", "이 작업의 시안을 골라 주세요.");
   if (!canPreviewVariant(imageMeta(record), baseId)) throw new ApiError(409,"IMAGE_COPY_APPROVAL_REQUIRED","카피를 먼저 승인해 주세요.");
-  if (base.promptEdit && design && ["font","card","placement","outputWidth"].some(key =>
+  if ((base.promptEdit || base.referenceArtwork) && design && ["font","card","placement","outputWidth"].some(key =>
     design[key as keyof ImageDesign] !== base.design?.[key as keyof ImageDesign]))
     throw new ApiError(422,"IMAGE_PROMPT_EDIT_LOCKED","수정 이미지는 글꼴·카드·크기를 다시 합성하지 않습니다. 프롬프트로 수정해 주세요.");
   const variant = design ? { ...base, design, size: resolvePlacement(base.size, design.placement, design.outputWidth).size } : base;
@@ -803,6 +822,7 @@ export async function exportImageCreative(record: OsRecord, input: { variantId?:
   if (!variants.length) throw new ApiError(404, "IMAGE_VARIANT_NOT_FOUND", "내보낼 소재가 없어요.");
   for (const variant of variants) {
     if (variant.promptEdit) ownedPhoto(record, variant.promptEdit.image);
+    if (variant.referenceArtwork) ownedPhoto(record, variant.referenceArtwork.image);
     if (variant.asset && (!ownsImageAsset(record.id, variant.asset.path) || !meta.assets.some(row => row.path === variant.asset!.path))) {
       throw new ApiError(403, "IMAGE_ASSET_NOT_OWNED", "등록된 이미지가 아니에요.");
     }

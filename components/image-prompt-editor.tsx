@@ -8,13 +8,13 @@ import {WarehouseVariantPreview} from "./warehouse-variant-preview";
 
 export type ImageEditProposal = NonNullable<CreativeVariant["promptEdit"]> & {baseId:string;url:string;sizeNote?:string};
 export type ImagePromptEditorProps = {
-  projectId:string;base:CreativeVariant;assetUrl?:string;referenceUrl?:string;detailUrl?:string;promptEditUrl?:string;
+  projectId:string;base:CreativeVariant;assetUrl?:string;referenceUrl?:string;detailUrl?:string;promptEditUrl?:string;referenceArtworkUrl?:string;
   demo:boolean;examplePrompt?:string;
   propose:(baseId:string,prompt:string,png:Blob)=>Promise<ImageEditProposal>;
   apply:(id:string,proposal:ImageEditProposal)=>Promise<void>;close:()=>void;onBusy?:(busy:boolean)=>void;
 };
 
-export function ImagePromptEditor({projectId,base,assetUrl,referenceUrl,detailUrl,promptEditUrl,demo,examplePrompt,propose,apply,close,onBusy}:ImagePromptEditorProps) {
+export function ImagePromptEditor({projectId,base,assetUrl,referenceUrl,detailUrl,promptEditUrl,referenceArtworkUrl,demo,examplePrompt,propose,apply,close,onBusy}:ImagePromptEditorProps) {
   const [prompt,setPrompt]=useState("");
   const [proposal,setProposal]=useState<ImageEditProposal>();
   const [busy,setBusy]=useState(false);
@@ -51,9 +51,9 @@ export function ImagePromptEditor({projectId,base,assetUrl,referenceUrl,detailUr
     {error && <p role="alert">{error}</p>}
     <div className="ic-prompt-comparison">
       <figure><figcaption>수정 전</figcaption>
-        {isWarehouseFormat(base.formatId) && !base.promptEdit
+        {isWarehouseFormat(base.formatId) && !base.promptEdit && !base.referenceArtwork
           ? <WarehouseVariantPreview variant={base} assetUrl={assetUrl} onReady={blob=>{source.current=blob;setSourceReady(!!blob);}}/>
-          : <LegacySavedPng projectId={projectId} variant={base} assetUrl={assetUrl} referenceUrl={referenceUrl} detailUrl={detailUrl} promptEditUrl={promptEditUrl} onReady={blob=>{source.current=blob;setSourceReady(!!blob);}}/>}
+          : <LegacySavedPng projectId={projectId} variant={base} assetUrl={assetUrl} referenceUrl={referenceUrl} detailUrl={detailUrl} promptEditUrl={promptEditUrl} referenceArtworkUrl={referenceArtworkUrl} onReady={blob=>{source.current=blob;setSourceReady(!!blob);}}/>}
       </figure>
       <figure><figcaption>수정 후</figcaption>
         {proposal ? <>

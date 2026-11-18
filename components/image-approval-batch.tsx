@@ -13,6 +13,7 @@ export type RenderTarget = "render-pc" | "local";
 export const targetNames = { "render-pc": "공용 맥미니", local: "내 Mac" } as const;
 export type MachineRender = { id: string; target: RenderTarget; status: "queued" | "active" | "done" | "failed"; variantIds: string[]; reason?: string };
 const renderLabels = { queued: "출력 대기", active: "출력 중", done: "PNG 출력 완료", failed: "출력 실패" } as const;
+export type ReferenceGenerationRun = { id:string; variantId:string; inputHash:string; status:"active"|"done"|"failed"; expiresAt:number; failure?:string };
 export type ReviewStep = "format" | "copy" | "preview" | "final";
 type ReturnStep = Exclude<ReviewStep, "format">;
 
@@ -33,10 +34,10 @@ export function FormatBoard({ id, size, referenceUrl }: {id: ImageFormatId; size
   </figure>;
 }
 
-export function WinnerArtwork({variant,url,projectId,photo,referenceUrl,detailUrl,demo}:{variant:CreativeVariant;url?:string;projectId:string;photo?:string;referenceUrl?:string;detailUrl?:string;demo:boolean}) {
-  if (demo) return isWarehouseFormat(variant.formatId)
+export function WinnerArtwork({variant,url,projectId,photo,referenceUrl,detailUrl,promptEditUrl,referenceArtworkUrl,demo}:{variant:CreativeVariant;url?:string;projectId:string;photo?:string;referenceUrl?:string;detailUrl?:string;promptEditUrl?:string;referenceArtworkUrl?:string;demo:boolean}) {
+  if (demo) return isWarehouseFormat(variant.formatId) && !variant.promptEdit && !variant.referenceArtwork
     ? <WarehouseVariantPreview variant={variant} assetUrl={photo}/>
-    : <LegacySavedPng projectId={projectId} variant={variant} assetUrl={photo} referenceUrl={referenceUrl} detailUrl={detailUrl}/>;
+    : <LegacySavedPng projectId={projectId} variant={variant} assetUrl={photo} referenceUrl={referenceUrl} detailUrl={detailUrl} promptEditUrl={promptEditUrl} referenceArtworkUrl={referenceArtworkUrl}/>;
   if (!url) return <p role="status">최종 출력본을 다시 불러와 주세요.</p>;
   // eslint-disable-next-line @next/next/no-img-element -- signed URL for the winning, reviewed PNG.
   return <img className="ic-compare-photo" src={url} alt={variant.copy.headline}/>;
@@ -52,9 +53,10 @@ interface Props {
   edit:(id:string)=>void; select:(id:string)=>void; download:(id:string,kind?:"batch"|"variant")=>void;
   keepBlob:(variantId:string,blob:Blob|null)=>void;
   attachPhoto?:(batchId:string,assetPath:string)=>void; uploadPhoto?:(file:File|null)=>void;
+  generateReference?:(batchId:string)=>void; referenceRun?:ReferenceGenerationRun; generating?:boolean; refresh?:()=>void;
 }
 export function ImageApprovalBatch({ batch, index, variants, assets, projectId, target, render, demo, guided, busy, showGuide, selectedId,
-  experimentRound, winner, control, revisions = [], registerWinner, rendered, reviewable, review, returnReview, edit, select, download, keepBlob, attachPhoto, uploadPhoto }:Props) {
+  experimentRound, winner, control, revisions = [], registerWinner, rendered, reviewable, review, returnReview, edit, select, download, keepBlob, attachPhoto, uploadPhoto, generateReference, referenceRun, generating, refresh }:Props) {
   const alternateCandidates = [...(control ? [control] : []), ...revisions];
   const recorded = batch.winner;
   const recordedVariant = recorded && [...variants,...alternateCandidates].find(v=>v.id===recorded.variantId);
@@ -68,24 +70,28 @@ export function ImageApprovalBatch({ batch, index, variants, assets, projectId, 
   const done=Boolean(confirmed && render?.id === confirmed.runId && render.status === "done");
   const final=Boolean(done && stages?.final?.runId === confirmed?.runId);
   const copyReady=Boolean(stages?.copy);
-  // A reference design's common photo can come after the copy; the preview waits for it.
+  const aiReference=variants.some(v=>v.referenceLayout && (!confirmed || v.referenceLayout.reproduction==="image-ai"));
+  const generationPending=aiReference && variants.some(v=>!v.referenceArtwork && !v.promptEdit);
+  const generationActive=generating || (referenceRun?.status==="active" && referenceRun.expiresAt>Date.now() && variants.some(v=>v.id===referenceRun.variantId));
+  const generationFailed=referenceRun?.status==="failed" && variants.some(v=>v.id===referenceRun.variantId && !v.referenceArtwork && !v.promptEdit);
   const photoSlot=variants.length>0 && variants.every(v=>v.referenceLayout?.photo);
-  const photoPending=photoSlot && variants.some(v=>!v.asset);
-  const photoChoices=assets.filter(a=>!variants.some(v=>v.referenceLayout?.source.path===a.path || v.detailAsset?.path===a.path));
+  const photoPending=!aiReference && photoSlot && variants.some(v=>!v.asset);
+  const referenceUrl=assets.find(a=>a.path===variants[0]?.referenceLayout?.source.path)?.url;
+  const photoChoices=assets.filter(a=>!variants.some(v=>v.referenceLayout?.source.path===a.path || v.detailAsset?.path===a.path || v.referenceArtwork?.image.path===a.path || v.promptEdit?.image.path===a.path));
   const photoPicker=attachPhoto && <div className="ic-photo-pick" role="group" aria-label="공통 사진 고르기">
-    <p>원본 디자인의 사진 자리에 들어갈 사진이에요. 모든 시안에 같은 사진이 들어가요.</p>
-    <div className="ic-row">{photoChoices.map((a,i)=><button key={a.path} type="button" className="secondary-button" disabled={busy}
+    <p>{aiReference ? "교체할 상품 사진·보고서가 있을 때만 고르세요. 모든 시안에 같은 자료를 사용합니다." : "원본 디자인의 사진 자리에 들어갈 사진이에요. 모든 시안에 같은 사진이 들어가요."}</p>
+    <div className="ic-row">{photoChoices.map((a,i)=><button key={a.path} type="button" className="secondary-button" disabled={busy || generationActive}
       aria-pressed={variants.every(v=>v.asset?.path===a.path)} onClick={()=>attachPhoto(batch.id,a.path)}>
       {/* eslint-disable-next-line @next/next/no-img-element -- authenticated project asset */}
       <img src={a.url} alt={`올린 사진 ${i+1}`} width={56} height={56}/> 이 사진 넣기</button>)}
-      {uploadPhoto && <label className="secondary-button">사진 올리기<input className="ic-sr" type="file" accept="image/png,image/jpeg" disabled={busy}
+      {uploadPhoto && <label className="secondary-button">사진 올리기<input className="ic-sr" type="file" accept="image/png,image/jpeg" disabled={busy || generationActive}
         onChange={e=>{uploadPhoto(e.target.files?.[0] ?? null);e.target.value="";}}/></label>}</div>
   </div>;
   const markPreview=(id:string,ok:boolean)=>setPreviewReady(old=>old[id]===ok ? old : {...old,[id]:ok});
-  const canPreview=variants.length>0 && variants.every(v=>previewReady[v.id]);
+  const canPreview=!generationPending && !photoPending && variants.length>0 && variants.every(v=>previewReady[v.id]);
   const canFinal=done && (demo ? canPreview : variants.every(v=>reviewable?.[v.id]===render?.id && finalReady[render!.id+v.id]));
   const current: ReturnStep = !copyReady ? "copy" : done ? "final" : "preview";
-  const stageText=!stages?.format ? "포맷 승인 대기" : !copyReady ? "카피 승인 대기" : !confirmed ? "미리보기 확인 대기"
+  const stageText=!stages?.format ? "포맷 승인 대기" : !copyReady ? "카피 승인 대기" : generationPending ? generationActive ? "시안 생성 중" : generationFailed ? "시안 생성 중단" : "시안 생성 전" : photoPending ? "사진 선택 대기" : !confirmed ? "미리보기 확인 대기"
     : final ? "최종 검수 완료" : done ? "최종 검수 대기" : render ? renderLabels[render.status] : "출력 대기";
   return <section className="ic-review-group" aria-label={`${index+1}번째 묶음 검토`}>
     <div className="ic-row"><h3>{index+1}번째 묶음 · {variants.length}장</h3><strong>{stageText}</strong></div>
@@ -96,11 +102,35 @@ export function ImageApprovalBatch({ batch, index, variants, assets, projectId, 
     </details>}
     {experimentRound && recorded && <p><strong>{winner ? "승리 소재" : "이전 출력본 승리 기록"} · {recordedVariant?.copy.headline || recorded.variantId}</strong>
       {recorded.note && <span> · {recorded.note}</span>}</p>}
+    {copyReady && aiReference && <section className="ic-panel" aria-label="레퍼런스 기반 시안 제작">
+      <details className="ic-details" open={generationPending}><summary>선택한 레퍼런스 원본과 비교</summary>
+        <div className="ic-preview-grid">{referenceUrl && <figure>
+          {/* eslint-disable-next-line @next/next/no-img-element -- entire selected reference, not a generated draft */}
+          <img className="ic-compare-photo" src={referenceUrl} alt="선택한 레퍼런스 원본 전체"/><figcaption>원본 디자인</figcaption>
+        </figure>}{variants.filter(v=>v.referenceArtwork || v.promptEdit).map(v=>{
+          const artwork=assets.find(a=>a.path===(v.promptEdit?.image.path || v.referenceArtwork?.image.path));
+          return artwork && <figure key={v.id}>
+            {/* eslint-disable-next-line @next/next/no-img-element -- saved generated image for original comparison */}
+            <img className="ic-compare-photo" src={artwork.url} alt={`생성 시안 비교: ${v.copy.headline}`}/><figcaption>{v.copy.headline}</figcaption>
+          </figure>;
+        })}</div>
+        <p>배경·카드·장식·배치를 유지하고, 확정한 문구와 선택한 상품 자료를 바꿉니다.</p>
+      </details>
+      {!confirmed && photoPicker && <details className="ic-details"><summary>상품 자료 추가·변경 (선택)</summary>{photoPicker}</details>}
+      {generationPending && <>
+        {demo && <p role="status">개발 화면에서는 실제 AI 생성 결과를 불러온 경우에만 시안을 확인할 수 있어요.</p>}
+        <p role="status">{generationActive ? "원본 디자인으로 시안을 만들고 있어요. 완료된 시안부터 아래에 표시합니다." : generationFailed ? "생성이 중단됐어요. 완료된 시안은 보존됩니다. 상태를 확인한 뒤 남은 시안만 다시 요청할 수 있어요." : "아직 시안을 만들지 않았어요. 상품 자료 없이도 원본의 그림과 장식을 유지해 만들 수 있어요."}</p>
+        <div className="ic-row"><button type="button" className="primary-button" disabled={busy || generationActive || demo || !generateReference}
+          onClick={()=>generateReference?.(batch.id)}>{generationActive ? "시안 만드는 중…" : generationFailed ? "남은 시안 다시 만들기" : "레퍼런스로 시안 만들기"}</button>
+          {refresh && <button type="button" className="secondary-button" disabled={busy} onClick={refresh}>상태 새로고침</button>}
+        </div>
+      </>}
+    </section>}
     {copyReady && photoPending && photoPicker && <section className="ic-panel" aria-label="시안에 넣을 사진"><h4>시안에 넣을 사진을 골라 주세요</h4>{photoPicker}</section>}
-    {copyReady && photoSlot && !photoPending && !confirmed && photoPicker && <details className="ic-details"><summary>사진 바꾸기</summary>{photoPicker}</details>}
+    {copyReady && !aiReference && photoSlot && !photoPending && !confirmed && photoPicker && <details className="ic-details"><summary>사진 바꾸기</summary>{photoPicker}</details>}
     <div className="ic-preview-grid">
       {experimentRound && alternateCandidates.map(candidate=><article key={candidate.id} className={`ic-card ${winner?.variantId===candidate.id ? "ic-selected" : ""}`}>
-        <WinnerArtwork variant={candidate} projectId={projectId} url={rendered?.[candidate.id]} demo={demo} photo={assets.find(a=>a.path===candidate.asset?.path)?.url} referenceUrl={assets.find(a=>a.path===candidate.referenceLayout?.source.path)?.url} detailUrl={assets.find(a=>a.path===candidate.detailAsset?.path)?.url}/>
+        <WinnerArtwork variant={candidate} projectId={projectId} url={rendered?.[candidate.id]} demo={demo} photo={assets.find(a=>a.path===candidate.asset?.path)?.url} referenceUrl={assets.find(a=>a.path===candidate.referenceLayout?.source.path)?.url} detailUrl={assets.find(a=>a.path===candidate.detailAsset?.path)?.url} promptEditUrl={assets.find(a=>a.path===candidate.promptEdit?.image.path)?.url} referenceArtworkUrl={assets.find(a=>a.path===candidate.referenceArtwork?.image.path)?.url}/>
         <div className="ic-card-body"><strong>{candidate.id===control?.id ? "기존 승리 소재" : "디자인 수정본"}</strong><h3>{candidate.copy.headline}</h3><p>{candidate.copy.body}</p><small>{candidate.copy.cta}</small>
           {final && registerWinner && <p><button type="button" className="secondary-button" disabled={busy} aria-pressed={winner?.variantId===candidate.id}
             onClick={()=>registerWinner(batch.id,candidate.id,resultNote)}>{candidate.id===control?.id ? "기존 소재 승리로 기록" : "승리 소재로 지정"}</button></p>}
@@ -111,8 +141,9 @@ export function ImageApprovalBatch({ batch, index, variants, assets, projectId, 
       const keep=(blob:Blob|null)=>keepBlob(v.id,blob);
       const showFinal=Boolean(!demo && done && !final && reviewable?.[v.id]===render?.id);
       const readyKey=(render?.id || "")+v.id;
+      const hasPreview=!photoPending && (!aiReference || !!v.referenceArtwork || !!v.promptEdit);
       return <article className={`ic-card ${(experimentRound ? v.id===winner?.variantId : v.id===selectedId)?"ic-selected":""}`} key={v.id}>
-        {copyReady && !photoPending && <div className="ic-artboard" onLoadCapture={e=>{
+        {copyReady && hasPreview && <div className="ic-artboard" onLoadCapture={e=>{
           if (e.target instanceof HTMLImageElement && e.target.naturalWidth > 0) markPreview(v.id,true);
         }} onErrorCapture={()=>markPreview(v.id,false)}>
           {final && !demo && rendered?.[v.id] ?
@@ -121,18 +152,18 @@ export function ImageApprovalBatch({ batch, index, variants, assets, projectId, 
             : showFinal ? <MacReviewPreview key={readyKey} projectId={projectId} variantId={v.id} runId={render!.id} title={v.copy.headline}
               onReady={ok=>setFinalReady(old=>old[readyKey]===ok?old:{...old,[readyKey]:ok})}/>
             : !demo && done ? <p role="status">검수용 출력본을 불러오는 중입니다.</p>
-            : isWarehouseFormat(v.formatId) && !v.promptEdit ? <WarehouseVariantPreview variant={v} assetUrl={url} onReady={keep} onCheck={onCheck}/>
-            : <LegacySavedPng projectId={projectId} variant={v} promptEditUrl={assets.find(a=>a.path===v.promptEdit?.image.path)?.url} assetUrl={url} referenceUrl={assets.find(a=>a.path===v.referenceLayout?.source.path)?.url} detailUrl={assets.find(a=>a.path===v.detailAsset?.path)?.url} onReady={keep} onCheck={onCheck}/>}
+            : isWarehouseFormat(v.formatId) && !v.promptEdit && !v.referenceArtwork ? <WarehouseVariantPreview variant={v} assetUrl={url} onReady={keep} onCheck={onCheck}/>
+            : <LegacySavedPng projectId={projectId} variant={v} promptEditUrl={assets.find(a=>a.path===v.promptEdit?.image.path)?.url} referenceArtworkUrl={assets.find(a=>a.path===v.referenceArtwork?.image.path)?.url} assetUrl={url} referenceUrl={assets.find(a=>a.path===v.referenceLayout?.source.path)?.url} detailUrl={assets.find(a=>a.path===v.detailAsset?.path)?.url} onReady={keep} onCheck={onCheck}/>}
           {showGuide && <SafeZoneOverlay size={v.size} design={v.design}/>}
         </div>}
-        <div className="ic-card-body"><strong>{v.promptEdit ? "프롬프트 수정본" : IMAGE_FORMATS[v.formatId].name}</strong>
+        <div className="ic-card-body"><strong>{v.promptEdit ? "프롬프트 수정본" : v.referenceArtwork ? "레퍼런스 기반 AI 시안" : IMAGE_FORMATS[v.formatId].name}</strong>
           {v.promptEdit && <><p>{v.promptEdit.prompt}</p><small>기준 소구 · {v.appeal.meaning}</small></>}
           {stages?.format && !v.promptEdit && <><h3>{v.copy.headline}</h3><dl className="ic-copy-lines">
             {v.brand && <><dt>브랜드</dt><dd>{v.brand}</dd></>}<dt>소구</dt><dd>{v.appeal.meaning}</dd>
             <dt>본문</dt><dd>{v.copy.body || "본문 없음"}</dd><dt>CTA</dt><dd>{v.copy.cta}</dd></dl></>}
           {v.design && <p className="ic-muted">{designSummary(v)}</p>}
           <div className="ic-row">
-            {copyReady && <button className="secondary-button" disabled={busy || photoPending} onClick={()=>edit(v.id)}>수정하기</button>}
+            {copyReady && <button className="secondary-button" disabled={busy || generationActive || !hasPreview} onClick={()=>edit(v.id)}>수정하기</button>}
             {final && experimentRound && registerWinner && <button type="button" className="secondary-button" disabled={busy} aria-pressed={winner?.variantId===v.id}
               onClick={()=>registerWinner(batch.id,v.id,resultNote)}>승리 소재로 지정</button>}
             {final && (!experimentRound || !guided) && <button className="secondary-button" aria-pressed={v.id===selectedId} disabled={busy} onClick={()=>select(v.id)}>{v.id===selectedId?"기준으로 선택됨":"기준 시안 선택"}</button>}

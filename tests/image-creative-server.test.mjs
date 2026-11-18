@@ -505,6 +505,7 @@ test("actual decoder rejects a forged PNG header and honors JPEG orientation",as
   modules["@/lib/supabase/server"].createServiceSupabase=()=>({...db(),storage:{from:()=>({download:async()=>({data:new Blob([jpeg],{type:"image/jpeg"}),error:null})})}});
   const saved=await server.commitImageAsset(structuredClone(stored),jpegPath,receipt,lease);
   assert.equal(saved.w,3);assert.equal(saved.h,2);
+  assert.deepEqual(await server.readOwnedImageBytes(structuredClone(stored),saved),jpeg);
 });
 
 test("private export uses a content-addressed key and a 15-minute named download",async()=>{
@@ -679,7 +680,11 @@ test("a Mac renders only an assigned saved batch; its checked PNG is the actual 
   };
   const source = readFileSync(new URL("../lib/server/image-mac-render.ts",import.meta.url),"utf8");
   const compiled={exports:{}};
-  const testDeps={...modules,"./image-creatives":server,"@/lib/supabase/server":{createServiceSupabase:()=>backend}};
+  const photoCalls=[];
+  const testDeps={...modules,"./image-creatives":{...server,macPhotoUrl:async(record,variant,image)=>{
+    photoCalls.push(structuredClone({record,variant,image}));
+    return server.macPhotoUrl(record,variant,image);
+  }},"@/lib/supabase/server":{createServiceSupabase:()=>backend}};
   vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{
     module:compiled,exports:compiled.exports,require:n=>testDeps[n],Buffer,Date});
   modules["@/lib/supabase/server"].createServiceSupabase=()=>backend;
@@ -768,6 +773,55 @@ test("a Mac renders only an assigned saved batch; its checked PNG is the actual 
   };
   await assert.rejects(completeEdited(wrongPixels),e=>e.code==="IMAGE_RENDER_HASH");
   assert.equal((await completeEdited(editedPng)).done,true);
+  // Generated reference artwork uses the existing v9 saved-PNG contract only on the wire.
+  // Its source remains referenceArtwork in storage, so signing must not normalize/re-encode it.
+  stored = structuredClone(queued);
+  const artworkBytes=await sharp({create:{width:1080,height:1350,channels:3,background:"#102a59"}})
+    .png({compressionLevel:1}).withMetadata({density:144}).toBuffer();
+  const artworkAsset={path:`image-creatives/${projectId}/${crypto.randomUUID()}.png`,w:1080,h:1350};
+  stored.metadata.assets.push({...artworkAsset,sha256:crypto.createHash("sha256").update(artworkBytes).digest("hex")});
+  files.set(artworkAsset.path,new Blob([artworkBytes],{type:"image/png"}));
+  const artworkVariant={...original,asset:undefined,formatId:"reference_image",referenceLayout:{...layout,photo:undefined,reproduction:"image-ai"},
+    referenceArtwork:{image:artworkAsset,model:"test-image-model",inputHash:"a".repeat(64)}};
+  stored.metadata.state.variants[0]=artworkVariant;
+  const artworkQueued=documents();
+  assert.equal((await imageMacWork(local,{...poll,rendererVersion:8})).idle,true);
+  assert.deepEqual(documents(),artworkQueued,"an old renderer cannot claim or change this work");
+  const artworkLease=await imageMacWork(local,{...poll,rendererVersion:9});
+  assert.equal(artworkLease.jobId,run.id);
+  const artworkBeforeScene=documents(),writesBeforeArtwork=cachedWrites,callsBeforeArtwork=photoCalls.length;
+  const artworkScene=await imageMacWork(local,{action:"image_creative_scene",...artworkLease,variantId});
+  assert.deepEqual(artworkScene.variant.promptEdit.image,artworkAsset);
+  assert.equal(artworkScene.variant.promptEdit.model,"test-image-model");
+  assert.equal(artworkScene.variant.referenceArtwork,undefined,"v9 must receive only the saved-PNG shape it understands");
+  assert.equal(artworkScene.referenceArtworkUrl,undefined);
+  assert.equal(artworkScene.photoUrl,undefined);assert.equal(artworkScene.referenceUrl,undefined);assert.equal(artworkScene.detailUrl,undefined);
+  assert.equal(artworkScene.promptEditUrl,"https://storage.example/"+artworkAsset.path);
+  assert.deepEqual([artworkScene.width,artworkScene.height],[1080,1350]);
+  assert.equal(photoCalls.length,callsBeforeArtwork+1);
+  assert.deepEqual(photoCalls.at(-1).variant,artworkVariant,"sign with the original variant, not the synthetic prompt-edit payload");
+  assert.equal(photoCalls.at(-1).variant.promptEdit,undefined);
+  assert.deepEqual(photoCalls.at(-1).image,artworkAsset);
+  assert.equal(cachedWrites,writesBeforeArtwork,"saved artwork must bypass the old render-source PNG cache");
+  assert.deepEqual(documents(),artworkBeforeScene,"adapting the v9 scene must not turn stored artwork into a user revision");
+  const artworkPng=Buffer.from(await files.get(artworkScene.promptEditUrl.slice("https://storage.example/".length)).arrayBuffer());
+  assert.deepEqual(artworkPng,artworkBytes);
+  assert.deepEqual(Buffer.from(await server.savedDesignPreview(stored,variantId)),artworkBytes);
+  const artworkSlot=await imageMacWork(local,{action:"image_creative_prepare",...artworkLease,variantId,fileSize:artworkBytes.length});
+  const completeArtwork=async bytes=>{
+    files.set(artworkSlot.signedUrl,new Blob([bytes],{type:"image/png"}));
+    return imageMacWork(local,{action:"image_creative_complete",...artworkLease,files:[{variantId,bytes:bytes.length,sha256:crypto.createHash("sha256").update(bytes).digest("hex")}]});
+  };
+  const reencodedArtwork=await sharp(artworkBytes).png({compressionLevel:9}).toBuffer();
+  assert.notDeepEqual(reencodedArtwork,artworkBytes);
+  await assert.rejects(completeArtwork(wrongPixels),e=>e.code==="IMAGE_RENDER_HASH");
+  await assert.rejects(completeArtwork(reencodedArtwork),e=>e.code==="IMAGE_RENDER_HASH","even equal pixels cannot replace the approved PNG bytes");
+  assert.equal(stored.metadata.renders.at(-1).status,"active");
+  assert.deepEqual(stored.metadata.state.variants[0],artworkVariant);
+  assert.equal((await completeArtwork(artworkBytes)).done,true);
+  await decide({action:"approve-final",batchId,runId:artworkLease.jobId});
+  assert.deepEqual(Buffer.from((await server.exportImageCreative(stored,{variantId})).body),artworkBytes);
+  assert.deepEqual(stored.metadata.state.variants[0],artworkVariant);
   stored = structuredClone(queued);
   const logoBytes=await sharp({create:{width:6,height:5,channels:4,background:{r:20,g:75,b:190,alpha:0.5}}}).png().toBuffer();
   const logo={path:`image-creatives/${projectId}/${crypto.randomUUID()}.png`,w:6,h:5};
