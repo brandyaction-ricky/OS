@@ -39,6 +39,7 @@ export type ReferenceComposition = {
 };
 export type ReferenceLayout = {
   source: { path: string; w: number; h: number };
+  reproduction?: "image-ai";
   master?: ReferenceMaster;
   composition?: ReferenceComposition;
   photo?: ReferenceBox;
@@ -103,7 +104,8 @@ function textBox(value: unknown, photo?: ReferenceBox, master = false): value is
     (align === "left" || align === "center" || align === "right");
 }
 export function isReferenceLayout(value: unknown): value is ReferenceLayout {
-  if (!object(value) || !keysAllowed(value,["source","composition","master","photo","headline","body","cta"]) || !object(value.source)) return false;
+  if (!object(value) || !keysAllowed(value,["source","reproduction","composition","master","photo","headline","body","cta"]) || !object(value.source) ||
+      (value.reproduction !== undefined && value.reproduction !== "image-ai")) return false;
   const {path,w,h} = value.source;
   const master = value.master;
   if (master !== undefined) {
@@ -277,6 +279,7 @@ export function referenceTextLines(box: ReferenceTextBox, value: string, role?: 
 }
 /** The same canonical name must fit on one line in every repeated brand label. */
 export function referenceBrandProblem(layout: ReferenceLayout, brand?: string): string | undefined {
+  if (layout.reproduction === "image-ai") return;
   const slots = layout.master?.brandSlots;
   if (!slots?.length) return;
   if (!brand?.trim()) return "브랜드 칸에는 선택한 상품의 브랜드명이 필요해요.";
@@ -287,6 +290,7 @@ export function referenceBrandProblem(layout: ReferenceLayout, brand?: string): 
 }
 export function referenceCopyProblems(layout: ReferenceLayout, copy: ReferenceCopy, brand?:string): string[] {
   if (!isReferenceLayout(layout)) return ["레퍼런스 원본과 교체할 영역을 확인해 주세요."];
+  if (layout.reproduction === "image-ai") return [];
   const labels = { headline: "제목", body: "본문", cta: "버튼 문구" };
   const height = 1080 * layout.source.h / layout.source.w;
   const problems = referenceTextKeys.flatMap(key => {

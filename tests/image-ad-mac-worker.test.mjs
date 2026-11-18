@@ -138,6 +138,48 @@ test("prompt-edited artwork travels through the offline Mac worker byte-for-byte
   assert.equal(await processAdRender(async body=>{assert.equal(body.rendererVersion,8);return {idle:true};},oldRoot),false);
 });
 
+test("AI reference output uses the installed v9 bitmap transport without changing its stored creation record", async t => {
+  const {getSharp}=await import("next/dist/server/image-optimizer.js");
+  const {renderAdPng}=await import("../tools/image-ad-renderer.mjs");
+  const root=mkdtempSync(path.join(os.tmpdir(),"ad-ai-reference-")), originalFetch=globalThis.fetch;
+  t.after(()=>{globalThis.fetch=originalFetch;rmSync(root,{recursive:true,force:true});});
+  const runtime=buildAdRuntime(process.cwd(),path.join(root,"image-renderer"));
+  const bytes=await getSharp()({create:{width:1080,height:1080,channels:4,background:{r:21,g:52,b:196,alpha:1}}}).png().toBuffer();
+  const storedVariant={id:"v",formatId:"reference_image",formatVersion:1,size:"square",
+    referenceLayout:{reproduction:"image-ai"},
+    copy:{headline:"기록만 보존하고 덧그리지 않음",body:"원본",cta:"확인"},
+    referenceArtwork:{image:{path:"generated.png",w:1080,h:1080},model:"test",inputHash:"a".repeat(64)}};
+  const storedBefore=structuredClone(storedVariant);
+  // Only the scene response uses v9's existing saved-PNG transport. The project
+  // keeps its initial-generation record, separate from a user's prompt edit.
+  const {referenceArtwork,...sceneVariant}=structuredClone(storedVariant);
+  const variant={...sceneVariant,promptEdit:{prompt:"레퍼런스 시안 출력",model:referenceArtwork.model,image:referenceArtwork.image}};
+  const promptEditDataUrl="data:image/png;base64,"+bytes.toString("base64");
+  assert.deepEqual(await renderAdPng(runtime,variant,undefined,{promptEditDataUrl}),bytes);
+  await assert.rejects(renderAdPng(runtime,variant),/수정 PNG/);
+  let uploaded;
+  globalThis.fetch=async(url,init)=>{
+    if(String(url)==="https://example.test/storage/v1/object/sign/artwork") return new Response(bytes,{headers:{"content-type":"image/png"}});
+    assert.equal(String(url),"https://example.test/storage/v1/object/upload/sign/result");
+    uploaded=Buffer.from(init.body);return new Response(null,{status:200});
+  };
+  await processAdRender(async body=>{
+    switch(body.action) {
+      case "image_creative_claim":assert.equal(body.rendererVersion,9);return {jobId:"j",lease:"lease",variantIds:["v"]};
+      case "image_creative_scene":return {variant,promptEditUrl:"https://example.test/storage/v1/object/sign/artwork",width:1080,height:1080};
+      case "image_creative_prepare":return {signedUrl:"https://example.test/storage/v1/object/upload/sign/result"};
+      case "image_creative_complete":
+        assert.deepEqual(body.files,[{variantId:"v",bytes:bytes.length,sha256:createHash("sha256").update(bytes).digest("hex")}]);
+        assert.deepEqual(Object.keys(body).sort(),["action","files","jobId","lease"]);
+        return {done:true};
+      default:throw new Error("unexpected action "+body.action);
+    }
+  },root);
+  assert.deepEqual(uploaded,bytes);
+  assert.deepEqual(storedVariant,storedBefore);
+  assert.equal(storedVariant.promptEdit,undefined);
+});
+
 test("uploaded reference pixels survive outside the replacement slots on the actual Mac PNG", async t => {
   const {getSharp} = await import("next/dist/server/image-optimizer.js");
   const sharp = getSharp();

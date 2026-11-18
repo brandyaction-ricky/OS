@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
-import { draftReferenceLayout } from "../../lib/image-creative/reference-layout";
-import { emptyImageCreative } from "../../lib/image-creative/model";
+import { draftReferenceLayout, type ReferenceLayout } from "../../lib/image-creative/reference-layout";
+import { approveImageFormat, confirmReferenceCopy, createImageBatch, emptyImageCreative, reviewImageBatch, saveReferenceCopyDraft, startImageCopyBatch, type ImageBatchRequest } from "../../lib/image-creative/model";
 import { selectedReferencePlan } from "../../lib/image-creative/direction";
 
 test("레퍼런스 선택에서 광고 원본과 로드 실패 시 대체한 구성 예시를 구분한다", async ({page}) => {
@@ -42,8 +42,10 @@ test("레퍼런스 선택에서 광고 원본과 로드 실패 시 대체한 구
   await expect(page.getByRole("group",{name:"원본 광고와 교체 시안"})).toHaveCount(0);
   await page.getByRole("button",{name:"잘못된 위치 파일",exact:true}).click();
   await page.getByRole("button",{name:"이 레퍼런스로 제작"}).click();
-  await expect(page.getByRole("alert").filter({hasText:"교체 위치 파일"})).toBeVisible();
+  await expect(page.getByAltText("AI에 전달할 레퍼런스 원본 전체")).toBeVisible();
+  await expect(page.getByRole("alert").filter({hasText:"교체 위치 파일"})).toHaveCount(0);
   await expect(page.getByRole("group",{name:"원본 광고와 교체 시안"})).toHaveCount(0);
+  await page.getByRole("button",{name:"디자인 견본으로 돌아가기"}).click();
   const example = page.getByRole("button",{name:"짧은 문장 포스터",exact:true});
   await expect(example.getByText("구성 예시",{exact:true})).toBeVisible();
   await example.click();
@@ -178,155 +180,75 @@ test("이전 소구점 기획을 저장하기 전까지 보존하고 새 소구�
   await expect(page.getByRole("heading",{name:"레퍼런스 선택",exact:true})).toBeVisible();
 });
 
-test("새 WebP 광고에서 교체 영역을 지정하고 원본·사진·승인을 다시 연다", async ({page})=>{
+test("새 WebP 원본 전체를 이미지 AI 입력으로 보관하고 상품 자료와 카피 초안을 다시 연다", async ({page})=>{
+  const generationRequests:string[]=[];
+  await page.route("**/reference-generate",route=>{generationRequests.push(route.request().url());return route.abort();});
   await page.goto("/content/images");
   await page.getByRole("button",{name:"광고 한 장 만들기",exact:true}).click();
-  const products=page.getByRole("combobox",{name:"상품 선택",exact:true});
-  const sample=products.locator('option[value="__demo"], option[value="myin-free"]').first();
-  await expect(sample).toBeAttached();
-  await products.selectOption((await sample.getAttribute("value"))!);
+  await page.getByRole("combobox",{name:"상품 선택",exact:true}).selectOption("__demo");
   await page.getByRole("button",{name:"소구점 선택하기",exact:true}).click();
   await page.getByLabel("소구점 직접 작성",{exact:true}).fill("직접 만든 컵을 선물하기");
   await page.getByRole("button",{name:"레퍼런스 선택하기",exact:true}).click();
   await page.getByRole("button",{name:"새 레퍼런스 이미지 사용"}).click();
   const original=await page.evaluate(()=>{
-    const canvas=document.createElement("canvas");
-    canvas.width=240;canvas.height=240;
-    const ctx=canvas.getContext("2d")!;
-    ctx.fillStyle="#f6e4b9";ctx.fillRect(0,0,240,300);
+    const canvas=document.createElement("canvas");canvas.width=240;canvas.height=240;
+    const ctx=canvas.getContext("2d")!;ctx.fillStyle="#f6e4b9";ctx.fillRect(0,0,240,240);
     ctx.fillStyle="#593f32";ctx.font="bold 20px sans-serif";ctx.fillText("SAMPLE",20,44);
+    ctx.fillStyle="#0000ff";ctx.fillRect(235,0,5,240);
     return canvas.toDataURL("image/webp").split(",")[1];
   });
   await page.getByLabel("레퍼런스 원본 올리기").setInputFiles({name:"sample.webp",mimeType:"image/webp",buffer:Buffer.from(original,"base64")});
-  await expect(page.getByRole("combobox",{name:"구도",exact:true})).toBeVisible();
-  await page.getByRole("button",{name:"원본의 교체 영역 편집"}).click();
-  await expect(page.getByAltText("레퍼런스 원본과 교체 영역")).toBeVisible();
-  await expect(page.getByRole("combobox",{name:"출력 규격"})).toHaveValue("square");
-  await page.getByLabel("사진 교체",{exact:true}).check();
-  const next=page.getByRole("button",{name:"카피 작성하기",exact:true});
-  // The photo may come now or after the copy is confirmed.
-  await expect(page.getByText("사진은 지금 골라도 되고, 카피를 확정한 뒤 골라도 돼요.")).toBeVisible();
-  await expect(next).toBeEnabled();
-  await page.getByLabel("교체 사진 올리기").setInputFiles("public/image-format-test/master.jpg");
-  const preview=page.getByRole("group",{name:"원본 광고와 교체 시안"});
-  await expect(preview.locator('[data-image-master="1"]')).toBeVisible();
+  await expect(page.getByAltText("AI에 전달할 레퍼런스 원본 전체")).toBeVisible();
   await expect(page.getByRole("combobox",{name:"구도",exact:true})).toHaveCount(0);
-  await page.getByRole("button",{name:"그래픽 칸 추가"}).click();
-  await expect(next).toBeDisabled();
-  await page.getByLabel("그래픽에 사용할 이미지").selectOption("photo");
-  await expect(preview.locator("[data-image-detail='1'] img")).toBeVisible();
-  await expect(next).toBeEnabled();
-  await page.getByLabel("그래픽에 사용할 이미지").selectOption("detail");
-  await page.getByRole("radio",{name:"그래픽 원본 2",exact:true}).check();
-  await expect(next).toBeEnabled();
-  const logo=await page.evaluate(()=>{
-    const canvas=document.createElement("canvas");canvas.width=80;canvas.height=48;
-    const ctx=canvas.getContext("2d")!;ctx.fillStyle="#257e51";ctx.fillRect(4,4,32,32);
-    return canvas.toDataURL("image/png").split(",")[1];
-  });
-  await page.getByLabel("그래픽 원본 올리기").setInputFiles({name:"mark.png",mimeType:"image/png",buffer:Buffer.from(logo,"base64")});
-  await expect(page.getByRole("radio",{name:"그래픽 원본 3",exact:true})).toBeChecked();
+  await expect(page.getByRole("button",{name:"원본의 교체 영역 편집"})).toHaveCount(0);
+  await expect(page.getByRole("combobox",{name:"출력 규격"})).toHaveValue("square");
+  await page.getByText("상품 이미지 추가 (선택)",{exact:true}).click();
+  await page.getByLabel("상품 이미지 올리기").setInputFiles("public/image-format-test/master.jpg");
   await expect(page.getByRole("radio",{name:"이미지 2",exact:true})).toBeChecked();
-  const cropBoard=page.getByAltText("그래픽 원본에서 선택한 부분");
-  await cropBoard.scrollIntoViewIfNeeded();
-  const cropRect=await cropBoard.boundingBox();
-  if(!cropRect) throw new Error("그래픽에서 자를 부분이 보이지 않습니다.");
-  await page.mouse.move(cropRect.x+5,cropRect.y+5);await page.mouse.down();
-  await page.mouse.move(cropRect.x+cropRect.width*.48,cropRect.y+cropRect.height*.8,{steps:3});await page.mouse.up();
-  await page.getByText("자르는 위치와 크기",{exact:true}).click();
-  await expect(page.getByLabel("원본 너비 (%)",{exact:true})).not.toHaveValue("100");
-  await page.getByLabel("원본 너비 (%)",{exact:true}).fill("48");
-  await page.getByLabel("그래픽 모서리 둥글기 (%)",{exact:true}).fill("15");
-  await page.getByLabel("그래픽 맞춤").selectOption("cover");
-  await expect(preview.locator("[data-image-detail='1'] img")).toHaveAttribute("src",/^data:image\/png;/);
-  await page.getByRole("button",{name:"브랜드 칸 추가"}).click();
-  await expect(preview.locator('[data-image-field="brand"]')).toHaveText("산들공방");
-  await page.getByLabel("글자 크기").fill("32");
-  await page.getByLabel("브랜드 1 굵기").selectOption("900");
-  await page.getByRole("button",{name:"가릴 영역 추가"}).click();
-  await page.getByRole("button",{name:"원본에서 색 찍기"}).click();
-  await page.getByAltText("레퍼런스 원본과 교체 영역").click({position:{x:8,y:8}});
-  await expect(page.getByLabel("가림색")).not.toHaveValue("#000000");
-  await page.getByRole("button",{name:"원본 무늬로 가리기"}).click();
-  await page.getByAltText("레퍼런스 원본과 교체 영역").click({position:{x:14,y:15}});
-  await page.getByLabel("복사할 왼쪽 (%)").fill("11");
-  await page.getByLabel("복사한 무늬 좌우 반전").check();
-  await page.getByRole("button",{name:"사진 위에 원본 장식 유지"}).click();
-  await page.getByLabel("모서리 둥글기 (%)").fill("10");
-  await page.getByLabel("본문 두 칸에 나누기").check();
-  await expect(page.getByRole("option",{name:"본문 다음 줄"})).toBeAttached();
-  await page.getByLabel("본문 두 칸에 나누기").uncheck();
-  await page.getByText("같은 원본에 교체 위치 재사용").click();
-  const downloading=page.waitForEvent("download");
-  await page.getByRole("button",{name:"교체 위치 저장",exact:true}).click();
-  const file=await (await downloading).path();
-  if(!file) throw new Error("교체 위치 파일이 없습니다.");
-  await page.getByLabel("편집할 영역").selectOption("0");
-  await page.getByRole("button",{name:"가림 삭제"}).click();
-  await expect(page.getByRole("option",{name:"가림 1",exact:true})).toHaveCount(0);
-  await page.getByLabel("저장한 교체 위치 적용").setInputFiles(file);
-  await expect(page.getByRole("option",{name:"가림 1",exact:true})).toBeAttached();
-  await page.getByRole("button",{name:"제목 영역",exact:true}).click();
-  await page.getByText("위치와 크기 조정",{exact:true}).click();
-  await page.getByLabel("너비 (%)",{exact:true}).fill("55");
-  await page.getByLabel("왼쪽 (%)",{exact:true}).fill("16");
-  const headingBox=await page.getByRole("button",{name:"제목 영역",exact:true}).boundingBox();
-  if(!headingBox)throw new Error("교체할 제목 영역이 보이지 않습니다.");
-  await page.mouse.move(headingBox.x+10,headingBox.y+5);
-  await page.mouse.down();
-  await page.mouse.move(headingBox.x+28,headingBox.y+5,{steps:4});
-  await page.mouse.up();
-  await expect(page.getByLabel("왼쪽 (%)",{exact:true})).not.toHaveValue("16");
-  await page.getByLabel("왼쪽 (%)",{exact:true}).fill("16");
-  await next.click();
-  await expect(page.getByRole("heading",{name:"카피 작성",exact:true})).toBeVisible();
+  await page.getByRole("button",{name:"카피 작성하기",exact:true}).click();
   await page.getByLabel("제목",{exact:true}).fill("직접 빚은 컵");
   await page.getByLabel("버튼 문구",{exact:true}).fill("수업 살펴보기");
   await page.getByRole("button",{name:"초안 저장",exact:true}).click();
   await expect(page.getByText("초안 저장됨 · 카피 승인 대기",{exact:true})).toBeVisible();
   await page.reload();
   await expect(page.getByLabel("제목",{exact:true})).toHaveValue("직접 빚은 컵");
-  await expect(preview.locator("[data-image-detail='1'] img")).toHaveAttribute("src",/^data:image\/png;/);
-  await expect(preview.locator('[data-image-field="brand"]')).toHaveText("산들공방");
   await expect(page.getByLabel("버튼 문구",{exact:true})).toHaveValue("수업 살펴보기");
-  await expect(page.getByRole("button",{name:"초안 저장",exact:true})).toBeDisabled();
-  const draft = await page.evaluate(()=>JSON.parse(localStorage.getItem("os-image-creatives-demo-v1")!)[0]);
-  expect(draft.state.batches).toHaveLength(0);
-  expect(draft.jobs).toHaveLength(0);
-  await page.getByRole("button",{name:"레퍼런스 변경"}).click();
-  await expect(page.getByRole("radio",{name:"이미지 2",exact:true})).toBeChecked();
-  await page.getByText("위치와 크기 조정",{exact:true}).click();
-  await expect(page.getByLabel("너비 (%)",{exact:true})).toHaveValue("55");
-  await expect(page.getByLabel("왼쪽 (%)",{exact:true})).toHaveValue("16");
-  await expect(page.getByRole("combobox",{name:"출력 규격"})).toHaveValue("square");
-  const request=await page.evaluate(()=>JSON.parse(localStorage.getItem("os-image-creatives-demo-v1")!)[0].state.formatApproval.request);
-  expect(request.formatIds).toEqual(["reference_image"]);
-  expect(request.size).toBe("square");
-  expect(request.referenceLayout.master.regions).toHaveLength(1);
-  expect(request.referenceLayout.master.regions[0].sample).toMatchObject({x:11,flipX:true});
-  expect(request.referenceLayout.master.keepOverPhoto[0].radius).toBe(10);
-  expect(request.referenceLayout.master.brandSlots[0]).toMatchObject({fontSize:32,weight:900});
-  expect(request.referenceLayout.master.detailSlots[0]).toMatchObject({crop:{w:48},source:"detail",radius:15,fit:"cover"});
-  expect(request.detailAssetPath).toBe(draft.assets[2].path);
-  expect(request.assetPaths).toEqual([draft.assets[1].path]);
-  await expect(page.getByRole("radio",{name:"그래픽 원본 3",exact:true})).toBeChecked();
-  expect(request.referenceLayout.composition).toBeUndefined();
+  await expect(page.getByAltText("선택한 원본 디자인")).toBeVisible();
+  await expect(page.getByRole("group",{name:"원본 광고와 교체 시안"})).toHaveCount(0);
+  const draft=await page.evaluate(()=>JSON.parse(localStorage.getItem("os-image-creatives-demo-v1")!)[0]);
+  const request=draft.state.formatApproval.request;
+  expect(request.formatIds).toEqual(["reference_image"]);expect(request.size).toBe("square");
+  expect(request.referenceLayout).toMatchObject({reproduction:"image-ai",source:{w:240,h:240}});
+  expect(request.referenceLayout.master).toBeUndefined();expect(request.referenceLayout.composition).toBeUndefined();
   expect(request.referenceLayout.source.path).toMatch(/\.png$/);
-  expect(request.assetPaths).toHaveLength(1);
+  expect(request.assetPaths).toEqual([draft.assets[1].path]);
   expect(request.assetPaths[0]).not.toBe(request.referenceLayout.source.path);
-  await next.click();
-  await page.getByLabel("제목",{exact:true}).fill("컵");
-  await page.getByLabel("버튼 문구",{exact:true}).fill("보기");
-  await page.getByRole("button",{name:"카피 확정 · 디자인 수정하기",exact:true}).click();
-  await expect(page.getByRole("heading",{name:"디자인 수정",exact:true})).toBeVisible();
-  const stored=await page.evaluate(()=>JSON.parse(localStorage.getItem("os-image-creatives-demo-v1")!)[0].state.variants[0]);
-  expect(stored.asset.path).toBe(request.assetPaths[0]);
-  expect(stored.detailAsset.path).toBe(request.detailAssetPath);
-  expect(stored.referenceLayout.master.detailSlots).toEqual(request.referenceLayout.master.detailSlots);
+  expect(draft.state.batches).toHaveLength(0);expect(draft.jobs).toHaveLength(0);expect(generationRequests).toHaveLength(0);
+  const fullOriginal=await page.evaluate(async ({original,stored})=>{
+    async function pixels(src:string) {
+      const img=new Image();img.src=src;await img.decode();
+      const canvas=document.createElement("canvas");canvas.width=img.naturalWidth;canvas.height=img.naturalHeight;
+      const ctx=canvas.getContext("2d")!;ctx.drawImage(img,0,0);
+      return canvas.toDataURL("image/png");
+    }
+    return (await pixels("data:image/webp;base64,"+original))===(await pixels(stored));
+  },{original,stored:draft.assets[0].url});
+  expect(fullOriginal).toBe(true);
+  await page.getByRole("button",{name:"레퍼런스 변경"}).click();
+  await page.getByText("상품 이미지 추가 (선택)",{exact:true}).click();
+  await expect(page.getByRole("radio",{name:"이미지 2",exact:true})).toBeChecked();
+  await page.getByRole("button",{name:"카피 작성하기",exact:true}).click();
+  await page.getByRole("button",{name:"카피 확정 · 시안 만들기로",exact:true}).click();
+  const stored=await page.evaluate(()=>JSON.parse(localStorage.getItem("os-image-creatives-demo-v1")!)[0]);
+  expect(stored.state.batches[0].review.copy).toBeTruthy();
+  expect(stored.state.variants[0].asset.path).toBe(request.assetPaths[0]);
+  expect(stored.state.variants[0].referenceLayout).toEqual(request.referenceLayout);
+  expect(stored.state.variants[0].referenceArtwork).toBeUndefined();
+  expect(generationRequests).toHaveLength(0);
 });
 
 for (const source of ["직접 업로드", "창고 보관본"] as const) {
-  test(`${source} 레퍼런스로 카피 입력 중 실제 구도를 보고 카피 승인 전 초안을 다시 연다`, async ({page}) => {
+  test(`${source} 레퍼런스 원본을 보며 카피 초안을 저장하고 승인 전에는 이미지를 만들지 않는다`, async ({page}) => {
     const warehouse = source === "창고 보관본";
     const archived = "/image-format-test/master.jpg";
     if (warehouse) {
@@ -357,52 +279,37 @@ for (const source of ["직접 업로드", "창고 보관본"] as const) {
       await page.getByRole("button",{name:"새 레퍼런스 이미지 사용"}).click();
       await page.getByLabel("레퍼런스 원본 올리기").setInputFiles("public"+archived);
     }
-    await page.getByLabel("사진 교체",{exact:true}).check();
-    if(warehouse) await expect(page.getByRole("combobox",{name:"편집할 영역"})).toBeVisible();
-    else {
-      await page.getByRole("combobox",{name:"구도",exact:true}).selectOption("split");
-      await page.getByRole("combobox",{name:"사진 맞춤",exact:true}).selectOption("cover");
-      await page.getByRole("button",{name:"원본의 교체 영역 편집"}).click();
-      await expect(page.getByRole("combobox",{name:"편집할 영역"})).toBeVisible();
-      await page.getByRole("button",{name:"새 구도로 다시 배치"}).click();
-      await expect(page.getByRole("combobox",{name:"구도",exact:true})).toHaveValue("split");
-    }
-    const writeCopy = page.getByRole("button",{name:"카피 작성하기",exact:true});
+    await expect(page.getByAltText("AI에 전달할 레퍼런스 원본 전체")).toBeVisible();
+    await expect(page.getByRole("combobox",{name:"구도",exact:true})).toHaveCount(0);
+    await expect(page.getByRole("combobox",{name:"편집할 영역"})).toHaveCount(0);
+    const writeCopy=page.getByRole("button",{name:"카피 작성하기",exact:true});
     await expect(writeCopy).toBeEnabled();
-    await page.getByLabel("교체 사진 올리기").setInputFiles("public/image-format-test/thumbnail-subject.jpg");
+    await page.getByText("상품 이미지 추가 (선택)",{exact:true}).click();
+    await page.getByLabel("상품 이미지 올리기").setInputFiles("public/image-format-test/thumbnail-subject.jpg");
     await writeCopy.click();
 
-    const compare=page.getByRole("group",{name:"원본 광고와 교체 시안"});
-    const artwork=compare.locator(warehouse ? '[data-image-master="1"]' : '[data-image-composition="split"]');
-    await page.getByLabel("제목",{exact:true}).fill("직접 빚은 컵");
+    await expect(page.getByAltText("선택한 원본 디자인")).toBeVisible();
+    await expect(page.getByRole("group",{name:"원본 광고와 교체 시안"})).toHaveCount(0);
+    await page.getByLabel("제목",{exact:true}).fill("나만의 컵");
     await page.getByLabel("본문",{exact:true}).fill("공방에서 만나요");
     await page.getByLabel("버튼 문구",{exact:true}).fill("신청하기");
-    await expect(artwork.locator('[data-image-field="headline"]')).toHaveText("직접 빚은 컵");
-    await expect(artwork.locator('[data-image-field="body"]')).toHaveText("공방에서 만나요");
-    await expect(artwork.locator('[data-image-field="cta"]')).toHaveText("신청하기");
-    await expect(artwork.locator("img")).toHaveCount(warehouse ? 2 : 1);
-    const original=await compare.getByAltText("선택한 레퍼런스 원본").getAttribute("src");
-    if(warehouse) await expect(artwork.locator("img").first()).toHaveAttribute("src",original!);
-    expect(await artwork.locator("img").last().getAttribute("src")).not.toBe(original);
-    await page.getByLabel("제목",{exact:true}).fill("나만의 컵");
-    await expect(artwork.locator('[data-image-field="headline"]')).toHaveText("나만의 컵");
     await page.getByRole("button",{name:"초안 저장",exact:true}).click();
     await expect(page.getByText("초안 저장됨 · 카피 승인 대기")).toBeVisible();
     await page.reload();
-    await expect(artwork.locator('[data-image-field="headline"]')).toHaveText("나만의 컵");
-    const bundle = await page.evaluate(()=>JSON.parse(localStorage.getItem("os-image-creatives-demo-v1")!)[0]);
+    await expect(page.getByLabel("제목",{exact:true})).toHaveValue("나만의 컵");
+    await expect(page.getByAltText("선택한 원본 디자인")).toBeVisible();
+    const bundle=await page.evaluate(()=>JSON.parse(localStorage.getItem("os-image-creatives-demo-v1")!)[0]);
     const layout=bundle.state.formatApproval.request.referenceLayout;
-    if(warehouse) {
-      expect(layout.master).toMatchObject({v:1,regions:[],headlineWeight:900,background:"#eadcad"});
-      expect(layout.composition).toBeUndefined();
-    } else expect(layout.composition).toMatchObject({style:"split",fit:"cover"});
+    expect(layout.reproduction).toBe("image-ai");
+    expect(layout.master).toBeUndefined();expect(layout.composition).toBeUndefined();
+    expect(bundle.state.formatApproval.request.assetPaths).toEqual([bundle.assets[1].path]);
     expect(bundle.state.formatApproval.copyDraft[0].headline).toBe("나만의 컵");
     expect(bundle.state.batches).toHaveLength(0);
     expect(bundle.jobs).toHaveLength(0);
   });
 }
 
-test("레퍼런스 창고에서 카드를 골라 시작하면 원본을 가져와 바꿀 자리를 잡고, 돌아가면 창고가 다시 보인다", async ({page}) => {
+test("레퍼런스 창고에서 카드를 골라 시작하면 원본 전체를 이미지 AI 입력으로 준비하고, 돌아가면 창고가 다시 보인다", async ({page}) => {
   const card = {keep:"구도를 유지하세요.",slots:"문구",source:"",version:1,documentId:""};
   const samples = [{...card,id:"R01",name:"첫 묶음 원본",group:"대표 선택 18종",thumbnail:"/image-format-test/master.jpg"},
     {...card,id:"R02",name:"이미지 없는 원본",group:"대표 선택 18종",thumbnail:""},
@@ -428,13 +335,13 @@ test("레퍼런스 창고에서 카드를 골라 시작하면 원본을 가져�
   await page.getByLabel("레퍼런스 검색").fill("");
   await cards.first().locator("button.ic-flow-reference-choice").click();
   await page.getByRole("button",{name:"이 디자인으로 시작하기"}).click();
-  await expect(page.getByRole("combobox",{name:"구도",exact:true})).toBeVisible();
+  await expect(page.getByAltText("AI에 전달할 레퍼런스 원본 전체")).toBeVisible();
   await expect(page.getByRole("heading",{name:"레퍼런스 창고에서 고르기",exact:true})).toHaveCount(0);
   await page.getByRole("button",{name:"디자인 견본으로 돌아가기"}).click();
   await expect(page.getByRole("heading",{name:"레퍼런스 창고에서 고르기",exact:true})).toBeVisible();
 });
 
-test("사진 자리가 있는 레퍼런스는 카피를 먼저 확정하고, 미리보기 전에 공통 사진을 넣는다", async ({page})=>{
+test("레퍼런스 AI 시안은 사진 없이 카피를 확정하고 실제 생성 전에는 미리보기를 승인할 수 없다", async ({page})=>{
   await page.goto("/content/images");
   await page.getByRole("button",{name:"광고 한 장 만들기",exact:true}).click();
   const products=page.getByRole("combobox",{name:"상품 선택",exact:true});
@@ -452,23 +359,133 @@ test("사진 자리가 있는 레퍼런스는 카피를 먼저 확정하고, 미
     return canvas.toDataURL("image/webp").split(",")[1];
   });
   await page.getByLabel("레퍼런스 원본 올리기").setInputFiles({name:"sample.webp",mimeType:"image/webp",buffer:Buffer.from(original,"base64")});
-  await page.getByLabel("사진 교체",{exact:true}).check();
-  await expect(page.getByText("사진은 지금 골라도 되고, 카피를 확정한 뒤 골라도 돼요.")).toBeVisible();
+  await expect(page.getByAltText("AI에 전달할 레퍼런스 원본 전체")).toBeVisible();
   await page.getByRole("button",{name:"카피 작성하기",exact:true}).click();
   await expect(page.getByRole("heading",{name:"카피 작성",exact:true})).toBeVisible();
   await expect(page.getByRole("button",{name:"공통 이미지를 먼저 선택해 주세요"})).toHaveCount(0);
   await page.getByLabel("제목",{exact:true}).fill("직접 빚은 컵");
   await page.getByLabel("버튼 문구",{exact:true}).fill("수업 살펴보기");
-  await page.getByRole("button",{name:"카피 확정 · 디자인 수정하기",exact:true}).click();
-  const picker=page.getByRole("region",{name:"시안에 넣을 사진"});
-  await expect(picker).toBeVisible();
+  await page.getByRole("button",{name:"카피 확정 · 시안 만들기로",exact:true}).click();
+  await expect(page.getByRole("region",{name:"시안에 넣을 사진"})).toHaveCount(0);
   const group=page.getByRole("region",{name:"1번째 묶음 검토",exact:true});
   await expect(group.getByRole("button",{name:"수정하기",exact:true})).toBeDisabled();
   await expect(group.getByRole("button",{name:/미리보기 확인/})).toBeDisabled();
-  await picker.getByLabel("사진 올리기").setInputFiles("public/image-format-test/master.jpg");
-  await picker.getByRole("button",{name:/이 사진 넣기/}).click();
-  await expect(picker).toHaveCount(0);
-  await expect(page.getByText("사진 바꾸기",{exact:true})).toBeVisible();
-  await expect(group.getByRole("button",{name:"수정하기",exact:true})).toBeEnabled();
-  await expect(group.getByRole("button",{name:/미리보기 확인/})).toBeEnabled({timeout:15_000});
+  await expect(group.getByRole("button",{name:"레퍼런스로 시안 만들기",exact:true})).toBeDisabled();
+  await expect(group.getByText("개발 화면에서는 실제 AI 생성 결과를 불러온 경우에만 시안을 확인할 수 있어요.")).toBeVisible();
+  await expect(group.locator(".ic-artboard img")).toHaveCount(0);
+  await group.getByText("상품 자료 추가·변경 (선택)",{exact:true}).click();
+  await group.getByLabel("사진 올리기").setInputFiles("public/image-format-test/master.jpg");
+  await group.getByRole("button",{name:/이 사진 넣기/}).click();
+  // An upload is input material, never an AI-generated ad or readiness proof.
+  await expect(group.getByRole("button",{name:"수정하기",exact:true})).toBeDisabled();
+  await expect(group.getByRole("button",{name:/미리보기 확인/})).toBeDisabled();
+  await expect(group.locator(".ic-artboard img")).toHaveCount(0);
+});
+
+for (const legacyKind of ["composition","master"] as const) {
+  test(`저장된 ${legacyKind} 초안은 읽기만으로 바뀌지 않고 명시 선택 뒤에도 카피와 상품 자료를 보존한다`,async({page})=>{
+    const project={id:crypto.randomUUID(),title:"기존 레퍼런스 초안",version:7};
+    const source={path:"demo/legacy-source.png",w:1080,h:1350,url:"/image-format-test/master.jpg"};
+    const photo={path:"demo/legacy-product.png",w:1080,h:1350,url:"/image-format-test/thumbnail-subject.jpg"};
+    const detail={path:"demo/legacy-detail.png",w:1080,h:1350,url:"/image-format-test/master.jpg"};
+    const layout:ReferenceLayout={...draftReferenceLayout(source),...(legacyKind==="composition" ?
+      {composition:{style:"split",background:"#eeddcc",ink:"#111111",accent:"#0055ee",imageSide:"end",fit:"contain"}} :
+      {master:{v:1,background:"#eeddcc",regions:[],headlineWeight:900,detailSlots:[{x:10,y:45,w:80,h:18,crop:{x:0,y:0,w:100,h:100},source:"detail",fit:"contain"}]}})};
+    const copy={headline:"내가 빚은 컵",body:"공방에서 만나요",cta:"예약하기"};
+    let state=emptyImageCreative();
+    state.brief={...state.brief,brand:"공방",product:"도예",audience:"입문자",offer:"컵 만들기",objective:"예약",funnel:"체험"};
+    state.formatRecommendation=selectedReferencePlan(state.brief,"standalone","portrait",[{id:"cup",meaning:"직접 빚은 컵"}]);
+    const request:ImageBatchRequest={mode:"standalone",count:1,size:"portrait",formatIds:["reference_image"],assetPaths:[photo.path],referenceLayout:layout,
+      ...(legacyKind==="master"?{detailAssetPath:detail.path}:{})};
+    state=saveReferenceCopyDraft(approveImageFormat(state,request,{at:"2026-11-17T01:00:00Z",by:"owner"}),[copy]);
+    const seed={project,state,assets:[source,photo,...(legacyKind==="master"?[detail]:[])],jobs:[]};
+    await page.addInitScript(bundle=>{if(!localStorage.getItem("os-image-creatives-demo-v1"))
+      localStorage.setItem("os-image-creatives-demo-v1",JSON.stringify([bundle]));},seed);
+    const readSaved=()=>page.evaluate(()=>JSON.parse(localStorage.getItem("os-image-creatives-demo-v1")!)[0]);
+    const generationRequests:string[]=[];
+    await page.route("**/reference-generate",route=>{generationRequests.push(route.request().url());return route.abort();});
+    await page.goto("/content/images?project="+project.id);
+    await expect(page.getByRole("textbox",{name:"제목",exact:true})).toHaveValue(copy.headline);
+    expect((await readSaved()).state).toEqual(state);
+    await expect(page.getByRole("group",{name:"원본 광고와 교체 시안"})).toHaveCount(0);
+    await page.getByRole("button",{name:"레퍼런스 변경",exact:true}).click();
+    for(const name of ["구도","사진 맞춤","제목 굵기","사진 위치","바탕색","사진 비율","편집할 영역"])
+      await expect(page.getByLabel(name,{exact:true})).toHaveCount(0);
+    for(const name of ["원본의 교체 영역 편집","새 구도로 다시 배치","가릴 영역 추가","브랜드 칸 추가"])
+      await expect(page.getByRole("button",{name,exact:true})).toHaveCount(0);
+    expect((await readSaved()).state).toEqual(state);
+    await page.reload();
+    await expect(page.getByRole("textbox",{name:"제목",exact:true})).toHaveValue(copy.headline);
+    expect((await readSaved()).state).toEqual(state);
+    await page.getByRole("button",{name:"레퍼런스 변경",exact:true}).click();
+    await page.getByRole("button",{name:"카피 작성하기",exact:true}).click();
+    await expect(page.getByRole("textbox",{name:"제목",exact:true})).toHaveValue(copy.headline);
+    await expect(page.getByRole("textbox",{name:"본문",exact:true})).toHaveValue(copy.body);
+    await expect(page.getByRole("textbox",{name:"버튼 문구",exact:true})).toHaveValue(copy.cta);
+    const continued=await readSaved();
+    expect(continued.state.formatApproval.request.referenceLayout).toEqual(layout);
+    expect(continued.state.formatApproval.request.referenceLayout.source).toEqual(layout.source);
+    expect(continued.state.formatApproval.request.assetPaths).toEqual([photo.path]);
+    if(legacyKind==="master") expect(continued.state.formatApproval.request.detailAssetPath).toBe(detail.path);
+    expect(continued.state.formatApproval.copyDraft).toEqual([copy]);
+    expect(continued.state).toEqual(seed.state);
+    expect(continued.state.variants).toHaveLength(0);
+    expect(continued.state.batches).toHaveLength(0);
+    expect(continued.assets).toEqual(seed.assets);
+    expect(generationRequests).toHaveLength(0);
+    await page.getByRole("button",{name:"카피 확정 · 시안 만들기로",exact:true}).click();
+    const group=page.getByRole("region",{name:"1번째 묶음 검토",exact:true});
+    await expect(group.getByRole("region",{name:"레퍼런스 기반 시안 제작"})).toBeVisible();
+    await expect(group.getByRole("button",{name:"레퍼런스로 시안 만들기",exact:true})).toBeDisabled();
+    await expect(group.getByRole("button",{name:"수정하기",exact:true})).toBeDisabled();
+    await expect(group.getByRole("button",{name:/미리보기 확인/})).toBeDisabled();
+    await expect(group.locator(".ic-artboard img")).toHaveCount(0);
+    const approvedCopy=await readSaved();
+    expect(approvedCopy.state.variants[0].referenceLayout).toEqual(layout);
+    expect(approvedCopy.state.variants[0].asset.path).toBe(photo.path);
+    expect(approvedCopy.state.variants[0].referenceArtwork).toBeUndefined();
+    expect(approvedCopy.state.batches[0].review.copy).toBeTruthy();
+    expect(generationRequests).toHaveLength(0);
+  });
+}
+
+test("기존 레퍼런스 완성본을 다시 보고 이전 단계를 열어도 출력과 승인 기록은 그대로다",async({page})=>{
+  const project={id:crypto.randomUUID(),title:"기존 완성본",version:12};
+  const source={path:"demo/completed-source.png",w:1080,h:1350,url:"/image-format-test/master.jpg"};
+  const photo={path:"demo/completed-product.png",w:1080,h:1350,url:"/image-format-test/thumbnail-subject.jpg"};
+  const layout:ReferenceLayout={...draftReferenceLayout(source),composition:{style:"split",background:"#eeddcc",ink:"#111111",accent:"#0055ee",imageSide:"end",fit:"contain"}};
+  const copy={headline:"내가 빚은 컵",body:"공방에서 만나요",cta:"예약하기"};
+  const stamp={at:"2026-11-17T01:00:00Z",by:"owner"},output={runId:"existing-output",target:"render-pc" as const};
+  let state=emptyImageCreative();
+  state.brief={...state.brief,brand:"공방",product:"도예",audience:"입문자",offer:"컵 만들기",objective:"예약",funnel:"체험"};
+  state.formatRecommendation=selectedReferencePlan(state.brief,"standalone","portrait",[{id:"cup",meaning:"직접 빚은 컵"}]);
+  const request:ImageBatchRequest={mode:"standalone",count:1,size:"portrait",formatIds:["reference_image"],assetPaths:[photo.path],referenceLayout:layout};
+  state=approveImageFormat(state,request,stamp);
+  state=startImageCopyBatch(state,createImageBatch(state,request,{copies:[copy]},{now:stamp.at,by:stamp.by,newId:()=>crypto.randomUUID(),assets:[photo]}),request);
+  const batchId=state.batches[0].id;
+  state=confirmReferenceCopy(state,batchId,[copy],stamp);
+  state=reviewImageBatch(reviewImageBatch(state,batchId,"preview",stamp,output),batchId,"final",stamp,output);
+  const seed={project,state,assets:[source,photo],jobs:[],renders:[{id:output.runId,target:"render-pc",status:"done",variantIds:state.batches[0].variantIds}]};
+  await page.addInitScript(bundle=>{if(!localStorage.getItem("os-image-creatives-demo-v1"))
+    localStorage.setItem("os-image-creatives-demo-v1",JSON.stringify([bundle]));},seed);
+  const previews:unknown[]=[];
+  const png=Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jWmsAAAAASUVORK5CYII=","base64");
+  await page.route("**/reference-generate",()=>{throw new Error("Completed work must not be regenerated");});
+  await page.route("**/preview",route=>{previews.push(route.request().postDataJSON().variant.referenceLayout);return route.fulfill({contentType:"image/png",body:png});});
+  const readSaved=()=>page.evaluate(()=>JSON.parse(localStorage.getItem("os-image-creatives-demo-v1")!)[0]);
+  await page.goto("/content/images?project="+project.id);
+  const group=page.getByRole("region",{name:"1번째 묶음 검토",exact:true});
+  await expect(group.getByText("최종 검수 완료",{exact:true})).toBeVisible();
+  await expect(group.getByRole("button",{name:"내보내기",exact:true})).toBeEnabled();
+  expect(previews.length).toBeGreaterThan(0);
+  for(const value of previews) expect(value).toEqual(state.variants[0].referenceLayout);
+  await page.getByRole("button",{name:"뒤로 · 카피 확인",exact:true}).click();
+  await page.getByRole("button",{name:"뒤로 · 레퍼런스 확인",exact:true}).click();
+  await expect(page.getByAltText("승인한 레퍼런스 원본")).toHaveAttribute("src",source.url);
+  await expect(page.getByRole("button",{name:"원본의 교체 영역 편집",exact:true})).toHaveCount(0);
+  await page.getByRole("button",{name:"현재 시안으로 돌아가기",exact:true}).click();
+  await page.reload();
+  await expect(group.getByText("최종 검수 완료",{exact:true})).toBeVisible();
+  const current=await readSaved();
+  expect(current.state).toEqual(seed.state);expect(current.renders).toEqual(seed.renders);expect(current.assets).toEqual(seed.assets);
 });

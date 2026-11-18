@@ -12,7 +12,7 @@ import { ImageReferenceSteps } from "./reference-image-creation";
 import { photoSubjectBox } from "@/lib/image-creative/subject-box";
 import { ImageFormatSample } from "./image-format-choice";
 import { ImageFormatLibrary } from "./image-format-library";
-import { FormatBoard, ImageApprovalBatch, targetNames, type MachineRender, type RenderTarget, type ReviewStep } from "./image-approval-batch";
+import { FormatBoard, ImageApprovalBatch, targetNames, type MachineRender, type RenderTarget, type ReviewStep, type ReferenceGenerationRun } from "./image-approval-batch";
 import type { ImageEditProposal } from "./image-prompt-editor";
 import { ImageDesignEditor, LegacyPreview } from "./image-design-editor";
 import { downloadWarehouseSelection } from "@/lib/image-creative/warehouse-output";
@@ -26,7 +26,7 @@ type Project = ImageProjectRow;
 export type ImageProjectBundle = {
   project: Project; state: ImageCreativeState; assets: Asset[];
   jobs: { phase?: "formats" | "copy"; currentInput?: boolean; id: string; status: string; processing?:boolean; target?: RenderTarget; model?: string; executor?:string; failReason?: string }[];
-  renders?: MachineRender[]; rendered?: Record<string, string>; reviewable?: Record<string,string>;
+  renders?: MachineRender[]; rendered?: Record<string, string>; reviewable?: Record<string,string>; referenceRun?: ReferenceGenerationRun;
 };
 const jobLabels: Record<string, string> = { backlog: "AI 작업 대기", active: "AI 작업 중", done: "시안 준비 완료", blocked: "AI 작업 중단" };
 const jobReadError = "작업 상태를 불러오지 못했어요. 상태 새로고침으로 다시 확인해 주세요.";
@@ -61,6 +61,7 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
   const [trashTarget,setTrashTarget] = useState<ImageTrashProject>();
   const [wizardEpoch, setWizardEpoch] = useState(0);
   const [editingId, setEditingId] = useState("");
+  const [generatingReference,setGeneratingReference]=useState<string>();
   const [showSafeZone, setShowSafeZone] = useState(false);
   const previewBlobs = useRef(new Map<string, Blob>());
   const [manual, setManual] = useState(blankCopy);
@@ -239,7 +240,7 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
   const completedWithoutOptions = missingAppealResult?.status === "done" ? missingAppealResult.id : undefined;
   // Read-only polling stays active while a manually restarted worker reacquires its lease.
   const waiting = bundle?.jobs.some(job => (showTools || job.currentInput !== false) && ["backlog", "active"].includes(job.status)) ||
-    bundle?.renders?.some(render => ["queued", "active"].includes(render.status));
+    bundle?.renders?.some(render => ["queued", "active"].includes(render.status)) || bundle?.referenceRun?.status==="active";
   useEffect(() => {
     if (demo || !accessToken || !projectId || (!waiting && !completedWithoutOptions)) return;
     const controller = new AbortController();
@@ -315,6 +316,35 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
       setMessage("사진을 넣었어요. 시안을 확인해 주세요.");
     });
   }
+  function generateReference(batchId:string) {
+    void run(async () => {
+      if (!bundle) return;
+      if (demo) throw new Error("실제 AI 생성 결과는 회사 AI가 연결된 작업에서 확인해 주세요.");
+      let current=bundle;
+      const batch=current.state.batches.find(row=>row.id===batchId);
+      if (!batch?.review?.copy) throw new Error("먼저 카피를 확정해 주세요.");
+      const ids=batch.variantIds.filter(id=>current.state.variants.some(v=>v.id===id && v.formatId==="reference_image" && !v.referenceArtwork && !v.promptEdit));
+      if (!ids.length) return;
+      setGeneratingReference(batchId);
+      try {
+        for (const [index,variantId] of ids.entries()) {
+          setMessage(`${index+1}/${ids.length}번째 시안을 원본 디자인으로 만들고 있어요.`);
+          current=await apiRequest<ImageProjectBundle>(`/api/v1/content/image-creatives/${encodeURIComponent(current.project.id)}/reference-generate`,{
+            method:"POST",token:accessToken,body:JSON.stringify({version:current.project.version,variantId})});
+          applyBundle(current);
+        }
+        setMessage("레퍼런스로 시안을 만들었어요. 원본과 비교하고 미리보기를 확인해 주세요.");
+      } catch (cause) {
+        // A failed response can still reserve a version or finish a bitmap. Read once; never retry generation automatically.
+        try {
+          const next=await apiRequest<ImageProjectBundle>(`/api/v1/content/image-creatives/${encodeURIComponent(current.project.id)}`,{token:accessToken});
+          setBundle(old=>old?.project.id===next.project.id && old.project.version<=next.project.version ? next : old);
+        } catch { /* The original failure remains visible; status refresh is an explicit action. */ }
+        setMessage("시안 생성이 중단됐어요. 완료된 결과는 보존됩니다. 상태를 확인한 뒤 남은 시안만 다시 요청해 주세요.");
+        throw cause;
+      } finally {setGeneratingReference(undefined);}
+    });
+  }
   function reviewBatch(batchId:string,step:ReviewStep,runId?:string) {
     void run(async () => {
       if (!bundle) return;
@@ -382,7 +412,7 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
       const base=bundle.state.variants.find(row=>row.id===baseId);
       if(!base) throw new Error("수정할 원본을 다시 선택해 주세요.");
       let body:BodyInit=JSON.stringify({variantId:baseId,version:bundle.project.version,prompt});
-      if(isWarehouseFormat(base.formatId) && !base.promptEdit) {
+      if(isWarehouseFormat(base.formatId) && !base.promptEdit && !base.referenceArtwork) {
         const sourceHash=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(JSON.stringify(base)))),b=>b.toString(16).padStart(2,"0")).join("");
         const form=new FormData();form.set("metadata",JSON.stringify({variantId:baseId,version:bundle.project.version,prompt,sourceHash}));
         form.set("sourcePng",png,"current-ad.png");body=form;
@@ -599,12 +629,12 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
       <section id="image-creative-results" className="panel panel-pad-lg ic-panel" aria-labelledby="creative-results-title"><h2 id="creative-results-title">{showTools ? "4. 시안 비교·선택" : refReview ? refReview.preview ? "확정" : refReview.copy ? "디자인 수정" : "카피 작성" : "광고 시안 검토"}</h2>
         {editing && <ImageDesignEditor key={editing.id} projectId={bundle.project.id} base={editing}
           assetUrl={bundle.assets.find(a => a.path === editing.asset?.path)?.url} referenceUrl={bundle.assets.find(a => a.path === editing.referenceLayout?.source.path)?.url} detailUrl={bundle.assets.find(a => a.path === editing.detailAsset?.path)?.url}
-          promptEditUrl={bundle.assets.find(a=>a.path===editing.promptEdit?.image.path)?.url} demo={demo}
+          promptEditUrl={bundle.assets.find(a=>a.path===editing.promptEdit?.image.path)?.url} referenceArtworkUrl={bundle.assets.find(a=>a.path===editing.referenceArtwork?.image.path)?.url} demo={demo}
           examplePrompt={process.env.NODE_ENV==="development" && demo ? flowPreview?.promptEditExamples?.[0]?.prompt : undefined}
           propose={proposePromptEdit} apply={applyPromptEdit} onSave={saveDesign} onClose={() => setEditingId("")}/>}
         {saved?.batches.some(batch=>batch.review?.copy) && <label className="ic-check ic-guide-switch"><input type="checkbox" checked={showSafeZone}
           onChange={event => setShowSafeZone(event.target.checked)}/> 결과에 세이프 존 표시</label>}
-        {saved?.batches.length ? saved.batches.map((batch,index)=>{const review = <ImageApprovalBatch key={[batch.id,batch.review?.copy?.at,batch.review?.preview?.runId,batch.review?.final?.runId].join("-")} batch={batch} index={index}
+        {saved?.batches.length ? saved.batches.map((batch,index)=>{const review = <ImageApprovalBatch key={[batch.id,batch.review?.copy?.at,batch.review?.preview?.runId,batch.review?.final?.runId,JSON.stringify(batch.variantIds.map(id=>{const v=saved.variants.find(row=>row.id===id);return [id,v?.referenceArtwork?.inputHash,v?.referenceArtwork?.image.path,v?.promptEdit?.image.path,v?.asset?.path];}))].join("-")} batch={batch} index={index}
           variants={batch.variantIds.map(id=>saved.variants.find(v=>v.id===id)!).filter(Boolean)} assets={bundle.assets}
           projectId={bundle.project.id} target={target} render={bundle.renders?.find(row=>row.id===batch.review?.preview?.runId)}
           demo={demo} guided={!showTools} busy={busy} showGuide={showSafeZone} selectedId={saved.selectedId} rendered={bundle.rendered} reviewable={bundle.reviewable}
@@ -614,7 +644,7 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
           revisions={experiment && !batch.designRevision ? imageExperimentCandidateIds(saved,batch)
             .filter(id=>id !== batch.baseId && !batch.variantIds.includes(id)).flatMap(id=>saved.variants.find(v=>v.id===id) ?? []) : []}
           review={reviewBatch} returnReview={sendBack} edit={setEditingId} select={select} download={download}
-          attachPhoto={attachPhoto} uploadPhoto={file=>upload(file)}
+          attachPhoto={saved.formatRecommendation?.referenceFirst && !batch.baseId && !batch.designRevision && !batch.review?.preview ? attachPhoto : undefined} uploadPhoto={file=>upload(file)} generateReference={generateReference} referenceRun={bundle.referenceRun} generating={generatingReference===batch.id} refresh={refresh}
           keepBlob={(id,blob)=>{if(blob)previewBlobs.current.set(id,blob);else previewBlobs.current.delete(id);}}/>;
           return showTools || index===saved.batches.length-1 || currentRound?.id===batch.id ? review :
             <details key={batch.id} className="ic-details"><summary>이전 시안 · {index+1}번째 묶음 ({batch.count}장){experiment && batch.winner ? " · 승리 소재 기록됨" : ""}</summary>{review}</details>;

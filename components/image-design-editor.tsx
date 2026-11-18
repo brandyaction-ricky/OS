@@ -48,10 +48,10 @@ export function SafeZoneOverlay({ size, design }: { size: CreativeVariant["size"
 
 type EditorProps = {
   projectId: string; base: CreativeVariant; assetUrl?: string; referenceUrl?: string; detailUrl?: string;
-  promptEditUrl?:string; demo:boolean; examplePrompt?:string; propose:ImagePromptEditorProps["propose"]; apply:ImagePromptEditorProps["apply"];
+  promptEditUrl?:string; referenceArtworkUrl?:string; demo:boolean; examplePrompt?:string; propose:ImagePromptEditorProps["propose"]; apply:ImagePromptEditorProps["apply"];
   onSave: (baseId: string, id: string, design: ImageDesign) => Promise<void>; onClose: () => void;
 };
-export function ImageDesignEditor({ projectId, base, assetUrl, referenceUrl, detailUrl, promptEditUrl, demo, examplePrompt, propose, apply, onSave, onClose }: EditorProps) {
+export function ImageDesignEditor({ projectId, base, assetUrl, referenceUrl, detailUrl, promptEditUrl, referenceArtworkUrl, demo, examplePrompt, propose, apply, onSave, onClose }: EditorProps) {
   const [mode,setMode]=useState<"prompt"|"controls">("prompt");
   const original = useMemo<ImageDesign>(() => base.design || { font: "original", card: "original", placement: defaultPlacement(base.size) }, [base]);
   const [design, setDesign] = useState(original);
@@ -83,8 +83,8 @@ export function ImageDesignEditor({ projectId, base, assetUrl, referenceUrl, det
   }
   return <section ref={section} tabIndex={-1} className="ic-editor" aria-label="디자인 편집">
     <div className="ic-editor-tabs ic-row"><button type="button" className="secondary-button" disabled={busy} aria-pressed={mode==="prompt"} onClick={()=>setMode("prompt")}>말로 수정</button>
-      {!base.promptEdit && <button type="button" className="secondary-button" disabled={busy} aria-pressed={mode==="controls"} onClick={()=>setMode("controls")}>글꼴 · 크기 직접 조절</button>}</div>
-    {mode==="prompt" ? <ImagePromptEditor projectId={projectId} base={base} assetUrl={assetUrl} referenceUrl={referenceUrl} detailUrl={detailUrl} promptEditUrl={promptEditUrl}
+      {!base.promptEdit && !base.referenceArtwork && <button type="button" className="secondary-button" disabled={busy} aria-pressed={mode==="controls"} onClick={()=>setMode("controls")}>글꼴 · 크기 직접 조절</button>}</div>
+    {mode==="prompt" ? <ImagePromptEditor projectId={projectId} base={base} assetUrl={assetUrl} referenceUrl={referenceUrl} detailUrl={detailUrl} promptEditUrl={promptEditUrl} referenceArtworkUrl={referenceArtworkUrl}
       demo={demo} examplePrompt={examplePrompt} propose={propose} apply={apply} close={onClose} onBusy={setBusy}/> : <>
     <div className="ic-editor-preview">
       <div className="ic-artboard">
