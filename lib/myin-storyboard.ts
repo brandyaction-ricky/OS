@@ -538,6 +538,7 @@ export function myinPhotoFolders(storyboard: unknown) {
     if (Array.isArray(o)) o.forEach(walk);
     else if (o && typeof o === "object") for (const [k, v] of Object.entries(o)) {
       if (k === "photo" && v && typeof v === "object") add((v as { file?: unknown }).file, "people");
+      else if (k === "photo" && typeof v === "string") add(v, "situations");   // 웹 숏폼: every scene's photo is a file name
       else if (k === "image") add(v, "situations");
       else if (k === "broll" && Array.isArray(v)) for (const cut of v) add((cut as { file?: unknown })?.file, "situations");   // 숏폼 사진 컷: 오프닝 사진과 같은 폴더
       walk(v);

@@ -18,15 +18,15 @@ svg text { font-family: P, sans-serif; }
 </style></head>
 <body><div id="stage"></div>
 <script>
-// render.py injects window.__THEME, window.__STORY and window.__ASSETS (folder with gsap.min.js and fonts/) before this runs
+// render.py injects window.__THEME, window.__STORY and window.__ASSETS ({ gsap, fonts } file addresses) before this runs
 (() => {
   const T = window.__THEME, A = window.__ASSETS;
-  const css = Object.entries(T.fonts.files).map(([w, f]) => `@font-face { font-family: ${T.fonts.family}; font-weight: ${w}; src: url(${A}fonts/${f}); }`).join("\n");
+  const css = Object.entries(T.fonts.files).map(([w, f]) => `@font-face { font-family: ${T.fonts.family}; font-weight: ${w}; src: url(${A.fonts}${f}); }`).join("\n");
   document.head.appendChild(Object.assign(document.createElement("style"), { textContent: css }));
   document.documentElement.style.setProperty("--chip-size", `${T.type.chip}px`);
   document.documentElement.style.setProperty("--tape-size", `${T.type.tape}px`);
   const load = src => new Promise((ok, bad) => document.body.appendChild(Object.assign(document.createElement("script"), { src, onload: ok, onerror: bad })));
-  load(`${A}gsap.min.js`).then(() => load("engine.js")).catch(e => { window.__error = String(e); });
+  load(A.gsap).then(() => load("engine.js")).catch(e => { window.__error = String(e); });
 })();
 </script>
 </body></html>

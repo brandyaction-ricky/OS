@@ -211,7 +211,7 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
     note = myin.run.review?.decision === "revise" ? myin.run.review.note : "";
     const state = await readPipeline(actor, input.sourceId);
     source = state.source; title = jobTitle(state); myinRunId = myin.record.id;
-    if (myin.run.layout === "short") taskName = "숏폼 기획표(세로 큰 글자 · 도식)";
+    if (myin.run.layout === "short") taskName = myin.run.renderer === "web" ? "숏폼 기획표(사진 · 장면 틀)" : "숏폼 기획표(세로 큰 글자 · 도식)";
     inputKey = myinStoryboardInputKey(myin.record.id, myin.run.words!.at, note);
   } else if (input.task === "plan") {
     const state = await readPipeline(actor, input.sourceId);

@@ -742,7 +742,7 @@ export async function claimMyinWords(service: Service = createServiceSupabase(),
     const earlier = run.voiceOn && !run.words && !run.voiceFixes?.length ? (await voiceDonors(service, run.sourceId, run, record.created_at).catch(() => [])).map((d) => d.id) : [];
     return { runId: record.id, lease: lease.token, ...voice, bundleUploadUrl: upload.signedUrl, ...(voiceUploadUrls.length === MYIN_VOICE_PARTS ? { voiceUploadUrls } : {}),
       ...(earlier.length ? { earlier } : {}),
-      ...(preview ? { previewUploadUrl: preview.signedUrl } : {}), ...(run.layout ? { layout: run.layout } : {}),
+      ...(preview ? { previewUploadUrl: preview.signedUrl } : {}), ...(run.layout ? { layout: run.layout } : {}), ...(run.renderer ? { renderer: run.renderer } : {}),
       ...(dictionary?.exists ? { dictionary: dictionaryFiles(dictionary.dictionary) } : {}),
       ...(run.voiceFixes?.length ? { fixes: run.voiceFixes.map(({ memo, say, read, video, take, pause }) => ({ memo, ...(say ? { say } : {}), ...(read ? { read } : {}), ...(video ? { video } : {}),
         ...(take ? { take } : {}), ...(pause ? { pause } : {}) })) } : {}) };
@@ -1168,7 +1168,7 @@ export async function claimMyinCta(service: Service = createServiceSupabase(), s
     const story = await storyboardJson(service, run);
     const lines = [];
     for (const c of run.cta ?? []) if (c.status === "pending") lines.push({ index: c.index, uploadUrl: await uploadUrl(service, YOUTUBE_VOICE_BUCKET, ctaPcPath(record, run, c)) });
-    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), storyboard: await renderStory(story), fishVoice: fishVoice(run), lines,
+    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), ...(run.renderer ? { renderer: run.renderer } : {}), storyboard: await renderStory(story), fishVoice: fishVoice(run), lines,
       ...await seedFor(service, run) };
   } catch (error) {
     await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_CTA_CLAIM_FAILED");
@@ -1457,7 +1457,7 @@ export async function claimMyinPrep(service: Service = createServiceSupabase(), 
     // 바뀐 장면만 (요청 3번): the sheets before, drawn by the same engine; without them (or when they cannot be read) every scene is drawn.
     const prior = run.lastPrep && run.lastPrep.engine === lease.engine ? run.lastPrep : undefined;
     const previous = prior ? await priorSheets(service, run, prior).catch(() => null) : null;
-    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), draft, placeholders, ...(previous ? { previous } : {}), storyboard: await renderStory(story), assets, cta, ...(cta.some((c) => !c.url) ? { fishVoice: fishVoice(run) } : {}), siteCapture: story.scenes.some((sc) => sc.type === "site_ad"),
+    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), ...(run.renderer ? { renderer: run.renderer } : {}), draft, placeholders, ...(previous ? { previous } : {}), storyboard: await renderStory(story), assets, cta, ...(cta.some((c) => !c.url) ? { fishVoice: fishVoice(run) } : {}), siteCapture: story.scenes.some((sc) => sc.type === "site_ad"),
       sheetUploadUrls: sheetUploads, bundleUploadUrl: bundle.signedUrl, ...(owner ? { seed: await localSeed(service, run) } : await seedFor(service, run)), ...await subtitlesFor(service, run), ...styleFor(run) };
   } catch (error) {
     await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_PREP_CLAIM_FAILED");
@@ -1617,7 +1617,7 @@ export async function claimMyinRedraw(service: Service = createServiceSupabase()
         const { data: upload } = await service.storage.from(SHEET_BUCKET).createSignedUploadUrl(sheetPath(candidate, run, token, n), { upsert: true });
         if (upload) sheetUploadUrls.push(upload.signedUrl);
       }
-      return { runId: candidate.id, lease: token, ...(run.layout ? { layout: run.layout } : {}), storyboard: await renderStory(story),
+      return { runId: candidate.id, lease: token, ...(run.layout ? { layout: run.layout } : {}), ...(run.renderer ? { renderer: run.renderer } : {}), storyboard: await renderStory(story),
         ...(previous ? { previous: await renderStory(previous), sheets: await Promise.all(run.prepared!.sheets.map((path) => sign(service, SHEET_BUCKET, path))) } : {}),
         placeholders: [...folders].flatMap(([file, kinds]) => kinds.map((kind) => ({ kind, file }))), assets: myinPrepPhotos(folders, run.storyboard?.assets ?? [], () => true, ours),
         sheetUploadUrls, ...await subtitlesFor(service, run), ...styleFor(run) };
@@ -1785,7 +1785,7 @@ export async function claimMyinClips(service: Service = createServiceSupabase(),
       ...await subtitlesFor(service, run), ...styleFor(run) };
     const items = clipItems(run);
     const uploads = await Promise.all(items.map((item) => uploadUrl(service, ASSET_VIDEO_BUCKET, outPath(record, run, `${item.name}-${tag(lease.token)}.mp4`))));
-    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), clips: items.map((item, i) => ({ ...item, uploadUrl: uploads[i] })), ...(owner ? { seed: await localSeed(service, run) } : {}),
+    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), ...(run.renderer ? { renderer: run.renderer, storyboard: await renderStory(await storyboardJson(service, run)) } : {}), clips: items.map((item, i) => ({ ...item, uploadUrl: uploads[i] })), ...(owner ? { seed: await localSeed(service, run) } : {}),
       ...await subtitlesFor(service, run), ...styleFor(run) };
   } catch (error) {
     await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_CLIPS_CLAIM_FAILED");
@@ -1965,7 +1965,7 @@ export async function claimMyinFinal(service: Service = createServiceSupabase(),
   try {
     const files = finalFiles(record, run, lease.token);
     // The storyboard as ④ left it (sound edits made after the preparation), written into the render PC's copy before the render.
-    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), storyboard: await renderStory(await storyboardJson(service, run)),
+    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), ...(run.renderer ? { renderer: run.renderer } : {}), storyboard: await renderStory(await storyboardJson(service, run)),
       videoUploadUrl: await uploadUrl(service, ASSET_VIDEO_BUCKET, files.video), srtUploadUrl: await uploadUrl(service, OUTPUT_BUCKET, files.srt),
       ...(files.summary && files.deck ? { summaryUploadUrl: await uploadUrl(service, OUTPUT_BUCKET, files.summary), deckUploadUrl: await uploadUrl(service, OUTPUT_BUCKET, files.deck) } : {}),
       ...(owner ? { seed: await localSeed(service, run) } : {}), ...await subtitlesFor(service, run), ...styleFor(run) };

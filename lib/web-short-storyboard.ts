@@ -153,6 +153,7 @@ export function checkWebShort(value: unknown, input: { words: Words; script: str
         if ((k === "cue" || k.startsWith("cue_")) && typeof v === "string") {
           const s = span(v, start?.char ?? 0, 1400, where);
           if (s && (s.from < from - 0.3 || s.from > to)) issues.push(`${where} 「${v}」는 이 장면 밖에서 나오는 말이에요. 이 장면 시작 문구와 다음 장면 시작 문구 사이의 말로 써요.`);
+          else if (s && n < scenes.length - 1 && s.from > to - 0.3) issues.push(`${where} 「${v}」는 장면이 넘어가는 순간의 말이라 보이지 않아요. 이 장면 안의 더 앞 말로 써요.`);
           if (k === "cue") { r.at = round(s?.from ?? from); r.atEnd = round(s?.to ?? from); } else r[camelAt(k)] = round(s?.from ?? from);
           r[k] = v;
         } else r[k] = timed(v);

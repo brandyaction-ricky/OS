@@ -37,6 +37,8 @@ export async function sceneNoteInputs(supabase: RequestActor["supabase"], source
   const service = createServiceSupabase();
   const { record, run, words, speech } = await myinRunWords(service, sourceId);
   if (!run.storyboard) throw new ApiError(409, "MYIN_STORYBOARD_MISSING", "기획표가 나온 뒤에 보낼 수 있어요.");
+  // 웹 숏폼: its storyboard is kept in seconds for the renderer, so a scene is fixed by sending the notes back with [수정 요청].
+  if (run.renderer === "web") throw new ApiError(409, "WEB_SHORT_SCENE_NOTES", "이 숏폼은 장면별 수정안 대신, 의견을 남기고 [수정 요청]을 누르면 내 AI가 의견을 반영해 기획표를 다시 써요.");
   const { data, error } = await supabase.from("os_records").select("*").in("id", ids).eq("parent_id", sourceId).eq("record_type", "content_feedback").is("archived_at", null);
   if (error) throw new ApiError(500, "SCENE_NOTES_READ_FAILED", "장면 의견을 읽지 못했어요.");
   const rows = ((data ?? []) as OsRecord[]).filter((row) => {

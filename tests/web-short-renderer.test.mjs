@@ -72,3 +72,12 @@ test("every template the renderer has is on the card, and only those", () => {
   const drawn = [...engine.matchAll(/\n {4}(\w+)\(s\) \{/g)].map((m) => m[1]);
   assert.deepEqual(listed.sort(), drawn.sort());
 });
+
+test("the render PC hands a web short to its renderer at every stage, and sends YouTube the subtitles as SRT", async () => {
+  const worker = readFileSync(new URL("../tools/youtube-media-worker.mjs", import.meta.url), "utf8");
+  for (const stage of ["processMyinPrep", "processMyinRedraw", "processMyinClips", "processMyinFinal"])
+    assert.match(worker.slice(worker.indexOf(`export async function ${stage}(`)).split("\nexport ")[0], /job\.renderer === "web"/, stage);
+  const { webShortSrt } = await import("../tools/youtube-media-worker.mjs");
+  assert.equal(webShortSrt([[0, 1.3, "입사 3년 차 마케터가"], [61.32, 62.5, "한 명 있다고 해보죠"]]),
+    "1\n00:00:00,000 --> 00:00:01,300\n입사 3년 차 마케터가\n\n2\n00:01:01,320 --> 00:01:02,500\n한 명 있다고 해보죠\n");
+});
