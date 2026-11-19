@@ -10,7 +10,7 @@ import { oneArrow,
   confirmPlan, draftMissing, hiddenTagsOf, lateMakeOk, outlineMissing, PLAN_FIELD_KEY, scriptFromPlan, SLOTS, stageData, STAGE_RECORD, thumbsMissing, withScriptVersion, withNotePatch,
   columnSignature, type YpColumn, type YpColumnItem, type YpColumnMyin, type YpMake, type YpOutline, type YpPlan, type YpStageKind, type YpStages, type YpUpload,
 } from "@/lib/youtube-process/stages";
-import { checkColumnHtml, cleanColumnHtml, columnForMyin, type ColumnFill } from "@/lib/seo-column";
+import { checkColumnHtml, cleanColumnHtml, columnForMyin, columnShorts, type ColumnFill } from "@/lib/seo-column";
 import { shortsAction } from "@/lib/youtube-process/short";
 import { thumbSavedEditSchema } from "@/lib/youtube-process/thumb-edit";
 import { GateError } from "@/lib/youtube-process/confirm";
@@ -348,7 +348,10 @@ export async function columnToMyin(actor: RequestActor, id: string, input: z.inf
     // The video place shows the longform on YouTube unless the PD put another link there (as on the export).
     const videoUrl = stages.upload.data.run?.videoUrl;
     if (!fills.video && videoUrl) fills.video = { src: videoUrl };
-    const page = columnForMyin(item.html, fills);
+    // 글 끝 숏폼 (직원 요청 11-19): this longform's uploaded Shorts, as the column screen's preview shows them.
+    const { data: clips } = await actor.supabase.from("os_records").select("title,metadata").eq("parent_id", project.id).eq("record_type", "content_short")
+      .is("archived_at", null).order("created_at", { ascending: true });
+    const page = columnForMyin(item.html, fills, columnShorts((clips ?? []) as { title: string; metadata: Record<string, unknown> }[]));
     const body = { slug: page.meta.slug, title: page.meta.title.slice(0, 160), excerpt: page.meta.description.slice(0, 500), category: "칼럼", html: page.html, jsonLd: page.jsonLd, images,
       ...(images.some(image => image.key === "img-hero") ? { coverKey: "img-hero" } : {}) };
     if (Buffer.byteLength(JSON.stringify(body)) > MYIN_BODY_MAX) throw new ApiError(413, "MYIN_TOO_LARGE", "이미지가 너무 커요. 합계 3MB 안으로 줄여 주세요.");

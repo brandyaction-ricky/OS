@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { anchorMyinCues, applyMyinSoundPlan, checkMyinStoryboard, matchingBlocks, myinCueMisses, myinCreditsBlock, myinDriftPairs, myinOnlySoundChanged, myinPhotoFetchUrl, myinPhotoFolders, myinPrepPhotos, myinSoundIssues, myinSoundPlan, myinDeckIssues, seqRatio } from "../lib/myin-storyboard.ts";
+import { anchorMyinCues, applyMyinSoundPlan, checkMyinStoryboard, matchingBlocks, myinCueMisses, myinColumnMaterials, myinCreditsBlock, myinDriftPairs, myinOnlySoundChanged, myinPhotoFetchUrl, myinPhotoFolders, myinPrepPhotos, myinSoundIssues, myinSoundPlan, myinDeckIssues, seqRatio } from "../lib/myin-storyboard.ts";
 
 // The OS check must say what Logan's resolve() says: exact phrase within its window, else a window with difflib ratio ≥ 0.62.
 test("seqRatio equals Python difflib.SequenceMatcher.ratio()", () => {
@@ -235,4 +235,23 @@ test("a cue the transcript hears otherwise is anchored to the words it was read 
 test("matchingBlocks equals difflib's matching blocks, so seqRatio stays the same", () => {
   assert.deepEqual(matchingBlocks("abxcd", "abcd"), [[0, 0, 2], [3, 2, 2]]);
   assert.equal(seqRatio("abxcd", "abcd").toFixed(6), (8 / 9).toFixed(6));
+});
+
+// 칼럼 롱폼 재료 (직원 요청 11-19): the storyboard's photos (our upload first, else a fetchable listed one) and diagrams with their words.
+test("myinColumnMaterials lists each photo once with where to read it and its credit, and each diagram with its words", () => {
+  const story = { scenes: [{ type: "opening", at: "오늘은", image: "open.jpg" },
+    { type: "hero", at: "회의 시간에", photo: { file: "team.jpg" } }, { type: "situation", at: "다시 회의", photo: { file: "team.jpg" } },
+    { type: "statement", at: "책상 앞", photo: { file: "desk.jpg", t: "x" } }, { type: "hero", at: "밖에서", photo: { file: "gone.jpg" } },
+    { type: "hero", at: "영상", photo: { file: "clip.mp4" } }, { type: "hero", at: "우리 사진", photo: { file: "ours_a.jpg" } },
+    { type: "lib_numbered", at: "세 가지로", items: [{ text: "나눠 적기", cue: "나눠" }, { text: "묻기" }], why: "단계 → 번호" }, { type: "outro" }] };
+  const listed = [{ file: "open.jpg", url: "https://images.unsplash.com/photo-0", source: "Unsplash · A", license: "Unsplash License" },
+    { file: "team.jpg", url: "https://images.unsplash.com/photo-1", source: "Unsplash · B", license: "Unsplash License" },
+    { file: "desk.jpg", url: "https://commons.wikimedia.org/wiki/File:Desk.jpg", source: "Wikimedia · C", license: "CC BY-SA 4.0" },
+    { file: "gone.jpg", url: "https://example.com/gone.jpg", source: "x", license: "y" }];
+  const got = myinColumnMaterials(story, listed, { "ours_a.jpg": { path: "o/s/r/our-images/a.jpg" } }, (file) => file === "open.jpg");
+  assert.deepEqual(Object.keys(got.photos), ["team.jpg", "desk.jpg", "ours_a.jpg"]);
+  assert.deepEqual(got.photos["team.jpg"], { at: "회의 시간에", credit: "", url: "https://images.unsplash.com/photo-1" });
+  assert.deepEqual(got.photos["desk.jpg"], { at: "책상 앞", credit: "사진 Wikimedia · C · CC BY-SA 4.0", url: "https://commons.wikimedia.org/wiki/Special:FilePath/Desk.jpg" });
+  assert.deepEqual(got.photos["ours_a.jpg"], { at: "우리 사진", credit: "", path: "o/s/r/our-images/a.jpg" });
+  assert.deepEqual(got.diagrams, [{ scene: 8, type: "lib_numbered", at: "세 가지로", words: "나눠 적기 · 묻기" }]);
 });

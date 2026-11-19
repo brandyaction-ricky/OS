@@ -7,7 +7,10 @@ import { parseYoutubeRef } from "./youtube-process/project.ts";
 export const COLUMN_IMAGE_SLOTS = ["hero", "1", "2", "3"] as const;
 export type ColumnImageSlot = (typeof COLUMN_IMAGE_SLOTS)[number];
 export interface ColumnMeta { title: string; description: string; keywords: string[]; slug: string }
-export interface ColumnSlotInfo { slot: string; kind: "hero" | "image" | "video"; prompt: string; caption: string }
+/** from: a longform photo (file name in the storyboard) the OS puts in by itself, in place of a prompt for a person (직원 요청 11-19). */
+export interface ColumnSlotInfo { slot: string; kind: "hero" | "image" | "video"; prompt: string; caption: string; from: string }
+/** A Short uploaded from this longform, listed at the column's end. */
+export interface ColumnShort { title: string; url: string }
 /** What goes into a slot when shown: an image address (or data: URI on export), or a YouTube link for the video slot. */
 export interface ColumnFill { src: string; alt?: string }
 
@@ -52,7 +55,7 @@ export function columnSlots(html: string): ColumnSlotInfo[] {
     const slot = attrs["data-slot"];
     if (!slot) return [];
     return [{ slot, kind: slot === "video" || hasClass(attrs, "video") ? "video" as const : slot === "hero" || hasClass(attrs, "hero") ? "hero" as const : "image" as const,
-      prompt: unescape(attrs["data-prompt"] ?? "").trim(), caption: textOf(inner.match(/<figcaption[^>]*>([\s\S]*?)<\/figcaption>/i)?.[1] ?? "") }];
+      prompt: unescape(attrs["data-prompt"] ?? "").trim(), from: unescape(attrs["data-from"] ?? "").trim(), caption: textOf(inner.match(/<figcaption[^>]*>([\s\S]*?)<\/figcaption>/i)?.[1] ?? "") }];
   });
 }
 
@@ -69,8 +72,9 @@ export function faqPairs(html: string) {
 /**
  * `unsafe`: what may not be shown at all (scripts, frames, styles, inline handlers) — always refused.
  * `issues`: what breaks the 정본 구성 — refused when the AI submits, shown as a warning when a person edits by hand.
+ * `photos`: the longform photos a data-from may name, with the credit its caption must carry (the AI's submit); left out, data-from is not checked.
  */
-export function checkColumnHtml(html: string) {
+export function checkColumnHtml(html: string, photos?: Record<string, string>) {
   const unsafe = [...new Set([...html.matchAll(FORBIDDEN)].map(match => `<${match[1].toLowerCase()}>`))].map(tag => `${tag} 태그는 넣지 않아요`);
   if (/\son[a-z]+\s*=/i.test(html)) unsafe.push("on… 속성(스크립트)은 넣지 않아요");
   if (/(?:href|src|xlink:href)\s*=\s*["']?\s*(?:javascript|data|vbscript):/i.test(html)) unsafe.push("javascript: · data: 주소는 넣지 않아요");
@@ -106,13 +110,24 @@ export function checkColumnHtml(html: string) {
     if (info.kind === "video") continue;
     const name = info.slot === "hero" ? "대표 이미지" : `이미지 ${info.slot}`;
     const words = wordCount(info.prompt);
-    if (words < 35 || words > 110) issues.push(`${name} data-prompt는 40~80단어 영어 문단이에요 — 지금 ${words}단어`);
+    if (info.from) {
+      if (photos && !(info.from in photos)) issues.push(`${name} data-from="${info.from}"은 롱폼 재료 사진(longform.photos)에 없는 파일이에요`);
+      else if (photos?.[info.from] && !info.caption.includes(photos[info.from])) issues.push(`${name} figcaption 끝에 사진 출처 「${photos[info.from]}」를 붙여요`);
+    } else if (words < 35 || words > 110) issues.push(`${name} data-prompt는 40~80단어 영어 문단이에요 — 지금 ${words}단어`);
     else if (!/16:9/.test(info.prompt) || !/no text/i.test(info.prompt)) issues.push(`${name} data-prompt에 16:9와 no text가 있어야 해요`);
     if (!info.caption) issues.push(`${name}의 figcaption(한글 설명)이 비어 있어요`);
   }
   if (!slots.some(info => info.slot === "hero" && info.kind === "hero")) issues.push("대표 이미지 자리(figure.ph.hero, data-slot=\"hero\")가 없어요");
-  const images = slots.filter(info => ["1", "2", "3"].includes(info.slot)).length;
-  if (images < 2 || images > 3) issues.push(`본문 이미지 자리(data-slot 1~3)는 2~3개예요 — 지금 ${images}개`);
+  // A longform diagram drawn in the text (inline SVG) stands for an image place (직원 요청 11-19).
+  const visuals = slots.filter(info => ["1", "2", "3"].includes(info.slot)).length + [...html.matchAll(FIGURE)].filter(([, , inner]) => /<svg\b/i.test(inner)).length;
+  if (visuals < 2 || visuals > 3) issues.push(`본문 그림(이미지 자리 data-slot 1~3 + 글 안에 그린 SVG 도식)은 2~3개예요 — 지금 ${visuals}개`);
+  if (!slots.some(info => info.kind === "video")) issues.push("영상 자리(figure.ph.video, data-slot=\"video\")가 없어요");
+  const sources = html.match(/<aside\b[^>]*class=["'][^"']*\bsources\b[^"']*["'][^>]*>([\s\S]*?)<\/aside>/i)?.[1];
+  if (sources !== undefined) {
+    const items = [...sources.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/gi)].map(match => match[1]);
+    const unlinked = items.filter(item => !/<a\b[^>]*href=["']https:\/\//i.test(item)).length;
+    if (!items.length || unlinked) issues.push(`참고한 연구(aside.sources)는 항목마다 원문 링크(https)가 있어야 해요 — ${items.length ? `${unlinked}개 없음` : "항목이 없어요"}`);
+  }
   const other = slots.filter(info => !["hero", "1", "2", "3", "video"].includes(info.slot));
   if (other.length) issues.push(`data-slot은 hero · 1 · 2 · 3 · video만 써요 — ${other.map(info => info.slot).join(", ")}`);
   return { unsafe, issues, meta };
@@ -130,8 +145,12 @@ function filledFigure(attrText: string, inner: string, fill: ColumnFill) {
 }
 
 /** The column with its places filled, h2/h3 anchors, the side 목차 and its JSON-LD (Article · FAQPage), before it becomes a page. */
-function columnParts(html: string, fills: Partial<Record<string, ColumnFill>>) {
+function columnParts(html: string, fills: Partial<Record<string, ColumnFill>>, shorts: ColumnShort[]) {
   let doc = cleanColumnHtml(html).replace(/<style[\s\S]*?<\/style>/gi, "");
+  // 글 끝 숏폼 (직원 요청 11-19): the Shorts uploaded from this longform, at the end of the article.
+  const list = shorts.filter(item => /^https:\/\//.test(item.url));
+  const end = doc.lastIndexOf("</article>");
+  if (list.length && end >= 0) doc = `${doc.slice(0, end)}<div class="col-shorts"><div class="t">1분 영상으로 보기</div><ul>${list.map(item => `<li><a href="${escape(item.url)}" target="_blank" rel="noopener">${escape(item.title)}</a></li>`).join("")}</ul></div>${doc.slice(end)}`;
   doc = doc.replace(FIGURE, (whole, attrText: string, inner: string) => {
     const fill = fills[attrsOf(attrText)["data-slot"] ?? ""];
     return fill?.src ? filledFigure(attrText, inner, fill) : whole;
@@ -156,8 +175,8 @@ function columnParts(html: string, fills: Partial<Record<string, ColumnFill>>) {
 }
 
 /** The column as a page: slots filled, h2/h3 anchors with the side 목차, JSON-LD (Article · FAQPage) and the design CSS. */
-export function renderColumn(html: string, fills: Partial<Record<string, ColumnFill>> = {}) {
-  const { nav, ld, doc: body } = columnParts(html, fills);
+export function renderColumn(html: string, fills: Partial<Record<string, ColumnFill>> = {}, shorts: ColumnShort[] = []) {
+  const { nav, ld, doc: body } = columnParts(html, fills, shorts);
   let doc = body;
   const head = `${COLUMN_STYLE}${ld.map(item => `<script type="application/ld+json">${JSON.stringify(item).replace(/</g, "\\u003c")}</script>`).join("")}`;
   doc = /<\/head>/i.test(doc) ? doc.replace(/<\/head>/i, `${head}</head>`) : doc.replace(/<body\b/i, `<head>${head}</head><body`);
@@ -168,11 +187,17 @@ export function renderColumn(html: string, fills: Partial<Record<string, ColumnF
  * The column for the MYIN 아티클 page (owner request 2026-10-25): the body only — 목차 and the article, no page shell, style or
  * script (MYIN keeps the design and renders the JSON-LD itself) — with its title, description and slug.
  */
-export function columnForMyin(html: string, fills: Partial<Record<string, ColumnFill>>) {
-  const { doc, nav, ld, meta } = columnParts(html, fills);
+export function columnForMyin(html: string, fills: Partial<Record<string, ColumnFill>>, shorts: ColumnShort[] = []) {
+  const { doc, nav, ld, meta } = columnParts(html, fills, shorts);
   const body = (doc.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i)?.[1] ?? doc).trim();
   return { meta, html: `<div class="col-wrap">${nav}${body}</div>`, jsonLd: ld };
 }
+
+/** The uploaded Shorts among this longform's 쇼츠 대본 (content_short metadata.youtube), oldest first as given. */
+export const columnShorts = (clips: { title: string; metadata: Record<string, unknown> }[]): ColumnShort[] => clips.flatMap(clip => {
+  const url = (clip.metadata.youtube as { videoUrl?: unknown } | undefined)?.videoUrl;
+  return typeof url === "string" && url.startsWith("https://") ? [{ title: clip.title, url }] : [];
+});
 
 /** The column page's 목차 highlight (the earlier 기획실 one): the section being read is marked in the side list. */
 const TOC_SPY = "<script>(function(){var ls=[].slice.call(document.querySelectorAll('.col-toc a'));if(!ls.length||!window.IntersectionObserver)return;var map={};ls.forEach(function(a){map[a.getAttribute('href')]=a;});var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){ls.forEach(function(a){a.classList.remove('active')});var a=map['#'+e.target.id];if(a)a.classList.add('active')}})},{rootMargin:'0px 0px -72% 0px'});Object.keys(map).forEach(function(h){var e=document.getElementById(h.slice(1));if(e)io.observe(e)})})();</script>";
@@ -185,6 +210,7 @@ export const COLUMN_CONTRACT = `**완결된 HTML 문서 하나**를 result.html�
 <body>에 \`<article class="ba-article">\` 하나, 그 안에 이 순서로:
 1. \`<h1>\` 제목 (하나)
 2. 대표 이미지 자리 — h1 바로 아래: \`<figure class="ph hero" data-slot="hero" data-prompt="글 전체를 상징하는 가로 와이드 대표 이미지의 완결 영어 프롬프트"><div class="ico">🖼️</div><figcaption>[대표 이미지] 한글 설명</figcaption></figure>\`
+   롱폼 재료(longform.photos)에 글 전체에 맞는 사진이 있으면 data-prompt 대신 \`data-from="파일 이름"\`을 씁니다(OS가 그 사진을 넣습니다).
 3. \`<div class="tldr"><b>3줄 요약</b><ul><li>…</li><li>…</li><li>…</li></ul></div>\` — 핵심 질문 직답(AEO), <li> 정확히 3개
 4. \`<p class="lead">\` 도입 한 문단
 5. 본문 \`<h2>\` 4~7개, 섹션마다 \`<p>\`. 긴 섹션은 \`<h3>\` 2~3개로 나눕니다. 내용에 맞을 때만 섞습니다:
@@ -192,12 +218,16 @@ export const COLUMN_CONTRACT = `**완결된 HTML 문서 하나**를 result.html�
    - \`<blockquote>인용할 만한 단정적 문장</blockquote>\`
    - \`<table class="cmp"><thead><tr><th>…</th></tr></thead><tbody>…</tbody></table>\` (비교가 있을 때)
    - \`<ol>\` · \`<ul>\` (단계 · 항목)
-6. 본문 이미지 자리 2~3개(본문 사이 알맞은 곳): \`<figure class="ph" data-slot="1" data-prompt="…"><div class="ico">🖼️</div><figcaption>[이미지] 한글 설명</figcaption></figure>\` — data-slot은 1 · 2 · 3
-   data-prompt는 그대로 이미지 AI에 붙여 넣어 바로 뽑히는 **완결 영어 문단(40~80단어)**: 장면 · 구도 · 아트 스타일 · 색(navy #0D1531 · blue #2735C8, 밝은 배경 #F7F8FF) · 분위기 · "16:9 aspect ratio. No text, no words, no logos."
-7. (선택) 영상 자리 하나 — 영상이 도움 될 때만: \`<figure class="ph video" data-slot="video"><div class="ico">▶️</div><figcaption>[영상] 이 롱폼 자리</figcaption></figure>\` (OS가 올린 유튜브 영상을 넣습니다)
-8. (선택) 개념이 도식으로 잘 보이면 간단한 인라인 SVG 하나: \`<figure><svg viewBox="0 0 640 …" role="img" aria-label="…">…</svg><figcaption>…</figcaption></figure>\` (글자 · 사각형 · 화살표 정도, 네이비 · 블루, 흰 배경)
+6. 본문 그림 2~3개(본문 사이 알맞은 곳) — 이미지 자리와 8번 도식을 합쳐 셉니다. 자리마다 **롱폼 재료를 먼저** 찾습니다(새 이미지 0장이 목표):
+   - 그 섹션 내용과 같은 장면에 쓴 롱폼 사진(longform.photos, at = 그 사진이 나온 원고 자리)이 있으면: \`<figure class="ph" data-slot="1" data-from="파일 이름"><div class="ico">🖼️</div><figcaption>[이미지] 한글 설명</figcaption></figure>\` — OS가 그 사진을 넣습니다. 사진에 credit이 있으면 figcaption 끝에 그대로 붙입니다.
+   - 맞는 사진이 없을 때만: \`<figure class="ph" data-slot="1" data-prompt="…"><div class="ico">🖼️</div><figcaption>[이미지] 한글 설명</figcaption></figure>\` — data-prompt는 그대로 이미지 AI에 붙여 넣어 바로 뽑히는 **완결 영어 문단(40~80단어)**: 장면 · 구도 · 아트 스타일 · 색(navy #0D1531 · blue #2735C8, 밝은 배경 #F7F8FF) · 분위기 · "16:9 aspect ratio. No text, no words, no logos."
+   - data-slot은 1 · 2 · 3, 같은 파일을 두 번 쓰지 않습니다.
+7. 영상 자리 하나(필수) — 도입 뒤나 본문 중간: \`<figure class="ph video" data-slot="video"><div class="ico">▶️</div><figcaption>[영상] 이 롱폼 자리</figcaption></figure>\` (OS가 올린 유튜브 본편을 넣습니다. 이 영상에서 나온 쇼츠 링크는 OS가 글 끝에 붙이니 쓰지 않습니다)
+8. 도식: 그 섹션 내용과 같은 롱폼 도식(longform.diagrams — type과 words)이 있으면 그 도식을 같은 말로 간단한 인라인 SVG로 다시 그립니다: \`<figure><svg viewBox="0 0 640 …" role="img" aria-label="…">…</svg><figcaption>…</figcaption></figure>\` (글자 · 사각형 · 화살표 정도, 네이비 · 블루, 흰 배경). 롱폼 재료가 없으면 개념이 도식으로 잘 보일 때만 하나.
 9. \`<div class="takeaways"><div class="t">핵심 정리</div><ul><li>…</li>…</ul></div>\` — <li> 3개 이상
-10. \`<section class="faq"><h2>자주 묻는 질문</h2><dl><dt>질문</dt><dd>답</dd>…</dl></section>\` — 3쌍 이상, 질문/답 쌍으로`;
+10. 연구 · 통계를 인용했으면(그때만) FAQ 앞에 \`<aside class="sources"><div class="t">참고한 연구</div><ol><li>저자(연도). 「논문 이름」. 학술지 · 기관. <a href="https://…">원문</a></li></ol></aside>\` — 본문에서도 「2009년 국내 한 대학 연구팀」이 아니라 연구자 · 기관 · 연도를 밝혀 씁니다. 원문 링크(DOI · 학술지 · 기관 페이지)를 직접 열어 내용이 맞는지 확인한 것만 씁니다. 확인하지 못한 연구는 칼럼에서 뺍니다.
+11. \`<section class="faq"><h2>자주 묻는 질문</h2><dl><dt>질문</dt><dd>답</dd>…</dl></section>\` — 3쌍 이상, 질문/답 쌍으로
+글쓴이와 날짜는 쓰지 않습니다(마이인 칼럼 화면이 글쓴이 · 공개일을 보여 줍니다).`;
 
 /** The design (earlier 기획실 COLUMN_STYLE), put on at show time only. */
 export const COLUMN_STYLE = `<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Serif+KR:wght@600;700&display=swap" rel="stylesheet">
@@ -256,6 +286,8 @@ html{scroll-behavior:smooth;scroll-padding-top:24px}
 figure.hero{margin:0 0 30px}figure.hero img{width:100%;border-radius:14px;box-shadow:var(--shadow-soft)}
 figure.hero.ph{padding:64px 22px}
 figure.video .ico{color:var(--blue)}
+.sources{border-top:1px solid var(--line);margin:38px 0 0;padding-top:18px;font-size:14px}.sources .t,.col-shorts .t{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--blue);margin-bottom:8px}.sources ol{margin:0;padding-left:20px;color:var(--muted)}
+.col-shorts{background:var(--blue-wash);border:1px solid #E1E5F7;border-radius:14px;padding:18px 24px;margin:32px 0 0}.col-shorts ul{margin:0;padding-left:20px}
 .col-embed{position:relative;padding-top:56.25%;border-radius:14px;overflow:hidden;box-shadow:var(--shadow-soft)}
 .col-embed iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
 @media(max-width:960px){.col-wrap{display:block;padding:0}.col-toc{position:static;max-height:none;flex:none;margin:22px auto 0;max-width:760px;padding:16px 20px;background:var(--blue-wash);border-radius:14px}.col-toc ul{border-left:none}.col-toc li.t-h3 a{padding-left:22px}}

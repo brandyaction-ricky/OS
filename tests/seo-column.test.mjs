@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkColumnHtml, cleanColumnHtml, columnForMyin, columnSlots, faqPairs, renderColumn } from "../lib/seo-column.ts";
+import { checkColumnHtml, cleanColumnHtml, columnForMyin, columnShorts, columnSlots, faqPairs, renderColumn } from "../lib/seo-column.ts";
 import { columnSignature } from "../lib/youtube-process/stages.ts";
 
 // SEO 칼럼 (owner request 2026-10-25): the earlier 기획실 class contract, checked by the OS and dressed only when shown.
@@ -36,9 +36,32 @@ test("the check names every place that breaks the 구성 (h2 count without the F
   const { issues } = checkColumnHtml(column({ h2: 3, images: 1, tldr: 2 }));
   assert.ok(issues.some(issue => issue.includes("h2") && issue.includes("3개")), issues.join(" / "));
   assert.ok(issues.some(issue => issue.includes("3줄 요약") && issue.includes("2개")));
-  assert.ok(issues.some(issue => issue.includes("본문 이미지 자리") && issue.includes("1개")));
+  assert.ok(issues.some(issue => issue.includes("본문 그림") && issue.includes("1개")));
   const short = checkColumnHtml(column().replace(prompt("scene 1"), "a desk"));
   assert.ok(short.issues.some(issue => issue.startsWith("이미지 1 data-prompt")));
+});
+
+// 직원 요청 11-19: longform photos by file name, a diagram drawn in the text as a picture, the video place always, linked research sources.
+test("a data-from place needs no prompt, an SVG diagram counts as a picture, the video place and linked sources are required", () => {
+  const fromPhoto = column().replace(`data-slot="1" data-prompt="${prompt("scene 1")}"`, 'data-slot="1" data-from="team.jpg"');
+  assert.deepEqual(checkColumnHtml(fromPhoto).issues, []);
+  assert.equal(columnSlots(fromPhoto)[1].from, "team.jpg");
+  assert.ok(checkColumnHtml(fromPhoto, { "other.jpg": "" }).issues.some(issue => issue.includes("data-from=\"team.jpg\"")));
+  assert.ok(checkColumnHtml(fromPhoto, { "team.jpg": "사진 A · CC BY" }).issues.some(issue => issue.includes("사진 출처")));
+  const drawn = column({ images: 1, extra: "<figure><svg viewBox=\"0 0 640 200\" role=\"img\" aria-label=\"세 단계\"><text>나눠 적기</text></svg><figcaption>세 단계</figcaption></figure>" });
+  assert.deepEqual(checkColumnHtml(drawn).issues, []);
+  assert.ok(checkColumnHtml(column().replace(/<figure class="ph video"[\s\S]*?<\/figure>/, "")).issues.some(issue => issue.startsWith("영상 자리")));
+  const cited = (link) => column({ extra: `<aside class="sources"><div class="t">참고한 연구</div><ol><li>김 외(2009). 「눈치 연구」. 학회지. ${link}</li></ol></aside>` });
+  assert.deepEqual(checkColumnHtml(cited("<a href=\"https://doi.org/10.1/x\">원문</a>")).issues, []);
+  assert.ok(checkColumnHtml(cited("")).issues.some(issue => issue.includes("원문 링크")));
+});
+
+test("uploaded Shorts are listed at the article's end, in the page and in what MYIN gets", () => {
+  const shorts = columnShorts([{ title: "메신저 한 줄 & 지운 말", metadata: { youtube: { videoUrl: "https://www.youtube.com/shorts/abc" } } }, { title: "아직", metadata: {} }]);
+  assert.deepEqual(shorts, [{ title: "메신저 한 줄 & 지운 말", url: "https://www.youtube.com/shorts/abc" }]);
+  for (const html of [renderColumn(column(), {}, shorts), columnForMyin(column(), {}, shorts).html])
+    assert.match(html, /<\/section>\s*<div class="col-shorts"><div class="t">1분 영상으로 보기<\/div><ul><li><a href="https:\/\/www\.youtube\.com\/shorts\/abc" target="_blank" rel="noopener">메신저 한 줄 &amp; 지운 말<\/a><\/li><\/ul><\/div><\/article>/);
+  assert.doesNotMatch(renderColumn(column()), /col-shorts"/);
 });
 
 test("scripts, frames, styles, handlers and javascript: links are refused outright", () => {

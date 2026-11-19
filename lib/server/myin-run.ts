@@ -7,7 +7,7 @@ import { changedMaterials, type MyinMaterials } from "@/lib/myin-materials";
 import { myinStop } from "@/lib/myin-stop";
 import { planVoiceFix } from "@/lib/myin-voice-plan";
 import { applySubtitleEdits, subtitleIssues, subtitleLines, subtitleTextProblem } from "@/lib/myin-subtitles";
-import { applyMyinSoundPlan, MYIN_METAPHOR_TYPES, myinDriftPairs, myinOnlySoundChanged, myinTextPairs, myinPhotoFetchUrl, myinPhotoFolders, myinPrepPhotos, myinSceneStarts, myinSoundIssues, myinSoundPlan, myinCuesAsScript, myinStoryboardSchema, type MyinSoundPlan } from "@/lib/myin-storyboard";
+import { applyMyinSoundPlan, MYIN_METAPHOR_TYPES, myinColumnMaterials, myinDriftPairs, myinOnlySoundChanged, myinTextPairs, myinPhotoFetchUrl, myinPhotoFolders, myinPrepPhotos, myinSceneStarts, myinSoundIssues, myinSoundPlan, myinCuesAsScript, myinStoryboardSchema, type MyinSoundPlan } from "@/lib/myin-storyboard";
 import { diagramCatalogTypes } from "@/lib/diagram-catalog";
 import { checkMyinStory } from "./myin-storyboard-job";
 import type { OsRecord } from "@/lib/record-types";
@@ -485,6 +485,16 @@ async function voiceReuse(service: Service, sourceId: string, run: MyinRun) {
   const { spoken } = await currentInput(service, sourceId);
   const make = spoken.filter((text) => !kept.has(sha(text)));
   return { keep: spoken.length - make.length, make: make.length, text: make.join("\n") };
+}
+
+/** 칼럼 롱폼 재료 (직원 요청 11-19): the newest longform run's storyboard photos and diagrams; null for a video without one. */
+export async function columnMaterials(service: Service, sourceId: string) {
+  const { data } = await service.from("os_records").select("metadata").eq("parent_id", sourceId).eq("record_type", "ai_job").eq("metadata->>kind", MYIN_RUN_KIND)
+    .is("archived_at", null).order("created_at", { ascending: false }).limit(1);
+  const run = data?.[0] ? parse(data[0] as Pick<OsRecord, "metadata">) : null;
+  if (!run?.storyboard || run.layout) return null;
+  const story = await storyboardJson(service, run).catch(() => null);
+  return story ? myinColumnMaterials(story, run.storyboard.assets, run.ours ?? {}, (file) => run.assets?.[file]?.decision === "excluded") : null;
 }
 
 export async function latestMyinRun(actor: RequestActor, sourceId: string) {
