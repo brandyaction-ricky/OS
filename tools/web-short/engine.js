@@ -33,6 +33,7 @@
   };
   const card = (html, a, b, h = G.bottom - G.top) => {
     const c = mk("div", "card", vis, html, { left: `${G.left}px`, top: `${G.top}px`, width: `${G.right - G.left}px`, height: `${h}px`, opacity: 0 });
+    c.dataset.box = "카드";
     tl.fromTo(c, { opacity: 0, rotationX: -60, y: 120, scale: 0.92, transformPerspective: 1600, transformOrigin: "50% 100%" }, { opacity: 1, rotationX: 0, y: 0, scale: 1, duration: 0.6, ease: "back.out(1.4)" }, a)
       .to(c, { opacity: 0, y: -60, scale: 0.96, duration: 0.3, ease: M.out }, b - 0.3);
     return c;
@@ -76,8 +77,9 @@
           <div class="abs" style="left:58px;top:56px;width:76px;height:36px;border-radius:38px 38px 0 0;background:#fff;opacity:.9"></div>
           <div class="abs" style="left:66px;top:96px;width:60px;height:44px;border-radius:30px 30px 6px 6px;background:#fff;opacity:.9"></div>
           <div class="abs n" style="left:190px;top:30px;font-weight:900;font-size:64px">${esc(s.persona.name)}</div>
-          <div class="abs d" style="left:192px;top:110px;font-weight:600;font-size:44px;color:var(--gray)">${esc(s.persona.desc)}</div>`, { left: `${G.left}px`, top: "560px", width: "560px", height: "192px", opacity: 0 });
-        qa(c.querySelector(".n"), s.persona.name); qa(c.querySelector(".d"), s.persona.desc);
+          <div class="abs d" style="left:192px;top:110px;font-weight:600;font-size:44px;color:var(--gray)">${esc(s.persona.desc)}</div>`,
+          { left: `${G.left}px`, top: "560px", width: `${Math.max(560, 232 + Math.max(s.persona.name.length * 62, s.persona.desc.length * 43))}px`, height: "192px", opacity: 0 });
+        qa(c.querySelector(".n"), s.persona.name); qa(c.querySelector(".d"), s.persona.desc); c.dataset.box = "인물 카드";
         tl.fromTo(c, { opacity: 0, x: -260, rotation: -6 }, { opacity: 1, x: 0, rotation: 0, duration: 0.55, ease: "back.out(1.6)" }, s.persona.at)
           .to(c, { opacity: 0, x: -120, duration: 0.3, ease: M.out }, s.to - 0.3);
       }
@@ -129,7 +131,7 @@
         ${s.progress ? `<g transform="translate(540 760)"><g id="prog" opacity="0">
           <text id="progT" text-anchor="middle" y="-70" font-size="54" font-weight="900" fill="${C.ink}">${esc(s.progress.label)}</text>
           <rect x="-330" y="-22" width="660" height="44" rx="22" fill="${C.line}"/><rect id="fill" x="-330" y="-22" width="660" height="44" rx="22" fill="${C.brand}"/>
-          <g transform="translate(250 -120)"><g id="stamp" opacity="0"><circle r="74" fill="${C.stamp}"/><text id="stampT" text-anchor="middle" y="20" font-size="58" font-weight="900" fill="#fff">${esc(s.progress.stamp || "끝")}</text></g></g></g></g>` : ""}
+          <g transform="translate(300 -170)"><g id="stamp" opacity="0"><circle r="74" fill="${C.stamp}"/><text id="stampT" text-anchor="middle" y="20" font-size="58" font-weight="900" fill="#fff">${esc(s.progress.stamp || "끝")}</text></g></g></g></g>` : ""}
       </svg>`);
       const S = id => box.querySelector(id);
       [["#tagT", s.stimulus.label], ["#meT", s.a.label], ["#teamT", s.b.label], ...(s.bubble ? [["#bubT", s.bubble.label]] : []), ...(s.progress ? [["#progT", s.progress.label], ["#stampT", s.progress.stamp || "끝"]] : [])].forEach(([id, l]) => qa(S(id), l));
@@ -177,22 +179,22 @@
       const c = card(`<div class="abs" style="left:40px;top:34px;width:92px;height:92px;border-radius:50%;background:var(--muted)"></div>
         <div class="abs nm" style="left:156px;top:44px;font-weight:900;font-size:${T.type.cardHead}px">${esc(s.name)}</div>
         <div class="abs" style="left:0;right:0;top:160px;height:2px;background:var(--soft)"></div>
-        <div class="abs sent" style="right:40px;top:196px;max-width:600px;background:var(--brand);color:#fff;font-weight:600;font-size:50px;line-height:1.32;padding:24px 34px;border-radius:38px 38px 8px 38px;opacity:0"></div>
-        <div class="abs" style="left:30px;right:30px;bottom:30px;height:236px;border-radius:32px;background:#F4F5FB"></div>
-        <div class="abs typed" style="left:62px;right:150px;bottom:66px;font-weight:700;font-size:${T.type.cardBody}px;line-height:1.3;color:var(--ink);word-break:keep-all"></div>
+        <div class="abs sent" style="right:40px;top:196px;max-width:620px;background:var(--brand);color:#fff;font-weight:600;font-size:${T.type.cardBody - 8}px;line-height:1.32;padding:22px 32px;border-radius:38px 38px 8px 38px;opacity:0"></div>
+        <div class="abs" style="left:30px;right:30px;bottom:30px;height:190px;border-radius:32px;background:#F4F5FB"></div>
+        <div class="abs typed" style="left:62px;right:150px;bottom:62px;font-weight:700;font-size:${T.type.cardBody - 6}px;line-height:1.3;color:var(--ink);word-break:keep-all"></div>
         <div class="abs send" style="right:54px;bottom:62px;width:84px;height:84px;border-radius:50%;background:var(--muted)"></div>`, s.from, s.to);
       qa(c.querySelector(".nm"), s.name);
       const typed = qa(c.querySelector(".typed"), "입력 중 글자"), send = c.querySelector(".send"), sent = qa(c.querySelector(".sent"), "보낸 말풍선");
-      const caret = `<span style="display:inline-block;width:5px;height:${T.type.cardBody + 2}px;background:${C.brand};vertical-align:-8px;margin-left:5px"></span>`;
+      const caret = `<span style="display:inline-block;width:5px;height:${T.type.cardBody - 4}px;background:${C.brand};vertical-align:-8px;margin-left:5px"></span>`;
       const show = (text, n) => { typed.innerHTML = esc(text.slice(0, Math.round(n))) + caret; };
       tl.call(() => { typed.innerHTML = caret; }, null, s.from + 0.3);
       for (const m of s.messages) {
         const p = { n: 0 };
-        tl.fromTo(p, { n: 0 }, { n: m.text.length, duration: Math.max(0.3, m.to - m.from), ease: "none", onUpdate: () => show(m.text, p.n) }, m.from);
-        if (m.del) { const q = { n: m.text.length }; tl.fromTo(q, { n: m.text.length }, { n: 0, duration: 0.42, ease: "power2.in", onUpdate: () => show(m.text, q.n) }, m.del); }
-        if (m.send) {
-          tl.to(send, { background: C.brand, duration: 0.15 }, m.send - 0.25).set(typed, { innerHTML: "" }, m.send).set(sent, { innerHTML: esc(m.text) }, m.send)
-            .fromTo(sent, { opacity: 0, y: 260, scale: 0.6, transformOrigin: "100% 100%" }, { opacity: 1, y: 0, scale: 1, duration: 0.5, ease: "back.out(1.6)" }, m.send);
+        tl.fromTo(p, { n: 0 }, { n: m.text.length, duration: Math.max(0.3, m.atEnd - m.at), ease: "none", onUpdate: () => show(m.text, p.n) }, m.at);
+        if (m.delAt) { const q = { n: m.text.length }; tl.fromTo(q, { n: m.text.length }, { n: 0, duration: 0.42, ease: "power2.in", onUpdate: () => show(m.text, q.n) }, m.delAt); }
+        if (m.sendAt) {
+          tl.to(send, { background: C.brand, duration: 0.15 }, m.sendAt - 0.25).set(typed, { innerHTML: "" }, m.sendAt).set(sent, { innerHTML: esc(m.text) }, m.sendAt)
+            .fromTo(sent, { opacity: 0, y: 260, scale: 0.6, transformOrigin: "100% 100%" }, { opacity: 1, y: 0, scale: 1, duration: 0.5, ease: "back.out(1.6)" }, m.sendAt);
         }
       }
       if (s.pulseAt) tl.to(c, { scale: 1.03, duration: 0.25, yoyo: true, repeat: 1, ease: "power2.inOut" }, s.pulseAt);
@@ -206,9 +208,10 @@
           <rect id="hh" x="-9" y="-120" width="18" height="140" rx="9" fill="${C.ink}"/><rect id="mh" x="-6" y="-190" width="12" height="210" rx="6" fill="${C.brand}"/><circle r="16" fill="${C.ink}"/></g></g>
         <text id="clkT" x="540" y="1050" text-anchor="middle" font-size="${T.type.big}" font-weight="900" fill="#fff" stroke="${C.ink}" stroke-width="12" paint-order="stroke" opacity="0">${esc(s.label || "")}</text></svg>`);
       const S = id => box.querySelector(id); qa(S("#clkT"), s.label || "시계");
+      const spin = s.spinAt ?? s.from + 0.35, spinFor = Math.max(0.8, s.to - 0.25 - spin);
       tl.fromTo(S("#clk"), { opacity: 0, scale: 0.4, transformOrigin: "50% 50%" }, { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(1.7)" }, s.from)
-        .fromTo(S("#mh"), { rotation: 0, transformOrigin: "50% 90.5%" }, { rotation: 1080, duration: Math.max(0.8, s.spinTo - s.spinFrom), ease: "power2.inOut" }, s.spinFrom)
-        .fromTo(S("#hh"), { rotation: 30, transformOrigin: "50% 85.7%" }, { rotation: 120, duration: Math.max(0.8, s.spinTo - s.spinFrom), ease: "power2.inOut" }, s.spinFrom);
+        .fromTo(S("#mh"), { rotation: 0, transformOrigin: "50% 90.5%" }, { rotation: 1080, duration: spinFor, ease: "power2.inOut" }, spin)
+        .fromTo(S("#hh"), { rotation: 30, transformOrigin: "50% 85.7%" }, { rotation: 120, duration: spinFor, ease: "power2.inOut" }, spin);
       if (s.label) tl.fromTo(S("#clkT"), { opacity: 0, y: 40, scale: 0.6, transformOrigin: "50% 50%" }, { opacity: 1, y: 0, scale: 1, duration: 0.4, ease: "back.out(2)" }, s.labelAt);
       tl.to(S("#clk"), { scale: 6, opacity: 0, duration: 0.55, ease: M.out }, s.to - 0.1).to(S("#clkT"), { opacity: 0, duration: 0.2 }, s.to - 0.1);
     },
@@ -217,20 +220,21 @@
       backdrop(s.photo, s.from - 0.15, s.to, false);
       const spot = mk("div", "layer", vis, null, { opacity: 0 }); const sp = { r: 900, x: 50, y: 42 };
       const paint = () => { spot.style.background = `radial-gradient(circle at ${sp.x}% ${sp.y}%, rgba(0,0,0,0) ${sp.r}px, rgba(6,8,22,.62) ${sp.r + 40}px)`; }; paint();
-      tl.set(spot, { opacity: 1 }, s.from).to(sp, { r: s.r ?? 230, x: s.x ?? 46, y: s.y ?? 40, duration: 0.6, ease: M.move, onUpdate: paint }, s.at).to(spot, { opacity: 0, duration: 0.25 }, s.to - 0.1);
+      tl.set(spot, { opacity: 1 }, s.from).to(sp, { r: s.r ?? 230, x: s.x ?? 46, y: s.y ?? 40, duration: 0.6, ease: M.move, onUpdate: paint }, s.focusAt ?? s.from + 0.8).to(spot, { opacity: 0, duration: 0.25 }, s.to - 0.1);
     },
     // C: a fast push into the photo with speed streaks
     push(s) {
       const ph = backdrop(s.photo, s.from - 0.1, s.to, false);
-      tl.fromTo(ph, { scale: 1 }, { scale: 1.35, duration: 0.5, ease: "expo.in" }, s.at - 0.25).to(ph, { scale: 1.4, duration: 1, ease: "none" }, s.at + 0.25);
+      const at = s.pushAt ?? s.from + 0.6;
+      tl.fromTo(ph, { scale: 1 }, { scale: 1.35, duration: 0.5, ease: "expo.in" }, at - 0.25).to(ph, { scale: 1.4, duration: 1, ease: "none" }, at + 0.25);
       const streaks = Array.from({ length: 9 }, (_, i) => mk("div", "abs", vis, null, { left: "-400px", top: `${520 + i * 60}px`, width: `${260 + (i % 3) * 140}px`, height: "7px", background: "rgba(255,255,255,.75)", borderRadius: "4px", opacity: 0 }));
-      tl.fromTo(streaks, { opacity: 0, x: 1500 }, { opacity: 1, x: -300, duration: 0.45, ease: "power2.out", stagger: 0.025 }, s.at - 0.05).to(streaks, { opacity: 0, duration: 0.2 }, s.at + 0.45);
+      tl.fromTo(streaks, { opacity: 0, x: 1500 }, { opacity: 1, x: -300, duration: 0.45, ease: "power2.out", stagger: 0.025 }, at - 0.05).to(streaks, { opacity: 0, duration: 0.2 }, at + 0.45);
     },
     // C: a slow push with a darkening edge
     vignette(s) {
       const ph = backdrop(s.photo, s.from - 0.1, s.to, false);
       const vig = mk("div", "layer", vis, null, { background: "radial-gradient(circle at 50% 45%, rgba(0,0,0,0) 35%, rgba(6,8,22,.7) 100%)", opacity: 0 });
-      tl.fromTo(ph, { scale: 1.05 }, { scale: 1.22, duration: s.to - s.from + 0.1, ease: "power1.inOut" }, s.from - 0.1).to(vig, { opacity: 1, duration: 0.6 }, s.at ?? s.from + 1).to(vig, { opacity: 0, duration: 0.25 }, s.to - 0.1);
+      tl.fromTo(ph, { scale: 1.05 }, { scale: 1.22, duration: s.to - s.from + 0.1, ease: "power1.inOut" }, s.from - 0.1).to(vig, { opacity: 1, duration: 0.6 }, s.darkAt ?? s.from + 1).to(vig, { opacity: 0, duration: 0.25 }, s.to - 0.1);
     },
     // C: two photos split top and bottom (a recap of what was seen)
     split(s) {
@@ -240,6 +244,65 @@
       tl.fromTo(t1, { opacity: 1, yPercent: -100 }, { yPercent: 0, duration: 0.45, ease: M.ease }, s.top.at).fromTo(p1, { scale: 1.15 }, { scale: 1, duration: s.to - s.top.at, ease: "none" }, s.top.at)
         .to(line, { scaleX: 1, duration: 0.35, ease: M.ease }, s.bottom.at - 0.1)
         .fromTo(t2, { opacity: 1, yPercent: 100 }, { yPercent: 0, duration: 0.45, ease: M.ease }, s.bottom.at).fromTo(p2, { scale: 1.15 }, { scale: 1, duration: s.to - s.bottom.at, ease: "none" }, s.bottom.at);
+    },
+
+    // D: a checklist card — each item pops in as it is said; an optional pick lights one item and dims the rest
+    list(s) {
+      backdrop(s.photo, s.from - 0.1, s.to, true);
+      const n = s.items.length, head = s.title ? 150 : 40, room = G.bottom - G.top - head - 40, row = Math.min(150, room / n), top0 = head + (room - row * n) / 2;
+      const c = card(`${s.title ? `<div class="abs hd" style="left:56px;top:46px;font-weight:900;font-size:${T.type.cardHead + 6}px">${esc(s.title)}</div>` : ""}`, s.from, s.to);
+      if (s.title) qa(c.querySelector(".hd"), s.title);
+      const rows = s.items.map((it, i) => {
+        const r = mk("div", "abs", c, null, { left: "36px", right: "36px", top: `${top0 + i * row}px`, height: `${row - 16}px`, borderRadius: "24px" });
+        const dot = mk("div", "abs", r, `<svg viewBox="0 0 64 64" width="72" height="72"><circle cx="32" cy="32" r="32" fill="${C.brand}"/><path d="M18 33 L28 43 L46 23" stroke="#fff" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`, { left: "24px", top: `${(row - 16 - 72) / 2}px`, width: "72px", height: "72px" });
+        const tx = qa(mk("div", "abs", r, esc(it.text), { left: "124px", top: "50%", transform: "translateY(-50%)", fontWeight: 800, fontSize: `${T.type.cardBody + 4}px`, whiteSpace: "nowrap" }), it.text);
+        const at = it.at ?? s.from + 0.4 + i * 0.5;
+        tl.fromTo(dot, { scale: 0, transformOrigin: "50% 50%" }, { scale: 1, duration: 0.4, ease: M.pop }, at - 0.06)
+          .fromTo(tx, { opacity: 0, x: 40 }, { opacity: 1, x: 0, duration: 0.4, ease: M.ease }, at);
+        return r;
+      });
+      if (Number.isInteger(s.pick) && rows[s.pick]) {
+        const at = s.pickAt ?? s.to - 1;
+        tl.to(rows[s.pick], { background: C.soft, scale: 1.03, duration: 0.35, ease: M.enter }, at)
+          .to(rows.filter((_, i) => i !== s.pick), { opacity: 0.35, duration: 0.3 }, at);
+      }
+    },
+    // B: two sides — each turns over as it is said; an optional pick (0 left, 1 right) fills the chosen side and dims the other
+    compare(s) {
+      backdrop(s.photo, s.from - 0.1, s.to, true);
+      const c = card("", s.from, s.to);
+      const w = (G.right - G.left - 136) / 2, h = G.bottom - G.top - 200;
+      const side = (d, i) => {
+        const p = mk("div", "abs", c, `<div class="abs lb" style="left:50%;top:40px;transform:translateX(-50%);background:${C.soft};color:${C.brand};font-weight:700;font-size:${T.type.label - 6}px;padding:10px 30px;border-radius:999px;white-space:nowrap">${esc(d.label)}</div>
+          <div class="abs tx" style="left:24px;right:24px;top:50%;transform:translateY(-36%);text-align:center;font-weight:900;font-size:${T.type.cardBody + 4}px;line-height:1.2;word-break:keep-all;overflow-wrap:anywhere">${esc(d.text)}</div>`,
+          { left: `${48 + i * (w + 40)}px`, top: "100px", width: `${w}px`, height: `${h}px`, borderRadius: "28px", border: `4px solid ${C.line}`, background: C.paper });
+        qa(p.querySelector(".lb"), d.label); qa(p.querySelector(".tx"), d.text); p.dataset.box = "비교 칸";
+        tl.fromTo(p, { opacity: 0, rotationY: i ? 80 : -80, transformPerspective: 1400 }, { opacity: 1, rotationY: 0, duration: 0.55, ease: M.enter }, d.at ?? s.from + 0.3 + i * 0.8);
+        return p;
+      };
+      const ps = [side(s.a, 0), side(s.b, 1)];
+      const mid = mk("div", "abs", c, s.arrow ? `<svg viewBox="0 0 60 60" width="60" height="60"><path d="M10 30 H46 M32 14 L48 30 L32 46" stroke="${C.ink}" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>` : "vs",
+        { left: `${48 + w + 20 - 30}px`, top: `${100 + h / 2 - 30}px`, width: "60px", height: "60px", textAlign: "center", lineHeight: "60px", fontWeight: 900, fontSize: "40px", color: C.gray });
+      tl.fromTo(mid, { opacity: 0, scale: 0.4 }, { opacity: 1, scale: 1, duration: 0.3, ease: M.pop }, (s.b.at ?? s.from + 1.1) - 0.15);
+      if (s.pick === 0 || s.pick === 1) {
+        const at = s.pickAt ?? s.to - 1, win = ps[s.pick];
+        tl.to(win, { background: C.brand, borderColor: C.brand, scale: 1.05, duration: 0.35, ease: M.enter }, at)
+          .to(win.querySelector(".tx"), { color: "#fff", duration: 0.25 }, at).to(win.querySelector(".lb"), { background: "rgba(255,255,255,.18)", color: "#fff", duration: 0.25 }, at)
+          .to(ps[1 - s.pick], { opacity: 0.35, scale: 0.96, duration: 0.3 }, at);
+      }
+    },
+    // the last screen of an ad: what to look for and what to do, with a button that keeps pulsing
+    endcard(s) {
+      backdrop(s.photo, s.from - 0.1, s.to + 0.5, false);
+      const c = mk("div", "card", vis, `<div class="abs nm" style="left:0;right:0;top:70px;text-align:center;font-weight:900;font-size:${T.type.title - 20}px;letter-spacing:-0.02em">${esc(s.name)}</div>
+        ${s.line ? `<div class="abs ln" style="left:40px;right:40px;top:186px;text-align:center;font-weight:600;font-size:${T.type.label}px;color:var(--gray);word-break:keep-all">${esc(s.line)}</div>` : ""}
+        <div class="abs bt" style="left:50%;bottom:64px;transform:translateX(-50%);background:var(--brand);color:#fff;font-weight:800;font-size:${T.type.cardBody}px;padding:24px 64px;border-radius:999px;white-space:nowrap;box-shadow:0 16px 36px rgba(20,30,140,.35)">${esc(s.button)}</div>`,
+        { left: `${G.left}px`, top: `${G.top + 60}px`, width: `${G.right - G.left}px`, height: "500px", opacity: 0 });
+      qa(c.querySelector(".nm"), s.name); qa(c.querySelector(".bt"), s.button); if (s.line) qa(c.querySelector(".ln"), s.line); c.dataset.box = "행동 카드";
+      const bt = c.querySelector(".bt"), at = s.buttonAt ?? s.from + 0.7;
+      tl.fromTo(c, { opacity: 0, y: 160, scale: 0.9 }, { opacity: 1, y: 0, scale: 1, duration: 0.6, ease: "back.out(1.5)" }, s.from)
+        .fromTo(bt, { opacity: 0, scale: 0.4 }, { opacity: 1, scale: 1, duration: 0.45, ease: M.pop }, at)
+        .to(bt, { scale: 1.07, duration: 0.45, yoyo: true, repeat: Math.max(1, Math.floor((s.to - at - 0.5) / 0.45)), ease: "sine.inOut" }, at + 0.5);
     },
   };
   for (const s of story.scenes) {
@@ -272,6 +335,8 @@
       if (r.t < S.top) out.push([t, i.label, `위 아이콘 자리 (${Math.round(r.t)})`]);
       if (r.b > S.bottom) out.push([t, i.label, `아래 쇼츠 글자 자리 침범 (아래 ${Math.round(r.b)})`]);
       if (r.r > S.right && r.b > S.rightFrom) out.push([t, i.label, `오른쪽 버튼 자리 침범 (오른쪽 ${Math.round(r.r)}, 아래 ${Math.round(r.b)})`]);
+      const box = i.el.closest?.("[data-box]");
+      if (box && i.kind === "text") { const b = box.getBoundingClientRect(); if (i.r.left < b.left - 2 || i.r.right > b.right + 2 || i.r.top < b.top - 2 || i.r.bottom > b.bottom + 2) out.push([t, i.label, `${box.dataset.box} 밖으로 나감`]); }
       if (i.kind === "sub") { if (i.r.height > T.type.subtitle * 1.32 + 40) out.push([t, i.label, "자막이 두 줄"]); if (i.label.replace(/\s/g, "").length > 14) out.push([t, i.label, "자막 14자 넘음"]); }
     }
     const subsOn = items.filter(i => i.kind === "sub"), texts = items.filter(i => i.kind === "text");

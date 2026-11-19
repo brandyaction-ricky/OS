@@ -64,7 +64,7 @@ export function seqRatio(a: string, b: string) {
 }
 
 /** Logan's Cues.find: an exact hit starting within `limit` characters after `pos`, else the best window with ratio ≥ 0.62. */
-function finder(words: [number, number, string][]) {
+export function myinCueFinder(words: [number, number, string][]) {
   const text = words.map(([, , word]) => myinNorm(word)).join("");
   return (phrase: string, pos: number, limit: number): { at: number; fuzzy: boolean } | null => {
     const p = myinNorm(phrase);
@@ -86,7 +86,7 @@ function finder(words: [number, number, string][]) {
  * sit on the wrong sentence: scene starts, cue / cue_* keys, [text, cue] title pieces and the CTA anchors.
  */
 export function myinCueMisses(story: MyinStoryboard, words: [number, number, string][]) {
-  const lookup = finder(words);
+  const lookup = myinCueFinder(words);
   const misses: string[] = [];
   const fuzzy: string[] = [];
   let scene = 0;
@@ -247,7 +247,7 @@ export function myinCuesAsScript(raw: unknown, words: [number, number, string][]
 
 /** When each scene starts (seconds), found the way resolve() finds its at; at_time scenes keep theirs, an unfound one is null. */
 export function myinSceneStarts(scenes: { at?: unknown; at_time?: unknown }[], words: [number, number, string][]) {
-  const lookup = finder(words);
+  const lookup = myinCueFinder(words);
   const offsets: number[] = [];
   let length = 0;
   for (const [, , word] of words) { offsets.push(length); length += myinNorm(word).length; }
@@ -353,7 +353,7 @@ function textPieces(value: unknown): Piece[] {
   return [];
 }
 /** Where each scene starts in the transcription, the way myinCueMisses (and Logan's resolve()) walks it. */
-function sceneStarts(story: MyinStoryboard, find: ReturnType<typeof finder>) {
+function sceneStarts(story: MyinStoryboard, find: ReturnType<typeof myinCueFinder>) {
   let pos = 0;
   return story.scenes.map((sc) => {
     if (sc.at_time !== undefined) return pos;
@@ -366,7 +366,7 @@ function sceneStarts(story: MyinStoryboard, find: ReturnType<typeof finder>) {
 const SCREEN_ORDER: [string, string][] = [["title", "제목"], ["lines", "제목"], ["q", "제목"], ["chip", "칩"], ["source", "출처"], ["sub", "소제목"], ["rows", "줄"], ["items", "줄"], ["author", "인용 출처"], ["tag", "꼬리표"]];
 /** QA 1: in a scene, nothing lower on the screen appears before what is above it (a piece without a cue shows at the scene start). */
 function screenOrderIssues(story: MyinStoryboard, words: [number, number, string][]) {
-  const find = finder(words);
+  const find = myinCueFinder(words);
   const starts = sceneStarts(story, find);
   const issues: string[] = [];
   story.scenes.forEach((sc, n) => {
@@ -386,7 +386,7 @@ function screenOrderIssues(story: MyinStoryboard, words: [number, number, string
 export function openingTextIssues(story: MyinStoryboard, words: [number, number, string][], speech: string) {
   const opening = story.scenes[0];
   if (!speech.trim() || opening?.type !== "opening" || story.scenes.length < 2) return [];
-  const find = finder(words);
+  const find = myinCueFinder(words);
   const [start, end] = sceneStarts(story, find);
   const shown: number[] = [];
   for (const act of ((opening as { acts?: unknown }).acts ?? []) as Record<string, unknown>[]) {
@@ -638,7 +638,7 @@ export function myinSoundIssues(story: MyinStoryboard, words: [number, number, s
   const plan = myinSoundPlan(story);
   const has = (kind: MyinSoundItem["kind"], key: string) => !catalog || catalog.some((item) => item.kind === kind && item.key === key);
   const legacy = (key: string) => Boolean(story.music_cues && key in story.music_cues);
-  const find = finder(words); const starts = sceneStarts(story, find);
+  const find = myinCueFinder(words); const starts = sceneStarts(story, find);
   const issues: string[] = [];
   for (const m of plan.music) {
     if (!legacy(m.key) && !has("music", m.key)) issues.push(`[장면 ${m.scene}] 음악 키 「${m.key}」가 영상 만드는 컴퓨터의 사운드 창고에 없어요`);

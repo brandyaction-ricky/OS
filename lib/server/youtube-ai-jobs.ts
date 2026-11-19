@@ -16,7 +16,8 @@ import { checkScenePlan, SCENE_PLAN_JSON_SCHEMA, scenePlanPrompt, youtubeSceneRu
 import { checkPronunciation, pronunciationPrompt, PRONUNCIATION_JSON_SCHEMA } from "./youtube-voice-worker";
 import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
 import { myinRunWithWords, saveMyinStoryboard, storyboardJson } from "./myin-run";
-import { checkMyinStoryboardResult, checkShortStoryboardResult, MYIN_CARD_DOCS, MYIN_CARD_REFERENCE_DOCS, myinStoryboardCard, myinStoryboardInputKey, SHORT_CARD_DOCS, shortStoryboardCard } from "./myin-storyboard-job";
+import { checkMyinStoryboardResult, checkShortStoryboardResult, checkWebShortResult, MYIN_CARD_DOCS, MYIN_CARD_REFERENCE_DOCS, myinStoryboardCard, myinStoryboardInputKey, SHORT_CARD_DOCS, shortStoryboardCard, WEB_SHORT_CARD_DOCS, webShortCard } from "./myin-storyboard-job";
+import { myinCleanScript } from "@/lib/myin-script";
 import { DIAGRAM_CATALOG } from "@/lib/shortform-diagram-catalog";
 import { diagramCatalogTypes } from "@/lib/diagram-catalog";
 import { readDiagramCatalog } from "./diagram-catalog";
@@ -629,6 +630,15 @@ async function currentScriptInput(job: OsRecord) {
 }
 
 /** title → doc_id for the storyboard card's documents; a missing or doubled title just goes without an id. */
+/** 웹 숏폼: the spoken script its subtitles cover, and the 광고 브리프 when the 숏폼 is an ad (null otherwise). */
+const webShortScript = (markdown: string) => myinCleanScript(markdown).spoken.join(" ");
+async function adBrief(sourceId: string) {
+  const { project } = v1Stages(await readPipeline({ supabase: service() }, sourceId));
+  if (project.yp.topic.purpose !== "ad") return null;
+  const { brief } = await shortJobInputs(service(), project);
+  return { product: brief.product, audience: brief.audience, goal: brief.goal, evidence: brief.evidence, appeal: brief.appeal };
+}
+
 async function myinCardDocIds(docs = MYIN_CARD_DOCS) {
   const { data } = await createServiceSupabase().from("os_documents").select("id,title").in("title", docs.map(([title]) => title)).neq("status", "archived");
   const rows = data ?? [];
@@ -665,6 +675,9 @@ async function claimJob(agent: RequestActor, jobId: string, byGpt: boolean) {
     const scenes = myin.run.review?.decision === "revise" ? myin.run.review.scenes : undefined;
     const sceneNotes = scenes?.length ? { scenes, previous: myin.run.storyboard ? await storyboardJson(service(), myin.run)
       .then((storyboard) => ({ storyboard, assets: myin.run.storyboard!.assets })).catch(() => null) : null } : undefined;
+    if (myin.run.renderer === "web") return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt,
+      instructions: webShortCard({ title: myin.title, headCopy: myin.headCopy, screenScript: myin.screenScript, script: webShortScript(myin.markdown), words: myin.words,
+        durationSeconds: myin.run.words!.durationSeconds, ad: await adBrief(myin.run.sourceId), note: sceneNotes ? undefined : note, sceneNotes, leaseMinutes: minutes, docIds: await myinCardDocIds(WEB_SHORT_CARD_DOCS) }) };
     if (myin.run.layout === "short") return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt,
       instructions: shortStoryboardCard({ title: myin.title, headCopy: myin.headCopy, screenScript: myin.screenScript, markdown: myin.markdown, words: myin.words,
         durationSeconds: myin.run.words!.durationSeconds, note: sceneNotes ? undefined : note, sceneNotes, leaseMinutes: minutes, diagrams: DIAGRAM_CATALOG, docIds: await myinCardDocIds(SHORT_CARD_DOCS) }) };
@@ -940,7 +953,10 @@ export async function completeStaffJob(agent: RequestActor, input: Extract<z.inf
   if (m.task === "storyboard") {
     const myin = await currentStoryboardInput(job);
     const catalogTypes = diagramCatalogTypes(await readDiagramCatalog());
-    const checked = await keepIssues(job, m, () => myin.run.layout === "short"
+    const ad = myin.run.renderer === "web" ? await adBrief(myin.run.sourceId) : null;
+    const checked = await keepIssues(job, m, () => myin.run.renderer === "web"
+      ? checkWebShortResult(input.result, { words: myin.words, script: webShortScript(myin.markdown), headCopy: myin.headCopy, durationSeconds: myin.run.words!.durationSeconds, ad: Boolean(ad) })
+      : myin.run.layout === "short"
       ? checkShortStoryboardResult(input.result, { words: myin.words, speech: myin.speech, headCopy: myin.headCopy, durationSeconds: myin.run.words!.durationSeconds, diagrams: DIAGRAM_CATALOG })
       : checkMyinStoryboardResult(input.result, myin.words, catalogTypes, myin.speech));
     await saveMyinStoryboard(service(), myin.record, myin.run, { storyboard: checked.storyboard, assets: checked.assets, reasons: checked.reasons,

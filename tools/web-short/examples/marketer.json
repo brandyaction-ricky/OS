@@ -17,13 +17,13 @@
       "steps": [{ "text": "회의 끝", "at": 15.38 }, { "text": "책상", "at": 16.84 }, { "text": "메신저 열기", "at": 18.08 }] },
     { "type": "messenger", "from": 19.16, "to": 31.7, "photo": "laptop.jpg", "name": "팀장님", "pulseAt": 27.86,
       "messages": [
-        { "text": "팀장님, 아까 기획안은 다시 정리해서 드릴게요.", "from": 20.72, "to": 22.8, "del": 23.4 },
-        { "text": "혹시 보완할 점 있으면 말씀 주세요.", "from": 24.94, "to": 26.3, "del": 26.96 },
-        { "text": "팀장님, 오늘 회의 자료 보내 드립니다.", "from": 29.16, "to": 30.7, "send": 30.95 }] },
-    { "type": "clock", "from": 31.55, "to": 34.15, "photo": "clocks.jpg", "spinFrom": 31.9, "spinTo": 33.9, "label": "한참", "labelAt": 32.86 },
-    { "type": "spotlight", "from": 34.2, "to": 37.35, "photo": "meeting_four.jpg", "at": 35.28, "r": 230, "x": 46, "y": 40 },
-    { "type": "push", "from": 37.35, "to": 39.2, "photo": "meeting_paper.jpg", "at": 38.15 },
-    { "type": "vignette", "from": 39.25, "to": 41.45, "photo": "rub_face.jpg", "at": 40.2 },
+        { "text": "팀장님, 아까 기획안은 다시 정리해서 드릴게요.", "at": 20.72, "atEnd": 22.8, "delAt": 23.4 },
+        { "text": "혹시 보완할 점 있으면 말씀 주세요.", "at": 24.94, "atEnd": 26.3, "delAt": 26.96 },
+        { "text": "팀장님, 오늘 회의 자료 보내 드립니다.", "at": 29.16, "atEnd": 30.7, "sendAt": 30.95 }] },
+    { "type": "clock", "from": 31.55, "to": 34.15, "photo": "clocks.jpg", "spinAt": 31.9, "label": "한참", "labelAt": 32.86 },
+    { "type": "spotlight", "from": 34.2, "to": 37.35, "photo": "meeting_four.jpg", "focusAt": 35.28, "r": 230, "x": 46, "y": 40 },
+    { "type": "push", "from": 37.35, "to": 39.2, "photo": "meeting_paper.jpg", "pushAt": 38.15 },
+    { "type": "vignette", "from": 39.25, "to": 41.45, "photo": "rub_face.jpg", "darkAt": 40.2 },
     { "type": "split", "from": 41.4, "to": 44.4, "top": { "photo": "presentation.jpg", "at": 41.4 }, "bottom": { "photo": "laptop.jpg", "at": 42.5 } }
   ],
   "subtitles": [
