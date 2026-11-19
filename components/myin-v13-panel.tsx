@@ -453,7 +453,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       {run?.stage === "words_ready" ? <>
         {run.review?.decision === "revise" ? <div className="yt-note yt-warn"><strong>{run.review.name === "렌더 전 관문" ? "렌더 전 관문 · 자동 수정 요청" : run.review.name === "원고 고친 곳" ? "원고를 고친 곳만 내 AI에게" : "로건, 유쓰 수정 요청"} · {when(run.review.at)}</strong><p>{run.review.note}</p>
           {run.review.name === "원고 고친 곳" ? <small>나머지 장면은 전 작업의 기획표를 그대로 써요. 새 받아쓰기에서 문구를 못 찾은 장면만 고쳐요.</small> : null}</div> : null}
-        <p>{short ? "내 AI가 세로 화면 규칙과 세로 도식 목록으로 숏폼 기획표를 써요. 첫 화면에는 확정한 헤드 카피가 떠요." : "내 AI가 영상 제작 매뉴얼·기획표 문서와 음악 창고 목록을 읽고, 위 받아쓰기의 철자 그대로 장면 기획표와 사진 후보를 만듭니다. OS가 문구 위치와 형식을 검사합니다."}</p>
+        <p>{short ? "내 AI가 숏폼 화면 규칙과 장면 목록으로 기획표를 써요. 첫 화면에는 확정한 헤드 카피가 떠요." : "내 AI가 영상 제작 매뉴얼·기획표 문서와 음악 창고 목록을 읽고, 위 받아쓰기의 철자 그대로 장면 기획표와 사진 후보를 만듭니다. OS가 문구 위치와 형식을 검사합니다."}</p>
         {autoMode && run.review?.decision !== "revise" ? <p className="yt-note">받아쓰기가 끝나면 OS가 시작한 분의 내 AI에 기획표를 바로 보내요. OS 검사를 통과하면 저절로 확인돼 장면 그림으로 넘어가요(제작 설정 · 기획표 확인 「자동」).</p> : null}
         <StaffDesign status={job} busy={busy === "send"} typical={storyboardMinutes(run)} onSend={() => void act("send", () => post("/ai-jobs", "POST", { task: "storyboard", sourceId }))} />
       </> : null}
