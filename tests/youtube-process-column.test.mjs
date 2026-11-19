@@ -26,7 +26,7 @@ const modules = { "node:crypto": crypto, zod, "@/lib/http": { ApiError }, "@/lib
   "./content-generation": { procedureRefs: async () => [{ id: "93da68b1", title: "SEO 칼럼 만드는 절차 (정본)" }] },
   "./youtube-process-stages": { assertColumnOpen, writeStage: async (_supabase, _actor, _team, _project, kind, current, data) => { written = { kind, current, data }; return { id: "col", version: current.version + 1 }; } } };
 runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText,
-  { module: compiled, exports: compiled.exports, require: (name) => modules[name] });
+  { module: compiled, exports: compiled.exports, require: (name) => modules[name], URL });
 const ai = compiled.exports;
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
@@ -37,6 +37,7 @@ const column = (title = "사업계획서의 순서", slug = "business-plan-order
 <div class="tldr"><b>3줄 요약</b><ul><li>a</li><li>b</li><li>c</li></ul></div><p class="lead">도입</p>
 <h2>하나</h2><p>.</p><h2>둘</h2><p>.</p><h2>셋</h2><p>.</p><h2>넷</h2><p>.</p>
 <figure class="ph" data-slot="1" data-prompt="${prompt}"><figcaption>[이미지] 하나</figcaption></figure><figure class="ph" data-slot="2" data-prompt="${prompt}"><figcaption>[이미지] 둘</figcaption></figure>
+<figure class="ph video" data-slot="video"><figcaption>[영상] 이 롱폼</figcaption></figure>
 <div class="takeaways"><div class="t">핵심 정리</div><ul><li>a</li><li>b</li><li>c</li></ul></div>
 <section class="faq"><h2>자주 묻는 질문</h2><dl><dt>q1</dt><dd>a1</dd><dt>q2</dt><dd>a2</dd><dt>q3</dt><dd>a3</dd></dl></section></article></body></html>`;
 const now = "2026-10-25T00:00:00Z";
@@ -78,7 +79,7 @@ test("columns come as many as asked, each checked; untouched AI columns are repl
   await assert.rejects(ai.saveV1Column(supabase, "owner", state("shorts"), { columns: [{ html: column() }, { html: column("다른 제목") }] }, author, 2), (error) => /slug/.test(error.message));
 
   const first = await ai.saveV1Column(supabase, "owner", state("shorts"), { columns: [{ html: "```html\n" + column() + "\n```" }, { html: column("다른 질문", "plan-first-line") }] }, author, 2);
-  assert.deepEqual(plain(first), { columns: 2, kept: 0 });
+  assert.deepEqual(plain(first), { columns: 2, kept: 0, photos: 0 });
   assert.equal(written.kind, "column");
   assert.equal(written.data.items.length, 2);
   assert.ok(written.data.items[0].html.startsWith("<!DOCTYPE html>"));
@@ -90,9 +91,34 @@ test("columns come as many as asked, each checked; untouched AI columns are repl
   const edited = { ...a, html: a.html.replace("<p class=\"lead\">도입</p>", "<p class=\"lead\">사람이 고친 도입</p>") };
   const pasted = { id: "pasted", html: column("붙여 넣은 칼럼", "pasted"), fills: {}, ai: null };
   const again = await ai.saveV1Column(supabase, "owner", state("shorts", { items: [edited, b, pasted] }), { columns: [{ html: column("새 칼럼", "new-angle") }] }, author, 1);
-  assert.deepEqual(plain(again), { columns: 1, kept: 2 });
+  assert.deepEqual(plain(again), { columns: 1, kept: 2, photos: 0 });
   assert.deepEqual(plain(written.data.items.map(item => seoColumn.columnMeta(item.html).title)), ["사업계획서의 순서", "붙여 넣은 칼럼", "새 칼럼"]);
   assert.match(written.data.items[0].html, /사람이 고친 도입/);
+});
+
+// 칼럼 롱폼 재료 (직원 요청 11-19): the card lists the longform's photos and diagrams; a place marked data-from gets that photo.
+test("longform photos and diagrams go on the card; a data-from place is filled with that photo, an unknown one is refused", async () => {
+  const materials = { photos: { "team_meeting.jpg": { at: "회의 시간에", credit: "", url: "https://images.unsplash.com/photo-1?ixid=x" },
+    "old_desk.jpg": { at: "책상 앞에서", credit: "사진 Wikimedia · CC BY-SA 4.0", url: "https://upload.wikimedia.org/a/b.jpg" } },
+    diagrams: [{ scene: 4, type: "lib_numbered", at: "세 가지로", words: "나눠 적기 · 묻기 · 먼저 담기" }] };
+  const card = await ai.v1ColumnCard({}, state("shorts"), 90, 1, materials);
+  assert.match(card, /"file": "team_meeting\.jpg"/);
+  assert.match(card, /"credit": "사진 Wikimedia · CC BY-SA 4\.0"/);
+  assert.match(card, /나눠 적기 · 묻기 · 먼저 담기/);
+  assert.match(card, /사진 2장 · 도식 1개/);
+
+  const fromPhoto = column().replace(`data-slot="1" data-prompt="${prompt}"`, 'data-slot="1" data-from="team_meeting.jpg"');
+  const saved = await ai.saveV1Column(supabase, "owner", state("shorts"), { columns: [{ html: fromPhoto }] }, author, 1, materials);
+  assert.equal(saved.photos, 1);
+  const fill = written.data.items.at(-1).fills["1"];
+  assert.equal(fill.name, "team_meeting.jpg");
+  assert.match(fill.url, /^https:\/\/images\.unsplash\.com\/photo-1\?ixid=x&w=1600&q=80&fit=max&auto=format$/);
+  await assert.rejects(ai.saveV1Column(supabase, "owner", state("shorts"), { columns: [{ html: fromPhoto.replace("team_meeting.jpg", "nope.jpg") }] }, author, 1, materials),
+    (error) => /롱폼 재료 사진/.test(error.message));
+  // A photo whose license asks for credit carries it in its caption.
+  const credited = column().replace(`data-slot="1" data-prompt="${prompt}"`, 'data-slot="1" data-from="old_desk.jpg"');
+  await assert.rejects(ai.saveV1Column(supabase, "owner", state("shorts"), { columns: [{ html: credited }] }, author, 1, materials), (error) => /사진 출처/.test(error.message));
+  await ai.saveV1Column(supabase, "owner", state("shorts"), { columns: [{ html: credited.replace("[이미지] 하나", "[이미지] 하나 · 사진 Wikimedia · CC BY-SA 4.0") }] }, author, 1, materials);
 });
 
 // 쇼츠 대본 by the staff AI (숏폼 정본 모드 A): up to four parts in play order, at most 60 seconds, exactly the count asked for.

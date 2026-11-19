@@ -2,7 +2,7 @@
 /* eslint-disable @next/next/no-img-element -- private signed previews do not have stable optimizer URLs */
 import { useEffect, useMemo, useState } from "react";
 import { Check, Clipboard, Code2, Download, ImagePlus, Plus, Sparkles, Trash2 } from "lucide-react";
-import { checkColumnHtml, columnMeta, columnSlots, renderColumn, type ColumnFill } from "@/lib/seo-column";
+import { checkColumnHtml, columnMeta, columnShorts, columnSlots, renderColumn, type ColumnFill, type ColumnShort } from "@/lib/seo-column";
 import { columnSignature, type YpColumnItem } from "@/lib/youtube-process/stages";
 import { JobLine, SendDialog, useStaffJob, type SendTab } from "./youtube-process-ai";
 import { draftTag } from "@/lib/youtube-process/gpt-draft";
@@ -76,9 +76,16 @@ function ColumnItemView({ page, item, index, videoUrl, busy, save }: { page: YpP
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [signed, setSigned] = useState<Record<string, string>>({});
   const [copied, setCopied] = useState(false);
+  // 글 끝 숏폼 (직원 요청 11-19): the Shorts uploaded from this longform, listed at the column's end as MYIN gets it.
+  const [shorts, setShorts] = useState<ColumnShort[]>([]);
   const check = useMemo(() => checkColumnHtml(html), [html]);
   const slots = useMemo(() => columnSlots(html), [html]);
-  const preview = useMemo(() => renderColumn(html, resolveFills(fills, signed, videoUrl)), [html, fills, signed, videoUrl]);
+  const preview = useMemo(() => renderColumn(html, resolveFills(fills, signed, videoUrl), shorts), [html, fills, signed, videoUrl, shorts]);
+  useEffect(() => {
+    let active = true;
+    page.client?.clips(projectId).then(rows => { if (active) setShorts(columnShorts([...rows].sort((a, b) => a.created_at.localeCompare(b.created_at)))); }, () => undefined);
+    return () => { active = false; };
+  }, [page.client, projectId]);
   const patch = (body: Record<string, unknown>, label: string) => save({ item: item.id, ...body }, label);
 
   useEffect(() => {
@@ -102,7 +109,7 @@ function ColumnItemView({ page, item, index, videoUrl, busy, save }: { page: YpP
   const exportHtml = async () => {
     const images: Record<string, string> = {};
     for (const fill of Object.values(fills)) if (fill.path) images[fill.path] = await dataUri(await (await fetch(signed[fill.path] ?? await page.client!.assetUrl(projectId, fill.path))).blob());
-    return renderColumn(html, resolveFills(fills, images, videoUrl));
+    return renderColumn(html, resolveFills(fills, images, videoUrl), shorts);
   };
   const copy = async () => {
     try { await navigator.clipboard.writeText(await exportHtml()); setCopied(true); window.setTimeout(() => setCopied(false), 1500); } catch (reason) { page.fail(reason); }
@@ -137,7 +144,7 @@ function ColumnItemView({ page, item, index, videoUrl, busy, save }: { page: YpP
       </div> : null}
     </YpSection>
 
-    <YpSection n={3} title="이미지 · 영상 자리" gq="지시 문장을 이미지 AI에 붙여 넣어 만든 뒤 올려요">
+    <YpSection n={3} title="이미지 · 영상 자리" gq="롱폼 사진은 자동으로 들어가요 · 빈 자리만 지시 문장으로 만들어 올려요">
       {slots.length ? <ul className="yp-hist">{slots.map(info => {
         const fill = fills[info.slot];
         const shown = fill?.url ?? (fill?.path ? signed[fill.path] : "");
@@ -145,11 +152,11 @@ function ColumnItemView({ page, item, index, videoUrl, busy, save }: { page: YpP
         return <li key={info.slot} style={{ alignItems: "flex-start", flexWrap: "wrap" }}>
           <span style={{ flex: "1 1 280px", minWidth: 0 }}><b>{slotName(info.slot)}</b> <span className="yp-muted">{info.caption}</span><br />
             {video ? <span className="yp-muted" style={{ fontSize: 12 }}>{fill?.url ? `넣은 영상: ${fill.url}` : videoUrl ? `올린 영상이 들어가요: ${videoUrl}` : "유튜브에 올린 뒤 영상이 자동으로 들어가요. 다른 영상은 주소를 넣어요."}</span>
-              : <span className="yp-muted" style={{ fontSize: 12, wordBreak: "break-word" }}>{info.prompt}</span>}
+              : <span className="yp-muted" style={{ fontSize: 12, wordBreak: "break-word" }}>{info.from ? `롱폼 사진: ${info.from}` : info.prompt}</span>}
             {shown && !video ? <><br /><img src={shown} alt="" style={{ maxWidth: 220, maxHeight: 124, borderRadius: 8, marginTop: 6, objectFit: "cover" }} /></> : null}</span>
           <span className="yp-row-btns" style={{ flexWrap: "wrap" }}>
             {video ? null : <>
-              <button type="button" className="yp-btn yp-sm" onClick={() => void navigator.clipboard.writeText(info.prompt)}><Clipboard size={14} /> 지시 문장 복사</button>
+              {info.prompt ? <button type="button" className="yp-btn yp-sm" onClick={() => void navigator.clipboard.writeText(info.prompt)}><Clipboard size={14} /> 지시 문장 복사</button> : null}
               <label className="yp-btn yp-sm" style={{ cursor: "pointer" }}><ImagePlus size={14} /> {busy === `fill-${info.slot}` ? "올리는 중…" : "이미지 올리기"}
                 <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void upload(info.slot, file); }} /></label></>}
             <input className="yp-in" style={{ width: 200 }} placeholder={video ? "유튜브 주소" : "이미지 주소 (https)"} value={urls[info.slot] ?? ""} aria-label={`${slotName(info.slot)} 주소`}

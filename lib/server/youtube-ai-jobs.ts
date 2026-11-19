@@ -15,7 +15,7 @@ import { assertScriptInputs, saveScriptBundle, scriptBundleSchema, scriptInputKe
 import { checkScenePlan, SCENE_PLAN_JSON_SCHEMA, scenePlanPrompt, youtubeSceneRuleRefs } from "./youtube-scenes";
 import { checkPronunciation, pronunciationPrompt, PRONUNCIATION_JSON_SCHEMA } from "./youtube-voice-worker";
 import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
-import { myinRunWithWords, saveMyinStoryboard, storyboardJson } from "./myin-run";
+import { columnMaterials, myinRunWithWords, saveMyinStoryboard, storyboardJson } from "./myin-run";
 import { checkMyinStoryboardResult, checkShortStoryboardResult, checkWebShortResult, MYIN_CARD_DOCS, MYIN_CARD_REFERENCE_DOCS, myinStoryboardCard, myinStoryboardInputKey, SHORT_CARD_DOCS, shortStoryboardCard, WEB_SHORT_CARD_DOCS, webShortCard } from "./myin-storyboard-job";
 import { myinCleanScript } from "@/lib/myin-script";
 import { DIAGRAM_CATALOG } from "@/lib/shortform-diagram-catalog";
@@ -736,7 +736,7 @@ async function claimJob(agent: RequestActor, jobId: string, byGpt: boolean) {
   if (m.task === "column") {
     const state = await currentColumnInput(job);
     const lease = await take();
-    return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: await v1ColumnCard(service(), state, minutes, m.targetMinutes ?? 1) };
+    return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: await v1ColumnCard(service(), state, minutes, m.targetMinutes ?? 1, await columnMaterials(service(), m.sourceId).catch(() => null)) };
   }
   if (m.task === "short-copy") {
     const { project, brief, scenes } = await currentShortCopyInput(job);
@@ -896,9 +896,10 @@ export async function completeStaffJob(agent: RequestActor, input: Extract<z.inf
   }
   if (m.task === "column") {
     const state = await currentColumnInput(job);
-    const saved = await keepIssues(job, m, () => saveV1Column(service(), agent.ownerId, state, input.result, { model: input.model, jobId: job.id, name: agent.name }, m.targetMinutes ?? 1));
+    const materials = await columnMaterials(service(), m.sourceId).catch(() => null);
+    const saved = await keepIssues(job, m, () => saveV1Column(service(), agent.ownerId, state, input.result, { model: input.model, jobId: job.id, name: agent.name }, m.targetMinutes ?? 1, materials));
     await saveJob(job, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });
-    return { done: true, ...saved, next: "담당 PD가 유튜브 공정 › 쇼츠 · 칼럼에서 이미지를 넣고 칼럼 HTML을 내보냅니다." };
+    return { done: true, ...saved, next: "롱폼 사진은 칼럼에 들어갔습니다. 담당 PD가 유튜브 공정 › 쇼츠 · 칼럼에서 빈 이미지 자리만 채우고 마이인에 보냅니다." };
   }
   if (m.task === "short-copy") {
     const { state, project } = await currentShortCopyInput(job);

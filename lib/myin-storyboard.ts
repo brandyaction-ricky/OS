@@ -661,3 +661,41 @@ export function myinCreditsBlock(credits: string[]) {
   const lines = credits.map((line) => line.replace(/^\S+\s+—\s+/, "").replace(/[<>]/g, "").trim()).filter(Boolean);
   return lines.length ? `\n\n사진·음악 출처\n${lines.map((line) => `- ${line}`).join("\n")}` : "";
 }
+
+const COLUMN_PHOTO = /\.(jpe?g|png|webp)$/i;
+const COLUMN_DIAGRAMS = new Set(["steps", "versus", "list", "layers", "bars", "cycle", ...MYIN_METAPHOR_TYPES]);
+// Keys that place, time or point at files, not words seen on screen.
+const COLUMN_NOT_WORDS = new Set(["type", "at", "at_time", "atEnd", "why", "beat", "file", "image", "photo", "broll", "kind", "t", "do", "id", "cue", "cue_x", "xAt", "sound", "music", "dur", "style"]);
+/**
+ * 칼럼 롱폼 재료 (직원 요청 11-19): the photos and diagrams the storyboard shows, each with the 원고 words it starts at, so the column puts
+ * the same pictures in its places instead of new ones. A photo is reached by our upload (path) or its listed address (url); one
+ * excluded at ④ or unreachable is left out. credit: what a caption must carry (none for Unsplash or our own photo).
+ */
+export function myinColumnMaterials(story: { scenes: Record<string, unknown>[] }, listed: { file: string; url: string; source: string; license: string }[],
+  ours: Record<string, { path: string; credit?: { source: string; license: string } }>, excluded: (file: string) => boolean) {
+  const byFile = new Map(listed.map((asset) => [asset.file, asset]));
+  const credit = (source: string, license: string) => /unsplash/i.test(`${source} ${license}`) ? "" : `사진 ${source} · ${license}`.slice(0, 160);
+  const photos: Record<string, { at: string; credit: string; path?: string; url?: string }> = {};
+  const diagrams: { scene: number; type: string; at: string; words: string }[] = [];
+  story.scenes.forEach((scene, index) => {
+    const at = String(scene.at ?? "").slice(0, 120), type = String(scene.type ?? "");
+    const photo = scene.photo, file = typeof photo === "string" ? photo : (photo as { file?: unknown } | undefined)?.file ?? scene.image;
+    if (typeof file === "string" && COLUMN_PHOTO.test(file) && !photos[file]) {
+      const own = ours[file], asset = byFile.get(file), url = asset && !excluded(file) ? myinPhotoFetchUrl(asset.url) : null;
+      if (own && COLUMN_PHOTO.test(own.path)) photos[file] = { at, credit: own.credit ? credit(own.credit.source, own.credit.license) : "", path: own.path };
+      else if (!own && asset && url) photos[file] = { at, credit: credit(asset.source, asset.license), url };
+    }
+    if (type.startsWith("lib_") || COLUMN_DIAGRAMS.has(type)) {
+      const words = new Set<string>();
+      const walk = (value: unknown, key = ""): void => {
+        if (COLUMN_NOT_WORDS.has(key)) return;
+        if (typeof value === "string") { if (value.trim()) words.add(value.trim()); }
+        else if (Array.isArray(value)) value.forEach((item) => walk(item));
+        else if (value && typeof value === "object") for (const [k, v] of Object.entries(value)) walk(v, k);
+      };
+      walk(scene);
+      diagrams.push({ scene: index + 1, type, at, words: [...words].join(" · ").slice(0, 240) });
+    }
+  });
+  return { photos, diagrams: diagrams.slice(0, 60) };
+}
