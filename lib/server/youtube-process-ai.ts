@@ -78,6 +78,8 @@ function v1ShortInput(state: Pipeline, stages: ReturnType<typeof v1Stages>) {
   const ready = Boolean(open && script.id && scriptText);
   return {
     state, scriptText: ready ? scriptText : null, title: projectName(stages.project), thumbnailCopy: "", layout: "short" as const,
+    // 광고용 숏폼 (2026-11-19, 대표 「광고용부터」): drawn by the web short renderer in the 「롱폼 재활용 숏폼 정본」 editing style.
+    ...(stages.project.yp.topic.purpose === "ad" ? { renderer: "web" as const } : {}),
     headCopy: confirmed?.headCopy ?? script.data.headCopy, screenScript: confirmed?.text ?? "",
     plan: { format: "narrated_visual" as const, privacyStatus: "private" as const, judgmentMode: "advisory_only" as const, sourceId: stages.project.id,
       inputKey: ready ? digest(["yp-v1-short-voice", stages.project.id, digest(confirmed!.text)]) : null, currentStage: ready ? "ready_for_voice" as const : "needs_input" as const,

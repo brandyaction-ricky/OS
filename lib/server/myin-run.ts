@@ -87,6 +87,8 @@ const runSchema = z.object({
   kind: z.literal(MYIN_RUN_KIND), runKey: hex, sourceId: z.string().uuid(), inputKey: hex, script: versionRef, scriptMarkdownHash: hex,
   // 숏폼 (2026-10-28): drawn 9:16 by the render PC's vertical copy of Logan's engine (MYIN_PKG_SHORT); no handouts, no staff-Mac drafts.
   layout: z.literal("short").optional(),
+  // 웹 숏폼 (2026-11-19): a 숏폼 drawn by the web short renderer (tools/web-short) from a scene-template storyboard, not the vertical engine.
+  renderer: z.literal("web").optional(),
   // 로건 사람 말투 음성 (2026-10-29): the render PC makes the voice itself, so the paragraphs never get OS files.
   voiceOn: z.literal("render_pc").optional(),
   voiceModel: z.literal(MYIN_VOICE_MODEL), voiceReferenceFingerprint: hex,
@@ -231,14 +233,14 @@ async function currentInput(supabase: Service | RequestActor["supabase"], source
   const input = await readYoutubeAutomationInput(supabase, sourceId);
   const { state, plan, scriptText, title } = input;
   // 숏폼: the head copy and the 대본 with its [관계] · [사람] screen hints go to the storyboard card.
-  const { layout, headCopy = "", screenScript = "" } = input as { layout?: "short"; headCopy?: string; screenScript?: string };
+  const { layout, renderer, headCopy = "", screenScript = "" } = input as { layout?: "short"; renderer?: "web"; headCopy?: string; screenScript?: string };
   if (!plan.inputKey || !plan.script || !scriptText) throw new ApiError(409, "AUTOMATION_INPUT_CHANGED", "승인된 원고와 패키징을 먼저 확인해 주세요.");
   const script = state.records.find((record) => record.id === plan.script?.id);
   const manuscript = typeof script?.metadata.manuscript === "string" ? script.metadata.manuscript : null;
   const markdown = myinScriptMarkdown(manuscript, scriptText);
   const { spoken } = myinCleanScript(markdown);
   if (!spoken.length) throw new ApiError(409, "MYIN_SCRIPT_EMPTY", "읽을 문단이 없는 원고입니다.");
-  return { state, inputKey: plan.inputKey, script: plan.script, markdown, spoken, title, layout, headCopy, screenScript };
+  return { state, inputKey: plan.inputKey, script: plan.script, markdown, spoken, title, layout, renderer, headCopy, screenScript };
 }
 
 async function save(service: Service, record: OsRecord, status: string, stage: string, run: MyinRun) {
@@ -340,11 +342,14 @@ async function confirmByItself(service: Service, record: OsRecord) {
   return beginDraft(service, saved, parse(saved));
 }
 /** What the ③ panel shows of a storyboard: its scene count, metaphor scenes, 구독 대사 and 한 장 정리. */
+const WEB_SHORT_CARD_TYPES = new Set(["react", "messenger", "list", "compare", "clock", "endcard"]);
 function storyboardFields(storyboard: Record<string, unknown>) {
   const scenes = storyboard.scenes as { type: string; at?: string; title?: unknown; points?: { h?: string }[] }[];
   const metaphorTypes = new Set(MYIN_METAPHOR_TYPES);
   const summary = scenes.find((sc) => sc.type === "summary");
-  return { scenes: scenes.length, metaphors: scenes.flatMap((sc, i) => metaphorTypes.has(sc.type) || sc.type.startsWith("lib_") ? [{ scene: i + 1, type: sc.type, at: String(sc.at ?? "") }] : []),
+  // 웹 숏폼: its 도식 · 카드 (변신 도식 B, 카드 D) are the templates that draw on a white card over the photo.
+  const drawn = storyboard.renderer === "web" ? (type: string) => WEB_SHORT_CARD_TYPES.has(type) : (type: string) => metaphorTypes.has(type) || type.startsWith("lib_");
+  return { scenes: scenes.length, metaphors: scenes.flatMap((sc, i) => drawn(sc.type) ? [{ scene: i + 1, type: sc.type, at: String(sc.at ?? "") }] : []),
     cta: ((storyboard.cta ?? []) as { after: string; line: string }[]).map(({ after, line }) => ({ after, line })),
     summary: summary ? { title: typeof summary.title === "string" ? summary.title : JSON.stringify(summary.title ?? ""), points: (summary.points ?? []).map((p) => String(p.h ?? "")) } : null };
 }
@@ -548,7 +553,7 @@ export async function createMyinRun(actor: RequestActor, sourceId: string, style
   const runKey = digestVoiceValue([MYIN_RUN_KIND, sourceId, input.inputKey, markdownHash, MYIN_VOICE_MODEL, fingerprint, JSON.stringify(MYIN_VOICE_TUNING), ...(onPc ? ["render_pc"] : [])]);
   const id = voiceRunId(runKey);
   const run: MyinRun = { kind: MYIN_RUN_KIND, runKey, sourceId, inputKey: input.inputKey, script: input.script, scriptMarkdownHash: markdownHash,
-    voiceModel: MYIN_VOICE_MODEL, voiceReferenceFingerprint: fingerprint, ...(channelVoice ? { voiceReference: channelVoice } : {}), attempts: 0, ...(input.layout ? { layout: input.layout } : {}), ...(onPc ? { voiceOn: "render_pc" as const } : {}),
+    voiceModel: MYIN_VOICE_MODEL, voiceReferenceFingerprint: fingerprint, ...(channelVoice ? { voiceReference: channelVoice } : {}), attempts: 0, ...(input.layout ? { layout: input.layout } : {}), ...(input.renderer ? { renderer: input.renderer } : {}), ...(onPc ? { voiceOn: "render_pc" as const } : {}),
     ...(picked ? { style: pinStyle(picked) } : {}),
     ...(settings ? { settings: { ...settings, by: actor.ownerId, name: actor.name, at: new Date().toISOString() } } : {}),
     ...(paidOk && actor.type === "user" ? { paidOk: { by: actor.ownerId, name: actor.name, at: new Date().toISOString() } } : {}),
@@ -737,7 +742,7 @@ export async function claimMyinWords(service: Service = createServiceSupabase(),
     const earlier = run.voiceOn && !run.words && !run.voiceFixes?.length ? (await voiceDonors(service, run.sourceId, run, record.created_at).catch(() => [])).map((d) => d.id) : [];
     return { runId: record.id, lease: lease.token, ...voice, bundleUploadUrl: upload.signedUrl, ...(voiceUploadUrls.length === MYIN_VOICE_PARTS ? { voiceUploadUrls } : {}),
       ...(earlier.length ? { earlier } : {}),
-      ...(preview ? { previewUploadUrl: preview.signedUrl } : {}), ...(run.layout ? { layout: run.layout } : {}),
+      ...(preview ? { previewUploadUrl: preview.signedUrl } : {}), ...(run.layout ? { layout: run.layout } : {}), ...(run.renderer ? { renderer: run.renderer } : {}),
       ...(dictionary?.exists ? { dictionary: dictionaryFiles(dictionary.dictionary) } : {}),
       ...(run.voiceFixes?.length ? { fixes: run.voiceFixes.map(({ memo, say, read, video, take, pause }) => ({ memo, ...(say ? { say } : {}), ...(read ? { read } : {}), ...(video ? { video } : {}),
         ...(take ? { take } : {}), ...(pause ? { pause } : {}) })) } : {}) };
@@ -1163,7 +1168,7 @@ export async function claimMyinCta(service: Service = createServiceSupabase(), s
     const story = await storyboardJson(service, run);
     const lines = [];
     for (const c of run.cta ?? []) if (c.status === "pending") lines.push({ index: c.index, uploadUrl: await uploadUrl(service, YOUTUBE_VOICE_BUCKET, ctaPcPath(record, run, c)) });
-    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), storyboard: await renderStory(story), fishVoice: fishVoice(run), lines,
+    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), ...(run.renderer ? { renderer: run.renderer } : {}), storyboard: await renderStory(story), fishVoice: fishVoice(run), lines,
       ...await seedFor(service, run) };
   } catch (error) {
     await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_CTA_CLAIM_FAILED");
@@ -1452,7 +1457,7 @@ export async function claimMyinPrep(service: Service = createServiceSupabase(), 
     // 바뀐 장면만 (요청 3번): the sheets before, drawn by the same engine; without them (or when they cannot be read) every scene is drawn.
     const prior = run.lastPrep && run.lastPrep.engine === lease.engine ? run.lastPrep : undefined;
     const previous = prior ? await priorSheets(service, run, prior).catch(() => null) : null;
-    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), draft, placeholders, ...(previous ? { previous } : {}), storyboard: await renderStory(story), assets, cta, ...(cta.some((c) => !c.url) ? { fishVoice: fishVoice(run) } : {}), siteCapture: story.scenes.some((sc) => sc.type === "site_ad"),
+    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), ...(run.renderer ? { renderer: run.renderer } : {}), draft, placeholders, ...(previous ? { previous } : {}), storyboard: await renderStory(story), assets, cta, ...(cta.some((c) => !c.url) ? { fishVoice: fishVoice(run) } : {}), siteCapture: story.scenes.some((sc) => sc.type === "site_ad"),
       sheetUploadUrls: sheetUploads, bundleUploadUrl: bundle.signedUrl, ...(owner ? { seed: await localSeed(service, run) } : await seedFor(service, run)), ...await subtitlesFor(service, run), ...styleFor(run) };
   } catch (error) {
     await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_PREP_CLAIM_FAILED");
@@ -1612,7 +1617,7 @@ export async function claimMyinRedraw(service: Service = createServiceSupabase()
         const { data: upload } = await service.storage.from(SHEET_BUCKET).createSignedUploadUrl(sheetPath(candidate, run, token, n), { upsert: true });
         if (upload) sheetUploadUrls.push(upload.signedUrl);
       }
-      return { runId: candidate.id, lease: token, ...(run.layout ? { layout: run.layout } : {}), storyboard: await renderStory(story),
+      return { runId: candidate.id, lease: token, ...(run.layout ? { layout: run.layout } : {}), ...(run.renderer ? { renderer: run.renderer } : {}), storyboard: await renderStory(story),
         ...(previous ? { previous: await renderStory(previous), sheets: await Promise.all(run.prepared!.sheets.map((path) => sign(service, SHEET_BUCKET, path))) } : {}),
         placeholders: [...folders].flatMap(([file, kinds]) => kinds.map((kind) => ({ kind, file }))), assets: myinPrepPhotos(folders, run.storyboard?.assets ?? [], () => true, ours),
         sheetUploadUrls, ...await subtitlesFor(service, run), ...styleFor(run) };
@@ -1780,7 +1785,7 @@ export async function claimMyinClips(service: Service = createServiceSupabase(),
       ...await subtitlesFor(service, run), ...styleFor(run) };
     const items = clipItems(run);
     const uploads = await Promise.all(items.map((item) => uploadUrl(service, ASSET_VIDEO_BUCKET, outPath(record, run, `${item.name}-${tag(lease.token)}.mp4`))));
-    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), clips: items.map((item, i) => ({ ...item, uploadUrl: uploads[i] })), ...(owner ? { seed: await localSeed(service, run) } : {}),
+    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), ...(run.renderer ? { renderer: run.renderer, storyboard: await renderStory(await storyboardJson(service, run)) } : {}), clips: items.map((item, i) => ({ ...item, uploadUrl: uploads[i] })), ...(owner ? { seed: await localSeed(service, run) } : {}),
       ...await subtitlesFor(service, run), ...styleFor(run) };
   } catch (error) {
     await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_CLIPS_CLAIM_FAILED");
@@ -1960,7 +1965,7 @@ export async function claimMyinFinal(service: Service = createServiceSupabase(),
   try {
     const files = finalFiles(record, run, lease.token);
     // The storyboard as ④ left it (sound edits made after the preparation), written into the render PC's copy before the render.
-    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), storyboard: await renderStory(await storyboardJson(service, run)),
+    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), ...(run.renderer ? { renderer: run.renderer } : {}), storyboard: await renderStory(await storyboardJson(service, run)),
       videoUploadUrl: await uploadUrl(service, ASSET_VIDEO_BUCKET, files.video), srtUploadUrl: await uploadUrl(service, OUTPUT_BUCKET, files.srt),
       ...(files.summary && files.deck ? { summaryUploadUrl: await uploadUrl(service, OUTPUT_BUCKET, files.summary), deckUploadUrl: await uploadUrl(service, OUTPUT_BUCKET, files.deck) } : {}),
       ...(owner ? { seed: await localSeed(service, run) } : {}), ...await subtitlesFor(service, run), ...styleFor(run) };

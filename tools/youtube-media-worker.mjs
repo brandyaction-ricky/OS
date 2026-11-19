@@ -846,6 +846,39 @@ export async function reportSoundCatalog() {
   } catch (error) { console.error(`sound catalog: ${error.message}`); } // never stops the worker (an older OS answers 404)
 }
 
+// 웹 숏폼 (2026-11-19, 광고용부터): a 숏폼 whose run is marked renderer "web" is drawn by tools/web-short — scene templates on colour
+// photos in the 「롱폼 재활용 숏폼 정본」 editing style — instead of the vertical engine: ③ sheets with the page's own layout check, the
+// preview, and ④ the video with the voice. Photos land where the engine's would (assets/situations); fonts come from the short package.
+const webShortDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "web-short");
+const runCode = (command, args, options) => new Promise((resolve) => {
+  const child = spawn(command, args, { stdio: ["ignore", "inherit", "inherit"], ...options });
+  children.add(child);
+  child.on("error", () => resolve(-1));
+  child.on("exit", (code) => { children.delete(child); resolve(code); });
+});
+/** mode: [] for the video, ["--sheets", dir] for the sheets. The check's lines come back; exit 2 = made, with lines; anything else stopped it. */
+export async function webShort(job, work, videoDir, out, mode = []) {
+  const story = path.join(videoDir, "web_storyboard.json");
+  writeFileSync(story, JSON.stringify(job.storyboard));
+  const code = await runCode(myinPython, [path.join(webShortDir, "render.py"), story, path.join(work, "voice", "os_voice", "voice.wav"), out,
+    "--fonts", path.join(myinPkgShort, "assets", "fonts"), "--photos", path.join(work, "assets", "situations"), ...mode], { env: myinEnv() });
+  if (code !== 0 && code !== 2) throw Object.assign(new Error(`web short renderer exited with ${code}`), { code: "WORKER_WEB_SHORT_FAILED" });
+  try { return JSON.parse(readFileSync(out.replace(/\.[^.]+$/, ".qa.json"), "utf8")).lines ?? []; } catch { return []; }
+}
+/** ③ sheets of a web short: one still per scene (cells = scene numbers), uploaded; its check's lines as 그리기 오류 (they go back to the staff AI). */
+async function webShortSheets(job, work, videoDir) {
+  const dir = path.join(videoDir, "web-sheets");
+  rmSync(dir, { recursive: true, force: true });
+  const lines = await webShort(job, work, videoDir, path.join(dir, "check.mp4"), ["--sheets", dir]);
+  const { sheets, cells } = JSON.parse(readFileSync(path.join(dir, "sheets.json"), "utf8"));
+  const sent = sheets.slice(0, job.sheetUploadUrls.length);
+  current.step = "upload";
+  for (const [i, name] of sent.entries()) await upload(job.sheetUploadUrls[i], path.join(dir, name), "image/png");
+  return { sheets: sent.length, cells, lines: lines.map((line) => `그리기 오류 ${line}`.slice(0, 300)) };
+}
+const srtTime = (s) => { const ms = Math.round(s * 1000); return `${String(Math.floor(ms / 3_600_000)).padStart(2, "0")}:${String(Math.floor(ms / 60_000) % 60).padStart(2, "0")}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")},${String(ms % 1000).padStart(3, "0")}`; };
+export const webShortSrt = (subtitles) => subtitles.map(([a, b, text], i) => `${i + 1}\n${srtTime(a)} --> ${srtTime(b)}\n${text}\n`).join("\n");
+
 /**
  * v13 stage 3 in the same clone: the confirmed storyboard, approved photos and music, the CTA lines (his ffmpeg line, his
  * tighten(), his md5 tag so stage_cta would say "그대로"), the site capture when a site_ad scene exists, then his preview,
@@ -864,6 +897,17 @@ export async function processMyinPrep() {
     const videoDir = path.join(work, "voice", "os_myin");
     const myinDir = path.join(work, "tools", "myin_pipeline");
     const env = layoutEnv(myinEnv(), job.layout);
+    if (job.renderer === "web") {
+      const missingPhotos = await fetchPhotos(job, work, videoDir, env);
+      current.step = "drawing";
+      const { sheets, cells, lines } = await webShortSheets(job, work, videoDir);
+      const bundle = path.join(videoDir, "myin-prep.json");
+      writeFileSync(bundle, JSON.stringify({ misses: lines, sheets, cells, musicCredits: [], log: "", ...(missingPhotos.length ? { missingPhotos } : {}) }));
+      await upload(job.bundleUploadUrl, bundle, "application/json");
+      await call({ action: "myin_prep_complete", ...lease });
+      console.log(`myin prep ready (web short): ${job.runId} (그리기 오류 ${lines.length})`);
+      return true;
+    }
     const storyFile = path.join(videoDir, "myin_storyboard.json");
     writeFileSync(storyFile, JSON.stringify(job.storyboard, null, 1));
     writeSubtitles(videoDir, job.subtitlesAss);
@@ -1010,6 +1054,13 @@ export async function processMyinRedraw() {
   try {
     const { work, videoDir, myinDir } = myinDirs(job.runId);
     const env = layoutEnv(myinEnv(), job.layout);
+    if (job.renderer === "web") {
+      await fetchPhotos(job, work, videoDir, env);
+      const { sheets, cells, lines } = await webShortSheets(job, work, videoDir);
+      await call({ action: "myin_redraw_complete", ...lease, sheets, cells, drawn: cells, lines: lines.slice(0, 60) });
+      console.log(`myin sheets drawn again (web short): ${job.runId}`);
+      return true;
+    }
     writeFileSync(path.join(videoDir, "myin_storyboard.json"), JSON.stringify(job.storyboard, null, 1));
     writeSubtitles(videoDir, job.subtitlesAss);
     await fetchPhotos(job, work, videoDir, env);
@@ -1151,8 +1202,22 @@ export async function processMyinClips() {
   const lease = { runId: job.runId, lease: job.lease };
   try {
     if (job.seed) await myinRebuild(job.runId, job.seed, job.layout);
-    const { videoDir, myinDir } = myinDirs(job.runId);
+    const { work, videoDir, myinDir } = myinDirs(job.runId);
     const env = layoutEnv(myinEnv(), job.layout);
+    if (job.renderer === "web") {
+      const names = [];
+      for (const clip of job.clips) {
+        const file = path.join(videoDir, `${clip.name}.mp4`);
+        await webShort(job, work, videoDir, file);
+        current.step = "upload";
+        await upload(clip.uploadUrl, file, "video/mp4");
+        current.step = "drawing";
+        names.push(clip.name);
+      }
+      await call({ action: "myin_clips_complete", ...lease, names });
+      console.log(`myin clips ready (web short): ${job.runId}`);
+      return true;
+    }
     writeSubtitles(videoDir, job.subtitlesAss);
     const drawEnv = { ...env, STORY: styleStoryboard(videoDir, myinDir, job.style) };
     if (job.stills) { await drawStills(job, lease, { videoDir, myinDir }, drawEnv); return true; }
@@ -1194,15 +1259,20 @@ export async function processMyinFinal() {
     if (job.storyboard) writeFileSync(path.join(videoDir, "myin_storyboard.json"), JSON.stringify(job.storyboard, null, 1));
     writeSubtitles(videoDir, job.subtitlesAss);
     const drawEnv = { ...env, STORY: styleStoryboard(videoDir, myinDir, job.style) };
-    await runAsync(myinPython, ["render_myin.py", "os_myin", "render", "4"], { cwd: myinDir, env: { ...drawEnv, OUTNAME: "final_myin_v1_raw.mp4" } });
     const video = path.join(videoDir, "final_myin_v1.mp4");
-    if (job.layout === "short") {
+    if (job.renderer === "web") {
+      // the picture and the voice (brought to −14 LUFS) in one pass; its subtitles are drawn in and also go to YouTube as SRT
+      await webShort(job, work, videoDir, video);
+      writeFileSync(path.join(videoDir, "subs_youtube.srt"), webShortSrt(job.storyboard.subtitles ?? []));
+    } else if (job.layout === "short") {
+      await runAsync(myinPython, ["render_myin.py", "os_myin", "render", "4"], { cwd: myinDir, env: { ...drawEnv, OUTNAME: "final_myin_v1_raw.mp4" } });
       // 숏폼: his picture with the voice alone, as the pilots A1–A3 (no music, no effects), brought to the longform's −14 LUFS
       // (the A1 pilot measured −16 LUFS, peak −0.5 dB); no handouts.
       const end = Number(job.storyboard?.end);
       execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-i", path.join(videoDir, "myin_video_final_myin_v1_raw.mp4"), "-i", path.join(work, "voice", "os_voice", "voice.wav"),
         "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-af", "pan=stereo|c0=c0|c1=c0,loudnorm=I=-14:TP=-1.5:LRA=11", "-ar", "48000", "-c:a", "aac", "-b:a", "192k", ...(end > 0 ? ["-t", String(end)] : []), video], { env });
     } else {
+      await runAsync(myinPython, ["render_myin.py", "os_myin", "render", "4"], { cwd: myinDir, env: { ...drawEnv, OUTNAME: "final_myin_v1_raw.mp4" } });
       await runAsync(myinPython, ["render_myin.py", "os_myin", "remix", "../../voice/os_myin/myin_video_final_myin_v1_raw.mp4", "final_myin_v1.mp4"], { cwd: myinDir, env: drawEnv });
       await runAsync(myinPython, ["render_myin.py", "os_myin", "handouts"], { cwd: myinDir, env: drawEnv });
     }
