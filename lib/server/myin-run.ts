@@ -252,7 +252,7 @@ async function save(service: Service, record: OsRecord, status: string, stage: s
 
 export function presentMyinRun(record: OsRecord) {
   const run = parse(record);
-  return { id: record.id, status: record.status, stage: record.stage, layout: run.layout ?? null, paragraphs: run.paragraphs.length,
+  return { id: record.id, status: record.status, stage: record.stage, layout: run.layout ?? null, renderer: run.renderer ?? null, paragraphs: run.paragraphs.length,
     paragraphsReady: run.paragraphs.filter((p) => p.status === "ready").length, voiceOnPc: Boolean(run.voiceOn), words: run.words ?? null,
     storyboard: run.storyboard ? { ...run.storyboard, path: undefined } : null, review: run.review ?? null,
     assetDecisions: Object.fromEntries(Object.entries(run.assets ?? {}).map(([file, value]) => [file, { decision: value.decision }])),

@@ -25,7 +25,7 @@ test("design values the templates read are all in theme.json", () => {
 });
 
 // ── the OS side: the staff AI's storyboard (phrases) → the renderer's story (seconds) ──
-import { checkWebShort, webShortSceneList, webShortSpoken } from "../lib/web-short-storyboard.ts";
+import { checkWebShort, editWebShortTexts, webShortSceneList, webShortSpoken, webShortTextSlots } from "../lib/web-short-storyboard.ts";
 
 const said = "입사 3년차 마켓터가 회의에서 발표하고 있었어요. 팀장님 얼굴이 굳었어요. 메신저를 열었어요. 지금 진단해 보세요.";
 const words = said.split(" ").map((word, i) => [i * 0.5, i * 0.5 + 0.45, word]);
@@ -85,4 +85,19 @@ test("the render PC hands a web short to its renderer at every stage, and sends 
 test("the subtitle script leaves out the screen hints the voice never reads", () => {
   assert.equal(webShortSpoken(["할 줄 아는 건 많은데.", "[장면] 사람들에게 어떤 도움을 줬는지. [목록] 복잡한 일을 정리해줬는지."]),
     "할 줄 아는 건 많은데. 사람들에게 어떤 도움을 줬는지. 복잡한 일을 정리해줬는지.");
+});
+
+test("a person edits a saved scene's text slots in place; limits hold and times stay", () => {
+  const scene = { type: "list", at: "복잡한 일을", from: 6.98, to: 10.62, photo: "a.jpg", title: "내가 준 도움",
+    items: [{ text: "복잡한 일 정리", cue: "복잡한 일을", at: 6.98, atEnd: 7.94 }, { text: "쉽게 설명", cue: "이해하기 쉽게", at: 8.92, atEnd: 9.9 }] };
+  assert.deepEqual(webShortTextSlots(scene).map((s) => `${s.label}=${s.max}`), ["제목=12", "항목 1 · 글자=12", "항목 2 · 글자=12"]);
+  const ok = editWebShortTexts(scene, { "items.1.text": "  이해하기 쉽게  설명 " });
+  assert.deepEqual(ok.issues, []);
+  assert.equal(ok.scene.items[1].text, "이해하기 쉽게 설명");
+  assert.equal(ok.scene.items[1].at, 8.92);
+  assert.equal(scene.items[1].text, "쉽게 설명");   // the saved scene is not touched
+  const bad = editWebShortTexts(scene, { "items.0.text": "복잡한 일을 대신 정리해 준 경험들", "items.0.cue": "x", title: " " });
+  assert.equal(bad.issues.length, 3);
+  const react = webShortTextSlots({ type: "react", a: { label: "마케터" }, b: { label: "팀원들" }, stimulus: { label: "팀장님 표정" } });
+  assert.deepEqual(react.map((s) => s.label), ["자극 · 이름표", "알아챈 사람 · 이름표", "다른 사람들 · 이름표"]);
 });

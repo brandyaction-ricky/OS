@@ -184,6 +184,50 @@ export function checkWebShort(value: unknown, input: { words: Words; script: str
   return { issues, story, notes, fuzzy };
 }
 
+// ── 장면 글자 고치기 (대표 2026-11-19 「자동 흐름에서도 장면을 직접 고칠 수 있게」): the text slots of a saved scene, edited in place. ──
+const SLOT_NAMES: Record<string, string> = { name: "이름", desc: "설명", label: "이름표", text: "글자", title: "제목", line: "한 줄 설명", button: "버튼",
+  stamp: "도장", lines: "꼬리표", items: "항목", steps: "단계", messages: "메시지", stimulus: "자극", bubble: "말풍선", progress: "막대",
+  persona: "인물 카드", tape: "꼬리표", a: "왼쪽", b: "오른쪽" };
+const REACT_SIDES: Record<string, string> = { a: "알아챈 사람", b: "다른 사람들" };
+/** Every text slot of a scene as the editor shows it: "items.0.text" → 「항목 1 · 글자」, with its letter limit and value now. */
+export function webShortTextSlots(scene: Record<string, unknown>) {
+  const spec = WEB_SHORT_SCENES[String(scene.type)];
+  const out: { path: string; label: string; max: number; value: string }[] = [];
+  const walk = (f: Record<string, F>, value: Record<string, unknown>, path: string[], label: string[]) => {
+    for (const [key, s] of Object.entries(f)) {
+      const v = value?.[key];
+      if (v === undefined || v === null) continue;
+      const name = scene.type === "react" && REACT_SIDES[key] && !path.length ? REACT_SIDES[key] : SLOT_NAMES[key] ?? key;
+      if (s.k === "text" && typeof v === "string") out.push({ path: [...path, key].join("."), label: [...label, name].join(" · "), max: s.max, value: v });
+      else if (s.k === "obj" && typeof v === "object") walk(s.f, v as Record<string, unknown>, [...path, key], [...label, name]);
+      else if (s.k === "list" && Array.isArray(v)) v.forEach((item, i) => {
+        const at = [...path, key, String(i)], named = [...label, `${name} ${i + 1}`];
+        if (s.item.k === "text" && typeof item === "string") out.push({ path: at.join("."), label: named.join(" · "), max: s.item.max, value: item });
+        else if (s.item.k === "obj" && item && typeof item === "object") walk(s.item.f, item as Record<string, unknown>, at, named);
+      });
+    }
+  };
+  if (spec) walk(spec.f, scene, [], []);
+  return out;
+}
+/** The scene with the given slot texts put in, or why not (an unknown slot, an empty one, one over its limit). Times and cues stay. */
+export function editWebShortTexts(scene: Record<string, unknown>, texts: Record<string, string>) {
+  const slots = new Map(webShortTextSlots(scene).map((s) => [s.path, s]));
+  const issues: string[] = [];
+  const next = structuredClone(scene);
+  for (const [path, raw] of Object.entries(texts)) {
+    const slot = slots.get(path), value = raw.replace(/\s+/g, " ").trim();
+    if (!slot) { issues.push(`「${path}」은 이 장면에서 고칠 수 있는 글자 칸이 아니에요.`); continue; }
+    if (!value) { issues.push(`${slot.label}을 비워 둘 수 없어요.`); continue; }
+    if (letters(value) > slot.max) { issues.push(`${slot.label} 「${value}」은 ${slot.max}자 이하로 줄여 주세요(띄어쓰기 빼고).`); continue; }
+    const keys = path.split("."), last = keys.pop()!;
+    let at: Record<string, unknown> | unknown[] = next;
+    for (const k of keys) at = (at as Record<string, unknown>)[k] as Record<string, unknown>;
+    (at as Record<string, unknown>)[last] = value;
+  }
+  return { scene: next, issues };
+}
+
 /** The spoken script the subtitles cover: the 대본's screen hints ([장면] · [관계] · [목록] · [사람]) at line starts are never read. */
 export const webShortSpoken = (paragraphs: string[]) => paragraphs.join(" ").replace(/\[[^\]\n]{1,6}\]\s*/g, "").replace(/\s+/g, " ").trim();
 

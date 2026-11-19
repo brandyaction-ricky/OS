@@ -12,6 +12,7 @@ import "./youtube-production-steps.css";
 import { CostTag, useCostConfirm, useCostModels, voiceEstimate } from "./cost-notice";
 import { MyinSoundEditor } from "./myin-sound-editor";
 import { MyinOurImages } from "./myin-our-images";
+import { WebShortSceneEdit } from "./web-short-scene-edit";
 import { MyinScreenCheck } from "./myin-screen-check";
 import { MyinSceneNotes, sceneSheets, type SceneSheetsReply } from "./myin-scene-notes";
 import { MyinVoiceCheck, type MyinVoiceCheckView, type MyinVoiceFixView } from "./myin-voice-check";
@@ -27,7 +28,7 @@ interface Storyboard { scenes: number; model: string; at: string; metaphors: { s
   summary: { title: string; points: string[] } | null; reasons: { metaphors: string; cta: string; summary: string };
   assets: { kind: string; file: string; url: string; source: string; license: string; use: string }[]; fuzzy: string[]; notes: string[]; reading?: string[];
   /** 고친 원고 (요청 3번): lent by the video's earlier run — paragraphs the edit changed, scenes the AI fixed. */ carried?: { changed: number; scenes: number } }
-interface MyinRun { id: string; status: string; stage: string; layout?: "short" | null; paragraphs: number; paragraphsReady: number; voiceOnPc?: boolean; lastErrorCode: string | null; waitingPhotos?: string[];
+interface MyinRun { id: string; status: string; stage: string; layout?: "short" | null; renderer?: "web" | null; paragraphs: number; paragraphsReady: number; voiceOnPc?: boolean; lastErrorCode: string | null; waitingPhotos?: string[];
   words: { words: number; subtitleLines: number; durationSeconds: number } | null; storyboard: Storyboard | null;
   review: { decision: "confirmed" | "revise"; name: string; note: string; at: string } | null;
   assetDecisions: Record<string, { decision: "approved" | "excluded" }>; ctaReady: string | null;
@@ -471,6 +472,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
           <p className="yt-note">{board.reasons.summary}</p></details></>}
         <details className="yt-details"><summary>사진 후보 {board.assets.filter((a) => a.kind !== "bgm").length}개</summary>
           <ul className="yt-list">{board.assets.filter((a) => a.kind !== "bgm").map((a) => <li key={a.file}>{KIND[a.kind] ?? a.kind} · {a.file} · {a.source} · {a.license} — {a.use} <a href={a.url} target="_blank" rel="noreferrer">출처</a></li>)}</ul></details>
+        {run.renderer === "web" ? <WebShortSceneEdit runId={run.id} token={accessToken} storyboardAt={board.at} onSaved={() => void load()} onScene={(scene) => void showSheet(scene)} /> : null}
         <MyinOurImages key={run.id} runId={run.id} token={accessToken} open={Boolean(run.waitingPhotos?.length)} onSaved={() => void load()} onScene={(scene) => void showSheet(scene)} />
         {board.fuzzy.length ? <details className="yt-details"><summary>받아쓰기와 비슷한 구간으로만 찾은 문구 {board.fuzzy.length}개</summary>
           <ul className="yt-list">{board.fuzzy.map((f) => <li key={f}>{f}</li>)}</ul></details> : null}
