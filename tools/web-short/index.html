@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<title>web short</title>
+<style>
+html, body { margin: 0; background: #000; }
+#stage { position: relative; overflow: hidden; font-family: P, sans-serif; color: var(--ink); background: #fff; }
+#stage * { box-sizing: border-box; }
+.abs { position: absolute; }
+.layer { position: absolute; inset: 0; }
+.photo { position: absolute; inset: 0; background-size: cover; background-position: center; filter: var(--photo-filter); }
+.veil { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(8,9,24,.15) 0%, rgba(8,9,24,.05) 40%, rgba(8,9,24,.78) 100%); }
+.sub { position: absolute; bottom: 0; text-align: center; line-height: 1.32; color: #fff; opacity: 0; white-space: nowrap; }
+.card { position: absolute; background: var(--paper); border-radius: var(--card-radius); box-shadow: var(--card-shadow); }
+.chip { position: absolute; background: var(--paper); border-radius: 999px; font-weight: 700; font-size: var(--chip-size); padding: 22px 46px; box-shadow: 0 18px 44px rgba(10,12,40,.30); white-space: nowrap; }
+.tape { position: absolute; background: var(--tape); color: #111; font-weight: 900; font-size: var(--tape-size); line-height: 1.14; padding: 18px 34px; box-shadow: 0 18px 40px rgba(0,0,0,.4); white-space: nowrap; }
+.tape em { font-style: normal; color: var(--brand); }
+svg text { font-family: P, sans-serif; }
+</style></head>
+<body><div id="stage"></div>
+<script>
+// render.py injects window.__THEME, window.__STORY and window.__ASSETS (folder with gsap.min.js and fonts/) before this runs
+(() => {
+  const T = window.__THEME, A = window.__ASSETS;
+  const css = Object.entries(T.fonts.files).map(([w, f]) => `@font-face { font-family: ${T.fonts.family}; font-weight: ${w}; src: url(${A}fonts/${f}); }`).join("\n");
+  document.head.appendChild(Object.assign(document.createElement("style"), { textContent: css }));
+  document.documentElement.style.setProperty("--chip-size", `${T.type.chip}px`);
+  document.documentElement.style.setProperty("--tape-size", `${T.type.tape}px`);
+  const load = src => new Promise((ok, bad) => document.body.appendChild(Object.assign(document.createElement("script"), { src, onload: ok, onerror: bad })));
+  load(`${A}gsap.min.js`).then(() => load("engine.js")).catch(e => { window.__error = String(e); });
+})();
+</script>
+</body></html>

@@ -1,0 +1,16 @@
+{
+  "_설명": "숏폼 웹 렌더러 디자인 값(「롱폼 재활용 숏폼 정본」 §3~§8). 색·글꼴·크기·여백·자막·움직임은 여기만 고치면 모든 장면 틀에 함께 적용된다. 장면의 순서와 움직임 구조는 engine.js의 틀이 정한다.",
+  "frame": { "w": 1080, "h": 1920, "fps": 30 },
+  "colors": {
+    "brand": "#212CB0", "brand2": "#3340E6", "ink": "#15172A", "gray": "#7B80A8", "soft": "#EEF0FB", "line": "#E3E6F8",
+    "paper": "#FFFFFF", "tape": "#F4F1E6", "accentText": "#D2D8F5", "stamp": "#FF5A5F", "muted": "#C9CCE0", "mutedInk": "#9AA0E8"
+  },
+  "fonts": { "family": "P", "files": { "500": "Pretendard-Medium.otf", "600": "Pretendard-SemiBold.otf", "700": "Pretendard-Bold.otf", "900": "Pretendard-Black.otf" } },
+  "type": { "title": 96, "titleTopScale": 0.86, "subtitle": 52, "chip": 50, "tape": 74, "cardHead": 50, "cardBody": 54, "label": 50, "big": 96 },
+  "grid": { "left": 72, "right": 1008, "top": 420, "bottom": 1068, "titleTop": 152, "heroTop": 640 },
+  "card": { "radius": 36, "shadow": "0 30px 70px rgba(25,30,100,.22), 0 4px 12px rgba(25,30,100,.10)" },
+  "photo": { "saturate": 1.08, "contrast": 1.04, "blur": 8, "veil": "rgba(10,12,30,.36)", "topShade": "linear-gradient(180deg, rgba(6,8,22,.72) 0%, rgba(6,8,22,.38) 60%, rgba(6,8,22,0) 100%)" },
+  "subtitle": { "bottom": 684, "width": 700, "weight": 600, "bg": "rgba(13,14,30,.88)", "radius": 18, "pad": "12px 26px 14px" },
+  "safe": { "top": 130, "bottom": 1248, "right": 888, "rightFrom": 900 },
+  "motion": { "enter": "back.out(1.8)", "pop": "back.out(2.2)", "move": "power3.inOut", "out": "power3.in", "ease": "power3.out", "stagger": 0.08, "whip": 0.38, "drift": 1.12 }
+}
