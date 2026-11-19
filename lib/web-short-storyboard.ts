@@ -180,7 +180,7 @@ export function checkWebShort(value: unknown, input: { words: Words; script: str
 
   const titleLines = lines.map((line) => { const k = accent ? line.indexOf(accent) : -1; return k < 0 ? [{ text: line }]
     : [{ text: line.slice(0, k).trim() }, { text: accent, accent: true }, { text: line.slice(k + accent.length).trim() }].filter((p) => p.text); });
-  const story = { renderer: "web", duration: round(input.durationSeconds), title: { lines: titleLines }, scenes: out, subtitles: timedSubs };
+  const story = { renderer: "web", duration: round(input.durationSeconds), title: { lines: titleLines }, scenes: out, subtitles: timedSubs, cta: [] as never[] };
   return { issues, story, notes, fuzzy };
 }
 
