@@ -25,7 +25,7 @@ test("design values the templates read are all in theme.json", () => {
 });
 
 // ── the OS side: the staff AI's storyboard (phrases) → the renderer's story (seconds) ──
-import { checkWebShort, webShortSceneList } from "../lib/web-short-storyboard.ts";
+import { checkWebShort, webShortSceneList, webShortSpoken } from "../lib/web-short-storyboard.ts";
 
 const said = "입사 3년차 마켓터가 회의에서 발표하고 있었어요. 팀장님 얼굴이 굳었어요. 메신저를 열었어요. 지금 진단해 보세요.";
 const words = said.split(" ").map((word, i) => [i * 0.5, i * 0.5 + 0.45, word]);
@@ -80,4 +80,9 @@ test("the render PC hands a web short to its renderer at every stage, and sends 
   const { webShortSrt } = await import("../tools/youtube-media-worker.mjs");
   assert.equal(webShortSrt([[0, 1.3, "입사 3년 차 마케터가"], [61.32, 62.5, "한 명 있다고 해보죠"]]),
     "1\n00:00:00,000 --> 00:00:01,300\n입사 3년 차 마케터가\n\n2\n00:01:01,320 --> 00:01:02,500\n한 명 있다고 해보죠\n");
+});
+
+test("the subtitle script leaves out the screen hints the voice never reads", () => {
+  assert.equal(webShortSpoken(["할 줄 아는 건 많은데.", "[장면] 사람들에게 어떤 도움을 줬는지. [목록] 복잡한 일을 정리해줬는지."]),
+    "할 줄 아는 건 많은데. 사람들에게 어떤 도움을 줬는지. 복잡한 일을 정리해줬는지.");
 });
