@@ -87,7 +87,7 @@ const patchSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("clips_ok"), runId: z.string().uuid(), note: z.string().max(2000).default(""), place: z.enum(["pc", "local"]).optional() }),
   z.object({ action: z.literal("screen_check"), runId: z.string().uuid(), tier: z.enum(["precise", "saving"]).default("precise") }),
   // ④ 자료 준비 (2026-10-27): the full video after the sound check, ⑤ → ④ for another sound pass, and the sound plan itself.
-  z.object({ action: z.literal("final"), runId: z.string().uuid() }),
+  z.object({ action: z.literal("final"), runId: z.string().uuid(), sizes: z.literal(true).optional() }),
   z.object({ action: z.literal("reopen"), runId: z.string().uuid() }),
   z.object({ action: z.literal("voice_fix"), runId: z.string().uuid(), fixes: z.array(myinVoiceFixSchema).min(1).max(20) }),
   z.object({ action: z.literal("voice_fix_plan"), runId: z.string().uuid(), fixes: z.array(myinVoiceFixSchema).min(1).max(20) }),
@@ -119,7 +119,7 @@ export async function PATCH(request: Request) {
       : input.action === "clips_ok" ? { run: await confirmMyinClips(actor, input.runId, input.note, input.place) }
       // [다시 검사]: only someone who can read the run (myinScreenCheck checks it) asks GPT again.
       : input.action === "screen_check" ? await myinScreenCheck(actor, input.runId).then(() => checkMyinScreens(input.runId, input.tier)).then((stage) => ({ check: stage?.data ?? null }))
-      : input.action === "final" ? { run: await startMyinFinal(actor, input.runId) }
+      : input.action === "final" ? { run: await startMyinFinal(actor, input.runId, input.sizes) }
       : input.action === "reopen" ? { run: await reopenMyinMaterials(actor, input.runId) }
       : input.action === "voice_fix" ? { run: await requestMyinVoiceFix(actor, input.runId, input.fixes) }
       : input.action === "voice_fix_plan" ? await myinVoiceFixPlan(actor, input.runId, input.fixes)

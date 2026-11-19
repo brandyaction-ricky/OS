@@ -33,7 +33,7 @@ const inputSchema = z.discriminatedUnion("action", [
   // ④ on this computer (2026-11-03): the full video, from the folder its own preparation filled.
   z.object({ action: z.literal("myin_final_claim"), engine }).strict(),
   z.object({ action: z.literal("myin_final_complete"), ...lease, bytes: z.number().int().positive(), durationSeconds: z.number().positive().max(14_400),
-    lufs: z.number().min(-70).max(0), peak: z.number().min(-70).max(6) }).strict(),
+    lufs: z.number().min(-70).max(0), peak: z.number().min(-70).max(6), sizes: z.boolean().optional() }).strict(),
   z.object({ action: z.literal("myin_stage_fail"), ...lease, code: z.string().max(80) }).strict(),
 ]);
 

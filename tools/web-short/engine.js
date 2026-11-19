@@ -15,12 +15,19 @@
   Object.entries(C).forEach(([k, v]) => css.setProperty(`--${k}`, v));
   css.setProperty("--card-radius", `${T.card.radius}px`); css.setProperty("--card-shadow", T.card.shadow);
   css.setProperty("--photo-filter", `saturate(${T.photo.saturate}) contrast(${T.photo.contrast})`);
-  stage.style.width = `${T.frame.w}px`; stage.style.height = `${T.frame.h}px`;
+  // the frame: 9:16 draws the design as it is; 1:1 · 4:5 (feed) fit the design's text band (T.band) into the frame, photos fill it all
+  const F = window.__FORMAT || T.frame, vertical = F.h / F.w > 1.6, bandH = T.band.bottom - T.band.top;
+  const k = vertical ? 1 : Math.min(1, F.h / bandH, F.w / T.frame.w);
+  const ox = vertical ? 0 : (F.w - T.frame.w * k) / 2, oy = vertical ? 0 : (F.h - bandH * k) / 2 - T.band.top * k;
+  stage.style.width = `${F.w}px`; stage.style.height = `${F.h}px`;
 
-  const bg = mk("div", "layer", stage), vis = mk("div", "layer", stage);
-  const top = mk("div", "abs", stage, null, { left: 0, right: 0, top: 0, height: "560px", background: T.photo.topShade, opacity: 0, zIndex: 40 });
-  const heroBox = mk("div", "layer", stage, null, { zIndex: 45, pointerEvents: "none" });
-  const subs = mk("div", "abs", stage, null, { left: `${(T.frame.w - T.subtitle.width) / 2}px`, width: `${T.subtitle.width}px`, bottom: `${T.subtitle.bottom}px`, zIndex: 60, display: "flex", justifyContent: "center" });
+  const bg = mk("div", "layer", stage);
+  const box = mk("div", "abs", stage, null, { left: `${ox}px`, top: `${oy}px`, width: `${T.frame.w}px`, height: `${T.frame.h}px`, transform: `scale(${k})`, transformOrigin: "0 0" });
+  const vis = mk("div", "layer", box);
+  // the shade behind the title spans the whole frame width, from the frame's top edge
+  const top = mk("div", "abs", box, null, { left: `${-ox / k}px`, width: `${F.w / k}px`, top: `${-oy / k}px`, height: `${560 + oy / k}px`, background: T.photo.topShade, opacity: 0, zIndex: 40 });
+  const heroBox = mk("div", "layer", box, null, { zIndex: 45, pointerEvents: "none" });
+  const subs = mk("div", "abs", box, null, { left: `${(T.frame.w - T.subtitle.width) / 2}px`, width: `${T.subtitle.width}px`, bottom: `${T.subtitle.bottom}px`, zIndex: 60, display: "flex", justifyContent: "center" });
   const tl = gsap.timeline({ paused: true });
   gsap.ticker.lagSmoothing(0);
 
@@ -218,8 +225,8 @@
     // C: a spotlight closes on one point of the photo
     spotlight(s) {
       backdrop(s.photo, s.from - 0.15, s.to, false);
-      const spot = mk("div", "layer", vis, null, { opacity: 0 }); const sp = { r: 900, x: 50, y: 42 };
-      const paint = () => { spot.style.background = `radial-gradient(circle at ${sp.x}% ${sp.y}%, rgba(0,0,0,0) ${sp.r}px, rgba(6,8,22,.62) ${sp.r + 40}px)`; }; paint();
+      const spot = mk("div", "layer", bg, null, { opacity: 0 }); const sp = { r: 900, x: 50, y: 42 };
+      const paint = () => { spot.style.background = `radial-gradient(circle at ${sp.x}% ${sp.y}%, rgba(0,0,0,0) ${sp.r * k}px, rgba(6,8,22,.62) ${(sp.r + 40) * k}px)`; }; paint();
       tl.set(spot, { opacity: 1 }, s.from).to(sp, { r: s.r ?? 230, x: s.x ?? 46, y: s.y ?? 40, duration: 0.6, ease: M.move, onUpdate: paint }, s.focusAt ?? s.from + 0.8).to(spot, { opacity: 0, duration: 0.25 }, s.to - 0.1);
     },
     // C: a fast push into the photo with speed streaks
@@ -233,14 +240,14 @@
     // C: a slow push with a darkening edge
     vignette(s) {
       const ph = backdrop(s.photo, s.from - 0.1, s.to, false);
-      const vig = mk("div", "layer", vis, null, { background: "radial-gradient(circle at 50% 45%, rgba(0,0,0,0) 35%, rgba(6,8,22,.7) 100%)", opacity: 0 });
+      const vig = mk("div", "layer", bg, null, { background: "radial-gradient(circle at 50% 45%, rgba(0,0,0,0) 35%, rgba(6,8,22,.7) 100%)", opacity: 0 });
       tl.fromTo(ph, { scale: 1.05 }, { scale: 1.22, duration: s.to - s.from + 0.1, ease: "power1.inOut" }, s.from - 0.1).to(vig, { opacity: 1, duration: 0.6 }, s.darkAt ?? s.from + 1).to(vig, { opacity: 0, duration: 0.25 }, s.to - 0.1);
     },
     // C: two photos split top and bottom (a recap of what was seen)
     split(s) {
-      const half = (img, topPx) => { const h = mk("div", "abs", bg, null, { left: 0, top: `${topPx}px`, width: `${T.frame.w}px`, height: `${T.frame.h / 2}px`, overflow: "hidden", opacity: 0 }); const ph = mk("div", "photo", h, null, { backgroundImage: photoUrl(img) }); return [h, ph]; };
-      const [t1, p1] = half(s.top.photo, 0), [t2, p2] = half(s.bottom.photo, T.frame.h / 2);
-      const line = mk("div", "abs", bg, null, { left: 0, top: `${T.frame.h / 2 - 6}px`, width: `${T.frame.w}px`, height: "12px", background: "#fff", transformOrigin: "0 50%", transform: "scaleX(0)" });
+      const half = (img, topPx) => { const h = mk("div", "abs", bg, null, { left: 0, top: `${topPx}px`, width: `${F.w}px`, height: `${F.h / 2}px`, overflow: "hidden", opacity: 0 }); const ph = mk("div", "photo", h, null, { backgroundImage: photoUrl(img) }); return [h, ph]; };
+      const [t1, p1] = half(s.top.photo, 0), [t2, p2] = half(s.bottom.photo, F.h / 2);
+      const line = mk("div", "abs", bg, null, { left: 0, top: `${F.h / 2 - 6}px`, width: `${F.w}px`, height: "12px", background: "#fff", transformOrigin: "0 50%", transform: "scaleX(0)" });
       tl.fromTo(t1, { opacity: 1, yPercent: -100 }, { yPercent: 0, duration: 0.45, ease: M.ease }, s.top.at).fromTo(p1, { scale: 1.15 }, { scale: 1, duration: s.to - s.top.at, ease: "none" }, s.top.at)
         .to(line, { scaleX: 1, duration: 0.35, ease: M.ease }, s.bottom.at - 0.1)
         .fromTo(t2, { opacity: 1, yPercent: 100 }, { yPercent: 0, duration: 0.45, ease: M.ease }, s.bottom.at).fromTo(p2, { scale: 1.15 }, { scale: 1, duration: s.to - s.bottom.at, ease: "none" }, s.bottom.at);
@@ -321,7 +328,7 @@
   tl.to({}, { duration: 0.01 }, story.duration);
 
   // QA: text glyphs stay out of the Shorts UI, never overlap the subtitle, subtitles stay one line and readable
-  const S = T.safe, W = T.frame.w, H = T.frame.h;
+  const S = T.safe, W = F.w, H = F.h;
   const opacityOf = el => { let o = 1; for (let n = el; n && n !== document.body; n = n.parentElement || n.parentNode) { if (n.nodeType !== 1) break; const cs = getComputedStyle(n); if (cs.display === "none" || cs.visibility === "hidden") return 0; o *= parseFloat(cs.opacity); } return o; };
   const glyphs = el => { if (el instanceof SVGElement || el.dataset.qa === "sub") return el.getBoundingClientRect(); const rg = document.createRange(); rg.selectNodeContents(el); const rs = [...rg.getClientRects()].filter(r => r.width > 1); if (!rs.length) return el.getBoundingClientRect(); const l = Math.min(...rs.map(r => r.left)), t = Math.min(...rs.map(r => r.top)), r = Math.max(...rs.map(r => r.right)), b = Math.max(...rs.map(r => r.bottom)); return { left: l, top: t, right: r, bottom: b, width: r - l, height: b - t }; };
   window.__qa = t => {
@@ -332,12 +339,15 @@
       const r = { l: i.r.left - st.left, t: i.r.top - st.top, r: i.r.right - st.left, b: i.r.bottom - st.top }; i.box = r;
       if (i.kind === "title" && t < (story.scenes[0]?.to ?? 0)) continue;   // the opening title is large on purpose
       if (r.l < 40 || r.r > W - 40) out.push([t, i.label, `가로 밖 (${Math.round(r.l)}~${Math.round(r.r)})`]);
-      if (r.t < S.top) out.push([t, i.label, `위 아이콘 자리 (${Math.round(r.t)})`]);
-      if (r.b > S.bottom) out.push([t, i.label, `아래 쇼츠 글자 자리 침범 (아래 ${Math.round(r.b)})`]);
-      if (r.r > S.right && r.b > S.rightFrom) out.push([t, i.label, `오른쪽 버튼 자리 침범 (오른쪽 ${Math.round(r.r)}, 아래 ${Math.round(r.b)})`]);
+      if (!vertical) { if (r.t < 30 || r.b > H - 30) out.push([t, i.label, `세로 밖 (${Math.round(r.t)}~${Math.round(r.b)})`]); }
+      else {
+        if (r.t < S.top) out.push([t, i.label, `위 아이콘 자리 (${Math.round(r.t)})`]);
+        if (r.b > S.bottom) out.push([t, i.label, `아래 쇼츠 글자 자리 침범 (아래 ${Math.round(r.b)})`]);
+        if (r.r > S.right && r.b > S.rightFrom) out.push([t, i.label, `오른쪽 버튼 자리 침범 (오른쪽 ${Math.round(r.r)}, 아래 ${Math.round(r.b)})`]);
+      }
       const box = i.el.closest?.("[data-box]");
       if (box && i.kind === "text") { const b = box.getBoundingClientRect(); if (i.r.left < b.left - 2 || i.r.right > b.right + 2 || i.r.top < b.top - 2 || i.r.bottom > b.bottom + 2) out.push([t, i.label, `${box.dataset.box} 밖으로 나감`]); }
-      if (i.kind === "sub") { if (i.r.height > T.type.subtitle * 1.32 + 40) out.push([t, i.label, "자막이 두 줄"]); if (i.label.replace(/\s/g, "").length > 14) out.push([t, i.label, "자막 14자 넘음"]); }
+      if (i.kind === "sub") { if (i.r.height > (T.type.subtitle * 1.32 + 40) * k) out.push([t, i.label, "자막이 두 줄"]); if (i.label.replace(/\s/g, "").length > 14) out.push([t, i.label, "자막 14자 넘음"]); }
     }
     const subsOn = items.filter(i => i.kind === "sub"), texts = items.filter(i => i.kind === "text");
     for (const s of subsOn) for (const x of texts) { const a = s.box, b = x.box; const w = Math.min(a.r, b.r) - Math.max(a.l, b.l), h = Math.min(a.b, b.b) - Math.max(a.t, b.t); if (w > 4 && h > 4) out.push([t, `${x.label} ↔ 자막`, `겹침 ${Math.round(w)}×${Math.round(h)}`]); }

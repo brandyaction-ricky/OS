@@ -71,7 +71,7 @@ const inputSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("myin_clips_complete"), runId: z.string().uuid(), lease: z.string().uuid(), names: z.array(z.string().max(40)).max(201).optional(), stills }).strict(),
   z.object({ action: z.literal("myin_final_claim"), short: z.literal(true).optional(), pc }).strict(),
   z.object({ action: z.literal("myin_final_complete"), runId: z.string().uuid(), lease: z.string().uuid(), bytes: z.number().int().positive(),
-    durationSeconds: z.number().positive().max(14_400), lufs: z.number().min(-70).max(0), peak: z.number().min(-70).max(6) }).strict(),
+    durationSeconds: z.number().positive().max(14_400), lufs: z.number().min(-70).max(0), peak: z.number().min(-70).max(6), sizes: z.boolean().optional() }).strict(),
   z.object({ action: z.literal("myin_stage_fail"), runId: z.string().uuid(), lease: z.string().uuid(), code: z.string().max(80) }).strict(),
   // 숏폼 레퍼런스 받기 (2026-10-28): thumbnails, the first three seconds and the words of the 대본 step's references.
   z.object({ action: z.literal("short_refs_claim") }).strict(), shortRefsCompleteSchema, shortRefsFailSchema,

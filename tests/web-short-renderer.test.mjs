@@ -102,3 +102,17 @@ test("a person edits a saved scene's text slots in place; limits hold and times 
   const react = webShortTextSlots({ type: "react", a: { label: "마케터" }, b: { label: "팀원들" }, stimulus: { label: "팀장님 표정" } });
   assert.deepEqual(react.map((s) => s.label), ["자극 · 이름표", "알아챈 사람 · 이름표", "다른 사람들 · 이름표"]);
 });
+
+test("a web short also comes in the feed sizes 1:1 and 4:5: the renderer fits the vertical text band, the render PC sends both", () => {
+  assert.deepEqual(Object.keys(theme.formats), ["9:16", "1:1", "4:5"]);
+  assert.deepEqual(theme.formats["9:16"], { w: theme.frame.w, h: theme.frame.h });
+  for (const { w, h } of Object.values(theme.formats)) assert.ok(w % 2 === 0 && h % 2 === 0, "even sizes for yuv420p");
+  // the band the feed sizes keep holds the title, the cards and the subtitle line of the vertical design
+  assert.ok(theme.band.top <= theme.safe.top && theme.band.bottom >= theme.frame.h - theme.subtitle.bottom);
+  const render = readFileSync(new URL("render.py", dir), "utf8");
+  assert.match(render, /--format/); assert.match(render, /window\.__FORMAT/);
+  assert.match(engine, /window\.__FORMAT/);
+  const worker = readFileSync(new URL("../tools/youtube-media-worker.mjs", import.meta.url), "utf8");
+  const final = worker.slice(worker.indexOf("export async function processMyinFinal(")).split("\nexport ")[0];
+  assert.match(final, /\["--format", size\]/); assert.match(final, /sizes: true/);
+});
