@@ -1127,7 +1127,8 @@ async function beginPrep(service: Service, record: OsRecord, run: MyinRun, by: s
   // 2026-10-29 로건: the CTA lines are made like the narration (his stage_cta: same way, EQ and level), so a render-PC voice run hands them
   // to the render PC as text instead of queueing the server's Fish request.
   // A member's own computer cannot make them (2026-11-03): the render PC makes them first and puts the files in the OS (claimMyinCta).
-  const cta: NonNullable<MyinRun["cta"]> = story.cta.map((c, index) => {
+  // A 웹 숏폼 storyboard has no 구독 대사 (and stories saved before 2026-11-19 carry no cta list at all).
+  const cta: NonNullable<MyinRun["cta"]> = (story.cta ?? []).map((c, index) => {
     const kept = run.cta?.find((p) => p.index === index && p.textHash === sha(c.line));
     return kept && (kept.path || !run.localFinish) ? kept : { index, textHash: sha(c.line), status: run.voiceOn && !run.localFinish ? "ready" as const : "pending" as const };
   });

@@ -52,6 +52,7 @@ test("a storyboard written in phrases becomes seconds the renderer reads, subtit
   assert.deepEqual([messenger.messages[0].at, messenger.messages[0].atEnd, messenger.messages[0].sendAt], [4.5, 5.45, 5]);
   assert.deepEqual(r.story.subtitles.map(([a]) => a), [0, 1.5, 3, 4.5, 5.5]);   // 「마케터」 in the script is 「마켓터」 in the words
   assert.deepEqual(r.story.title.lines[1], [{ text: "더 지치는" }, { text: "진짜 이유", accent: true }]);
+  assert.deepEqual(r.story.cta, []);   // the run reads a 구독 대사 list on every storyboard
 });
 
 test("the check sends back what would break the screen or the ad", () => {
