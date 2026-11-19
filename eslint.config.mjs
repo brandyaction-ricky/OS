@@ -7,7 +7,7 @@ const __dirname = path.dirname(__filename);
 const compat = new FlatCompat({ baseDirectory: __dirname });
 
 const config = [
-  { ignores: [".next/**", "node_modules/**", "next-env.d.ts", "*.tsbuildinfo", "docs/handoff/knowledge-20261009/**", "docs/handoff/os-style-fix-20261031/tools/**"] },
+  { ignores: [".next/**", "node_modules/**", "next-env.d.ts", "*.tsbuildinfo", "docs/handoff/knowledge-20261009/**", "docs/handoff/os-style-fix-20261031/tools/**", "tools/web-short/vendor/**"] },
   ...compat.extends("next/core-web-vitals", "next/typescript"),
 ];
 
