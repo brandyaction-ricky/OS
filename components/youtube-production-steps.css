@@ -152,4 +152,11 @@
   .linear-shell .ui-v2 .yt-take-no {min-width:64px}
   .linear-shell .ui-v2 .yt-take-list audio {flex:1 1 220px;min-width:0}
   .linear-shell .ui-v2 .yt-line-text {flex:1 1 260px;min-width:0}
+  /* 웹 숏폼 장면 글자 고치기 (2026-11-19) */
+  .linear-shell .ui-v2 .yt-wse-scene {margin-top:8px}
+  .linear-shell .ui-v2 .yt-wse-field {display:block;margin-top:6px}
+  .linear-shell .ui-v2 .yt-wse-count {margin-left:6px;font-size:12px}
+  .linear-shell .ui-v2 .yt-wse-act {margin-top:6px}
+  .linear-shell .ui-v2 .yt-wse-gap {margin-left:8px}
+  .linear-shell .ui-v2 .yt-wse-empty {margin:4px 0}
 }

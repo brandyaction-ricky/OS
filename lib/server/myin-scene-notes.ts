@@ -5,6 +5,7 @@ import { ApiError } from "@/lib/http";
 import { sameNotes, sceneNow, spliceScene, type SceneNotePin, type SceneProposal } from "@/lib/myin-scene-notes";
 import { anchorMyinCues, checkMyinStoryboard } from "@/lib/myin-storyboard";
 import type { OsRecord } from "@/lib/record-types";
+import { editWebShortTexts, WEB_SHORT_SCENES, webShortTextSlots } from "@/lib/web-short-storyboard";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { RequestActor } from "./auth";
 import { readDiagramCatalog } from "./diagram-catalog";
@@ -163,4 +164,33 @@ export async function applySceneNote(actor: RequestActor, runId: string, noteId:
   await actor.supabase.from("os_records").update({ status: "done", updated_by: actor.id,
     metadata: { ...(row.metadata as object), status: "done", doneBy: actor.name, doneAt: now, applied: { at: now, by: actor.name, n } } }).eq("id", row.id).eq("version", row.version);
   return presentMyinRun(saved);
+}
+
+// ── 웹 숏폼 장면 글자 고치기 (대표 2026-11-19): a person edits a scene's text slots in place (no AI round); the changed scenes are drawn
+// into the 점검 시트 again, like an applied 수정안. Open while a 장면 수정안 could be applied: 기획표 확인 중, or ③ 미리보기 before its 확인. ──
+const webEditOpen = (stage: string | null, run: { clipsReview?: unknown; storyboard?: unknown }) =>
+  Boolean(run.storyboard) && (stage === "storyboard_review" || (stage === "clips_review" && !run.clipsReview));
+
+export async function webShortScenes(actor: RequestActor, runId: string) {
+  const { record, run } = await visibleRun(actor, runId);
+  if (run.renderer !== "web" || !run.storyboard) return { open: false, storyboardAt: "", scenes: [] };
+  const story = await storyboardJson(createServiceSupabase(), run);
+  return { open: webEditOpen(record.stage, run), storyboardAt: run.storyboard.at,
+    scenes: story.scenes.map((scene, i) => ({ n: i + 1, type: String(scene.type), name: WEB_SHORT_SCENES[String(scene.type)]?.name ?? String(scene.type),
+      at: String(scene.at ?? ""), photo: typeof scene.photo === "string" ? scene.photo : null, slots: webShortTextSlots(scene) })) };
+}
+
+export async function editWebShortScene(actor: RequestActor, runId: string, n: number, texts: Record<string, string>, storyboardAt: string) {
+  const service = createServiceSupabase();
+  const { record, run } = await visibleRun(actor, runId);
+  if (run.renderer !== "web") throw new ApiError(409, "WEB_SHORT_ONLY", "새 숏폼 렌더러로 만드는 숏폼에서만 장면 글자를 고칠 수 있어요.");
+  if (!webEditOpen(record.stage, run)) throw new ApiError(409, "WEB_SCENE_EDIT_CLOSED", "기획표 확인 중이거나 미리보기를 확인할 때 고칠 수 있어요.");
+  if (run.storyboard!.at !== storyboardAt) throw new ApiError(409, "WEB_SCENE_STORY_CHANGED", "그사이 기획표가 바뀌었어요. 화면을 새로 열고 다시 고쳐 주세요.");
+  const story = await storyboardJson(service, run);
+  const scene = story.scenes[n - 1];
+  if (!scene) throw new ApiError(404, "WEB_SCENE_NOT_FOUND", "그 장면을 찾지 못했어요.");
+  const edited = editWebShortTexts(scene, texts);
+  if (edited.issues.length) throw new ApiError(422, "WEB_SCENE_EDIT_INVALID", edited.issues.join(" / "));
+  const scenes = story.scenes.map((sc, i) => i === n - 1 ? edited.scene : sc);
+  return presentMyinRun(await saveMyinSceneEdit(service, record, run, { ...story, scenes }));
 }

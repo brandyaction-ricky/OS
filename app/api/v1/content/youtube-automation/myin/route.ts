@@ -6,7 +6,7 @@ import { checkMyinVoice, confirmMyinClips, requestMyinTakes, createMyinRun, late
 import { findMyinPhotoCandidates, applyMyinPhotoCandidate } from "@/lib/server/myin-photo-candidates";
 import { readLocalRenderStatus } from "@/lib/server/youtube-render-pc";
 import { checkMyinScreens, myinScreenCheck } from "@/lib/server/myin-screen-check";
-import { applySceneNote } from "@/lib/server/myin-scene-notes";
+import { applySceneNote, editWebShortScene, webShortScenes } from "@/lib/server/myin-scene-notes";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
 
 export const runtime = "nodejs";
@@ -36,6 +36,9 @@ export async function GET(request: Request) {
     const downloads = query.get("downloads");
     if (downloads) return NextResponse.json(await myinDownloads(actor, z.string().uuid().parse(downloads)), { headers });
     // 우리 이미지 올리기 (2026-10-28): the storyboard's photo files and where each comes from.
+    // 웹 숏폼 장면 글자 고치기 (2026-11-19): each scene's text slots as they are now.
+    const webScenes = query.get("webscenes");
+    if (webScenes) return NextResponse.json(await webShortScenes(actor, z.string().uuid().parse(webScenes)), { headers });
     const photos = query.get("photos");
     if (photos) return NextResponse.json(await myinPhotos(actor, z.string().uuid().parse(photos)), { headers });
     // 사진 후보 찾기 (2026-11-03): Unsplash · 위키미디어 photos for the words given; looking changes nothing.
@@ -74,6 +77,8 @@ const patchSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("scene_apply"), runId: z.string().uuid(), noteId: z.string().uuid(), force: z.boolean().default(false) }),
   // 점검 시트 다시 그리기 (직원 요청 11-13): sheets his preview() drew, or a drawing that failed, drawn again on the video's computer.
   z.object({ action: z.literal("sheets_redraw"), runId: z.string().uuid() }),
+  z.object({ action: z.literal("web_scene_edit"), runId: z.string().uuid(), n: z.number().int().min(1).max(30), storyboardAt: z.string().max(40),
+    texts: z.record(z.string().max(80), z.string().max(200)).refine((t) => Object.keys(t).length > 0 && Object.keys(t).length <= 20) }),
   // 우리 이미지 올리기: an upload address for one storyboard photo file, then the upload kept for it.
   z.object({ action: z.literal("our_image_url"), runId: z.string().uuid(), file: z.string().min(1).max(200), type: z.string().max(40) }),
   z.object({ action: z.literal("our_image"), runId: z.string().uuid(), file: z.string().min(1).max(200), path: z.string().min(1).max(400) }),
@@ -107,6 +112,7 @@ export async function PATCH(request: Request) {
     const result = input.action === "review" ? { run: await reviewMyinStoryboard(actor, input.runId, input.decision, input.note, input.place, input.screenCheck) }
       : input.action === "scene_apply" ? { run: await applySceneNote(actor, input.runId, input.noteId, input.force) }
       : input.action === "sheets_redraw" ? { run: await requestMyinRedraw(actor, input.runId) }
+      : input.action === "web_scene_edit" ? { run: await editWebShortScene(actor, input.runId, input.n, input.texts, input.storyboardAt) }
       : input.action === "screen_check_auto" ? { run: await setMyinScreenCheck(actor, input.runId, input.on) }
       : input.action === "place" ? { run: await setMyinDraftPlace(actor, input.runId, input.place) }
       : input.action === "settings" ? { run: await setMyinSettings(actor, input.runId, { place: input.place, screenCheck: input.screenCheck, ...(input.confirm ? { confirm: input.confirm } : {}) }) }
