@@ -18,6 +18,7 @@ import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
 import { myinRunWithWords, saveMyinStoryboard, storyboardJson } from "./myin-run";
 import { checkMyinStoryboardResult, checkShortStoryboardResult, checkWebShortResult, MYIN_CARD_DOCS, MYIN_CARD_REFERENCE_DOCS, myinStoryboardCard, myinStoryboardInputKey, SHORT_CARD_DOCS, shortStoryboardCard, WEB_SHORT_CARD_DOCS, webShortCard } from "./myin-storyboard-job";
 import { myinCleanScript } from "@/lib/myin-script";
+import { webShortSpoken } from "@/lib/web-short-storyboard";
 import { DIAGRAM_CATALOG } from "@/lib/shortform-diagram-catalog";
 import { diagramCatalogTypes } from "@/lib/diagram-catalog";
 import { readDiagramCatalog } from "./diagram-catalog";
@@ -631,7 +632,7 @@ async function currentScriptInput(job: OsRecord) {
 
 /** title → doc_id for the storyboard card's documents; a missing or doubled title just goes without an id. */
 /** 웹 숏폼: the spoken script its subtitles cover, and the 광고 브리프 when the 숏폼 is an ad (null otherwise). */
-const webShortScript = (markdown: string) => myinCleanScript(markdown).spoken.join(" ");
+const webShortScript = (markdown: string) => webShortSpoken(myinCleanScript(markdown).spoken);
 async function adBrief(sourceId: string) {
   const { project } = v1Stages(await readPipeline({ supabase: service() }, sourceId));
   if (project.yp.topic.purpose !== "ad") return null;

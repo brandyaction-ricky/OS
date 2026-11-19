@@ -184,6 +184,9 @@ export function checkWebShort(value: unknown, input: { words: Words; script: str
   return { issues, story, notes, fuzzy };
 }
 
+/** The spoken script the subtitles cover: the 대본's screen hints ([장면] · [관계] · [목록] · [사람]) at line starts are never read. */
+export const webShortSpoken = (paragraphs: string[]) => paragraphs.join(" ").replace(/\[[^\]\n]{1,6}\]\s*/g, "").replace(/\s+/g, " ").trim();
+
 /** Photo file names a web storyboard uses (for the assets check and the render PC's download). */
 export const webShortPhotos = (story: { scenes: Record<string, unknown>[] }) => [...new Set(story.scenes.flatMap((sc) =>
   [sc.photo, (sc.top as { photo?: unknown } | undefined)?.photo, (sc.bottom as { photo?: unknown } | undefined)?.photo].filter((p): p is string => typeof p === "string")))];
