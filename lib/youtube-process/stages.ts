@@ -142,7 +142,11 @@ export interface YpColumn { items: YpColumnItem[] }
 // 숏폼 대본 정본 (owner direction 2026-10-28): 입구 셋 · 길 하나 — 초안 주제(키워드 · 링크) → 레퍼런스 → 공식 뽑기 → 주제 확정(PD) → 우리 말로 대본 → 대본 확정(PD).
 /** 입구 A on a longform: the staff AI's 숏폼 주제 후보 from the 원고 (통찰 한 줄 + 장면 하나 + 어느 문단), and the 숏폼 made from each. */
 export interface YpShortTopic { id: string; insight: string; scene: string; paragraph: string; why: string; made?: { projectId: string; at: string; by: string } }
-export interface YpShortTopics { items: YpShortTopic[]; ai?: { by: string; model: string; at: string; jobId: string } }
+export interface YpShortTopics { items: YpShortTopic[]; ai?: { by: string; model: string; at: string; jobId: string };
+  /** 롱폼에서 나온 숏폼 (「롱폼 재활용 숏폼 정본」 §1~§2): stretches of this longform's voice the staff AI picked, as voice times. */
+  recycle?: { by: string; model: string; at: string; jobId: string; runId: string; items: YpRecycleItem[] } }
+export interface YpRecycleItem { id: string; title: string[]; parts: { text: string; start: number; end: number }[]; seconds: number; why: string;
+  made?: { projectId: string; at: string; by: string } }
 /** A 레퍼런스 the PD added by hand; script = what is said in it, pasted (the AI reads titles only otherwise). */
 /** Counts the PD (or Aside) read off the page, for a link the render PC cannot open (Reels without a login): 반응도 기준 from them. */
 export interface YpShortRef { url: string; title: string; script: string; views?: number | null; likes?: number | null; followers?: number | null }

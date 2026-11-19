@@ -93,6 +93,9 @@ const runSchema = z.object({
   renderer: z.literal("web").optional(),
   // 피드용 1:1 · 4:5 (대표 2026-11-19): asked for once, every later final of this web short comes in the two feed sizes too.
   feedSizes: z.literal(true).optional(),
+  // 롱폼에서 나온 숏폼 (「롱폼 재활용 숏폼 정본」 §1): no new voice — the render PC cuts the longform run's voice at these voice times
+  // (moved into the silence nearby) and speeds it 1.25×; the run stays on the PC that holds that voice.
+  recycle: z.object({ from: z.string().uuid(), cuts: z.array(z.tuple([z.number().min(0), z.number().positive()])).min(1).max(8) }).strict().optional(),
   // 로건 사람 말투 음성 (2026-10-29): the render PC makes the voice itself, so the paragraphs never get OS files.
   voiceOn: z.literal("render_pc").optional(),
   voiceModel: z.literal(MYIN_VOICE_MODEL), voiceReferenceFingerprint: hex,
@@ -237,14 +240,15 @@ async function currentInput(supabase: Service | RequestActor["supabase"], source
   const input = await readYoutubeAutomationInput(supabase, sourceId);
   const { state, plan, scriptText, title } = input;
   // 숏폼: the head copy and the 대본 with its [관계] · [사람] screen hints go to the storyboard card.
-  const { layout, renderer, headCopy = "", screenScript = "" } = input as { layout?: "short"; renderer?: "web"; headCopy?: string; screenScript?: string };
+  const { layout, renderer, headCopy = "", screenScript = "", recycle } = input as { layout?: "short"; renderer?: "web"; headCopy?: string; screenScript?: string;
+    recycle?: { projectId: string; runId: string; cuts: [number, number][] } };
   if (!plan.inputKey || !plan.script || !scriptText) throw new ApiError(409, "AUTOMATION_INPUT_CHANGED", "승인된 원고와 패키징을 먼저 확인해 주세요.");
   const script = state.records.find((record) => record.id === plan.script?.id);
   const manuscript = typeof script?.metadata.manuscript === "string" ? script.metadata.manuscript : null;
   const markdown = myinScriptMarkdown(manuscript, scriptText);
   const { spoken } = myinCleanScript(markdown);
   if (!spoken.length) throw new ApiError(409, "MYIN_SCRIPT_EMPTY", "읽을 문단이 없는 원고입니다.");
-  return { state, inputKey: plan.inputKey, script: plan.script, markdown, spoken, title, layout, renderer, headCopy, screenScript };
+  return { state, inputKey: plan.inputKey, script: plan.script, markdown, spoken, title, layout, renderer, headCopy, screenScript, recycle };
 }
 
 async function save(service: Service, record: OsRecord, status: string, stage: string, run: MyinRun) {
@@ -548,6 +552,14 @@ async function assertOneChannel(sourceId: string, markdownHash: string, channel:
 export const runVoice = (run?: { voiceReference?: string }) => run?.voiceReference || process.env.FISH_VOICE_REFERENCE_ID?.trim() || "";
 
 /** [v13 음성 만들기]: any member who can read the video starts its one run for the approved script (owner decision 2026-10-20: no extra roles). */
+/** The longform run a recycled 숏폼 cuts its voice from: it must still be there, transcribed, on a named render PC. */
+async function recycleFrom(recycle: { runId: string; cuts: [number, number][] }) {
+  const { data } = await createServiceSupabase().from("os_records").select("*").eq("id", recycle.runId).eq("record_type", "ai_job").is("archived_at", null).maybeSingle();
+  const run = data ? parse(data as OsRecord) : null;
+  if (!run?.words || !run.pc) throw new ApiError(409, "RECYCLE_NO_VOICE", "잘라 쓸 롱폼 음성이 영상 만드는 컴퓨터에 없어요. 롱폼의 [롱폼에서 뽑기]를 다시 해 주세요.");
+  return { recycle: { from: recycle.runId, cuts: recycle.cuts }, pc: run.pc };
+}
+
 export async function createMyinRun(actor: RequestActor, sourceId: string, styleId?: string, settings?: { place: "pc" | "local"; screenCheck: boolean; confirm?: "auto" | "person" }, paidOk = false) {
   const input = await currentInput(actor.supabase, sourceId);
   const cards = (await readChannelStyles()).styles;
@@ -564,12 +576,14 @@ export async function createMyinRun(actor: RequestActor, sourceId: string, style
   const markdownHash = sha(input.markdown);
   await assertOneChannel(sourceId, markdownHash, channel, cards);
   // The way the voice is made is part of the run: the same script voiced on the render PC is a new run (new voice), not the old one.
-  const onPc = myinVoiceOnRenderPc();
+  // 롱폼에서 나온 숏폼: its voice is the longform's, on the render PC that made it — that PC takes the run from the start.
+  const recycled = input.recycle ? await recycleFrom(input.recycle) : null;
+  const onPc = myinVoiceOnRenderPc() || Boolean(recycled);
   const runKey = digestVoiceValue([MYIN_RUN_KIND, sourceId, input.inputKey, markdownHash, MYIN_VOICE_MODEL, fingerprint, JSON.stringify(MYIN_VOICE_TUNING), ...(onPc ? ["render_pc"] : [])]);
   const id = voiceRunId(runKey);
   const run: MyinRun = { kind: MYIN_RUN_KIND, runKey, sourceId, inputKey: input.inputKey, script: input.script, scriptMarkdownHash: markdownHash,
     voiceModel: MYIN_VOICE_MODEL, voiceReferenceFingerprint: fingerprint, ...(channelVoice ? { voiceReference: channelVoice } : {}), attempts: 0, ...(input.layout ? { layout: input.layout } : {}), ...(input.renderer ? { renderer: input.renderer } : {}), ...(onPc ? { voiceOn: "render_pc" as const } : {}),
-    ...(picked ? { style: pinStyle(picked) } : {}),
+    ...(picked ? { style: pinStyle(picked) } : {}), ...(recycled ? { recycle: recycled.recycle, pc: recycled.pc } : {}),
     ...(settings ? { settings: { ...settings, by: actor.ownerId, name: actor.name, at: new Date().toISOString() } } : {}),
     ...(paidOk && actor.type === "user" ? { paidOk: { by: actor.ownerId, name: actor.name, at: new Date().toISOString() } } : {}),
     paragraphs: input.spoken.map((text, index) => ({ index, textHash: sha(text), status: "pending" })) };
@@ -756,7 +770,7 @@ export async function claimMyinWords(service: Service = createServiceSupabase(),
     // 고친 문장만 다시: a fresh voice names the earlier runs whose unchanged paragraphs its render PC may reuse.
     const earlier = run.voiceOn && !run.words && !run.voiceFixes?.length ? (await voiceDonors(service, run.sourceId, run, record.created_at).catch(() => [])).map((d) => d.id) : [];
     return { runId: record.id, lease: lease.token, ...voice, bundleUploadUrl: upload.signedUrl, ...(voiceUploadUrls.length === MYIN_VOICE_PARTS ? { voiceUploadUrls } : {}),
-      ...(earlier.length ? { earlier } : {}),
+      ...(earlier.length ? { earlier } : {}), ...(run.recycle ? { recycle: run.recycle } : {}),
       ...(preview ? { previewUploadUrl: preview.signedUrl } : {}), ...(run.layout ? { layout: run.layout } : {}), ...(run.renderer ? { renderer: run.renderer } : {}),
       ...(dictionary?.exists ? { dictionary: dictionaryFiles(dictionary.dictionary) } : {}),
       ...(run.voiceFixes?.length ? { fixes: run.voiceFixes.map(({ memo, say, read, video, take, pause }) => ({ memo, ...(say ? { say } : {}), ...(read ? { read } : {}), ...(video ? { video } : {}),
@@ -2164,6 +2178,18 @@ async function latestRun(service: Service, sourceId: string) {
     .eq("metadata->>kind", MYIN_RUN_KIND).is("archived_at", null).order("created_at", { ascending: false }).limit(1);
   const record = data?.[0] as OsRecord | undefined;
   return record ? { record, run: parse(record) } : null;
+}
+/**
+ * 롱폼에서 나온 숏폼 (「롱폼 재활용 숏폼 정본」 §1): a longform's newest run whose voice sits on a render PC — its transcript (voice times)
+ * and spoken text, the PC that holds the voice file. Null when that voice is not on a render PC or not transcribed yet.
+ */
+export async function myinRecycleSource(service: Service, sourceId: string) {
+  const latest = await latestRun(service, sourceId);
+  if (!latest?.run.words || !latest.run.pc || latest.run.layout) return null;
+  const { data } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).download(latest.run.words.path);
+  if (!data) return null;
+  const bundle = JSON.parse(await data.text()) as { words: [number, number, string][]; speech: string };
+  return { runId: latest.record.id, pc: latest.run.pc, words: bundle.words, speech: bundle.speech, durationSeconds: latest.run.words.durationSeconds };
 }
 /** 영상 편집기: when the OS final an edit starts from (the one 최종 검토 shows) was made, or null before the first. */
 export async function myinFinalAt(service: Service, sourceId: string) {

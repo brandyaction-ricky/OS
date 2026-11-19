@@ -1602,4 +1602,9 @@
 .linear-shell .ui-v2.yp .yp-fixhead{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .linear-shell .ui-v2.yp .yp-fixtext{margin:4px 0}
 .linear-shell .ui-v2.yp .yp-fixsmall{margin:4px 0 0;font-size:12px}
+/* 롱폼에서 뽑기 (롱폼 재활용 숏폼 정본) */
+.linear-shell .ui-v2.yp .yp-recycle{flex:1 1 260px;min-width:0;font-size:13px}
+.linear-shell .ui-v2.yp .yp-recycle p{margin:4px 0 0}
+.linear-shell .ui-v2.yp .yp-recycle-title{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px}
+.linear-shell .ui-v2.yp .yp-recycle-title .yp-in{flex:1 1 160px;min-width:0}
 }
