@@ -1,6 +1,7 @@
 """숏폼 웹 렌더러 (「롱폼 재활용 숏폼 정본」 §9): index.html + engine.js build one GSAP timeline from story.json and theme.json; headless
 Chrome seeks it frame by frame and pipes the frames to ffmpeg with the voice. The page's own layout check runs first.
-usage: python render.py story.json voice.wav out.mp4 --fonts DIR --photos DIR [--theme theme.json] [--qa-only] [--sheets DIR]
+usage: python render.py story.json voice.wav out.mp4 --fonts DIR --photos DIR [--theme theme.json] [--format 9:16|1:1|4:5] [--qa-only] [--sheets DIR]
+  --format: the frame (theme "formats"); 1:1 · 4:5 are feed sizes that fit the vertical design's text band into the frame.
   --sheets DIR: no video; one still per scene, twelve to a sheet (preview_01.png …) and sheets.json { cells, scenes } in DIR.
   Prints the check; writes out.qa.json { errors, issues, lines }. Exit 1 when the page fails, 2 when the check finds problems."""
 import argparse, io, json, os, subprocess, sys, time
@@ -11,14 +12,16 @@ HERE = Path(__file__).resolve().parent
 ap = argparse.ArgumentParser()
 ap.add_argument("story"); ap.add_argument("voice"); ap.add_argument("out")
 ap.add_argument("--fonts", required=True); ap.add_argument("--photos", required=True); ap.add_argument("--theme", default=str(HERE / "theme.json"))
-ap.add_argument("--qa-only", action="store_true"); ap.add_argument("--sheets")
+ap.add_argument("--qa-only", action="store_true"); ap.add_argument("--sheets"); ap.add_argument("--format", default="9:16")
 a = ap.parse_args()
 Path(a.out).parent.mkdir(parents=True, exist_ok=True)
 
 theme = json.loads(Path(a.theme).read_text()); story = json.loads(Path(a.story).read_text())
 story["photoBase"] = Path(a.photos).resolve().as_uri() + "/"
 assets = {"gsap": (HERE / "vendor" / "gsap.min.js").as_uri(), "fonts": Path(a.fonts).resolve().as_uri() + "/"}
-FPS, DUR, W, H = theme["frame"]["fps"], float(story["duration"]), theme["frame"]["w"], theme["frame"]["h"]
+if a.format not in theme["formats"]: sys.exit(f"unknown format {a.format}")
+FMT = theme["formats"][a.format]
+FPS, DUR, W, H = theme["frame"]["fps"], float(story["duration"]), FMT["w"], FMT["h"]
 FF = os.environ.get("FFMPEG", "ffmpeg")
 
 
@@ -50,7 +53,7 @@ def sheets(pg, out_dir):
     """one still per scene at its moment(), numbered, twelve to a sheet (4 × 3)"""
     from PIL import Image, ImageDraw, ImageFont
     out = Path(out_dir); out.mkdir(parents=True, exist_ok=True)
-    cw, ch, cols = 270, 480, 4
+    cw, cols = 270, 4; ch = round(cw * H / W)
     font = ImageFont.truetype(str(Path(a.fonts) / theme["fonts"]["files"]["900"]), 34)
     scenes = story["scenes"]; names = []
     for k in range(0, len(scenes), 12):
@@ -71,7 +74,7 @@ with sync_playwright() as p:
     pg = b.new_page(viewport={"width": W, "height": H}, device_scale_factor=1)
     errors = []
     pg.on("pageerror", lambda e: errors.append(str(e)))
-    pg.add_init_script(f"window.__THEME = {json.dumps(theme, ensure_ascii=False)}; window.__STORY = {json.dumps(story, ensure_ascii=False)}; window.__ASSETS = {json.dumps(assets)};")
+    pg.add_init_script(f"window.__THEME = {json.dumps(theme, ensure_ascii=False)}; window.__STORY = {json.dumps(story, ensure_ascii=False)}; window.__ASSETS = {json.dumps(assets)}; window.__FORMAT = {json.dumps(FMT)};")
     pg.goto((HERE / "index.html").as_uri())
     try:
         pg.wait_for_function("window.__ready === true || window.__error", timeout=30000)

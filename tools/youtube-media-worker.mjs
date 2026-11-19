@@ -1264,6 +1264,8 @@ export async function processMyinFinal() {
       // the picture and the voice (brought to −14 LUFS) in one pass; its subtitles are drawn in and also go to YouTube as SRT
       await webShort(job, work, videoDir, video);
       writeFileSync(path.join(videoDir, "subs_youtube.srt"), webShortSrt(job.storyboard.subtitles ?? []));
+      // 피드용 1:1 · 4:5 (asked for on the OS): the same story drawn in each frame, with the same voice
+      for (const size of Object.keys(job.sizeUploadUrls ?? {})) await webShort(job, work, videoDir, path.join(videoDir, `final_${size.replace(":", "x")}.mp4`), ["--format", size]);
     } else if (job.layout === "short") {
       await runAsync(myinPython, ["render_myin.py", "os_myin", "render", "4"], { cwd: myinDir, env: { ...drawEnv, OUTNAME: "final_myin_v1_raw.mp4" } });
       // 숏폼: his picture with the voice alone, as the pilots A1–A3 (no music, no effects), brought to the longform's −14 LUFS
@@ -1286,7 +1288,9 @@ export async function processMyinFinal() {
     if (job.summaryUploadUrl) await upload(job.summaryUploadUrl, path.join(videoDir, "handouts", "한장정리.png"), "image/png");
     if (job.deckUploadUrl) await upload(job.deckUploadUrl, path.join(videoDir, "handouts", "덱_전체.pdf"), "application/pdf");
     await upload(job.srtUploadUrl, path.join(videoDir, "subs_youtube.srt"), "application/x-subrip");
-    await call({ action: "myin_final_complete", ...lease, bytes: readFileSync(video).length, durationSeconds: seconds(video), lufs, peak });
+    const sizes = Object.entries(job.renderer === "web" ? job.sizeUploadUrls ?? {} : {});
+    for (const [size, url] of sizes) await upload(url, path.join(videoDir, `final_${size.replace(":", "x")}.mp4`), "video/mp4");
+    await call({ action: "myin_final_complete", ...lease, bytes: readFileSync(video).length, durationSeconds: seconds(video), lufs, peak, ...(sizes.length ? { sizes: true } : {}) });
     console.log(`myin final ready: ${job.runId} (${lufs} LUFS, peak ${peak})`);
   } catch (error) {
     console.error(`myin final failed: ${job.runId}: ${error.message}${error.cause ? ` · cause: ${error.cause.code ?? error.cause.message}` : ""}`);

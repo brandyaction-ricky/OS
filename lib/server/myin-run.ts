@@ -75,7 +75,9 @@ export const editFinalSchema = z.object({ id: z.string().uuid(), by: z.string().
 const finalSchema = z.object({ video: z.string(), summary: z.string().optional(), deck: z.string().optional(), srt: z.string(), bytes: z.number().int().positive(),
   durationSeconds: z.number().positive(), lufs: z.number(), peak: z.number(), at: z.string().datetime(),
   /** Which subtitle edits it was made with (자막 한꺼번에 고치기); none = the subtitles as stage 1 made them. */
-  subtitles: hex.optional(), used: materialsSchema.optional(), engine: engineFp.optional(), edit: editFinalSchema.optional() }).strict();
+  subtitles: hex.optional(), used: materialsSchema.optional(), engine: engineFp.optional(), edit: editFinalSchema.optional(),
+  /** 피드용 크기 (대표 2026-11-19): a web short's 1:1 and 4:5 copies of the same video, made with it. */
+  sizes: z.object({ "1:1": z.string(), "4:5": z.string() }).strict().optional() }).strict();
 // input: what the job was handed (the materials key; before 2026-11-03 a preparation's our images) — a result made from other input is
 // not taken (유쓰 요청 2/8 · 3/8). stage: the stage it was claimed at; a run that moved on (수정 요청, a new start) takes no late result.
 const leaseSchema = z.object({ token: z.string().uuid(), expiresAt: z.string().datetime(), startedAt: z.string().datetime().optional(), input: z.string().regex(/^[a-f0-9]{64}$/).optional(),
@@ -89,6 +91,8 @@ const runSchema = z.object({
   layout: z.literal("short").optional(),
   // 웹 숏폼 (2026-11-19): a 숏폼 drawn by the web short renderer (tools/web-short) from a scene-template storyboard, not the vertical engine.
   renderer: z.literal("web").optional(),
+  // 피드용 1:1 · 4:5 (대표 2026-11-19): asked for once, every later final of this web short comes in the two feed sizes too.
+  feedSizes: z.literal(true).optional(),
   // 로건 사람 말투 음성 (2026-10-29): the render PC makes the voice itself, so the paragraphs never get OS files.
   voiceOn: z.literal("render_pc").optional(),
   voiceModel: z.literal(MYIN_VOICE_MODEL), voiceReferenceFingerprint: hex,
@@ -262,7 +266,8 @@ export function presentMyinRun(record: OsRecord) {
       needsPerson: run.prepared.needsPerson ?? [] } : null,
     clips: run.clips ? run.clips.items.map(({ name, label }) => ({ name, label })) : null, clipsReview: run.clipsReview ?? null, sound: run.sound ?? null,
     stills: run.stills ? { at: run.stills.at, files: run.stills.files } : null, screenCheckAuto: !run.screenCheckOff,
-    final: run.final ? { bytes: run.final.bytes, durationSeconds: run.final.durationSeconds, lufs: run.final.lufs, peak: run.final.peak, at: run.final.at } : null,
+    final: run.final ? { bytes: run.final.bytes, durationSeconds: run.final.durationSeconds, lufs: run.final.lufs, peak: run.final.peak, at: run.final.at, sizes: Boolean(run.final.sizes) } : null,
+    feedSizes: Boolean(run.feedSizes),
     voiceFixes: (run.voiceFixes ?? []).map(({ memo, say, read, name }) => ({ memo, say: say ?? null, read: read ?? null, name })), voiceCheck: run.voiceCheck ?? null,
     voiceFixable: voiceFixable(record, run), voiceChanged: run.voiceChanged ?? null, subtitleEdits: run.subtitleEdits ? run.subtitleEdits.lines.length : 0,
     style: run.style ? { id: run.style.id, name: run.style.name, version: run.style.version, channel: run.style.channel } : null,
@@ -1910,7 +1915,7 @@ export async function myinDraftState(service: Service, sourceId: string) {
 }
 
 /** ④ 끝: after the sound and photos check, the 1080p full video; the same button restarts a stopped one. */
-export async function startMyinFinal(actor: RequestActor, runId: string) {
+export async function startMyinFinal(actor: RequestActor, runId: string, sizes = false) {
   const service = createServiceSupabase();
   const { record, run } = await visibleRun(actor, runId);
   await assertCurrent(service, run);
@@ -1918,9 +1923,12 @@ export async function startMyinFinal(actor: RequestActor, runId: string) {
   // 자막 한꺼번에 고치기: a finished video whose subtitles were edited since is made again with them (a new version; the earlier one stays).
   const subtitles = record.stage === "final_ready" && Boolean(run.clipsReview && run.prepared && run.final && run.subtitleEdits)
     && (await subtitleState(service, run)).key !== run.final?.subtitles;
-  if (!ready && !subtitles && !(record.stage === "final_pending" && record.status === "blocked"))
+  // 피드용 1:1 · 4:5: a finished web short is made again with its two feed sizes (a new version; the earlier one stays)
+  const feed = sizes && run.renderer === "web" && record.stage === "final_ready" && Boolean(run.final && !run.final.sizes);
+  if (sizes && run.renderer !== "web") throw new ApiError(409, "MYIN_SIZES_WEB_ONLY", "1:1 · 4:5는 새 편집 스타일 숏폼만 만들 수 있어요.");
+  if (!ready && !subtitles && !feed && !(record.stage === "final_pending" && record.status === "blocked"))
     throw new ApiError(409, "MYIN_FINAL_NOT_OPEN", "④ 자료 준비가 끝난 뒤에 전체 영상을 만들 수 있습니다.");
-  const next: MyinRun = { ...run, attempts: 0 }; delete next.lastError; delete next.lease; retireFinal(next);
+  const next: MyinRun = { ...run, attempts: 0, ...(sizes ? { feedSizes: true as const } : {}) }; delete next.lastError; delete next.lease; retireFinal(next);
   return presentMyinRun(await save(service, record, "backlog", "final_pending", next));
 }
 
@@ -1966,7 +1974,8 @@ export async function saveMyinSound(actor: RequestActor, runId: string, plan: My
 
 // A 숏폼 has no handouts (한장정리 · 덱): it has no summary scene.
 const finalFiles = (record: OsRecord, run: MyinRun, lease: string) => ({ video: outPath(record, run, `final_myin-${tag(lease)}.mp4`), srt: outPath(record, run, `subs_youtube-${tag(lease)}.srt`),
-  ...(run.layout ? {} : { summary: outPath(record, run, `summary-${tag(lease)}.png`), deck: outPath(record, run, `deck-${tag(lease)}.pdf`) }) });
+  ...(run.layout ? {} : { summary: outPath(record, run, `summary-${tag(lease)}.png`), deck: outPath(record, run, `deck-${tag(lease)}.pdf`) }),
+  ...(run.renderer === "web" && run.feedSizes ? { sizes: { "1:1": outPath(record, run, `final_1x1-${tag(lease)}.mp4`), "4:5": outPath(record, run, `final_4x5-${tag(lease)}.mp4`) } } : {}) });
 
 /** Render PC: where the finished video, the handouts, the YouTube subtitles and the check report go. */
 export async function claimMyinFinal(service: Service = createServiceSupabase(), short = false, owner?: string, pc?: string) {
@@ -1979,6 +1988,7 @@ export async function claimMyinFinal(service: Service = createServiceSupabase(),
     return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), ...(run.renderer ? { renderer: run.renderer } : {}), storyboard: await renderStory(await storyboardJson(service, run)),
       videoUploadUrl: await uploadUrl(service, ASSET_VIDEO_BUCKET, files.video), srtUploadUrl: await uploadUrl(service, OUTPUT_BUCKET, files.srt),
       ...(files.summary && files.deck ? { summaryUploadUrl: await uploadUrl(service, OUTPUT_BUCKET, files.summary), deckUploadUrl: await uploadUrl(service, OUTPUT_BUCKET, files.deck) } : {}),
+      ...(files.sizes ? { sizeUploadUrls: { "1:1": await uploadUrl(service, ASSET_VIDEO_BUCKET, files.sizes["1:1"]), "4:5": await uploadUrl(service, ASSET_VIDEO_BUCKET, files.sizes["4:5"]) } } : {}),
       ...(owner ? { seed: await localSeed(service, run) } : {}), ...await subtitlesFor(service, run), ...styleFor(run) };
   } catch (error) {
     await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_FINAL_CLAIM_FAILED");
@@ -1986,7 +1996,7 @@ export async function claimMyinFinal(service: Service = createServiceSupabase(),
   }
 }
 
-export async function completeMyinFinal(input: { runId: string; lease: string; bytes: number; durationSeconds: number; lufs: number; peak: number }, service: Service = createServiceSupabase()) {
+export async function completeMyinFinal(input: { runId: string; lease: string; bytes: number; durationSeconds: number; lufs: number; peak: number; sizes?: boolean }, service: Service = createServiceSupabase()) {
   const { record, run } = await leased(service, input.runId, input.lease);
   if (staleResult(run)) {
     const again: MyinRun = { ...run, attempts: 0 }; delete again.lease; delete again.lastError;
@@ -1994,7 +2004,9 @@ export async function completeMyinFinal(input: { runId: string; lease: string; b
     return { runId: record.id, stage: "final_pending", again: true };
   }
   const subtitles = run.subtitleEdits ? await subtitleState(service, run).then((state) => state.key, () => undefined) : undefined;
-  const next: MyinRun = { ...run, attempts: 0, final: { ...finalFiles(record, run, input.lease), bytes: input.bytes, durationSeconds: input.durationSeconds, lufs: input.lufs, peak: input.peak,
+  // the feed sizes count only when the render PC says it made them (an older worker gets the addresses and leaves them empty)
+  const { sizes, ...files } = finalFiles(record, run, input.lease);
+  const next: MyinRun = { ...run, attempts: 0, final: { ...files, ...(sizes && input.sizes ? { sizes } : {}), bytes: input.bytes, durationSeconds: input.durationSeconds, lufs: input.lufs, peak: input.peak,
     at: new Date().toISOString(), ...(subtitles ? { subtitles } : {}), used: materials(run), ...drewWith(run) } };
   delete next.lease; delete next.lastError; delete next.voiceChanged;
   await save(service, record, "done", "final_ready", next);
@@ -2113,6 +2125,7 @@ export async function myinOutputs(actor: RequestActor, runId: string, at?: strin
     stills: run.stills && record.parent_id && !run.final ? await import("./myin-edit").then(async ({ draftPreview }) => { const file = await draftPreview(service, record.parent_id!, runId); return read(file.bucket, file.path); }) : null,
     video: await read(ASSET_VIDEO_BUCKET, final?.video), summary: await read(OUTPUT_BUCKET, final?.summary),
     deck: await read(OUTPUT_BUCKET, final?.deck), srt: await read(OUTPUT_BUCKET, final?.srt),
+    sizes: final?.sizes ? { "1:1": await read(ASSET_VIDEO_BUCKET, final.sizes["1:1"]), "4:5": await read(ASSET_VIDEO_BUCKET, final.sizes["4:5"]) } : null,
   };
 }
 

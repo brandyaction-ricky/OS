@@ -38,7 +38,7 @@ interface MyinRun { id: string; status: string; stage: string; layout?: "short" 
   clips: { name: string; label: string }[] | null; clipsReview: { name: string; note: string; at: string } | null;
   /** 장면 그림 v0 (편집기 3차 요청 11-09): a longform's ③ as each scene's finished picture, on the editor screen. */ stills?: { at: string; files: number } | null;
   screenCheckAuto?: boolean;
-  final: { bytes: number; durationSeconds: number; lufs: number; peak: number; at: string } | null; scriptChanged?: boolean; workingSince?: string | null; pc?: string | null;
+  final: { bytes: number; durationSeconds: number; lufs: number; peak: number; at: string; sizes?: boolean } | null; feedSizes?: boolean; scriptChanged?: boolean; workingSince?: string | null; pc?: string | null;
   /** 고친 문장만 다시 (2026-11-16): with a changed script, how many paragraphs the earlier voice already has, and the text to make. */
   voiceReuse?: { keep: number; make: number; text: string } | null;
   sound: { report: string; at: string; edited?: { name: string; at: string } } | null; local: { by: string; name: string } | null; localFinish?: { by: string; name: string } | null; localReady: boolean;
@@ -46,7 +46,7 @@ interface MyinRun { id: string; status: string; stage: string; layout?: "short" 
   voiceFixes?: MyinVoiceFixView[]; voiceCheck?: MyinVoiceCheckView | null; voiceFixable?: boolean; voiceChanged?: { at: string; count: number } | null;
   style?: { id: string; name: string; version: number; channel: string } | null; settings?: RunSettings | null;
   /** 대기 순서 (2026-11-17): a voice waiting for the render PC — what it is on now and the voices ahead. */ voiceQueue?: VoiceQueue | null }
-interface Outputs { clips: { label: string; url: string | null }[]; stills?: string | null; video: string | null; summary: string | null; deck: string | null; srt: string | null }
+interface Outputs { clips: { label: string; url: string | null }[]; stills?: string | null; video: string | null; summary: string | null; deck: string | null; srt: string | null; sizes?: { "1:1": string | null; "4:5": string | null } | null }
 
 const PHASE: Record<string, string> = { breath_pending: "영상 만드는 컴퓨터가 숨 자리 고르는 중", voice_pending: "음성 만드는 중", words_pending: "영상 만드는 컴퓨터가 받아쓰기·자막 만드는 중", words_ready: "받아쓰기·자막 완료",
   storyboard_review: "기획표 확인 대기 (로건, 유쓰)", storyboard_confirmed: "기획표 확인 완료", cta_pending: "구독 대사 음성 만드는 중",
@@ -600,7 +600,12 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
         {outputs.summary ? <li><a href={outputs.summary} target="_blank" rel="noreferrer">한 장 정리 이미지 (PNG)</a></li> : null}
         {outputs.deck ? <li><a href={outputs.deck} target="_blank" rel="noreferrer">덱 전체 (PDF) — 설명란·고정 댓글용</a></li> : null}
         {outputs.srt ? <li><a href={outputs.srt} target="_blank" rel="noreferrer">유튜브 자막 파일 (SRT)</a></li> : null}
+        {outputs.sizes?.["1:1"] ? <li><a href={outputs.sizes["1:1"]} target="_blank" rel="noreferrer">피드용 정사각형 1:1 (MP4)</a></li> : null}
+        {outputs.sizes?.["4:5"] ? <li><a href={outputs.sizes["4:5"]} target="_blank" rel="noreferrer">피드용 4:5 세로 (MP4)</a></li> : null}
       </ul> : null}
+      {run?.stage === "final_ready" && run.renderer === "web" && run.final && !run.final.sizes ? <div className="yt-actions">
+        <button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => void act("sizes", () => post("/myin", "PATCH", { action: "final", runId: run.id, sizes: true }))}>{busy === "sizes" ? "시작하는 중…" : "피드용 1:1 · 4:5도 만들기"}</button>
+        <small>인스타그램 · 페이스북 피드용이에요. 같은 장면을 정사각형과 4:5 화면에 맞춰 그리고, 세로 영상도 함께 새 버전으로 만들어요(2분쯤).</small></div> : null}
       {run?.stage === "final_ready" && run.clipsReview && !short ? <div className="yt-actions">
         <button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => void act("reopen", () => post("/myin", "PATCH", { action: "reopen", runId: run.id }))}>{busy === "reopen" ? "여는 중…" : "4단계로 돌아가 사운드 고치기"}</button>
         <small>고친 뒤 [전체 영상 만들기]를 누르면 새 완성본이 다음 버전으로 올라와요.</small></div> : null}
