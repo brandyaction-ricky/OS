@@ -19,12 +19,17 @@ export interface RecyclePart { text: string; start: number; end: number }
 export interface RecycleShort { title: string[]; parts: RecyclePart[]; seconds: number; why: string }
 
 const letters = (s: string) => s.replace(/\s/g, "").length;
+const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+/** A stretch already made into a 숏폼 (or picked earlier in the same answer): new ones must not cover its voice again. */
+export interface RecycleTaken { title: string[]; parts: { start: number; end: number }[] }
+const overlaps = (a: RecycleTaken["parts"], b: RecycleTaken["parts"]) => a.some((p) => b.some((q) => p.start < q.end && q.start < p.end));
 
 /**
  * The AI's stretches (phrases in the transcript's spelling, text in the 원고's) as voice times, or what is wrong with them: phrases not
- * heard, parts out of order, text not in the 원고 or not what was said, a leaning first word, a length outside 20–50 s at 1.25×.
+ * heard, parts out of order, text not in the 원고 or not what was said, a leaning first word, a length outside 20–50 s at 1.25×, a
+ * stretch that covers one already made into a 숏폼 or another stretch of the same answer.
  */
-export function checkRecycle(value: RecycleResult, words: [number, number, string][], script: string) {
+export function checkRecycle(value: RecycleResult, words: [number, number, string][], script: string, made: RecycleTaken[] = []) {
   const norms = words.map(([, , w]) => myinNorm(w));
   const text = norms.join("");
   const starts: number[] = []; let n = 0;
@@ -59,6 +64,13 @@ export function checkRecycle(value: RecycleResult, words: [number, number, strin
     if (parts.length === short.parts.length && (seconds < RECYCLE.minSeconds || seconds > RECYCLE.maxSeconds))
       issues.push(`${name}: 1.25배로 ${seconds}초예요 — ${RECYCLE.minSeconds}~${RECYCLE.maxSeconds}초로 골라요.`);
     return { title: short.title, parts, seconds, why: short.why };
+  });
+  shorts.forEach((short, k) => {
+    const name = `${k + 1}번 숏폼`;
+    const taken = made.find((m) => overlaps(short.parts, m.parts));
+    if (taken) issues.push(`${name}: 이미 숏폼으로 만든 「${taken.title.join(" ")}」(롱폼 ${clock(taken.parts[0].start)}~${clock(taken.parts.at(-1)!.end)})과 겹쳐요 — 다른 구간을 골라요.`);
+    const twin = shorts.findIndex((other, j) => j < k && overlaps(short.parts, other.parts));
+    if (twin >= 0) issues.push(`${name}: ${twin + 1}번 숏폼과 구간이 겹쳐요 — 겹치지 않게 골라요.`);
   });
   return { shorts, issues };
 }

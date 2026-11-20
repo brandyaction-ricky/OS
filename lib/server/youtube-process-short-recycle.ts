@@ -32,15 +32,18 @@ export async function recycleSource(service: Service, longformId: string) {
   if (!source) throw new ApiError(409, "RECYCLE_NO_VOICE", "이 롱폼은 영상 만드는 컴퓨터에 음성과 받아쓰기가 없어 자를 수 없어요(영상 만들기를 이 OS에서 한 롱폼만 돼요).");
   return source;
 }
+/** The stretches of this voice already made into a 숏폼: they stay, and new picks must not cover them again. */
+const madeStretches = (topics: YpShortTopics, runId: string) => topics.recycle?.runId === runId ? topics.recycle.items.filter((item) => item.made) : [];
 export const recycleInputKey = (state: Pipeline, runId: string) => { const { project, outline } = v1Stages(state); return digest(["yp-short-recycle", project.id, runId, digest(outline.data.script)]); };
 
 const SHAPE = `{ "shorts": [{ "title": ["첫 화면 제목 1줄", "2줄(선택)"], "parts": [{ "from": "구간 첫 말(받아쓰기 철자)", "to": "구간 끝 말(받아쓰기 철자)", "text": "그 구간의 원고 문장 그대로" }], "why": "혼자서 이해되는 이유 · 멈출 이유 한 줄" }] }`;
 export async function recycleCard(service: Service, state: Pipeline, leaseMinutes: number, count: number) {
-  const { project } = v1Stages(state);
+  const { project, shortTopics } = v1Stages(state);
   const source = await recycleSource(service, project.id);
+  const made = madeStretches(shortTopics.data, source.runId).map((item) => ({ title: item.title.join(" "), start: item.parts[0]?.start ?? 0, end: item.parts.at(-1)?.end ?? 0 }));
   const docs = await namedProcedures(service, [RECYCLE_CANON]);
   const doc = docs.find((row) => row.title === RECYCLE_CANON);
-  const inputs = { title: projectName(project), audience: project.yp.topic.target, voiceSeconds: source.durationSeconds, speech: source.speech.slice(0, 60_000), words: source.words };
+  const inputs = { title: projectName(project), audience: project.yp.topic.target, voiceSeconds: source.durationSeconds, ...(made.length ? { alreadyMade: made } : {}), speech: source.speech.slice(0, 60_000), words: source.words };
   return `이 작업 하나만 처리합니다. 승인 · 업로드 · 게시 · 삭제는 하지 않습니다.
 
 ## 할 일 — 롱폼에서 나온 숏폼 구간 ${count}개
@@ -49,7 +52,7 @@ export async function recycleCard(service: Service, state: Pipeline, leaseMinute
 - 길이: 1.25배로 ${RECYCLE.minSeconds}~${RECYCLE.maxSeconds}초(원래 속도 ${Math.round(RECYCLE.minSeconds * RECYCLE.tempo)}~${Math.round(RECYCLE.maxSeconds * RECYCLE.tempo)}초).
 - 문장을 바꾸거나 더하지 않습니다. 필요하면 문장을 빼는데, 뺀 자리는 구간(parts)을 나눠서 표시합니다(구간 하나에 parts 1~4개, 시간 순서).
 - 첫 문장은 앞 내용을 받는 말(${RECYCLE_LEANING.slice(0, 8).map((w) => `「${w}」`).join(" ")} 등)이나 앞에서 정의한 말을 가리키는 문장으로 시작하지 않습니다.
-- 구간끼리 겹치지 않고, 같은 이야기를 두 번 고르지 않습니다.
+- 구간끼리 겹치지 않고, 같은 이야기를 두 번 고르지 않습니다. 입력의 alreadyMade(이미 숏폼으로 만든 구간, 초)와도 겹치지 않게 다른 구간을 고릅니다.
 - title은 첫 화면 제목입니다. 1~2줄, 한 줄 ${RECYCLE.titleLine}자 이하(띄어쓰기 빼고). 원고에 없는 사실 · 숫자를 쓰지 않습니다.
 
 ## 문구 규칙 (OS가 검사합니다)
@@ -75,9 +78,9 @@ export async function saveRecycle(service: Service, ownerId: string, state: Pipe
   if (parsed.data.shorts.length !== count) throw new ApiError(422, "SHORT_RECYCLE_INVALID", `구간은 ${count}개예요 — 지금 ${parsed.data.shorts.length}개`);
   const stages = v1Stages(state);
   const source = await recycleSource(service, stages.project.id);
-  const { shorts, issues } = checkRecycle(parsed.data, source.words, source.speech);
+  const kept = madeStretches(stages.shortTopics.data, source.runId);
+  const { shorts, issues } = checkRecycle(parsed.data, source.words, source.speech, kept);
   if (issues.length) throw new ApiError(422, "SHORT_RECYCLE_INVALID", issues.slice(0, 12).join(" / "));
-  const kept = stages.shortTopics.data.recycle?.runId === source.runId ? stages.shortTopics.data.recycle.items.filter((item) => item.made) : [];
   const data: YpShortTopics = { ...stages.shortTopics.data, recycle: { by: author.by, model: author.model, at: new Date().toISOString(), jobId: author.jobId, runId: source.runId,
     items: [...kept, ...shorts.map((short) => ({ id: randomUUID().slice(0, 8), ...short }))] } };
   await writeStage(service, ownerId, state.source.team ?? "", stages.project, "shortTopics", stages.shortTopics, data);

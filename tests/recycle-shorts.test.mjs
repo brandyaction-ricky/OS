@@ -27,6 +27,14 @@ test("the check sends back what the 정본 rules out: a leaning first word, a ph
   assert.match(one(part, ["눈치가 빠른 사람이 더 지치는 이유"]), /12자 이하/);
 });
 
+test("a stretch already made into a 숏폼, or picked twice in one answer, is sent back", () => {
+  const first = checkRecycle({ shorts: [{ title: ["제목"], parts: [part], why: "" }] }, words, speech).shorts[0];
+  const made = [{ title: ["마케터 사례"], parts: first.parts }];
+  assert.match(checkRecycle({ shorts: [{ title: ["제목"], parts: [part], why: "" }] }, words, speech, made).issues.join(" / "), /이미 숏폼으로 만든 「마케터 사례」/);
+  assert.match(checkRecycle({ shorts: [{ title: ["가"], parts: [part], why: "" }, { title: ["나"], parts: [part], why: "" }] }, words, speech).issues.join(" / "), /2번 숏폼: 1번 숏폼과 구간이 겹쳐요/);
+  assert.deepEqual(checkRecycle({ shorts: [{ title: ["제목"], parts: [part], why: "" }] }, words, speech, []).issues, []);
+});
+
 test("the render PC cuts the longform voice inside the nearby silence, joins and speeds it, and makes no new voice", async () => {
   const { snapCuts } = await import("../tools/youtube-media-worker.mjs");
   assert.deepEqual(snapCuts([[10, 20], [30, 35]], [[9.7, 9.95], [20.1, 20.6], [29, 29.5], [35.3, 36]]), [[9.85, 20.3], [29.4, 35.5]]);
