@@ -10,6 +10,8 @@ test("canonical list reads existing documents and keeps promotion in review",asy
   await expect(page.getByText("조건에 맞는 정본이 없습니다",{exact:true})).toBeVisible();
   await page.getByLabel("정본 검색").fill("");
   await page.getByLabel("정본 검색").press("Enter");
+  // The list re-renders after the cleared search; click only once the empty notice is gone (a click on the old row went nowhere on CI).
+  await expect(page.getByText("조건에 맞는 정본이 없습니다",{exact:true})).toHaveCount(0);
   await page.getByRole("link",{name:"문서 작성 기준",exact:true}).click();
   await expect(page).toHaveURL(/\/knowledge\/canon\/[^/?#]+$/);
   await expect(page.locator(".document-reader")).toContainText("목적과 근거",{timeout:15_000});
