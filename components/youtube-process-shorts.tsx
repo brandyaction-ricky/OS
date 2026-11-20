@@ -16,6 +16,7 @@ import { RenderTag } from "./youtube-process-short";
 import { YoutubeColumnPanel } from "./youtube-process-column";
 import { CardFromProject } from "./youtube-process-card";
 import { ShortTopicsPanel } from "./youtube-process-short-script";
+import { RecyclePanel } from "./youtube-process-recycle";
 
 const fmt = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 const num = (record: OsRecord, key: string) => Number(record.metadata?.[key] ?? 0);
@@ -27,11 +28,13 @@ export function YoutubeShortsScreen({ header }: { header: ReactNode }) {
   // 입구 A) comes first: shorts are written anew from the 원고; cutting the longform (구간 자르기) stays beside it.
   const asked = useSearchParams().get("tab");
   // 카드뉴스 (설계서 2026-10-30): the same finished 원고 can also become an Instagram 카드뉴스.
-  const [tab, setTab] = useState<"topics" | "shorts" | "column" | "cards">(asked === "column" ? "column" : asked === "cards" ? "cards" : asked === "clips" ? "shorts" : "topics");
-  const pick = (next: "topics" | "shorts" | "column" | "cards") => {
+  // 롱폼에서 뽑기 (「롱폼 재활용 숏폼 정본」, 2026-11-19) opens first: stretches of this longform's own voice become 숏폼 at 제작.
+  type Tab = "recycle" | "topics" | "shorts" | "column" | "cards";
+  const [tab, setTab] = useState<Tab>(asked === "column" ? "column" : asked === "cards" ? "cards" : asked === "clips" ? "shorts" : asked === "topics" ? "topics" : "recycle");
+  const pick = (next: Tab) => {
     setTab(next);
     const params = new URLSearchParams(window.location.search);
-    if (next === "topics") params.delete("tab"); else params.set("tab", next === "shorts" ? "clips" : next);
+    if (next === "recycle") params.delete("tab"); else params.set("tab", next === "shorts" ? "clips" : next);
     window.history.replaceState(null, "", `${window.location.pathname}?${params}`);
   };
   const [clips, setClips] = useState<OsRecord[]>([]);
@@ -178,16 +181,17 @@ export function YoutubeShortsScreen({ header }: { header: ReactNode }) {
     : stepAction(page, 6, needConfirm ? { kind: "button", label: `쇼츠 확정 (${adopted.length}편)`, reason: shortsMissing, busy: confirming, onClick: () => void confirmShorts() }
       : { kind: "button", label: "여기서 끝내기", reason: uploaded ? "" : "유튜브에 올린 뒤에 끝낼 수 있어요", busy: moving, onClick: () => void finish() });
 
-  return <YpFrame page={page} view={6} action={action} header={header} title="쇼츠 · 칼럼" sub={tab === "cards" ? "이 영상의 원고로 인스타 카드뉴스를 만들어요." : tab === "column" ? "원고로 SEO 칼럼을 만들어 내보내요." : tab === "topics" ? "원고에서 숏폼 주제를 뽑아 새 숏폼으로 만들어요." : "롱폼 구간을 잘라 쇼츠 대본을 확정하고 영상으로 만들어 올려요."}>
+  return <YpFrame page={page} view={6} action={action} header={header} title="쇼츠 · 칼럼" sub={tab === "cards" ? "이 영상의 원고로 인스타 카드뉴스를 만들어요." : tab === "column" ? "원고로 SEO 칼럼을 만들어 내보내요." : tab === "recycle" ? "롱폼 음성을 그대로 잘라, 혼자서 이해되는 구간을 새 화면의 숏폼으로 만들어요." : tab === "topics" ? "원고에서 숏폼 주제를 뽑아 새 숏폼으로 만들어요." : "롱폼 구간을 잘라 쇼츠 대본을 확정하고 영상으로 만들어 올려요."}>
     {page.bundle && project ? !reached ? <LockedStep page={page} name="쇼츠 · 칼럼" /> : <>
       <Subject page={page} />
       <div className="yp-ftabs yp-two" role="tablist" aria-label="쇼츠 · 칼럼" style={{ padding: "0 0 10px" }}>
+        <button type="button" role="tab" aria-selected={tab === "recycle"} className={tab === "recycle" ? "yp-on" : ""} onClick={() => pick("recycle")}>롱폼에서 뽑기{page.bundle.stages.shortTopics.data.recycle?.items.length ? <b>{page.bundle.stages.shortTopics.data.recycle.items.length}</b> : null}</button>
         <button type="button" role="tab" aria-selected={tab === "topics"} className={tab === "topics" ? "yp-on" : ""} onClick={() => pick("topics")}>숏폼 주제{page.bundle.stages.shortTopics.data.items.length ? <b>{page.bundle.stages.shortTopics.data.items.length}</b> : null}</button>
         <button type="button" role="tab" aria-selected={tab === "shorts"} className={tab === "shorts" ? "yp-on" : ""} onClick={() => pick("shorts")}>구간 자르기 <b>{adopted.length}</b></button>
         <button type="button" role="tab" aria-selected={tab === "column"} className={tab === "column" ? "yp-on" : ""} onClick={() => pick("column")}>SEO 칼럼{page.bundle.stages.column.data.items.length ? <b>{page.bundle.stages.column.data.items.length}</b> : null}</button>
         <button type="button" role="tab" aria-selected={tab === "cards"} className={tab === "cards" ? "yp-on" : ""} onClick={() => pick("cards")}>카드뉴스</button>
       </div>
-      {tab === "topics" ? <ShortTopicsPanel page={page} /> : tab === "column" ? <YoutubeColumnPanel page={page} /> : tab === "cards" ? <CardFromProject page={page} /> : <>
+      {tab === "recycle" ? <RecyclePanel page={page} /> : tab === "topics" ? <ShortTopicsPanel page={page} /> : tab === "column" ? <YoutubeColumnPanel page={page} /> : tab === "cards" ? <CardFromProject page={page} /> : <>
       {page.demo ? <div className="yp-note yp-gray"><div>데모에서는 쇼츠 대본을 저장하지 않아요.</div></div> : null}
       {project.yp.shortsLog?.length && page.client ? <ShortsLog project={project} client={page.client} onSaved={next => page.setBundle(current => current ? { ...current, project: next } : current)} onError={page.fail} /> : null}
       <div className="yp-wrap2"><div>

@@ -12,13 +12,14 @@ import type { YpPattern, YpPatterns } from "@/lib/youtube-process/stages";
 
 // S12 내 AI (지시서 9장): the job goes to the requester's own Claude through the OS connection (owner decision 2026-10-17, already
 // running for ② 원고 · ⑦ 업로드 자료), so the screen talks to the same staff-AI queue instead of a Chrome extension.
-type Task = "thumbs" | "script" | "script-notes" | "kit" | "plan" | "shorts" | "short" | "niche" | "column" | "short-copy" | "retitle" | "short-topics" | "short-formula" | "short-script" | "topic-formula" | "card";
+type Task = "thumbs" | "script" | "script-notes" | "kit" | "plan" | "shorts" | "short" | "niche" | "column" | "short-copy" | "retitle" | "short-topics" | "short-recycle" | "short-formula" | "short-script" | "topic-formula" | "card";
 /** What the job hooks read from a page; 주제 찾기 › 틈새 passes its shared board as the project. */
 type JobPage = Pick<YpPage, "demo" | "accessToken" | "profile"> & { bundle?: { project: { id: string; version: number } } | null; reload?: () => Promise<unknown> };
 const TASK: Record<Task, { name: string; result: string }> = {
   thumbs: { name: "썸네일 후보 만들기", result: "시장 영상이 왜 눌렸는지 읽고 우리 스타일로 그림과 문구 3개씩 만들어, 하나 만들 때마다 이 화면에 올려요. 그림은 고른 도구(Flow · ChatGPT)로 내 계정에서 만들어요." },
   card: { name: "카드뉴스 초안 뽑기", result: "고른 포맷마다 카드 글 · 캡션 · 해시태그 초안을 하나씩 만들어 줘요. 나란히 보고 하나를 골라 다듬어요." },
   "short-topics": { name: "숏폼 주제 뽑기", result: "롱폼 원고에서 숏폼 주제 후보 3개(통찰 한 줄 · 장면 · 원고 어디서)를 뽑아 줘요. 하나씩 숏폼으로 만들어요." },
+  "short-recycle": { name: "롱폼에서 숏폼 구간 뽑기", result: "롱폼 원고에서 혼자서 이해되는 구간 5개(1.25배로 20~50초)와 첫 화면 제목을 골라 줘요. 롱폼 음성을 그대로 잘라 써서 음성 비용이 없어요." },
   "short-formula": { name: "공식 · 주제 후보 뽑기", result: "참고 영상에서 헤드 카피 · 첫 문장 · 흐름 공식을 뽑고, 그 공식으로 주제 후보 3개를 내 줘요. PD가 하나를 골라 주제를 확정해요." },
   "topic-formula": { name: "공식 · 주제 후보 뽑기", result: "참고 영상과 검색한 시장 영상에서 제목 공식을 뽑고, 그 공식으로 주제 후보 3개를 내 줘요. PD가 하나를 골라 주제를 확정해요." },
   "short-script": { name: "숏폼 대본 쓰기", result: "주제를 확정할 때 고른 공식으로 헤드 카피와 대본을 써 줘요. PD가 다듬고 확정해요." },

@@ -121,17 +121,18 @@ const when = (iso: string) => new Intl.DateTimeFormat("ko-KR", { month: "numeric
  * storyboard and its confirmation, the drafts (2026-10-27: before the paid CTA voice and the sound pass), then the finished video and handouts. Where the pilot is closed
  * (production today) it says so instead.
  */
-export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, voiceText, title = "", short = false, channel, folded = false, finals = 0 }: { sourceId: string; finalNote?: ReactNode; embedded?: boolean; onFinal?: () => void;
+export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, voiceText, title = "", short = false, channel, folded = false, finals = 0, recycled = false }: { sourceId: string; finalNote?: ReactNode; embedded?: boolean; onFinal?: () => void;
   /** 로건 11-13 「제작 탭 = 편집 화면 하나」: the editor screen in the page, where the video is now (with its one next action) and the five
    *  step cards folded under it; `finals` is how many finished versions 제작 lists. */ folded?: boolean; finals?: number;
   /** The project's 채널 카드 (다채널 1단계): its look is picked first; none means the 기본 채널, the first. */ channel?: string;
   /** The video name, for downloaded file names. */ title?: string;
   /** The spoken paragraphs, for the company-money estimate shown before the voice is made (owner request 2026-10-25). */ voiceText?: string;
-  /** 숏폼 (2026-10-28): drawn 9:16 by the render PC — no music, 구독 대사 or handouts, and its ④ goes straight on to the full video. */ short?: boolean }) {
+  /** 숏폼 (2026-10-28): drawn 9:16 by the render PC — no music, 구독 대사 or handouts, and its ④ goes straight on to the full video. */ short?: boolean;
+  /** 롱폼에서 나온 숏폼: the longform's voice is cut, nothing is voiced (0원). */ recycled?: boolean }) {
   const cost = useCostConfirm(), { myinVoice } = useCostModels();
   // Fish drama-3 bills by the bytes it reads; ask before a new script is voiced, and before the storyboard's 구독 요청 lines are.
   const askVoice = async (text: string, again: string, takes = false) => {
-    if (!text.trim()) return true;
+    if (!text.trim() || recycled) return true;
     const estimate = voiceEstimate(text, myinVoice);
     // 영상 만드는 컴퓨터가 음성을 만들면: 숏폼은 끊긴 문장만 한 번 더(로건 2026-10-29, 많게는 두 배), 롱폼은 문장마다 4번 만들어
     // 가장 자연스러운 것을 고른다(음성 고르기 v2, 로건 2026-11-11) — 네 배.
@@ -141,6 +142,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
   // 로건 11-13: a 롱폼 that goes on by itself asks once, at the start, for every paid step up to the finished video — the voice and the
   // 구독 대사 voice (300자까지, as the editor's 「완성」 counted it) — and 「완성」 asks no more.
   const askStart = (text: string, takes: boolean, kept = "") => {
+    if (recycled) return Promise.resolve(true);
     const voice = voiceEstimate(text, myinVoice), cta = voiceEstimate("가".repeat(600), myinVoice);
     return cost.confirm({ model: myinVoice, amount: voice.krw * (takes ? 4 : 1) + cta.krw, upTo: true, ok: "확인하고 시작",
       detail: `${kept}음성 ${voice.chars.toLocaleString("ko-KR")}자${takes ? "(문장마다 4번 만들어 골라요)" : ""} + 구독 대사 음성(300자까지) · 지금 한 번 확인하면 「완성」까지 다시 묻지 않아요 · 켜 둔 GPT 화면 검사는 GPT 크레딧에서 따로 빠져요` });
@@ -353,7 +355,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
         <p>{autoMode ? "한 번 누르면 음성 → 장면 기획표 → 장면 그림까지 저절로 가고, 다 되면 여기에 편집 화면이 열려요. 비용은 지금 한 번만 확인해요."
           : "누르면 음성과 받아쓰기 · 자막을 만들어요. 기획표는 사람이 확인해야 넘어가요(제작 설정)."}</p>
         <div className="yt-actions"><button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void start()}>{busy === "start" ? "시작하는 중…" : autoMode ? "영상 만들기 시작" : "음성 만들기"}</button>
-          <CostTag kind="paid" /></div></>;
+          {recycled ? <small>롱폼 음성을 잘라 써요 · 음성 비용 0원</small> : <CostTag kind="paid" />}</div></>;
     } else if (run.status === "blocked") {
       head = `멈췄어요 · ${stepNo}단계`;
       body = <><StopNote run={run} />{look(stepNo, "그 단계 열어서 다시 하기")}</>;
@@ -422,7 +424,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       {run?.scriptChanged ? <p className="yt-note yt-warn">{short ? "확정한 대본이 바뀌었어요. 아래 작업은 옛 대본으로 만든 것이라 더 진행되지 않아요. 새로 만들면 기획표와 미리보기 확인도 다시 거쳐요." : "구성안 원고가 바뀌었어요. 아래 작업은 옛 원고로 만든 것이라 더 진행되지 않아요. 새로 만들면 기획표와 미리보기 확인도 다시 거쳐요."}</p> : null}
       {!run || (run.status === "blocked" && !run.words) || run.scriptChanged ? <div className="yt-actions">
         <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void start()}>{busy === "start" ? "시작하는 중…" : run?.scriptChanged ? short ? "바뀐 대본으로 음성 다시 만들기" : "바뀐 원고로 v13 음성 다시 만들기" : run ? short ? "음성 다시 시작" : "v13 음성 다시 시작" : short ? "음성 만들기" : "v13 음성 만들기"}</button>
-        <small><CostTag kind="paid" amount={voiceText ? voiceEstimate(run?.scriptChanged && run.voiceReuse ? run.voiceReuse.text : voiceText, myinVoice).krw * (voiceOnPc && !short ? 4 : 1) : null} /> 같은 {short ? "대본" : "원고"}으로 다시 누르면 만든 음성을 이어 써요.</small>
+        {recycled ? <small>롱폼 음성을 잘라 써요 · 음성 비용 0원</small> : <small><CostTag kind="paid" amount={voiceText ? voiceEstimate(run?.scriptChanged && run.voiceReuse ? run.voiceReuse.text : voiceText, myinVoice).krw * (voiceOnPc && !short ? 4 : 1) : null} /> 같은 {short ? "대본" : "원고"}으로 다시 누르면 만든 음성을 이어 써요.</small> }
       </div> : null}
       {run ? <div className="yt-run">
         <div className="yt-run-head"><span className="status-pill" data-status={run.status === "blocked" && !run.words ? "failed" : run.words && !run.voiceFixes?.length ? "approved" : "scheduled"}>{run.voiceFixes?.length && run.stage === "words_pending" ? "고친 곳 다시 만드는 중" : run.words ? "받아쓰기·자막 완료" : phase}</span>

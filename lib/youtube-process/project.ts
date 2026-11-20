@@ -26,6 +26,8 @@ export interface YpMeta {
   shortFrom?: { projectId: string; title: string; topicId: string; scene: string; paragraph: string };
   /** A 카드뉴스 made from a finished longform · 숏폼 or an approved Threads post (설계서 2026-10-30, 입구 넷): where its text came from. */
   cardFrom?: { kind: "longform" | "short" | "threads"; id: string; title: string };
+  /** 롱폼에서 나온 숏폼 (정본 §1~§2): its voice is the longform run's, cut at these voice times on the render PC that holds it, 1.25×. */
+  recycle?: { projectId: string; title: string; runId: string; cuts: [number, number][] };
 }
 export interface YpShortsLogEntry { at: string; by: string; byName: string; kind: "confirm" | "comment"; text: string; count?: number }
 export interface YpProject { id: string; version: number; title: string; assigneeId: string | null; ownerId: string; updatedAt: string; yp: YpMeta }

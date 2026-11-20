@@ -667,6 +667,31 @@ export function reuseEarlierVoice(work, texts, donorWorks) {
 }
 
 /** Process one v13 words job; returns false when there is none (or this PC has no v13 package). */
+// 롱폼에서 나온 숏폼 (「롱폼 재활용 숏폼 정본」 §1~§2): no new voice. The longform run's voice on this PC is cut at the OS's voice times,
+// each moved into the silence nearby (−40 dB, ≥ 0.1 s, within 0.5 s; 0.2 s kept after the last word), joined and sped 1.25× (pitch kept).
+/** silences: [start, end][] from ffmpeg silencedetect; cuts: the transcript's [start, end] per part. */
+export function snapCuts(cuts, silences, near = 0.5) {
+  const closest = (list, t, key) => list.filter((x) => Math.abs(x[key] - t) <= near).sort((x, y) => Math.abs(x[key] - t) - Math.abs(y[key] - t))[0];
+  return cuts.map(([s, e]) => {
+    const before = closest(silences, s, 1), after = closest(silences, e, 0);
+    const start = before ? Math.max(before[0], before[1] - 0.1) : Math.max(0, s - 0.05);
+    const end = after ? Math.min(after[1], after[0] + 0.2) : e + 0.1;
+    return [Math.round(start * 1000) / 1000, Math.round(Math.max(end, start + 0.2) * 1000) / 1000];
+  });
+}
+export function recycleVoice(job, voiceDir) {
+  const src = path.join(myinWork, job.recycle.from, "voice", "os_voice", "voice.wav");
+  if (!existsSync(src)) throw Object.assign(new Error("the longform's voice is not on this render PC"), { code: "MYIN_RECYCLE_NO_VOICE" });
+  const report = spawnSync("ffmpeg", ["-hide_banner", "-nostats", "-i", src, "-af", "silencedetect=n=-40dB:d=0.1", "-f", "null", "-"], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }).stderr ?? "";
+  const starts = [...report.matchAll(/silence_start: (-?[\d.]+)/g)].map((m) => Number(m[1])), ends = [...report.matchAll(/silence_end: ([\d.]+)/g)].map((m) => Number(m[1]));
+  const cuts = snapCuts(job.recycle.cuts, starts.map((a, i) => [a, ends[i] ?? a + 0.1]));
+  const parts = cuts.map(([a, b], i) => `[0:a]atrim=${a}:${b},asetpts=PTS-STARTPTS[p${i}]`).join(";");
+  const join = `${cuts.map((_, i) => `[p${i}]`).join("")}concat=n=${cuts.length}:v=0:a=1,atempo=1.25[out]`;
+  execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-i", src, "-filter_complex", `${parts};${join}`, "-map", "[out]", "-ar", "48000", "-ac", "1", "-c:a", "pcm_s16le", path.join(voiceDir, "voice.wav")]);
+  writeFileSync(path.join(voiceDir, "speech.txt"), `${job.paragraphs.map((p) => p.text).join("\n")}\n`);
+  console.log(`myin voice recycled from ${job.recycle.from}: ${cuts.map(([a, b]) => `${a}–${b}`).join(", ")} s`);
+}
+
 export async function processMyinWords() {
   if (!myinPkg) return false;
   const job = await call({ action: "myin_claim", ...shortClaim, ...pcField });
@@ -680,7 +705,7 @@ export async function processMyinWords() {
     const voiceDir = path.join(work, "voice", voiceJob);
     mkdirSync(voiceDir, { recursive: true });
     const speaker = myinVoiceEnv(job);
-    for (const paragraph of speaker.onPc ? [] : job.paragraphs) {
+    for (const paragraph of speaker.onPc || job.recycle ? [] : job.paragraphs) {
       const n = String(paragraph.index).padStart(2, "0");
       const raw = path.join(voiceDir, `p${n}_raw.wav`), pcm = path.join(voiceDir, `p${n}.wav`);
       if (existsSync(pcm)) continue;
@@ -701,7 +726,10 @@ export async function processMyinWords() {
     // check keep it for the paragraphs whose sound stays the same (tools/myin_words.py).
     const out = path.join(work, "voice", videoJob), before = path.join(voiceDir, "before.json");
     rmSync(before, { force: true });
-    if (fixes.length && hasVoice && hasTool) {
+    if (job.recycle) {
+      current.step = "voice cut";
+      recycleVoice(job, voiceDir);
+    } else if (fixes.length && hasVoice && hasTool) {
       current.step = "voice fix";
       await runOut(myinPython, [wordsScript, "snap", voiceDir, out, before]);
       for (const fix of fixes) {
@@ -735,7 +763,7 @@ export async function processMyinWords() {
     }
     // 들어 볼 문장 (his voice_audit): every sentence scored for breaks and long runs, worst first; stage 1 lists the ones worth a listen.
     let audit = null;
-    if (speaker.onPc && existsSync(path.join(timing, "voice_audit.py"))) {
+    if (speaker.onPc && !job.recycle && existsSync(path.join(timing, "voice_audit.py"))) {
       current.step = "voice check";
       const file = path.join(voiceDir, "audit.json");
       const some = existsSync(before) && (await runOut(speaker.python, [wordsScript, "audit", voiceDir, before, file], { cwd: timing, env })).ok;

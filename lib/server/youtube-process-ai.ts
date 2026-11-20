@@ -83,9 +83,11 @@ function v1ShortInput(state: Pipeline, stages: ReturnType<typeof v1Stages>) {
     // 웹 숏폼 (2026-11-19): drawn by the web short renderer in the 「롱폼 재활용 숏폼 정본」 editing style. Ads never reach this run — they
     // are made in the scene editor (2026-10-30) — so this is every 숏폼 · 릴스 made from its confirmed 대본 (대표 2026-11-19: 일반 숏폼부터).
     renderer: "web" as const,
+    // 롱폼에서 나온 숏폼 (정본 §1): the longform's voice, cut on the render PC that holds it — no new voice.
+    ...(stages.project.yp.recycle ? { recycle: stages.project.yp.recycle } : {}),
     headCopy: confirmed?.headCopy ?? script.data.headCopy, screenScript: confirmed?.text ?? "",
     plan: { format: "narrated_visual" as const, privacyStatus: "private" as const, judgmentMode: "advisory_only" as const, sourceId: stages.project.id,
-      inputKey: ready ? digest(["yp-v1-short-voice", stages.project.id, digest(confirmed!.text)]) : null, currentStage: ready ? "ready_for_voice" as const : "needs_input" as const,
+      inputKey: ready ? digest(["yp-v1-short-voice", stages.project.id, digest(confirmed!.text), ...(stages.project.yp.recycle ? [stages.project.yp.recycle] : [])]) : null, currentStage: ready ? "ready_for_voice" as const : "needs_input" as const,
       missing: !open ? ["대본을 확정하고 제작 단계로 넘어오기"] : !scriptText ? ["확정한 대본"] : [], script: ready ? { id: script.id!, version: script.version } : null, packaging: null, kit: null },
   };
 }
