@@ -244,7 +244,8 @@
       tl.fromTo(ph, { scale: 1.05 }, { scale: 1.22, duration: s.to - s.from + 0.1, ease: "power1.inOut" }, s.from - 0.1).to(vig, { opacity: 1, duration: 0.6 }, s.darkAt ?? s.from + 1).to(vig, { opacity: 0, duration: 0.25 }, s.to - 0.1);
     },
     // C: two photos split top and bottom (a recap of what was seen). The top photo fills the frame from the scene's start (no empty
-    // frame while waiting for its cue) and folds into the top half as the bottom photo comes in.
+    // frame while waiting for its cue) and folds into the top half as the bottom photo comes in. Both move together with the same
+    // ease, so the top photo's lower edge and the bottom photo's upper edge stay joined (no white strip between them).
     split(s) {
       const half = (img, topPx, h0) => { const h = mk("div", "abs", bg, null, { left: 0, top: `${topPx}px`, width: `${F.w}px`, height: `${h0}px`, overflow: "hidden", opacity: 0 }); const ph = mk("div", "photo", h, null, { backgroundImage: photoUrl(img) }); return [h, ph]; };
       const [t1, p1] = half(s.top.photo, 0, F.h), [t2, p2] = half(s.bottom.photo, F.h / 2, F.h / 2);
@@ -252,7 +253,7 @@
       tl.fromTo(t1, { opacity: 0 }, { opacity: 1, duration: 0.3, ease: M.ease }, s.from).fromTo(p1, { scale: 1.15 }, { scale: 1, duration: s.to - s.from, ease: "none" }, s.from)
         .to(t1, { height: F.h / 2, duration: 0.45, ease: M.ease }, s.bottom.at - 0.1)
         .to(line, { scaleX: 1, duration: 0.35, ease: M.ease }, s.bottom.at - 0.1)
-        .fromTo(t2, { opacity: 1, yPercent: 100 }, { yPercent: 0, duration: 0.45, ease: M.ease }, s.bottom.at).fromTo(p2, { scale: 1.15 }, { scale: 1, duration: s.to - s.bottom.at, ease: "none" }, s.bottom.at);
+        .fromTo(t2, { opacity: 1, yPercent: 100 }, { yPercent: 0, duration: 0.45, ease: M.ease }, s.bottom.at - 0.1).fromTo(p2, { scale: 1.15 }, { scale: 1, duration: s.to - s.bottom.at, ease: "none" }, s.bottom.at);
     },
 
     // D: a checklist card — each item pops in as it is said; an optional pick lights one item and dims the rest
