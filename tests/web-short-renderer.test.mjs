@@ -25,7 +25,7 @@ test("design values the templates read are all in theme.json", () => {
 });
 
 // ── the OS side: the staff AI's storyboard (phrases) → the renderer's story (seconds) ──
-import { checkWebShort, editWebShortTexts, webShortBoard, webShortSceneList, webShortSpoken, webShortTextSlots } from "../lib/web-short-storyboard.ts";
+import { checkWebShort, editWebShortTexts, webShortBoard, webShortResultShape, webShortSceneList, webShortSpoken, webShortTextSlots } from "../lib/web-short-storyboard.ts";
 
 const said = "입사 3년차 마켓터가 회의에서 발표하고 있었어요. 팀장님 얼굴이 굳었어요. 메신저를 열었어요. 지금 진단해 보세요.";
 const words = said.split(" ").map((word, i) => [i * 0.5, i * 0.5 + 0.45, word]);
@@ -128,5 +128,15 @@ test("a storyboard handed in another shape is read as the list it means; none at
   assert.deepEqual(webShortBoard({ storyboard: { scenes: scenes.map((sc) => JSON.stringify(sc)) } }).scenes, scenes, "each scene a JSON string");
   const strings = checkWebShort({ title: { lines: ["가"] }, scenes: ["opening 가", "photo 나"] }, { words: [[0, 1, "가"]], script: "가", headCopy: "가", durationSeconds: 1, ad: false }).issues.join(" / ");
   assert.match(strings, /scenes는 2개짜리 목록이고 첫 항목이 문자열이에요/);
+});
+
+test("a GPT answer that is the storyboard alone, or has no reasons, is put in the result's shape; missing assets stay missing", () => {
+  const shaped = webShortResultShape({ title: { lines: ["가"] }, scenes: [{ type: "opening" }], subtitles: ["가"] });
+  assert.deepEqual(shaped.storyboard, { title: { lines: ["가"] }, scenes: [{ type: "opening" }], subtitles: ["가"] });
+  assert.equal(shaped.scenes, undefined);
+  assert.equal(typeof shaped.reasons.metaphors, "string");
+  assert.equal(shaped.assets, undefined, "the check still asks for assets");
+  const whole = { storyboard: { scenes: [] }, assets: [], reasons: { metaphors: "이유" } };
+  assert.deepEqual(webShortResultShape(whole), whole, "a right answer is left as it is");
 });
 
