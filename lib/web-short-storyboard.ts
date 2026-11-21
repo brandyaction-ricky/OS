@@ -109,7 +109,9 @@ export function checkWebShort(value: unknown, input: { words: Words; script: str
   if (accent && !lines.some((l) => l.includes(accent))) issues.push(`title.accent 「${accent}」는 한 줄 안에 그대로 있는 말이에요.`);
 
   const scenes = (Array.isArray(raw.scenes) ? raw.scenes : []).filter((sc): sc is Record<string, unknown> => Boolean(sc) && typeof sc === "object");
-  if (scenes.length < 3 || scenes.length > 30) issues.push(`장면은 3~30개예요(지금 ${scenes.length}개)${scenes.length ? "" : ` — storyboard.scenes에 장면 객체 목록([{ "type", "at", … }])을 넣어요(지금 storyboard 칸: ${Object.keys(raw).join(", ") || "없음"})`}.`);
+  const sent = Array.isArray(raw.scenes) ? raw.scenes : [];
+  const shape = Array.isArray(raw.scenes) ? `scenes는 ${sent.length}개짜리 목록이고 첫 항목이 ${sent.length ? Array.isArray(sent[0]) ? "배열" : sent[0] === null ? "null" : typeof sent[0] === "object" ? "객체" : typeof sent[0] === "string" ? "문자열" : typeof sent[0] : "없음"}이에요` : `storyboard 칸: ${Object.keys(raw).join(", ") || "없음"}`;
+  if (scenes.length < 3 || scenes.length > 30) issues.push(`장면은 3~30개예요(지금 ${scenes.length}개)${scenes.length ? "" : ` — storyboard.scenes에 장면 객체 목록([{ "type": "opening", "at": "…", … }])을 넣어요. 장면 하나하나가 JSON 객체여야 해요(지금 ${shape})`}.`);
   scenes.forEach((sc, n) => {
     const where = `[장면 ${n + 1}]`, spec = WEB_SHORT_SCENES[String(sc.type)];
     if (!spec) { issues.push(`${where} "${String(sc.type)}"는 없는 장면 종류예요. 목록에 있는 것만 써요.`); return; }
@@ -246,5 +248,10 @@ export function webShortBoard(result: { storyboard: Record<string, unknown> } & 
   };
   const board: Record<string, unknown> = { ...result.storyboard };
   for (const key of ["scenes", "subtitles"]) if (!Array.isArray(board[key])) board[key] = list(board[key] ?? result[key]);
+  // 11-21 second GPT run: scenes was a list, but each scene came as a JSON string.
+  if (Array.isArray(board.scenes)) board.scenes = board.scenes.map((scene) => {
+    if (typeof scene !== "string") return scene;
+    try { return JSON.parse(scene); } catch { return scene; }
+  });
   return board;
 }
