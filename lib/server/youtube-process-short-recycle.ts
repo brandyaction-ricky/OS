@@ -9,7 +9,7 @@ import { emptyStage, type YpShortTopics } from "@/lib/youtube-process/stages";
 import type { RequestActor } from "./auth";
 import type { readPipeline } from "./content-pipeline";
 import { namedProcedures } from "./content-generation";
-import { myinRecycleSource } from "./myin-run";
+import { createMyinRun, myinRecycleSource } from "./myin-run";
 import { v1Stages } from "./youtube-process-ai";
 import { approverIds, getYoutubeProject, insertProject, notify, recordConfirmation } from "./youtube-process";
 import { readStages, writeStage } from "./youtube-process-stages";
@@ -87,7 +87,8 @@ export async function saveRecycle(service: Service, ownerId: string, state: Pipe
   return { shorts: shorts.length, kept: kept.length };
 }
 
-export const makeRecycleSchema = z.object({ itemId: z.string().trim().min(1).max(20), title: z.array(z.string().trim().min(1).max(30)).min(1).max(2).optional() }).strict();
+/** start: 「5편 모두 만들기」 — the voice starts at once too (cut from the longform, 0원), and the rest runs by itself to the preview. */
+export const makeRecycleSchema = z.object({ itemId: z.string().trim().min(1).max(20), title: z.array(z.string().trim().min(1).max(30)).min(1).max(2).optional(), start: z.boolean().optional() }).strict();
 /**
  * [숏폼으로 만들기]: a new 숏폼 already at 제작 — the PD checked the stretch and its title here, which stands for 주제 확정 and 대본 확정
  * (the 대표 is told, as for any PD confirm); its 대본 is the stretch's sentences and its voice will be the longform's, cut.
@@ -118,5 +119,10 @@ export async function makeShortFromRecycle(actor: RequestActor, longformId: stri
   const items = recycle.items.map((row) => row.id === item.id ? { ...row, title, made: { projectId: project.id, at: now, by: actor.name } } : row);
   const data = { ...stages.shortTopics.data, recycle: { ...recycle, items } };
   const saved = await writeStage(actor.supabase, actor.id, actor.team, longform, "shortTopics", stages.shortTopics, data);
-  return { projectId: project.id, topics: { ...saved, data } };
+  // A voice that cannot start now (the render PC's longform voice gone, a run already there) leaves the 숏폼 made; its 제작 screen starts it.
+  const started = input.start ? await createMyinRun(actor, project.id, undefined, { place: "pc", screenCheck: true }).then(() => true, (error) => {
+    console.error(JSON.stringify({ event: "recycle_voice_start_failed", projectId: project.id, message: error instanceof Error ? error.message : String(error) }));
+    return false;
+  }) : false;
+  return { projectId: project.id, topics: { ...saved, data }, started };
 }

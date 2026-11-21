@@ -95,3 +95,17 @@ export function scheduleAutoDrafts(project: YpProject, by: Owner) {
     }));
   });
 }
+
+/**
+ * 롱폼에서 나온 숏폼 (대표 11-21): its storyboard is GPT's straight away, for the person who made the 숏폼, so the five shorts reach their
+ * preview with nobody waiting on a staff computer. The OS check (and the 렌더 전 관문 after it) is the only check before the preview.
+ */
+export async function requestGptStoryboard(sourceId: string, ownerId: string) {
+  if (!process.env.OPENAI_API_KEY?.trim()) return null;
+  const service = createServiceSupabase();
+  const [name, tier] = await Promise.all([displayName(service, ownerId, "담당자"), creditTier()]);
+  const owner = { id: ownerId, name, team: "" };
+  const job = await requestStaffJob(gptActor(owner), staffJobRequestSchema.parse({ task: "storyboard", sourceId }), { tier });
+  if (job.status === "backlog") scheduleGptJob(job.id, owner, tier);
+  return job;
+}

@@ -124,7 +124,7 @@ export interface YpClient {
   /** [숏폼으로 만들기] on a longform's 숏폼 주제 후보: the new 숏폼's id and the candidates with the made one marked. */
   makeShort(id: string, topicId: string): Promise<{ projectId: string; topics: YpStageView<"shortTopics"> }>;
   /** [숏폼으로 만들기] on a 롱폼에서 뽑기 stretch: a new 숏폼 at 제작 with the longform's voice, cut; the stretches with it marked. */
-  makeRecycleShort(id: string, itemId: string, title: string[]): Promise<{ projectId: string; topics: YpStageView<"shortTopics"> }>;
+  makeRecycleShort(id: string, itemId: string, title: string[], start?: boolean): Promise<{ projectId: string; topics: YpStageView<"shortTopics">; started?: boolean }>;
   /** 원고 두 번째 검수 (GPT, 관문 2~6) of the 구성안 as saved. */
   review2(id: string, tier: "precise" | "saving"): Promise<YpStageView<"review2">>;
   /** The 대본 step's latest 레퍼런스 받기 (null before the first), and [레퍼런스 받기] itself. */
@@ -237,7 +237,7 @@ function apiClient(token: string): YpClient {
     clips: async id => (await listRecords(token, "content_short", `parentId=${id}&limit=200`)).records.filter(row => !row.archived_at),
     shortVideoUrl,
     makeShort: (id, topicId) => apiRequest(`${base}/${id}/short-topic`, { token, method: "POST", body: json({ topicId }) }),
-    makeRecycleShort: (id, itemId, title) => apiRequest(`${base}/${id}/short-recycle`, { token, method: "POST", body: json({ itemId, title }) }),
+    makeRecycleShort: (id, itemId, title, start) => apiRequest(`${base}/${id}/short-recycle`, { token, method: "POST", body: json({ itemId, title, ...(start ? { start } : {}) }) }),
     review2: (id, tier) => apiRequest(`${base}/${id}/review2`, { token, method: "POST", body: json({ tier }) }),
     shortRefs: async id => (await apiRequest<{ refs: YpShortRefFetch | null }>(`${base}/${id}/short-refs`, { token })).refs,
     fetchShortRefs: async id => (await apiRequest<{ refs: YpShortRefFetch }>(`${base}/${id}/short-refs`, { token, method: "POST" })).refs,

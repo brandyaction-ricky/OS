@@ -1607,4 +1607,14 @@
 .linear-shell .ui-v2.yp .yp-recycle p{margin:4px 0 0}
 .linear-shell .ui-v2.yp .yp-recycle-title{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px}
 .linear-shell .ui-v2.yp .yp-recycle-title .yp-in{flex:1 1 160px;min-width:0}
+/* 쇼츠 · 칼럼 › 한눈에 확인 (대표 11-21): the recycled 숏폼 side by side, 9:16 each, then one bar for OK · 메모 · 컨펌 요청. */
+.linear-shell .ui-v2.yp .yp-ov-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.linear-shell .ui-v2.yp .yp-ov-card{display:grid;gap:6px;align-content:start;min-width:0;font-size:12px;border:1px solid var(--line-soft);border-radius:10px;padding:8px}
+.linear-shell .ui-v2.yp .yp-ov-video{width:100%;max-width:100%;aspect-ratio:9/16;border-radius:8px;background:var(--media-bg);display:block}
+.linear-shell .ui-v2.yp .yp-ov-wait{display:grid;place-items:center;color:var(--media-muted);text-align:center;padding:8px;box-sizing:border-box}
+.linear-shell .ui-v2.yp .yp-ov-title{font-size:13px;line-height:1.35}
+.linear-shell .ui-v2.yp .yp-ov-acts{display:flex;gap:6px}
+.linear-shell .ui-v2.yp .yp-ov-acts .yp-btn{flex:1}
+.linear-shell .ui-v2.yp .yp-ov-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--line-soft);font-size:13px}
+.linear-shell .ui-v2.yp .yp-ov-top{margin-bottom:8px}
 }

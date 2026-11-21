@@ -333,8 +333,11 @@ export async function saveMyinStoryboard(service: Service, record: OsRecord, run
 export const MYIN_AUTO_CONFIRM_NAME = "자동 확인";
 /** 렌더 전 관문 rounds before the video goes on with what is left marked 사람 확인 필요 (로건 11-13: 「3번 넘게 반복되면」). */
 export const MYIN_GATE_ROUNDS = 3;
-/** 기획표 확인 「자동」 (대표 11-16, 기본): a 롱폼 whose 제작 설정 does not ask for a person. A 숏폼 keeps its 확인. */
-export const autoConfirms = (run: Pick<MyinRun, "layout" | "settings">) => !run.layout && run.settings?.confirm !== "person";
+/**
+ * 기획표 확인 「자동」 (대표 11-16, 기본): a 롱폼 whose 제작 설정 does not ask for a person. A 숏폼 keeps its 확인, except one cut from a
+ * longform (대표 11-21: its people look once, at the preview, on 「한눈에 확인」).
+ */
+export const autoConfirms = (run: Pick<MyinRun, "layout" | "settings" | "recycle">) => (!run.layout || Boolean(run.recycle)) && run.settings?.confirm !== "person";
 
 /**
  * 기획표 확인 「자동」: the storyboard the OS check passed is confirmed as a person's 확인 would be — placed by the 제작 설정 and ③ starts.
@@ -375,7 +378,12 @@ export async function reviewMyinStoryboard(actor: RequestActor, runId: string, d
   if (decision === "confirmed") await assertCurrent(service, run);
   const next: MyinRun = { ...run, review: { decision, by: actor.id, name: actor.name, note: note.trim().slice(0, 2000), at: new Date().toISOString(), ...(decision === "revise" && scenes?.length ? { scenes } : {}) } };
   if (decision === "confirmed") { placeStep(next, actor, place); if (screenCheck ?? run.settings?.screenCheck ?? true) delete next.screenCheckOff; else next.screenCheckOff = true; }
-  if (decision === "revise") { delete next.prepared; delete next.clips; delete next.stills; delete next.clipsReview; delete next.sound; delete next.lease; delete next.gateRounds; return presentMyinRun(await save(service, record, "backlog", "words_ready", next)); }
+  if (decision === "revise") {
+    delete next.prepared; delete next.clips; delete next.stills; delete next.clipsReview; delete next.sound; delete next.lease; delete next.gateRounds;
+    const back = await save(service, record, "backlog", "words_ready", next);
+    if (run.recycle) await resendStoryboard(run.sourceId, record.id, undefined, gptStoryboardFor(run, record));
+    return presentMyinRun(back);
+  }
   // 2026-10-27 대표: 시안(도식·글자)을 먼저 본다. 사진 허락과 구독 대사 음성은 시안 확인 뒤 ④ 자료 준비에서(2026-10-19의 「확인 = 사진 허락」을 옮김).
   const saved = await save(service, record, "done", "storyboard_confirmed", next);
   return presentMyinRun(await beginDraft(service, saved, parse(saved)));
@@ -797,9 +805,13 @@ const bundleSchema = z.object({
 /** Render PC: the bundle is up; the OS reads it back before the run moves on. */
 /** Back at 받아쓰기 끝 with no storyboard: it goes to the AI that wrote the last one (that file imports this one, so it loads here). */
 // 로건 11-13 자동 흐름: with 확인 「자동」 the first storyboard too — asked of the AI of whoever started the video.
-const resendStoryboard = (sourceId: string, runId: string, first?: string) => import("./youtube-ai-jobs")
-  .then(async (module) => await module.resendStoryboard(sourceId) ?? (first ? module.requestFirstStoryboard(sourceId, first) : null))
+// 롱폼에서 나온 숏폼 (대표 11-21): GPT writes it, every time the run is back at 받아쓰기 끝 (first, 렌더 전 관문, 수정 요청).
+const resendStoryboard = (sourceId: string, runId: string, first?: string, gptFor?: string) => (gptFor
+  ? import("./youtube-gpt-jobs").then((module) => module.requestGptStoryboard(sourceId, gptFor))
+  : import("./youtube-ai-jobs").then(async (module) => await module.resendStoryboard(sourceId) ?? (first ? module.requestFirstStoryboard(sourceId, first) : null)))
   .catch((error) => console.error(JSON.stringify({ event: "storyboard_resend_failed", runId, message: error instanceof Error ? error.message : String(error) })));
+/** Whose GPT storyboard a recycled 숏폼's run asks for (none for any other run). */
+const gptStoryboardFor = (run: MyinRun, record: OsRecord) => run.recycle ? run.settings?.by ?? record.owner_id ?? record.created_by ?? undefined : undefined;
 
 /** Who sends an edited script's storyboard scenes to the AI (the panel and the AI card name it). */
 export const MYIN_CARRY_NAME = "원고 고친 곳";
@@ -902,7 +914,7 @@ export async function completeMyinWords(input: { runId: string; lease: string; v
   if (resume === "draft") await beginDraft(service, saved, parse(saved)).catch((error) => console.error(JSON.stringify({ event: "myin_redraft_failed", runId: record.id,
     message: error instanceof Error ? error.message : String(error) })));
   if (stage === "words_ready" && (loan ? await lendStoryboard(service, saved, loan).catch(failedLoan) : null) !== "whole")
-    await resendStoryboard(run.sourceId, record.id, autoConfirms(run) ? run.settings?.by ?? record.owner_id ?? undefined : undefined);
+    await resendStoryboard(run.sourceId, record.id, autoConfirms(run) ? run.settings?.by ?? record.owner_id ?? undefined : undefined, gptStoryboardFor(run, record));
   // His dictionaries as the render PC left them (new lines from voice_fix, or his starting set): the OS keeps what it does not have.
   await reportVoiceDictionary((bundle.data as { dictionary?: Partial<VoiceDictionaryFiles> }).dictionary, { id: record.owner_id ?? "", team: record.team ?? "" }, service)
     .catch((error) => console.error(JSON.stringify({ event: "voice_dictionary_report_failed", message: error instanceof Error ? error.message : String(error) })));
@@ -1558,7 +1570,7 @@ export async function completeMyinPrep(input: { runId: string; lease: string }, 
     if (sheetsNow) back.lastPrep = sheetsNow;
     delete back.prepared; delete back.clips; delete back.stills; delete back.clipsReview; delete back.sound;
     await save(service, record, "backlog", "words_ready", back);
-    await resendStoryboard(run.sourceId, record.id);
+    await resendStoryboard(run.sourceId, record.id, undefined, gptStoryboardFor(run, record));
     return { runId: record.id, stage: "words_ready", misses: bundle.misses.length, returned: true };
   }
   // ③ with nothing missing: the drafts are next, without anyone pressing a button. ④ stops here for the sound and photos check;
@@ -2183,6 +2195,15 @@ async function latestRun(service: Service, sourceId: string) {
  * 롱폼에서 나온 숏폼 (「롱폼 재활용 숏폼 정본」 §1): a longform's newest run whose voice sits on a render PC — its transcript (voice times)
  * and spoken text, the PC that holds the voice file. Null when that voice is not on a render PC or not transcribed yet.
  */
+/** 롱폼에서 나온 숏폼: the photos its longform's run used (people and situations), the only ones its storyboard may pick. */
+export async function myinRecyclePhotos(run: Pick<MyinRun, "recycle">, service: Service = createServiceSupabase()) {
+  if (!run.recycle) return undefined;
+  const { data } = await service.from("os_records").select("metadata").eq("id", run.recycle.from).maybeSingle();
+  let assets: NonNullable<MyinRun["storyboard"]>["assets"] = [];
+  try { assets = data ? parse(data as OsRecord).storyboard?.assets ?? [] : []; } catch { /* an unreadable longform run lends no photos */ }
+  return assets.filter((a) => a.kind !== "bgm").map(({ file, url, source, license, use }) => ({ file, url, source, license, use }));
+}
+
 export async function myinRecycleSource(service: Service, sourceId: string) {
   const latest = await latestRun(service, sourceId);
   if (!latest?.run.words || !latest.run.pc || latest.run.layout) return null;
