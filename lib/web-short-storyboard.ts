@@ -255,3 +255,19 @@ export function webShortBoard(result: { storyboard: Record<string, unknown> } & 
   });
   return board;
 }
+
+/**
+ * GPT runs (11-21) answered in several shapes: the storyboard alone (title · scenes · subtitles at the top), or without reasons. The
+ * storyboard goes in its place and a missing reasons line is filled; missing assets are still sent back.
+ */
+export function webShortResultShape(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const result = { ...value as Record<string, unknown> };
+  if (!result.storyboard && (result.scenes || result.title)) {
+    result.storyboard = { title: result.title, scenes: result.scenes, subtitles: result.subtitles };
+    delete result.title; delete result.scenes; delete result.subtitles;
+  }
+  if (!result.reasons || typeof (result.reasons as { metaphors?: unknown }).metaphors !== "string" || !(result.reasons as { metaphors: string }).metaphors.trim())
+    result.reasons = { ...(result.reasons && typeof result.reasons === "object" ? result.reasons : {}), metaphors: "장면마다 틀을 고른 이유는 적지 않았어요." };
+  return result;
+}

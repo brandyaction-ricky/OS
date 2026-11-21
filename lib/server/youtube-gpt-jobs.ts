@@ -45,7 +45,7 @@ export async function runGptJob(jobId: string, owner: Owner, tier: GptTier) {
   const agent = gptActor(owner);
   const claimed = await claimStaffJob(agent, jobId, true) as { task?: string; lease: string; instructions: string };
   const { model, effort } = GPT_TIERS[tier];
-  let issues = "";
+  let issues = "", lastText = "";
   try {
     // Image requests already contain their authorized product/reference snapshot. Never treat
     // a doc_id typed into the user's advertising brief as permission to read a service-role document.
@@ -53,6 +53,7 @@ export async function runGptJob(jobId: string, owner: Owner, tier: GptTier) {
     for (let attempt = 0; attempt < 2; attempt++) {
       const text = await generateContentText({ model, effort, maxTokens: 32_000, timeoutMs: 600_000, cachedPrefix: docs ? `${PREFACE}\n\n# 붙인 문서\n${docs}` : PREFACE,
         prompt: `# 작업 카드\n${claimed.instructions}${issues ? `\n\n## 지난 답에서 OS가 돌려준 고칠 점 (고쳐서 다시 답합니다)\n${issues}` : ""}` });
+      lastText = text;
       let result: unknown;
       try { result = unwrap(JSON.parse(text)); } catch { issues = "JSON 객체 하나로만 답해 주세요."; continue; }
       if (!result || typeof result !== "object" || Array.isArray(result)) { issues = "result는 JSON 객체여야 해요."; continue; }
@@ -63,7 +64,7 @@ export async function runGptJob(jobId: string, owner: Owner, tier: GptTier) {
   } catch (error) {
     const reason = error instanceof ApiError ? error.message : "GPT가 끝내지 못했어요. 다시 만들어 주세요.";
     // A job the OS already closed (its input moved on) has no lease left to fail.
-    await failStaffJob(agent, { action: "fail", jobId, lease: claimed.lease, reason: reason.slice(0, 1000) }).catch(() => undefined);
+    await failStaffJob(agent, { action: "fail", jobId, lease: claimed.lease, reason: reason.slice(0, 1000) }, error instanceof ApiError && error.code === "GPT_FORMAT" ? { lastAnswer: lastText } : undefined).catch(() => undefined);
     throw error;
   }
 }

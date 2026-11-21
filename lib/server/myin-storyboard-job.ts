@@ -4,7 +4,7 @@ import { ApiError } from "@/lib/http";
 import { diagramCatalogCardSection, type DiagramCatalog } from "@/lib/diagram-catalog";
 import { anchorMyinCues, checkMyinStoryboard, MYIN_SCENE_TYPES, myinPhotoFetchUrl, myinPhotoFolders } from "@/lib/myin-storyboard";
 import { checkShortStoryboard, SHORT_DIAGRAM_SHARE, SHORT_LINE_MAX_PX, SHORT_PERSONA, shortDiagramList, type ShortDiagram } from "@/lib/myin-short-storyboard";
-import { checkWebShort, WEB_SUB_MAX, webShortBoard, webShortPhotos, webShortSceneList } from "@/lib/web-short-storyboard";
+import { checkWebShort, WEB_SUB_MAX, webShortBoard, webShortPhotos, webShortResultShape, webShortSceneList } from "@/lib/web-short-storyboard";
 
 // 마이인 v13 stage 2: the storyboard as a staff-AI job (method B). The card points at Logan's manual and spec documents in the
 // OS (single source) instead of restating them, and carries the frozen transcription the cues must be copied from.
@@ -339,7 +339,7 @@ result = { "storyboard": { title, scenes: [...], subtitles: [...] }, "assets": [
 
 /** The web short result, checked and timed for the renderer, in the short result's shape for the ③ panel. */
 export function checkWebShortResult(value: unknown, input: Parameters<typeof checkWebShort>[1]) {
-  const parsed = shortResultSchema.safeParse(value);
+  const parsed = shortResultSchema.safeParse(webShortResultShape(value));
   if (!parsed.success) throw new ApiError(422, "MYIN_STORYBOARD_INVALID", `제출 형식을 확인해 주세요: ${parsed.error.issues.slice(0, 8).map((issue) => `${issue.path.join(".")} ${issue.message}`).join(" / ")}`);
   const checked = checkWebShort(webShortBoard(parsed.data), input);
   if (checked.issues.length || !checked.story) throw new ApiError(422, "MYIN_STORYBOARD_ISSUES", `기획표 검사에서 걸린 곳 ${checked.issues.length}개: ${checked.issues.join(" / ")}`);

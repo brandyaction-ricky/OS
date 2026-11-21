@@ -1034,11 +1034,12 @@ async function completeScriptJob(agent: RequestActor, job: OsRecord, m: JobMeta,
   return { done: true, ...saved, next: "담당 직원이 ② 원고 화면에서 읽고 확인한 뒤 대표 최종 승인으로 넘깁니다." };
 }
 
-export async function failStaffJob(agent: RequestActor, input: Extract<z.infer<typeof staffJobWorkerSchema>, { action: "fail" }>) {
+/** lastAnswer: a GPT 초안 that never fit the card keeps its last answer on the job (OS record, not logs) so the shape can be fixed from it. */
+export async function failStaffJob(agent: RequestActor, input: Extract<z.infer<typeof staffJobWorkerSchema>, { action: "fail" }>, extra?: { lastAnswer?: string }) {
   const job = await ownJob(agent, input.jobId);
   const m = liveLease(job, input.lease);
   if (m.task === "image-creative" && !leaseLive(m.lease)) throw new ApiError(409, "STAFF_AI_JOB_LEASE", "작업 시간이 지났어요. 목록에서 다시 가져와 주세요.");
-  await saveJob(job, { status: "blocked", stage: "failed", metadata: { ...m, lease: undefined, failReason: input.reason } });
+  await saveJob(job, { status: "blocked", stage: "failed", metadata: { ...m, lease: undefined, failReason: input.reason, ...(extra?.lastAnswer ? { lastAnswer: extra.lastAnswer.slice(0, 8000) } : {}) } });
   return { closed: true };
 }
 
