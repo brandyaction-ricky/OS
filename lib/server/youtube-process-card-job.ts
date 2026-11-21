@@ -15,7 +15,7 @@ import { readStages, writeStage } from "./youtube-process-stages";
 type Supabase = RequestActor["supabase"];
 export const CARD_CANON_TITLE = "카드뉴스 정본";
 export const VOICE_CANON_TITLE = "원고 말투 정본";
-/** 웹툰형's people: the three 동기, the 강점 낙서 and how one 화 runs. */
+/** 웹툰형's people: the three 동기, the 강점 캐릭터 (each person's battery) and how one 화 runs. */
 export const WEBTOON_CAST_TITLE = "웹툰형 캐릭터 설정";
 const DRAFTS_MAX = 12;
 export const cardFormatsSchema = z.array(z.enum(CARD_FORMAT_IDS as [CardFormatId, ...CardFormatId[]])).min(1).max(3)
@@ -53,13 +53,27 @@ const NOTES: Partial<Record<CardSlide["type"], string>> = { item: "번호는 OS�
   compare: "두 쪽을 같은 기준으로, 왼쪽은 흔한 쪽 · 오른쪽은 권하는 쪽", step: "한 장에 한 단계, 할 일을 행동으로 · 단계 번호와 흐름은 OS가 그려요",
   map: "구조도의 가지는 뒤 요소 장의 이름이 그대로 들어가요", part: "요소 이름은 구조도 가지에 그대로 보여요",
   toon: "웹툰 표지 한 장이 한 화의 시작이에요. 한 화에 메시지를 다 담지 않습니다 — 이야기가 납득되도록 충분히 쌓고, 칸 사이에 표지를 더 넣어 세 화(게시물 3개 한 세트)로 나눕니다(1 · 2화 끝은 다음 화가 궁금한 장면, 깨달음과 오늘의 한 줄은 3화). episode는 「1화」「2화」처럼, scene은 표지 그림(주인공 한 명이 크게, 아래쪽 1/3은 제목이 앉도록 비워 둠)",
-  panel: "scene은 PD가 「AI로 그리기」에 넣을 그림 설명(글자 없이, 누가 어디서 무엇을 하는지 · 표정 · 배경 · talk를 말하는 사람은 왼쪽, reply를 말하는 사람은 오른쪽), cast는 나오는 사람(서윤 · 도현 · 한결 중 + 낙서), 말은 칸마다 한두 개만 · think는 입 밖에 못 낸 속마음(낙서가 나오는 칸에 잘 맞아요) · 외침과 효과음은 한 화에 두세 번 · 효과음은 「빼꼼」「쿵」처럼 짧은 소리" };
-/** 웹툰형 is a story first (대표 · 직원 2026-11-04): drafts read like a lecture, rushed the message, or only made sense to whoever knew the setting. */
+  panel: "scene은 PD가 「AI로 그리기」에 넣을 그림 설명(글자 없이, 누가 어디서 무엇을 하는지 · 표정 · 배경 · talk를 말하는 사람은 왼쪽, reply를 말하는 사람은 오른쪽), cast는 나오는 사람(서윤 · 도현 · 한결 중, 배터리 캐릭터가 나오면 「낙서」도), 말은 칸마다 한두 개만 · think는 입 밖에 못 낸 속마음(캐릭터가 나오는 칸에 잘 맞아요) · 외침과 효과음은 한 화에 두세 번 · 효과음은 「빼꼼」「쿵」처럼 짧은 소리" };
+/** 웹툰형 is a story first (대표 · 직원 2026-11-04): drafts read like a lecture, rushed the message, or only made sense to whoever knew the setting.
+ * 2026-11-05: narration explained the world where a reference toon shows it, so less narration, name tags and how the jokes work.
+ * 2026-11-06: not everyone doodles, so each 강점 캐릭터 is now its person's battery and only 한결 sees other people's.
+ * 2026-11-08: a reference toon's panels carry one line each, read face-first or line-first, and end a story on a wordless panel of hands or things.
+ * Same day: hit webtoons' tropes stay in — pent-up frustration in 1 · 2화, release (the charge) in 3화, then a growth panel.
+ * Same day: the company is a marketing agency + marketing school, a story is one real work case told whole (not one person's introduction), and each case teaches one real work principle. */
 export const TOON_STORY = `\n\n## 웹툰형 — 이야기로 씁니다
-- 진짜 웹툰처럼 사건 · 반응 · 다음 화의 궁금증으로 끌고 갑니다. 우리 메시지를 급하게 넣지 않습니다. 1 · 2화의 해설 · 대사에 「강점」「원함」「마음이 ~해서다」 같은 설명을 쓰지 않고, 메시지는 3화의 깨달음 한 줄과 오늘의 한 줄에만 둡니다.
+- 세계는 이렇습니다. 사람마다 곁에 사는 작은 캐릭터가 그 사람의 배터리라서, 원하는 일을 하면 몸 속이 차오르고 못 하면 닳습니다. 아무도 자기 것은 못 보고 한결만 남의 것을 봅니다. 배터리는 scene에 눈금으로 적고(「별 캐릭터의 몸 속이 아래에서 5%만 파랗게 차 있고 바닥에 축 늘어짐」), 숫자(「2%」)는 그림이 아니라 효과음으로 씁니다.
+- 회사는 마케팅 대행과 마케팅 교육을 함께 하는 회사입니다. 이야기 한 편은 그 회사에서 실제로 일어날 법한 사건 하나(클라이언트 의뢰 · 광고 성과 · 사고 수습 · 경쟁 PT · 강의 모집 같은 일)이고, 처음부터 끝까지 완결됩니다. 인물을 소개하려고 이야기를 짜지 않습니다. 한 편에 배터리가 드러나는 사람이 여럿일 수도, 새 이름이 하나도 안 생길 수도 있습니다. 탄탄함 · 자연스러움 · 공감이 인물 소개보다 먼저입니다.
+- 실무 지식을 하나 녹입니다. 한 편에 현업자가 「맞아」 할 진짜 실무 원리 하나(원본 · 정본에 있는 것)를 담습니다. 업계가 흔히 하는 오답이 안 통하는 걸 먼저 보여 주고, 사이다 뒤에 신입의 초보 질문에 주인공이 두 줄로 답하게 합니다(해설 상자로 강의하지 않음). 튀는 말 뒤에는 화면 · 표 한 장으로 근거를, 인정은 남의 행동으로 보여 줍니다. 숫자는 지어낸 것이고 특정 플랫폼의 실제 기준처럼 쓰지 않습니다.
+- 잘 되는 웹툰의 전형을 살립니다. 1 · 2화는 사건이 꼬이고 사람들이 억눌리고 닳는 고구마를 독자가 답답할 만큼 쌓고, 3화에서 억눌린 걸 뚫는 사이다가 곧 충전 순간이 됩니다(누구의 배터리가 차는지는 이야기가 정합니다). 충전 뒤에는 차오른 사람이 확 달라지는 성장 컷을 하나 둡니다(일을 해내는 모습 · 주변의 놀란 반응). 판타지는 배터리 하나뿐이고 사건 · 직무 · 말투는 실제 회사 그대로, 사이다는 폭력 · 모욕 없이 회사에서 할 수 있는 말 · 선택 · 결과로 씁니다. 칭찬 · 승진 · 성과 자체는 충전이 아니라 성장의 결과입니다.
+- 진짜 웹툰처럼 사건 · 반응 · 다음 화의 궁금증으로 끌고 갑니다. 우리 메시지를 급하게 넣지 않습니다. 1 · 2화의 해설 · 대사에 「강점」「원함」「마음이 ~해서다」 같은 설명을 쓰지 않고, 메시지는 3화의 깨달음 한 줄에만 둡니다. 3화의 오늘의 한 줄은 「한결의 메모장」으로, 그 편의 실무 원리를 한 줄로 씁니다. 3화 끝은 캐릭터나 주인공의 짧은 혼잣말과 말 없는 컷 하나로 잔잔하게 닫습니다.
 - 오그라들지 않게 씁니다. 교훈을 정리하는 해설, 감동을 강요하는 말, 자기계발 글 같은 문장을 쓰지 않습니다. 깨달음도 주인공이 그 자리에서 할 법한 짧은 말로 씁니다.
-- 웹툰 클리셰를 적극적으로 씁니다. 사건 한가운데서 여는 콜드 오픈(회상은 한 번만), 꼬마(SD) 개그 컷 · 하얗게 굳기 · 영혼 빠져나가기, 땀방울 · 속도선, 「빼꼼」 등장, 진지한 장면을 깨는 낙서, 오해와 엇갈림, 화 끝 반전 한 컷, 3화 끝 다음 주인공을 살짝 보여 주는 쿠키 컷. 한 화에 두세 개씩.
-- 처음 보는 사람 눈으로 다시 읽습니다. 다 쓴 뒤 장마다 「이 장과 앞 장만 본 사람이 무슨 일인지 바로 아는가」를 묻고 고칩니다. 그림에서 잘 안 보이는 것을 해설로 말하지 않기, 왜 나오는지 모를 장면을 늘어놓지 않기(인물은 소개하는 장에서), 회상 안의 회상과 뜻이 둘로 읽히는 말 피하기, 보여 준 적 없는 설정을 갑자기 쓰지 않기(낙서 이름은 주인공이 그 자리에서 지어 줌), 프롤로그 · 앞 화와 이어지게(이미 만난 낙서를 처음 보듯 놀라지 않기).`;
+- 해설은 한 화에 두세 줄까지만 씁니다(이름표는 세지 않음). 「한결만 남의 배터리가 보인다」 같은 설정을 해설로 설명하지 않고, 한결이 「…2%?」 중얼거리면 옆자리가 「뭐가요?」 묻는 장면처럼 보여 줍니다. 이야기는 대사 · 반응 · 효과음으로 끌고 갑니다.
+- 인물과 캐릭터가 이야기 한 편에서 처음 나올 때마다 해설 상자에 이름표를 답니다(「서윤 · 교육운영팀」, 이름이 아직 없는 캐릭터는 「서윤의 배터리」). 앞 이야기에서 나왔어도 다시 답니다.
+- 웃음은 이렇게 만듭니다. 현실의 아주 작은 일(부탁 한마디, 질문 하나)에 캐릭터가 크게 반응하고, 겉은 태연한데 캐릭터는 바닥에 녹아 있는 대비를 씁니다. 배터리 말(저전력 모드 · 0% · 고속 충전 · 보조배터리)과 흔한 말(「일이 꼬였다」)을 캐릭터가 몸으로 그대로 보여 주고, 캐릭터가 바라는 대로 밀어붙이다 사고를 쳐서 독자가 주인공보다 먼저 사정을 알게 합니다.
+- 웹툰 클리셰를 적극적으로 씁니다. 사건 한가운데서 여는 콜드 오픈(회상은 한 번만), 꼬마(SD) 개그 컷 · 하얗게 굳기 · 영혼 빠져나가기, 땀방울 · 속도선, 「빼꼼」 등장, 진지한 장면을 깨는 캐릭터, 오해와 엇갈림, 같은 외침을 세 컷 되풀이하기, 화 끝 반전 한 컷, 3화 끝 다음 이야기의 사람을 살짝 보여 주는 쿠키 컷. 한 화에 두세 개씩.
+- 한 장에 글은 한 덩이(말 한두 개)만 두고 나머지는 그림과 흰 여백으로 둡니다. 감정이 큰 장은 얼굴을 먼저 보고 아래의 talk를 읽게, 반전 · 질문 장은 위의 narration · think를 먼저 읽고 얼굴이 대답하게 씁니다. 겉과 속이 다를 때는 사람은 웃고 곁의 캐릭터가 바닥에 녹아 있게 그립니다.
+- 화 끝은 1화가 질문 하나, 2화가 독자만 아는 불안이나 틀린 결심, 3화가 짧은 말 한 줄 뒤 글자 없는 장 하나(얼굴 대신 손 · 물건 · 하늘)입니다. 큰 순간 뒤에는 해설 대신 평범한 점심이나 짧은 되물음으로 온도를 낮추고, 같은 물건을 1화(지나감) · 2화(쓰임) · 3화(뜻이 달라짐)에 세 번 보여 줍니다.
+- 처음 보는 사람 눈으로 다시 읽습니다. 다 쓴 뒤 장마다 「이 장과 앞 장만 본 사람이 무슨 일인지 바로 아는가」를 묻고 고칩니다. 그림에서 잘 안 보이는 것을 해설로 말하지 않기, 왜 나오는지 모를 장면을 늘어놓지 않기(인물은 소개하는 장에서), 회상 안의 회상과 뜻이 둘로 읽히는 말 피하기, 보여 준 적 없는 설정을 갑자기 쓰지 않기(캐릭터 이름은 한결이 그 자리에서 붙여 줌), 프롤로그 · 앞 화와 이어지게(이미 만난 캐릭터를 처음 보듯 놀라지 않기).`;
 
 /** Each requested format's slides and fields, written from CARD_FORMATS (the numbers live only there). */
 export function cardFormatSpec(formats: CardFormatId[]) {
@@ -90,7 +104,7 @@ export function cardJobCard(input: { project: Pick<YpProject, "title" | "yp">; c
 ## 먼저 끝까지 열 문서 (doc_id로 엽니다)
 ${input.canon ? `- ${CARD_CANON_TITLE} (doc_id: ${input.canon.id}) — 이 정본을 그대로 따릅니다.` : `- search_knowledge로 「${CARD_CANON_TITLE}」을 찾아 엽니다.`} 열지 못하면 쓰지 말고 fail로 끝냅니다.
 ${input.voice.map(doc => `- ${doc.title} (doc_id: ${doc.id}) — 문장과 목소리`).join("\n")}${formats.includes("webtoon")
-  ? `\n- ${input.cast ? `${input.cast.title} (doc_id: ${input.cast.id})` : `search_knowledge로 찾는 「${WEBTOON_CAST_TITLE}」`} — 웹툰형의 주인공 셋 · 강점 낙서 · 한 화 구성을 그대로 따릅니다` : ""}
+  ? `\n- ${input.cast ? `${input.cast.title} (doc_id: ${input.cast.id})` : `search_knowledge로 찾는 「${WEBTOON_CAST_TITLE}」`} — 웹툰형의 주인공 셋 · 강점 캐릭터(배터리) · 한 화 구성을 그대로 따릅니다` : ""}
 
 ## 포맷별 장과 칸 (OS가 공백 포함 글자 수를 셉니다)
 ${cardFormatSpec(formats)}
