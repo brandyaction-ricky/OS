@@ -109,7 +109,7 @@ export function checkWebShort(value: unknown, input: { words: Words; script: str
   if (accent && !lines.some((l) => l.includes(accent))) issues.push(`title.accent 「${accent}」는 한 줄 안에 그대로 있는 말이에요.`);
 
   const scenes = (Array.isArray(raw.scenes) ? raw.scenes : []).filter((sc): sc is Record<string, unknown> => Boolean(sc) && typeof sc === "object");
-  if (scenes.length < 3 || scenes.length > 30) issues.push(`장면은 3~30개예요(지금 ${scenes.length}개).`);
+  if (scenes.length < 3 || scenes.length > 30) issues.push(`장면은 3~30개예요(지금 ${scenes.length}개)${scenes.length ? "" : ` — storyboard.scenes에 장면 객체 목록([{ "type", "at", … }])을 넣어요(지금 storyboard 칸: ${Object.keys(raw).join(", ") || "없음"})`}.`);
   scenes.forEach((sc, n) => {
     const where = `[장면 ${n + 1}]`, spec = WEB_SHORT_SCENES[String(sc.type)];
     if (!spec) { issues.push(`${where} "${String(sc.type)}"는 없는 장면 종류예요. 목록에 있는 것만 써요.`); return; }
@@ -234,3 +234,17 @@ export const webShortSpoken = (paragraphs: string[]) => paragraphs.join(" ").rep
 /** Photo file names a web storyboard uses (for the assets check and the render PC's download). */
 export const webShortPhotos = (story: { scenes: Record<string, unknown>[] }) => [...new Set(story.scenes.flatMap((sc) =>
   [sc.photo, (sc.top as { photo?: unknown } | undefined)?.photo, (sc.bottom as { photo?: unknown } | undefined)?.photo].filter((p): p is string => typeof p === "string")))];
+
+/**
+ * The storyboard as an AI may hand it (first GPT runs 11-21: 「장면 0개」 with a good title): scenes or subtitles beside the storyboard instead
+ * of in it, a list sent as a JSON string, or numbered keys instead of a list — read as the list they mean.
+ */
+export function webShortBoard(result: { storyboard: Record<string, unknown> } & Record<string, unknown>) {
+  const list = (value: unknown): unknown => {
+    if (typeof value === "string") { try { return list(JSON.parse(value)); } catch { return value; } }
+    return value && typeof value === "object" && !Array.isArray(value) ? Object.values(value) : value;
+  };
+  const board: Record<string, unknown> = { ...result.storyboard };
+  for (const key of ["scenes", "subtitles"]) if (!Array.isArray(board[key])) board[key] = list(board[key] ?? result[key]);
+  return board;
+}

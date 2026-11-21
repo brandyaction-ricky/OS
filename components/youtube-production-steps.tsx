@@ -257,13 +257,14 @@ export function WaitBar({ minutes, typical }: { minutes: number; typical: number
 
 /** 화면 설계 by the requester's own AI: send, then the job's state in words (대기 · 처리 중 · 확인 필요 · 못 함). */
 /** [내 AI에 보내기] and where the job stands; shared by ② 원고 and ③ 화면 설계. */
-export function StaffDesign({ status, busy, onSend, typical }: { status: StaffJobStatus | null; busy: boolean; onSend: () => void; /** usual minutes, for the wait bar */ typical?: number }) {
+export function StaffDesign({ status, busy, onSend, typical, gpt }: { status: StaffJobStatus | null; busy: boolean; onSend: () => void; /** usual minutes, for the wait bar */ typical?: number;
+  /** 롱폼에서 나온 숏폼: the OS's GPT writes it (company credit), so the button asks GPT again instead of the staff AI. */ gpt?: boolean }) {
   const job = status?.job;
   const lastSeen = sinceIso(status?.myAi.lastUsedAt ?? null);
   const connected = (status?.myAi.keys ?? 0) > 0;
   const open = job && ["backlog", "active"].includes(job.status);
   const send = <div className="yt-actions">
-    <button type="button" className="primary-button" disabled={busy} onClick={onSend}>{busy ? "보내는 중…" : job?.status === "blocked" ? "내 AI에 다시 보내기" : "내 AI에 보내기"}</button><CostTag kind="ai" />
+    <button type="button" className="primary-button" disabled={busy} onClick={onSend}>{busy ? "보내는 중…" : gpt ? (job?.status === "blocked" ? "GPT로 다시 만들기" : "GPT로 만들기") : job?.status === "blocked" ? "내 AI에 다시 보내기" : "내 AI에 보내기"}</button><CostTag kind={gpt ? "paid" : "ai"} />
   </div>;
   return <>
     {!open ? send : null}

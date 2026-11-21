@@ -4,7 +4,7 @@ import { ApiError } from "@/lib/http";
 import { diagramCatalogCardSection, type DiagramCatalog } from "@/lib/diagram-catalog";
 import { anchorMyinCues, checkMyinStoryboard, MYIN_SCENE_TYPES, myinPhotoFetchUrl, myinPhotoFolders } from "@/lib/myin-storyboard";
 import { checkShortStoryboard, SHORT_DIAGRAM_SHARE, SHORT_LINE_MAX_PX, SHORT_PERSONA, shortDiagramList, type ShortDiagram } from "@/lib/myin-short-storyboard";
-import { checkWebShort, WEB_SUB_MAX, webShortPhotos, webShortSceneList } from "@/lib/web-short-storyboard";
+import { checkWebShort, WEB_SUB_MAX, webShortBoard, webShortPhotos, webShortSceneList } from "@/lib/web-short-storyboard";
 
 // 마이인 v13 stage 2: the storyboard as a staff-AI job (method B). The card points at Logan's manual and spec documents in the
 // OS (single source) instead of restating them, and carries the frozen transcription the cues must be copied from.
@@ -341,7 +341,7 @@ result = { "storyboard": { title, scenes: [...], subtitles: [...] }, "assets": [
 export function checkWebShortResult(value: unknown, input: Parameters<typeof checkWebShort>[1]) {
   const parsed = shortResultSchema.safeParse(value);
   if (!parsed.success) throw new ApiError(422, "MYIN_STORYBOARD_INVALID", `제출 형식을 확인해 주세요: ${parsed.error.issues.slice(0, 8).map((issue) => `${issue.path.join(".")} ${issue.message}`).join(" / ")}`);
-  const checked = checkWebShort(parsed.data.storyboard, input);
+  const checked = checkWebShort(webShortBoard(parsed.data), input);
   if (checked.issues.length || !checked.story) throw new ApiError(422, "MYIN_STORYBOARD_ISSUES", `기획표 검사에서 걸린 곳 ${checked.issues.length}개: ${checked.issues.join(" / ")}`);
   const unlisted = webShortPhotos(checked.story).filter((file) => !parsed.data.assets.some((a) => a.file === file));
   return { storyboard: checked.story as unknown as Record<string, unknown>, assets: parsed.data.assets, fuzzy: checked.fuzzy,

@@ -373,7 +373,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
         body = <>{gate || carry ? <p className="yt-note">{run.review!.note}</p> : null}
           {other ? <div className="yt-run"><div className="yt-run-head"><span className="status-pill" data-status={other.status === "active" ? "scheduled" : "waiting"}>{other.name}님 AI · {other.status === "active" ? "쓰는 중" : "가져가기를 기다리는 중"}</span>
             {other.status === "active" && other.claimedAt ? <WaitBar minutes={Math.floor((Date.now() - Date.parse(other.claimedAt)) / 60_000)} typical={storyboardMinutes(run)} /> : null}</div></div>
-            : <StaffDesign status={job} busy={busy === "send"} typical={storyboardMinutes(run)} onSend={() => void act("send", () => post("/ai-jobs", "POST", { task: "storyboard", sourceId }))} />}</>;
+            : <StaffDesign status={job} busy={busy === "send"} typical={storyboardMinutes(run)} gpt={recycled} onSend={() => void act("send", () => recycled ? post("/myin", "PATCH", { action: "storyboard_gpt", runId: run.id }) : post("/ai-jobs", "POST", { task: "storyboard", sourceId }))} />}</>;
       }
     } else if (stepNo === 3) {
       if (run.stage === "clips_review" && run.stills) {
@@ -451,14 +451,15 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       {run?.words ? <MyinSubtitleEdit key={run.id} runId={run.id} token={accessToken} stage={run.stage} onFinal={() => act("final", () => post("/myin", "PATCH", { action: "final", runId: run.id }))} /> : null}
     </Step>
 
-    <Step index={1} state={step2} title={autoMode ? "장면 기획표 (내 AI → OS 검사 → 자동 확인)" : "장면 기획표 (내 AI → 로건, 유쓰 확인)"} idBase="myin-step">
+    <Step index={1} state={step2} title={recycled ? "장면 기획표 (GPT → OS 검사 → 자동 확인)" : autoMode ? "장면 기획표 (내 AI → OS 검사 → 자동 확인)" : "장면 기획표 (내 AI → 로건, 유쓰 확인)"} idBase="myin-step">
       {!run?.words ? <p>받아쓰기·자막이 끝나면 내 AI에 보낼 수 있습니다.</p> : null}
       {run?.stage === "words_ready" ? <>
         {run.review?.decision === "revise" ? <div className="yt-note yt-warn"><strong>{run.review.name === "렌더 전 관문" ? "렌더 전 관문 · 자동 수정 요청" : run.review.name === "원고 고친 곳" ? "원고를 고친 곳만 내 AI에게" : "로건, 유쓰 수정 요청"} · {when(run.review.at)}</strong><p>{run.review.note}</p>
           {run.review.name === "원고 고친 곳" ? <small>나머지 장면은 전 작업의 기획표를 그대로 써요. 새 받아쓰기에서 문구를 못 찾은 장면만 고쳐요.</small> : null}</div> : null}
-        <p>{short ? "내 AI가 숏폼 화면 규칙과 장면 목록으로 기획표를 써요. 첫 화면에는 확정한 헤드 카피가 떠요." : "내 AI가 영상 제작 매뉴얼·기획표 문서와 음악 창고 목록을 읽고, 위 받아쓰기의 철자 그대로 장면 기획표와 사진 후보를 만듭니다. OS가 문구 위치와 형식을 검사합니다."}</p>
-        {autoMode && run.review?.decision !== "revise" ? <p className="yt-note">받아쓰기가 끝나면 OS가 시작한 분의 내 AI에 기획표를 바로 보내요. OS 검사를 통과하면 저절로 확인돼 장면 그림으로 넘어가요(제작 설정 · 기획표 확인 「자동」).</p> : null}
-        <StaffDesign status={job} busy={busy === "send"} typical={storyboardMinutes(run)} onSend={() => void act("send", () => post("/ai-jobs", "POST", { task: "storyboard", sourceId }))} />
+        <p>{short ? `${recycled ? "GPT" : "내 AI"}가 숏폼 화면 규칙과 장면 목록으로 기획표를 써요. 첫 화면에는 확정한 헤드 카피가 떠요.` : "내 AI가 영상 제작 매뉴얼·기획표 문서와 음악 창고 목록을 읽고, 위 받아쓰기의 철자 그대로 장면 기획표와 사진 후보를 만듭니다. OS가 문구 위치와 형식을 검사합니다."}</p>
+        {recycled && run.review?.decision !== "revise" ? <p className="yt-note">받아쓰기가 끝나면 OS가 회사 GPT로 기획표를 바로 써요(사진은 롱폼에서 쓴 사진). OS 검사를 통과하면 저절로 확인돼 미리보기로 넘어가요. 미리보기는 롱폼의 「쇼츠 · 칼럼 › 한눈에 확인」에서 봐요.</p> : null}
+        {!recycled && autoMode && run.review?.decision !== "revise" ? <p className="yt-note">받아쓰기가 끝나면 OS가 시작한 분의 내 AI에 기획표를 바로 보내요. OS 검사를 통과하면 저절로 확인돼 장면 그림으로 넘어가요(제작 설정 · 기획표 확인 「자동」).</p> : null}
+        <StaffDesign status={job} busy={busy === "send"} typical={storyboardMinutes(run)} gpt={recycled} onSend={() => void act("send", () => recycled ? post("/myin", "PATCH", { action: "storyboard_gpt", runId: run.id }) : post("/ai-jobs", "POST", { task: "storyboard", sourceId }))} />
       </> : null}
       {board && run && run.stage !== "words_ready" ? <>
         <div className="yt-run"><div className="yt-run-head"><span className="status-pill" data-status={run.review?.decision === "confirmed" ? "approved" : "review"}>{run.review?.decision === "confirmed" ? "로건, 유쓰 확인 완료" : "로건, 유쓰 확인 대기"}</span>

@@ -13,7 +13,7 @@ import { YpSection, type YpPage } from "./youtube-process-frame";
  */
 interface Run { id: string; stage: string; status: string; clips?: { name: string }[]; final?: { at: string } | null }
 interface Outputs { clips: { label: string; url: string | null }[]; video: string | null }
-interface Row { id: string; title: string; seconds: number; project: YpProject | null; run: Run | null; video: string | null; key: string }
+interface Row { id: string; title: string; seconds: number; project: YpProject | null; run: Run | null; video: string | null; key: string; storyboard?: string }
 
 const WORKING = ["breath_pending", "voice_pending", "words_pending", "words_ready", "storyboard_review", "storyboard_confirmed", "prep_pending", "prep_ready", "clips_pending", "final_pending"];
 function stateOf(row: Row) {
@@ -25,6 +25,7 @@ function stateOf(row: Row) {
   if (run.stage === "clips_review") return "미리보기 나옴";
   if (run.stage === "final_ready") return "완성됨";
   if (run.stage === "final_pending") return "완성 영상 만드는 중";
+  if (run.stage === "words_ready") return row.storyboard === "blocked" ? "기획표 못 만듦" : "기획표 쓰는 중";
   return WORKING.includes(run.stage) ? "미리보기 만드는 중" : "만드는 중";
 }
 
@@ -59,7 +60,10 @@ export function RecycleOverview({ page, onColumn }: { page: YpPage; onColumn: ()
         video = out ? out.video ?? out.clips.find((clip) => clip.url)?.url ?? null : null;
         outputsFor.current[projectId] = { key, video };
       }
-      return { id: projectId, title: item.title.join(" "), seconds: item.seconds, project, run, video, key };
+      // At 받아쓰기 끝 the GPT storyboard is being written, or GPT could not finish it (then 「기획표 다시 만들기」).
+      const storyboard = run?.stage === "words_ready" ? await apiRequest<{ job: { status: string } | null }>(`/api/v1/content/youtube-automation/ai-jobs?sourceId=${projectId}&task=storyboard`, { token })
+        .then((reply) => reply.job?.status, () => undefined) : undefined;
+      return { id: projectId, title: item.title.join(" "), seconds: item.seconds, project, run, video, key, storyboard };
     }));
     setRows(next);
     // items is read through ids (the made list); the rest of the bundle changing does not reload the 숏폼.
@@ -67,7 +71,7 @@ export function RecycleOverview({ page, onColumn }: { page: YpPage; onColumn: ()
   }, [token, client, ids]);
   useEffect(() => { void load(); }, [load]);
   // While any 숏폼 is still being made, look again every 30 s (no new video addresses unless one changed).
-  const working = rows.some((row) => ["미리보기 만드는 중", "완성 영상 만드는 중", "만드는 중"].includes(stateOf(row)));
+  const working = rows.some((row) => ["기획표 쓰는 중", "미리보기 만드는 중", "완성 영상 만드는 중", "만드는 중"].includes(stateOf(row)));
   useEffect(() => { if (!working) return; const timer = window.setInterval(() => void load(), 30_000); return () => window.clearInterval(timer); }, [working, load]);
   useEffect(() => { client?.approvers().then((list) => { setApprovers(list); setTo((current) => current || list[0] || ""); }, () => undefined); }, [client]);
 
@@ -86,6 +90,12 @@ export function RecycleOverview({ page, onColumn }: { page: YpPage; onColumn: ()
       setMarks({}); setMemos({});
       await load();
     } catch (reason) { page.fail(reason); } finally { setBusy(""); }
+  };
+  const retryStoryboard = async (row: Row) => {
+    if (!token || !row.run) return;
+    setBusy(`sb:${row.id}`); page.setError("");
+    try { await apiRequest("/api/v1/content/youtube-automation/myin", { method: "PATCH", token, body: JSON.stringify({ action: "storyboard_gpt", runId: row.run.id }) }); await load(); }
+    catch (reason) { page.fail(reason); } finally { setBusy(""); }
   };
   const askConfirm = async () => {
     if (!client || !to) return;
@@ -110,10 +120,11 @@ export function RecycleOverview({ page, onColumn }: { page: YpPage; onColumn: ()
         return <div key={row.id} className="yp-rv-card">
           {row.video ? <video src={row.video} controls preload="metadata" className="yp-rv-video" aria-label={`${row.title} 영상`} /> : <div className="yp-rv-video yp-rv-wait">{state}</div>}
           <b className="yp-rv-title">{row.title}</b>
-          <span className="yp-muted">{row.seconds}초 · <span className={state === "멈춤 · 열어서 확인" ? "yp-warn-t" : ""}>{state}</span></span>
+          <span className="yp-muted">{row.seconds}초 · <span className={state === "멈춤 · 열어서 확인" || state === "기획표 못 만듦" ? "yp-warn-t" : ""}>{state}</span></span>
           {canMark ? <div className="yp-rv-acts">
             <button type="button" className={`yp-btn yp-sm${marks[row.id] === "ok" ? " yp-pri" : ""}`} aria-pressed={marks[row.id] === "ok"} onClick={() => mark(row.id, "ok")}>OK</button>
             <button type="button" className={`yp-btn yp-sm${marks[row.id] === "memo" ? " yp-pri" : ""}`} aria-pressed={marks[row.id] === "memo"} onClick={() => mark(row.id, "memo")}>메모</button></div> : null}
+          {state === "기획표 못 만듦" ? <button type="button" className="yp-btn yp-sm" disabled={Boolean(busy)} onClick={() => void retryStoryboard(row)}>{busy === `sb:${row.id}` ? "보내는 중…" : "기획표 다시 만들기 (GPT)"}</button> : null}
           {marks[row.id] === "memo" ? <textarea className="yp-in" rows={2} value={memos[row.id] ?? ""} placeholder="예) 3번째 장면 글자가 커요" aria-label={`${row.title} 메모`}
             onChange={(event) => setMemos((all) => ({ ...all, [row.id]: event.target.value }))} /> : null}
           <Link className="yp-muted" href={stepHref(3, row.id)}>숏폼 열기 →</Link>

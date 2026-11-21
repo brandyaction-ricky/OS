@@ -25,7 +25,7 @@ test("design values the templates read are all in theme.json", () => {
 });
 
 // ── the OS side: the staff AI's storyboard (phrases) → the renderer's story (seconds) ──
-import { checkWebShort, editWebShortTexts, webShortSceneList, webShortSpoken, webShortTextSlots } from "../lib/web-short-storyboard.ts";
+import { checkWebShort, editWebShortTexts, webShortBoard, webShortSceneList, webShortSpoken, webShortTextSlots } from "../lib/web-short-storyboard.ts";
 
 const said = "입사 3년차 마켓터가 회의에서 발표하고 있었어요. 팀장님 얼굴이 굳었어요. 메신저를 열었어요. 지금 진단해 보세요.";
 const words = said.split(" ").map((word, i) => [i * 0.5, i * 0.5 + 0.45, word]);
@@ -116,3 +116,14 @@ test("a web short also comes in the feed sizes 1:1 and 4:5: the renderer fits th
   const final = worker.slice(worker.indexOf("export async function processMyinFinal(")).split("\nexport ")[0];
   assert.match(final, /\["--format", size\]/); assert.match(final, /sizes: true/);
 });
+
+test("a storyboard handed in another shape is read as the list it means; none at all says which fields came", () => {
+  const scenes = [{ type: "opening", at: "a" }, { type: "photo", at: "b" }];
+  assert.deepEqual(webShortBoard({ storyboard: { title: {} }, scenes }).scenes, scenes, "scenes beside the storyboard");
+  assert.deepEqual(webShortBoard({ storyboard: { title: {}, scenes: JSON.stringify(scenes) } }).scenes, scenes, "a JSON string");
+  assert.deepEqual(webShortBoard({ storyboard: { title: {}, scenes: { 1: scenes[0], 2: scenes[1] } } }).scenes, scenes, "numbered keys");
+  assert.deepEqual(webShortBoard({ storyboard: { scenes, subtitles: ["x"] } }).subtitles, ["x"], "a good one is left as it is");
+  const { issues } = checkWebShort({ title: { lines: ["가"] }, beats: [] }, { words: [[0, 1, "가"]], script: "가", headCopy: "가", durationSeconds: 1, ad: false });
+  assert.match(issues.join(" / "), /지금 storyboard 칸: title, beats/);
+});
+
