@@ -92,5 +92,8 @@ test("a 숏폼 cut from a longform gets its storyboard from GPT every time it is
   const jobs = read("lib/server/youtube-ai-jobs.ts");
   assert.match(jobs, /photos: await myinRecyclePhotos\(myin\.run\)/, "the card lists the longform's photos");
   assert.match(jobs, /recycledWebShort\(checkWebShortResult\(/, "a photo not from the longform is sent back");
+  assert.match(jobs, /const queried = photos \? await fillQueryPhotos\(input\.result\) : null;/, "search words become photos the OS found (GPT cannot look photos up)");
+  assert.match(read("lib/server/myin-photo-candidates.ts"), /export async function myinPhotoForQuery\(query: string\)/);
+  assert.match(read("lib/server/myin-storyboard-job.ts"), /assets에 url · source · license 대신 query를 씁니다/);
 });
 
