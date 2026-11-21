@@ -2207,12 +2207,16 @@ async function latestRun(service: Service, sourceId: string) {
  * and spoken text, the PC that holds the voice file. Null when that voice is not on a render PC or not transcribed yet.
  */
 /** 롱폼에서 나온 숏폼: the photos its longform's run used (people and situations), the only ones its storyboard may pick. */
-export async function myinRecyclePhotos(run: Pick<MyinRun, "recycle">, service: Service = createServiceSupabase()) {
+export async function myinRecyclePhotos(run: Pick<MyinRun, "recycle" | "storyboard">, service: Service = createServiceSupabase()) {
   if (!run.recycle) return undefined;
   const { data } = await service.from("os_records").select("metadata").eq("id", run.recycle.from).maybeSingle();
   let assets: NonNullable<MyinRun["storyboard"]>["assets"] = [];
   try { assets = data ? parse(data as OsRecord).storyboard?.assets ?? [] : []; } catch { /* an unreadable longform run lends no photos */ }
-  return assets.filter((a) => a.kind !== "bgm").map(({ file, url, source, license, use }) => ({ file, url, source, license, use }));
+  // The photos the OS already found for this 숏폼 (an earlier storyboard) come too: a 관문 round keeps them instead of searching again
+  // (Unsplash's free key allows 50 calls an hour — 11-21 the second round of 4 shorts ran out).
+  const seen = new Set<string>();
+  return [...assets, ...(run.storyboard?.assets ?? [])].filter((a) => a.kind !== "bgm" && !seen.has(a.url) && seen.add(a.url))
+    .map(({ file, url, source, license, use }) => ({ file, url, source, license, use }));
 }
 
 export async function myinRecycleSource(service: Service, sourceId: string) {
