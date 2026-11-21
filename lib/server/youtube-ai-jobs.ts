@@ -183,20 +183,22 @@ async function openJobs(ownerId: string, sourceId?: string, task?: JobMeta["task
  * own AI takes it. An open job of the same kind for the same input is reused,
  * and one for older input is cancelled. The job is named after the adopted title so it reads the same as the screen.
  */
-/** 롱폼에서 나온 숏폼: assets GPT wrote as search words (query) get the photo the OS finds; one with nothing found goes back to GPT. */
-async function fillQueryPhotos(value: Record<string, unknown>) {
+/** 롱폼에서 나온 숏폼: assets GPT wrote as search words (query) get the photo the OS finds — first one this 숏폼 already has under the same
+ *  file (no search), then Unsplash · 위키미디어. One with nothing found leaves the list (its scene reads 「사진 자리」) and goes back to GPT. */
+async function fillQueryPhotos(value: Record<string, unknown>, known: RecyclePhoto[]) {
   const assets = Array.isArray(value.assets) ? value.assets as unknown[] : [];
   const found: string[] = [], issues: string[] = [];
   const filled = await Promise.all(assets.map(async (item) => {
     const a = item && typeof item === "object" ? item as Record<string, unknown> : null;
     if (!a || typeof a.query !== "string" || (typeof a.url === "string" && a.url)) return item;
-    const photo = await myinPhotoForQuery(a.query);
-    if (!photo) { issues.push(`사진 ${String(a.file ?? "")}: 「${a.query}」로 사진을 찾지 못했어요 — 다른 검색어로 써요.`); return item; }
+    const same = known.find((p) => p.file === a.file);
+    const photo = same ? { url: same.url, source: same.source, license: same.license } : await myinPhotoForQuery(a.query);
+    if (!photo) { issues.push(`사진 ${String(a.file ?? "")}: 「${a.query}」로 사진을 찾지 못했어요 — 다른 검색어로 써요.`); return null; }
     found.push(photo.url);
     const rest = { ...a }; delete rest.query;
     return { kind: "situations", use: String(a.file ?? "장면"), ...rest, ...photo };
   }));
-  return { result: { ...value, assets: filled }, found, issues };
+  return { result: { ...value, assets: filled.filter((item) => item !== null) }, found, issues };
 }
 
 /** 롱폼에서 나온 숏폼: every photo is its longform's or one the OS found, and every scene's photo is listed (no gray 사진 자리 left for later). */
@@ -1011,7 +1013,7 @@ export async function completeStaffJob(agent: RequestActor, input: Extract<z.inf
     const ad = myin.run.renderer === "web" ? await adBrief(myin.run.sourceId) : null;
     const photos = myin.run.renderer === "web" ? await myinRecyclePhotos(myin.run) : undefined;
     // 롱폼에서 나온 숏폼: photos GPT asked for by search words are found now (OS search), then checked like any other.
-    const queried = photos ? await fillQueryPhotos(input.result) : null;
+    const queried = photos ? await fillQueryPhotos(input.result, photos) : null;
     const checked = await keepIssues(job, m, () => myin.run.renderer === "web"
       ? recycledWebShort(checkWebShortResult(queried ? queried.result : input.result, { words: myin.words, script: webShortScript(myin.markdown), headCopy: myin.headCopy, durationSeconds: myin.run.words!.durationSeconds, ad: Boolean(ad) }),
         photos && [...photos, ...queried!.found.map((url) => ({ url }))], queried?.issues)
