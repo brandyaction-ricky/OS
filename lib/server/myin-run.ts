@@ -389,6 +389,17 @@ export async function reviewMyinStoryboard(actor: RequestActor, runId: string, d
   return presentMyinRun(await beginDraft(service, saved, parse(saved)));
 }
 
+/** 롱폼에서 나온 숏폼: its GPT storyboard asked again after GPT could not finish one (the run waits at 받아쓰기 끝). */
+export async function retryMyinGptStoryboard(actor: RequestActor, runId: string) {
+  const { record, run } = await visibleRun(actor, runId);
+  if (!run.recycle) throw new ApiError(409, "MYIN_NOT_RECYCLED", "롱폼에서 뽑은 숏폼만 GPT로 기획표를 다시 만들어요.");
+  if (record.stage !== "words_ready") throw new ApiError(409, "MYIN_NOT_AT_WORDS", "지금은 기획표를 다시 만들 차례가 아니에요.");
+  const { requestGptStoryboard } = await import("./youtube-gpt-jobs");
+  const job = await requestGptStoryboard(run.sourceId, gptStoryboardFor(run, record) ?? actor.id);
+  if (!job) throw new ApiError(503, "OPENAI_NOT_CONFIGURED", "OpenAI 연결이 아직 없어서 GPT로 만들 수 없어요.");
+  return { job };
+}
+
 /** ③ drafts go to `local`, ④ with the full video (once the drafts are confirmed) to `localFinish`. */
 function draftPlace(run: MyinRun, who: { ownerId: string; name: string }, place: "pc" | "local") {
   const field = run.clipsReview ? "localFinish" : "local";

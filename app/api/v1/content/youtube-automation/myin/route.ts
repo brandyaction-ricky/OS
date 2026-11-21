@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
-import { checkMyinVoice, confirmMyinClips, requestMyinTakes, createMyinRun, latestMyinRun, myinVoiceCheck, myinVoiceFixPlan, myinVoiceFixSchema, myinVoiceOnRenderPc, requestMyinVoiceFix, myinDownloads, myinEarlierStyles, myinRecord, myinSubtitles, myinSubtitleChangeSchema, saveMyinSubtitles, myinOurImageUpload, myinOutputs, myinPhotos, myinPreviewSheets, myinSoundState, requestMyinRedraw, myinWordsReport, reopenMyinMaterials, reviewMyinStoryboard, saveMyinOurImage, saveMyinSound, separateMyinPhoto, setMyinDraftPlace, setMyinSettings, setMyinScreenCheck, startMyinFinal, startMyinPrep } from "@/lib/server/myin-run";
+import { checkMyinVoice, confirmMyinClips, retryMyinGptStoryboard, requestMyinTakes, createMyinRun, latestMyinRun, myinVoiceCheck, myinVoiceFixPlan, myinVoiceFixSchema, myinVoiceOnRenderPc, requestMyinVoiceFix, myinDownloads, myinEarlierStyles, myinRecord, myinSubtitles, myinSubtitleChangeSchema, saveMyinSubtitles, myinOurImageUpload, myinOutputs, myinPhotos, myinPreviewSheets, myinSoundState, requestMyinRedraw, myinWordsReport, reopenMyinMaterials, reviewMyinStoryboard, saveMyinOurImage, saveMyinSound, separateMyinPhoto, setMyinDraftPlace, setMyinSettings, setMyinScreenCheck, startMyinFinal, startMyinPrep } from "@/lib/server/myin-run";
 import { findMyinPhotoCandidates, applyMyinPhotoCandidate } from "@/lib/server/myin-photo-candidates";
 import { readLocalRenderStatus } from "@/lib/server/youtube-render-pc";
 import { checkMyinScreens, myinScreenCheck } from "@/lib/server/myin-screen-check";
@@ -73,6 +73,7 @@ const patchSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("screen_check_auto"), runId: z.string().uuid(), on: z.boolean() }),
   z.object({ action: z.literal("place"), runId: z.string().uuid(), place: z.enum(["pc", "local"]) }),
   z.object({ action: z.literal("prepare"), runId: z.string().uuid() }),
+  z.object({ action: z.literal("storyboard_gpt"), runId: z.string().uuid() }),
   // 점검 시트 장면 의견 › 반영 (직원 요청 11-12): one 수정안 into the storyboard; force after the person saw the scene had changed.
   z.object({ action: z.literal("scene_apply"), runId: z.string().uuid(), noteId: z.string().uuid(), force: z.boolean().default(false) }),
   // 점검 시트 다시 그리기 (직원 요청 11-13): sheets his preview() drew, or a drawing that failed, drawn again on the video's computer.
@@ -117,6 +118,7 @@ export async function PATCH(request: Request) {
       : input.action === "place" ? { run: await setMyinDraftPlace(actor, input.runId, input.place) }
       : input.action === "settings" ? { run: await setMyinSettings(actor, input.runId, { place: input.place, screenCheck: input.screenCheck, ...(input.confirm ? { confirm: input.confirm } : {}) }) }
       : input.action === "clips_ok" ? { run: await confirmMyinClips(actor, input.runId, input.note, input.place) }
+      : input.action === "storyboard_gpt" ? await retryMyinGptStoryboard(actor, input.runId)
       // [다시 검사]: only someone who can read the run (myinScreenCheck checks it) asks GPT again.
       : input.action === "screen_check" ? await myinScreenCheck(actor, input.runId).then(() => checkMyinScreens(input.runId, input.tier)).then((stage) => ({ check: stage?.data ?? null }))
       : input.action === "final" ? { run: await startMyinFinal(actor, input.runId, input.sizes) }
