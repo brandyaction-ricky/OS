@@ -7,7 +7,7 @@ import { changedMaterials, type MyinMaterials } from "@/lib/myin-materials";
 import { myinStop } from "@/lib/myin-stop";
 import { planVoiceFix } from "@/lib/myin-voice-plan";
 import { applySubtitleEdits, subtitleIssues, subtitleLines, subtitleTextProblem } from "@/lib/myin-subtitles";
-import { applyMyinSoundPlan, MYIN_METAPHOR_TYPES, myinColumnMaterials, myinDriftPairs, myinOnlySoundChanged, myinTextPairs, myinPhotoFetchUrl, myinPhotoFolders, myinPrepPhotos, myinSceneStarts, myinSoundIssues, myinSoundPlan, myinCuesAsScript, myinStoryboardSchema, type MyinSoundPlan } from "@/lib/myin-storyboard";
+import { applyMyinSoundPlan, MYIN_METAPHOR_TYPES, myinColumnMaterials, myinDriftPairs, myinOnlySoundChanged, myinTextPairs, myinPhotoFetchUrl, myinPhotoFolders, myinPhotoCreditLines, myinPrepPhotos, myinSceneStarts, myinSoundIssues, myinSoundPlan, myinCuesAsScript, myinStoryboardSchema, type MyinSoundPlan } from "@/lib/myin-storyboard";
 import { diagramCatalogTypes } from "@/lib/diagram-catalog";
 import { checkMyinStory } from "./myin-storyboard-job";
 import type { OsRecord } from "@/lib/record-types";
@@ -265,7 +265,7 @@ export function presentMyinRun(record: OsRecord) {
     storyboard: run.storyboard ? { ...run.storyboard, path: undefined } : null, review: run.review ?? null,
     assetDecisions: Object.fromEntries(Object.entries(run.assets ?? {}).map(([file, value]) => [file, { decision: value.decision }])),
     ctaReady: run.cta ? `${run.cta.filter((c) => c.status === "ready").length}/${run.cta.length}` : null,
-    prepared: run.prepared ? { misses: run.prepared.misses, sheets: run.prepared.sheets.length, credits: run.prepared.credits, at: run.prepared.at,
+    prepared: run.prepared ? { misses: run.prepared.misses, sheets: run.prepared.sheets.length, credits: run.prepared.credits.length ? run.prepared.credits : myinPhotoCreditLines(run), at: run.prepared.at,
       redraw: run.prepared.redraw?.state ?? null, redrawnAt: run.prepared.drawn?.at ?? null, standIns: (run.prepared.standIns ?? []).filter((file) => !run.ours?.[file]),
       needsPerson: run.prepared.needsPerson ?? [] } : null,
     clips: run.clips ? run.clips.items.map(({ name, label }) => ({ name, label })) : null, clipsReview: run.clipsReview ?? null, sound: run.sound ?? null,
@@ -1551,7 +1551,7 @@ export async function completeMyinPrep(input: { runId: string; lease: string }, 
     } else sound = { report: "자동 선곡을 쓰지 않았어요. 선곡 결과에서 음악 말고 다른 칸도 바뀌어 있었어요. 음악은 기획표에 적힌 대로 깔립니다.", at };
   }
   // A listed photo replaced by ours is not used, so not credited; a candidate photo kept as ours brings its own credit.
-  const credits = [...(run.storyboard?.assets ?? []).filter((a) => run.assets?.[a.file]?.decision === "approved" && !run.ours?.[a.file]).map((a) => `${a.file} — ${a.source} · ${a.license} · ${a.url}`),
+  const credits = [...myinPhotoCreditLines(run),
     ...Object.entries(run.ours ?? {}).flatMap(([file, image]) => image.credit ? [`${file} — ${image.credit.source} · ${image.credit.license} · ${image.credit.url}`] : []),
     ...bundle.musicCredits.slice(0, 30)];
   const next: MyinRun = { ...run, storyboard, sound, attempts: 0, prepared: { path: prepBundlePath(record, run, input.lease), misses: bundle.misses.slice(0, 60),

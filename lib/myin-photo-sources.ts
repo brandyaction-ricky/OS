@@ -11,6 +11,8 @@ export interface MyinPhotoCandidate {
 export const PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const REF = "utm_source=brandyaction_os&utm_medium=referral";   // Unsplash attribution links (API guidelines)
 const withRef = (url: string) => `${url}${url.includes("?") ? "&" : "?"}${REF}`;
+/** The credit line Unsplash asks for (API guidelines · attribution): the photographer, linked to their profile, and Unsplash. */
+export const unsplashSource = (p: Pick<UnsplashPhoto, "user">) => `Photo by ${p.user.name.slice(0, 40)} (${withRef(p.user.links.html)}) on Unsplash`;
 const strip = (html: string) => html.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
 
 export type UnsplashPhoto = { id: string; width: number; height: number; urls: { small: string; raw: string }; links: { html: string; download_location: string };

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { fromUnsplash, fromWikimedia } from "../lib/myin-photo-sources.ts";
+import { fromUnsplash, fromWikimedia, unsplashSource } from "../lib/myin-photo-sources.ts";
 
 // 유쓰 요청 2/8 보완 (2026-11-03 · 대표: Unsplash + 위키미디어): 사진 후보 찾기, 이 장면만 바꾸기, a preview made before a photo changed.
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
@@ -37,7 +37,7 @@ test("a shared photo changes in one scene only unless all are chosen, and credit
   assert.match(separate, /rename\(story\.scenes\[scene - 1\]\)/, "only that scene's file name changes");
   assert.match(separate, /< 2\) return \{ file, run/, "a photo only one scene uses is changed in place");
   assert.match(separate, /run\.lease && Date\.parse\(run\.lease\.expiresAt\) > Date\.now\(\)\) throw/, "not while a job holds the storyboard");
-  assert.match(run, /!run\.ours\?\.\[a\.file\]\)\.map\(\(a\) => `\$\{a\.file\} — /, "a replaced listed photo is not credited");
+  assert.match(run, /const credits = \[\.\.\.myinPhotoCreditLines\(run\),/, "listed photos are credited by the shared rule (a replaced one is not: tests/myin-storyboard)");
   assert.match(run, /image\.credit \? \[`\$\{file\} — \$\{image\.credit\.source\}/, "a candidate photo brings its own credit");
   const panel = await read("components/myin-our-images.tsx");
   assert.match(panel, /shared\(photo\) && scene && !allScenes\[photo\.file\]/, "「이 장면만」 is the default for a shared photo");
@@ -51,4 +51,10 @@ test("a preview made before a photo changed cannot be confirmed; it is made agai
   const panel = await read("components/myin-v13-panel.tsx");
   assert.match(panel, /disabled=\{Boolean\(busy\) \|\| Boolean\(run\.clipsStale\?\.length\)\}/);
   assert.match(panel, /미리보기 다시 만들기/);
+});
+
+test("an Unsplash credit names the photographer with a referral link to their profile, and Unsplash (API guidelines)", () => {
+  const line = unsplashSource({ user: { name: "Kim Lee", links: { html: "https://unsplash.com/@kimlee" } } });
+  assert.equal(line, "Photo by Kim Lee (https://unsplash.com/@kimlee?utm_source=brandyaction_os&utm_medium=referral) on Unsplash");
+  assert.ok(unsplashSource({ user: { name: "x".repeat(90), links: { html: "https://unsplash.com/@" + "y".repeat(40) } } }).length <= 200, "fits the storyboard's 200-letter source");
 });
