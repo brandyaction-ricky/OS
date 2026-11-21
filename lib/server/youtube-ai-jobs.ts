@@ -16,6 +16,7 @@ import { checkScenePlan, SCENE_PLAN_JSON_SCHEMA, scenePlanPrompt, youtubeSceneRu
 import { checkPronunciation, pronunciationPrompt, PRONUNCIATION_JSON_SCHEMA } from "./youtube-voice-worker";
 import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
 import { columnMaterials, myinRecyclePhotos, myinRunWithWords, saveMyinStoryboard, storyboardJson } from "./myin-run";
+import { myinPhotoForQuery } from "./myin-photo-candidates";
 import { checkMyinStoryboardResult, checkShortStoryboardResult, checkWebShortResult, MYIN_CARD_DOCS, MYIN_CARD_REFERENCE_DOCS, myinStoryboardCard, myinStoryboardInputKey, SHORT_CARD_DOCS, shortStoryboardCard, WEB_SHORT_CARD_DOCS, webShortCard, recyclePhotoIssues, type RecyclePhoto } from "./myin-storyboard-job";
 import { myinCleanScript } from "@/lib/myin-script";
 import { webShortSpoken } from "@/lib/web-short-storyboard";
@@ -182,10 +183,26 @@ async function openJobs(ownerId: string, sourceId?: string, task?: JobMeta["task
  * own AI takes it. An open job of the same kind for the same input is reused,
  * and one for older input is cancelled. The job is named after the adopted title so it reads the same as the screen.
  */
-/** 롱폼에서 나온 숏폼: every photo is one its longform used and every scene's photo is listed (no gray 사진 자리 left for later). */
-function recycledWebShort<T extends ReturnType<typeof checkWebShortResult>>(checked: T, photos?: RecyclePhoto[]) {
+/** 롱폼에서 나온 숏폼: assets GPT wrote as search words (query) get the photo the OS finds; one with nothing found goes back to GPT. */
+async function fillQueryPhotos(value: Record<string, unknown>) {
+  const assets = Array.isArray(value.assets) ? value.assets as unknown[] : [];
+  const found: string[] = [], issues: string[] = [];
+  const filled = await Promise.all(assets.map(async (item) => {
+    const a = item && typeof item === "object" ? item as Record<string, unknown> : null;
+    if (!a || typeof a.query !== "string" || (typeof a.url === "string" && a.url)) return item;
+    const photo = await myinPhotoForQuery(a.query);
+    if (!photo) { issues.push(`사진 ${String(a.file ?? "")}: 「${a.query}」로 사진을 찾지 못했어요 — 다른 검색어로 써요.`); return item; }
+    found.push(photo.url);
+    const rest = { ...a }; delete rest.query;
+    return { kind: "situations", use: String(a.file ?? "장면"), ...rest, ...photo };
+  }));
+  return { result: { ...value, assets: filled }, found, issues };
+}
+
+/** 롱폼에서 나온 숏폼: every photo is its longform's or one the OS found, and every scene's photo is listed (no gray 사진 자리 left for later). */
+function recycledWebShort<T extends ReturnType<typeof checkWebShortResult>>(checked: T, photos?: Pick<RecyclePhoto, "url">[], notFound: string[] = []) {
   if (!photos) return checked;
-  const issues = [...recyclePhotoIssues(checked.assets, photos), ...checked.notes.filter((line) => line.startsWith("사진 자리:"))];
+  const issues = [...notFound, ...recyclePhotoIssues(checked.assets, photos), ...checked.notes.filter((line) => line.startsWith("사진 자리:"))];
   if (issues.length) throw new ApiError(422, "MYIN_STORYBOARD_ISSUES", `기획표 검사에서 걸린 곳 ${issues.length}개: ${issues.slice(0, 12).join(" / ")}`);
   return checked;
 }
@@ -993,8 +1010,11 @@ export async function completeStaffJob(agent: RequestActor, input: Extract<z.inf
     const catalogTypes = diagramCatalogTypes(await readDiagramCatalog());
     const ad = myin.run.renderer === "web" ? await adBrief(myin.run.sourceId) : null;
     const photos = myin.run.renderer === "web" ? await myinRecyclePhotos(myin.run) : undefined;
+    // 롱폼에서 나온 숏폼: photos GPT asked for by search words are found now (OS search), then checked like any other.
+    const queried = photos ? await fillQueryPhotos(input.result) : null;
     const checked = await keepIssues(job, m, () => myin.run.renderer === "web"
-      ? recycledWebShort(checkWebShortResult(input.result, { words: myin.words, script: webShortScript(myin.markdown), headCopy: myin.headCopy, durationSeconds: myin.run.words!.durationSeconds, ad: Boolean(ad) }), photos)
+      ? recycledWebShort(checkWebShortResult(queried ? queried.result : input.result, { words: myin.words, script: webShortScript(myin.markdown), headCopy: myin.headCopy, durationSeconds: myin.run.words!.durationSeconds, ad: Boolean(ad) }),
+        photos && [...photos, ...queried!.found.map((url) => ({ url }))], queried?.issues)
       : myin.run.layout === "short"
       ? checkShortStoryboardResult(input.result, { words: myin.words, speech: myin.speech, headCopy: myin.headCopy, durationSeconds: myin.run.words!.durationSeconds, diagrams: DIAGRAM_CATALOG })
       : checkMyinStoryboardResult(input.result, myin.words, catalogTypes, myin.speech));

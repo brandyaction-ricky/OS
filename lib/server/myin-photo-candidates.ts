@@ -39,6 +39,31 @@ export async function findMyinPhotoCandidates(query: string) {
   return { candidates: [...unsplash, ...wikimedia], missing };
 }
 
+/**
+ * 롱폼에서 나온 숏폼의 GPT 기획표 (대표 11-21): GPT cannot look photos up, so it writes search words and the OS finds the photo — the first
+ * portrait Unsplash photo (its download told, as the API asks), else the first Wikimedia photo that needs only a credit line. None = null.
+ */
+export async function myinPhotoForQuery(query: string): Promise<{ url: string; source: string; license: string } | null> {
+  const words = query.trim().slice(0, 100);
+  if (!words) return null;
+  if (unsplashKey()) {
+    const auth = { authorization: `Client-ID ${unsplashKey()}`, "accept-version": "v1" };
+    const page = await getJson(`https://api.unsplash.com/search/photos?${new URLSearchParams({ query: words, per_page: "1", orientation: "portrait", content_filter: "high" })}`, auth).catch(() => null);
+    const photo = (page?.results as UnsplashPhoto[] | undefined)?.[0];
+    if (photo) {
+      await getJson(photo.links.download_location, auth).catch(() => undefined);
+      return { url: `${photo.urls.raw}&w=2400&fm=jpg&q=85`, source: `Unsplash · ${photo.user.name}`, license: "Unsplash 라이선스" };
+    }
+  }
+  const page = await wikiQuery({ generator: "search", gsrsearch: `${words} filetype:bitmap`, gsrnamespace: "6", gsrlimit: "6", iiurlwidth: "2400" }).catch(() => null);
+  const pages = Object.values(((page?.query as { pages?: Record<string, WikiPage> })?.pages) ?? {}).sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+  for (const found of pages) {
+    const candidate = fromWikimedia(found), info = found.imageinfo?.[0];
+    if (candidate && info && !candidate.check) return { url: info.thumburl ?? info.url, source: `위키미디어 공용 · ${candidate.author}`, license: candidate.license };
+  }
+  return null;
+}
+
 /** The chosen candidate, looked up again by id: the address to fetch (2400 px wide) and its credit line. */
 async function resolve(provider: "unsplash" | "wikimedia", id: string) {
   if (provider === "unsplash") {
