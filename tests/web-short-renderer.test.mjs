@@ -17,6 +17,13 @@ test("every scene in the example storyboards has a template, and subtitles stay 
   }
 });
 
+test("a subtitle wider than the room left of the Shorts buttons gets a smaller type once the fonts are in", () => {
+  assert.match(engine, /const room = 2 \* \(T\.safe\.right - T\.frame\.w \/ 2\) - 4;/);
+  assert.match(engine, /\.then\(\(\) => \{ fitSubs\(\); tl\.time\(0\); window\.__ready = true; \}\)/, "measured after the fonts load, before the page says ready");
+  // the theme's subtitle box (centred) is the one a 14-letter line overflows: 11-21 real lines reached 890–905 with safe.right 888
+  assert.ok(theme.frame.w / 2 + theme.subtitle.width / 2 > theme.safe.right);
+});
+
 test("design values the templates read are all in theme.json", () => {
   for (const [, group, key] of engine.matchAll(/\bT\.(\w+)\.(\w+)/g)) assert.ok(theme[group] && key in theme[group], `theme.${group}.${key}`);
   for (const [, key] of engine.matchAll(/\bC\.(\w+)/g)) assert.ok(key in theme.colors, `colors.${key}`);

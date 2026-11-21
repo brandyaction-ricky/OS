@@ -321,8 +321,10 @@
   }
 
   // subtitles: one line each, shown from a little before the first word until the next line
+  const subEls = [];
   (story.subtitles ?? []).forEach(([a, b, text], i, all) => {
     const e = qa(mk("div", "sub", subs, null, { fontSize: `${T.type.subtitle}px`, fontWeight: T.subtitle.weight, background: T.subtitle.bg, borderRadius: `${T.subtitle.radius}px`, padding: T.subtitle.pad }), text, "sub");
+    subEls.push(e);
     e.textContent = text;
     tl.fromTo(e, { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.12, ease: "power2.out" }, Math.max(0, a - 0.05));
     const next = all[i + 1];
@@ -360,5 +362,15 @@
   window.__qaAll = (step = 0.1) => { const all = []; for (let t = 0; t <= story.duration; t += step) all.push(...window.__qa(+t.toFixed(2))); return all; };
   window.__seek = t => { tl.time(t); };
   window.__duration = story.duration;
-  document.fonts.ready.then(() => Promise.all(Object.keys(T.fonts.files).map(w => document.fonts.load(`${w} 50px ${T.fonts.family}`)))).then(() => { tl.time(0); window.__ready = true; });
+  // A long line (14 letters with its spaces) is wider than the room left of the Shorts buttons (11-21: 890–905 > safe.right):
+  // that line alone gets a smaller type, measured once the fonts are in.
+  const fitSubs = () => {
+    const room = 2 * (T.safe.right - T.frame.w / 2) - 4;
+    for (const e of subEls) {
+      if (e.offsetWidth <= room) continue;
+      const cs = getComputedStyle(e), pad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+      e.style.fontSize = `${Math.floor(T.type.subtitle * (room - pad) / (e.offsetWidth - pad))}px`;
+    }
+  };
+  document.fonts.ready.then(() => Promise.all(Object.keys(T.fonts.files).map(w => document.fonts.load(`${w} 50px ${T.fonts.family}`)))).then(() => { fitSubs(); tl.time(0); window.__ready = true; });
 })();
