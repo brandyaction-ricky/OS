@@ -5,7 +5,7 @@ import { authenticateRequest } from "@/lib/server/auth";
 import { readPipeline } from "@/lib/server/content-pipeline";
 import { authorizeYoutubeConnection, getYoutubeAccessToken, youtubeConnectionStatus } from "@/lib/server/youtube-oauth";
 import { auditChannelAction } from "@/lib/server/channel-access";
-import { myinCreditsBlock } from "@/lib/myin-storyboard";
+import { myinCreditsBlock, myinPhotoCreditLines } from "@/lib/myin-storyboard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,7 +49,10 @@ export async function POST(request: Request) {
     // ③ 마이인 v13: the finished run's photo and music credits go at the end of the description (owner decision 2026-10-19).
     const { data: myin } = kit.parent_id ? await actor.supabase.from("os_records").select("stage,metadata").eq("parent_id", kit.parent_id).eq("record_type", "ai_job")
       .eq("metadata->>kind", "youtube_myin_v13").is("archived_at", null).order("created_at", { ascending: false }).limit(1) : { data: null };
-    const credits = myin?.[0]?.stage === "final_ready" ? myinCreditsBlock(((myin[0].metadata as { prepared?: { credits?: string[] } })?.prepared?.credits ?? []).slice(0, 40)).slice(0, 2500) : "";
+    // A run made before its credits were written (웹 숏폼 before 11-21) lists its photos from the storyboard.
+    const myinRun = myin?.[0]?.metadata as ({ prepared?: { credits?: string[] } } & Parameters<typeof myinPhotoCreditLines>[0]) | undefined;
+    const creditLines = myinRun?.prepared?.credits?.length ? myinRun.prepared.credits : myinRun ? myinPhotoCreditLines(myinRun) : [];
+    const credits = myin?.[0]?.stage === "final_ready" ? myinCreditsBlock(creditLines.slice(0, 40)).slice(0, 2500) : "";
     const description = String(result.description ?? "").slice(0, 5000 - credits.length) + credits;
     const accessToken = await getYoutubeAccessToken(ownerId);
     const params = new URLSearchParams({ uploadType: "resumable", part: "snippet,status" });

@@ -1,6 +1,6 @@
 import { ApiError } from "@/lib/http";
 import type { RequestActor } from "@/lib/server/auth";
-import { fromUnsplash, fromWikimedia, PHOTO_TYPES as TYPES, type MyinPhotoCandidate, type UnsplashPhoto, type WikiPage } from "@/lib/myin-photo-sources";
+import { fromUnsplash, fromWikimedia, PHOTO_TYPES as TYPES, unsplashSource, type MyinPhotoCandidate, type UnsplashPhoto, type WikiPage } from "@/lib/myin-photo-sources";
 import { myinOurImageUpload, saveMyinOurImage } from "@/lib/server/myin-run";
 
 // 사진 후보 찾기 (유쓰 요청 2/8 보완, 2026-11-03 · 대표: Unsplash + 위키미디어, 0원): candidates for one photo file of a v13 run from the
@@ -52,7 +52,7 @@ export async function myinPhotoForQuery(query: string): Promise<{ url: string; s
     const photo = (page?.results as UnsplashPhoto[] | undefined)?.[0];
     if (photo) {
       await getJson(photo.links.download_location, auth).catch(() => undefined);
-      return { url: `${photo.urls.raw}&w=2400&fm=jpg&q=85`, source: `Unsplash · ${photo.user.name}`, license: "Unsplash 라이선스" };
+      return { url: `${photo.urls.raw}&w=2400&fm=jpg&q=85`, source: unsplashSource(photo), license: "Unsplash 라이선스" };
     }
   }
   const page = await wikiQuery({ generator: "search", gsrsearch: `${words} filetype:bitmap`, gsrnamespace: "6", gsrlimit: "6", iiurlwidth: "2400" }).catch(() => null);
@@ -72,7 +72,7 @@ async function resolve(provider: "unsplash" | "wikimedia", id: string) {
     const photo = await getJson(`https://api.unsplash.com/photos/${encodeURIComponent(id)}`, auth) as unknown as UnsplashPhoto;
     // Unsplash API terms: tell them of each download (their counter only; the photo itself comes from urls.raw).
     await getJson(photo.links.download_location, auth).catch(() => undefined);
-    return { url: `${photo.urls.raw}&w=2400&fm=jpg&q=85`, credit: { source: `Unsplash · ${photo.user.name}`, license: "Unsplash 라이선스", url: photo.links.html } };
+    return { url: `${photo.urls.raw}&w=2400&fm=jpg&q=85`, credit: { source: unsplashSource(photo), license: "Unsplash 라이선스", url: fromUnsplash(photo).page } };
   }
   const page = await wikiQuery({ titles: id, iiurlwidth: "2400" });
   const found = Object.values(((page.query as { pages?: Record<string, WikiPage> })?.pages) ?? {})[0];

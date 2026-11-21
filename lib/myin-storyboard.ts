@@ -657,6 +657,15 @@ export function myinSoundIssues(story: MyinStoryboard, words: [number, number, s
 }
 
 /** The credits block appended to the YouTube description: the run's credit lines without the render PC's file names. */
+type CreditRun = { renderer?: string; storyboard?: { assets?: { kind: string; file: string; url: string; source: string; license: string }[] };
+  assets?: Record<string, { decision?: string }>; ours?: Record<string, unknown> };
+/** The listed photos a video shows, as credit lines: those a person approved at ④ — or, for a 웹 숏폼 (no ④, nothing to approve), every
+ *  listed photo (11-21: auto-made shorts went out with no credits at all). A listed photo replaced by ours is not used, so not credited. */
+export function myinPhotoCreditLines(run: CreditRun) {
+  return (run.storyboard?.assets ?? []).filter((a) => a.kind !== "bgm" && !run.ours?.[a.file] && (run.renderer === "web" || run.assets?.[a.file]?.decision === "approved"))
+    .map((a) => `${a.file} — ${a.source} · ${a.license} · ${a.url}`);
+}
+
 export function myinCreditsBlock(credits: string[]) {
   const lines = credits.map((line) => line.replace(/^\S+\s+—\s+/, "").replace(/[<>]/g, "").trim()).filter(Boolean);
   return lines.length ? `\n\n사진·음악 출처\n${lines.map((line) => `- ${line}`).join("\n")}` : "";

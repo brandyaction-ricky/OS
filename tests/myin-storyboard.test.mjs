@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { anchorMyinCues, applyMyinSoundPlan, checkMyinStoryboard, matchingBlocks, myinCueMisses, myinColumnMaterials, myinCreditsBlock, myinDriftPairs, myinOnlySoundChanged, myinPhotoFetchUrl, myinPhotoFolders, myinPrepPhotos, myinSoundIssues, myinSoundPlan, myinDeckIssues, seqRatio } from "../lib/myin-storyboard.ts";
+import { anchorMyinCues, applyMyinSoundPlan, checkMyinStoryboard, matchingBlocks, myinCueMisses, myinColumnMaterials, myinCreditsBlock, myinDriftPairs, myinPhotoCreditLines, myinOnlySoundChanged, myinPhotoFetchUrl, myinPhotoFolders, myinPrepPhotos, myinSoundIssues, myinSoundPlan, myinDeckIssues, seqRatio } from "../lib/myin-storyboard.ts";
 
 // The OS check must say what Logan's resolve() says: exact phrase within its window, else a window with difflib ratio ≥ 0.62.
 test("seqRatio equals Python difflib.SequenceMatcher.ratio()", () => {
@@ -254,4 +254,13 @@ test("myinColumnMaterials lists each photo once with where to read it and its cr
   assert.deepEqual(got.photos["desk.jpg"], { at: "책상 앞", credit: "사진 Wikimedia · C · CC BY-SA 4.0", url: "https://commons.wikimedia.org/wiki/Special:FilePath/Desk.jpg" });
   assert.deepEqual(got.photos["ours_a.jpg"], { at: "우리 사진", credit: "", path: "o/s/r/our-images/a.jpg" });
   assert.deepEqual(got.diagrams, [{ scene: 8, type: "lib_numbered", at: "세 가지로", words: "나눠 적기 · 묻기" }]);
+});
+
+test("photo credits: ④-approved photos for a longform, every listed photo for a web short (no ④), never one replaced by ours", () => {
+  const assets = [{ kind: "situations", file: "a.jpg", url: "https://images.unsplash.com/photo-a", source: "Photo by A on Unsplash", license: "Unsplash 라이선스" },
+    { kind: "situations", file: "b.jpg", url: "https://upload.wikimedia.org/b.jpg", source: "위키미디어 공용 · B", license: "CC BY 4.0" },
+    { kind: "bgm", file: "m.mp3", url: "https://x/m.mp3", source: "M", license: "L" }];
+  assert.deepEqual(myinPhotoCreditLines({ storyboard: { assets }, assets: { "a.jpg": { decision: "approved" } } }), ["a.jpg — Photo by A on Unsplash · Unsplash 라이선스 · https://images.unsplash.com/photo-a"]);
+  assert.deepEqual(myinPhotoCreditLines({ renderer: "web", storyboard: { assets } }).map((l) => l.split(" — ")[0]), ["a.jpg", "b.jpg"]);
+  assert.deepEqual(myinPhotoCreditLines({ renderer: "web", storyboard: { assets }, ours: { "b.jpg": {} } }).map((l) => l.split(" — ")[0]), ["a.jpg"]);
 });
