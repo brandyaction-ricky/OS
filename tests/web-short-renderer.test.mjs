@@ -125,5 +125,8 @@ test("a storyboard handed in another shape is read as the list it means; none at
   assert.deepEqual(webShortBoard({ storyboard: { scenes, subtitles: ["x"] } }).subtitles, ["x"], "a good one is left as it is");
   const { issues } = checkWebShort({ title: { lines: ["가"] }, beats: [] }, { words: [[0, 1, "가"]], script: "가", headCopy: "가", durationSeconds: 1, ad: false });
   assert.match(issues.join(" / "), /지금 storyboard 칸: title, beats/);
+  assert.deepEqual(webShortBoard({ storyboard: { scenes: scenes.map((sc) => JSON.stringify(sc)) } }).scenes, scenes, "each scene a JSON string");
+  const strings = checkWebShort({ title: { lines: ["가"] }, scenes: ["opening 가", "photo 나"] }, { words: [[0, 1, "가"]], script: "가", headCopy: "가", durationSeconds: 1, ad: false }).issues.join(" / ");
+  assert.match(strings, /scenes는 2개짜리 목록이고 첫 항목이 문자열이에요/);
 });
 
