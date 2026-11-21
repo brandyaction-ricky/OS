@@ -66,11 +66,11 @@ export function RecyclePanel({ page, onOverview }: { page: YpPage; onOverview: (
       {job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(job.status?.job?.executor === "gpt" ? "gpt" : "queue")} /> : null}
       {items.length ? <>
         <p className="yp-hint">구간과 첫 화면 제목을 확인하고 만들기를 누르면, 숏폼마다 음성(롱폼 음성을 잘라 1.25배 · 0원) → 기획표(GPT) → 미리보기까지 저절로 가요. 미리보기는 「한눈에 확인」에서 한꺼번에 봐요.</p>
-        {waiting.length ? <div className="yp-savebar yp-ov-top">
+        {waiting.length ? <div className="yp-savebar yp-rv-top">
           <button type="button" className="yp-btn yp-pri" disabled={Boolean(making) || waiting.some(tooLong)} onClick={() => void makeAll()}>{making === "all" ? "만드는 중…" : `${waiting.length}편 모두 만들기`}</button>
           <CostTag kind="paid" upTo amount={gptCard() * waiting.length} what="기획표 GPT" />
           {waiting.some(tooLong) ? <span className="yp-warn">제목 줄을 {RECYCLE.titleLine}자 이하로 고쳐 주세요</span> : null}
-        </div> : <div className="yp-savebar yp-ov-top"><button type="button" className="yp-btn yp-sm" onClick={onOverview}>한눈에 확인 →</button></div>}
+        </div> : <div className="yp-savebar yp-rv-top"><button type="button" className="yp-btn yp-sm" onClick={onOverview}>한눈에 확인 →</button></div>}
         <ul className="yp-hist">{items.map((item, k) => {
           const title = titleOf(item), long = title.some((line) => letters(line) > RECYCLE.titleLine);
           return <li key={item.id}>

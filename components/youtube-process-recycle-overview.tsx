@@ -104,14 +104,14 @@ export function RecycleOverview({ page, onColumn }: { page: YpPage; onColumn: ()
   return <>
     <YpSection n={1} title="숏폼" gq={`${items.length}편 · 롱폼 음성 그대로 · 1.25배`} extra={<button type="button" className="yp-btn yp-sm" onClick={() => void load()}>새로 보기</button>}>
       <p className="yp-hint">숏폼마다 미리보기가 나오면 보고 OK나 메모를 남겨요. 메모는 그 숏폼의 수정 요청이 돼요. 게시는 각 숏폼 화면에서 해요.</p>
-      <div className="yp-ov-grid">{(rows.length ? rows : items.map((item) => ({ id: item.made!.projectId, title: item.title.join(" "), seconds: item.seconds, project: null, run: null, video: null, key: "" }))).map((row) => {
+      <div className="yp-rv-grid">{(rows.length ? rows : items.map((item) => ({ id: item.made!.projectId, title: item.title.join(" "), seconds: item.seconds, project: null, run: null, video: null, key: "" }))).map((row) => {
         const state = rows.length ? stateOf(row) : "불러오는 중";
         const canMark = state === "미리보기 나옴";
-        return <div key={row.id} className="yp-ov-card">
-          {row.video ? <video src={row.video} controls preload="metadata" className="yp-ov-video" aria-label={`${row.title} 영상`} /> : <div className="yp-ov-video yp-ov-wait">{state}</div>}
-          <b className="yp-ov-title">{row.title}</b>
+        return <div key={row.id} className="yp-rv-card">
+          {row.video ? <video src={row.video} controls preload="metadata" className="yp-rv-video" aria-label={`${row.title} 영상`} /> : <div className="yp-rv-video yp-rv-wait">{state}</div>}
+          <b className="yp-rv-title">{row.title}</b>
           <span className="yp-muted">{row.seconds}초 · <span className={state === "멈춤 · 열어서 확인" ? "yp-warn-t" : ""}>{state}</span></span>
-          {canMark ? <div className="yp-ov-acts">
+          {canMark ? <div className="yp-rv-acts">
             <button type="button" className={`yp-btn yp-sm${marks[row.id] === "ok" ? " yp-pri" : ""}`} aria-pressed={marks[row.id] === "ok"} onClick={() => mark(row.id, "ok")}>OK</button>
             <button type="button" className={`yp-btn yp-sm${marks[row.id] === "memo" ? " yp-pri" : ""}`} aria-pressed={marks[row.id] === "memo"} onClick={() => mark(row.id, "memo")}>메모</button></div> : null}
           {marks[row.id] === "memo" ? <textarea className="yp-in" rows={2} value={memos[row.id] ?? ""} placeholder="예) 3번째 장면 글자가 커요" aria-label={`${row.title} 메모`}
@@ -119,7 +119,7 @@ export function RecycleOverview({ page, onColumn }: { page: YpPage; onColumn: ()
           <Link className="yp-muted" href={stepHref(3, row.id)}>숏폼 열기 →</Link>
         </div>;
       })}</div>
-      <div className="yp-ov-bar">
+      <div className="yp-rv-bar">
         <span className="yp-muted">OK {okRows.length} · 메모 {memoRows.length} · 미리보기 나옴 {ready.length} · 완성됨 {finished.length}</span>
         <span className="yp-sp" />
         <button type="button" className="yp-btn yp-sm yp-pri" disabled={Boolean(busy) || !okRows.length && !memoRows.length} onClick={() => void sendPreviews()}>
