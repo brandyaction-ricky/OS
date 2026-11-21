@@ -15,8 +15,8 @@ import { assertScriptInputs, saveScriptBundle, scriptBundleSchema, scriptInputKe
 import { checkScenePlan, SCENE_PLAN_JSON_SCHEMA, scenePlanPrompt, youtubeSceneRuleRefs } from "./youtube-scenes";
 import { checkPronunciation, pronunciationPrompt, PRONUNCIATION_JSON_SCHEMA } from "./youtube-voice-worker";
 import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
-import { columnMaterials, myinRunWithWords, saveMyinStoryboard, storyboardJson } from "./myin-run";
-import { checkMyinStoryboardResult, checkShortStoryboardResult, checkWebShortResult, MYIN_CARD_DOCS, MYIN_CARD_REFERENCE_DOCS, myinStoryboardCard, myinStoryboardInputKey, SHORT_CARD_DOCS, shortStoryboardCard, WEB_SHORT_CARD_DOCS, webShortCard } from "./myin-storyboard-job";
+import { columnMaterials, myinRecyclePhotos, myinRunWithWords, saveMyinStoryboard, storyboardJson } from "./myin-run";
+import { checkMyinStoryboardResult, checkShortStoryboardResult, checkWebShortResult, MYIN_CARD_DOCS, MYIN_CARD_REFERENCE_DOCS, myinStoryboardCard, myinStoryboardInputKey, SHORT_CARD_DOCS, shortStoryboardCard, WEB_SHORT_CARD_DOCS, webShortCard, recyclePhotoIssues, type RecyclePhoto } from "./myin-storyboard-job";
 import { myinCleanScript } from "@/lib/myin-script";
 import { webShortSpoken } from "@/lib/web-short-storyboard";
 import { DIAGRAM_CATALOG } from "@/lib/shortform-diagram-catalog";
@@ -182,6 +182,14 @@ async function openJobs(ownerId: string, sourceId?: string, task?: JobMeta["task
  * own AI takes it. An open job of the same kind for the same input is reused,
  * and one for older input is cancelled. The job is named after the adopted title so it reads the same as the screen.
  */
+/** 롱폼에서 나온 숏폼: every photo is one its longform used and every scene's photo is listed (no gray 사진 자리 left for later). */
+function recycledWebShort<T extends ReturnType<typeof checkWebShortResult>>(checked: T, photos?: RecyclePhoto[]) {
+  if (!photos) return checked;
+  const issues = [...recyclePhotoIssues(checked.assets, photos), ...checked.notes.filter((line) => line.startsWith("사진 자리:"))];
+  if (issues.length) throw new ApiError(422, "MYIN_STORYBOARD_ISSUES", `기획표 검사에서 걸린 곳 ${issues.length}개: ${issues.slice(0, 12).join(" / ")}`);
+  return checked;
+}
+
 export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof staffJobRequestSchema>, gpt?: { tier: GptTier }) {
   let source: OsRecord; let title: string; let inputKey: string;
   let myinRunId: string | undefined;
@@ -693,7 +701,8 @@ async function claimJob(agent: RequestActor, jobId: string, byGpt: boolean) {
       .then((storyboard) => ({ storyboard, assets: myin.run.storyboard!.assets })).catch(() => null) : null } : undefined;
     if (myin.run.renderer === "web") return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt,
       instructions: webShortCard({ title: myin.title, headCopy: myin.headCopy, screenScript: myin.screenScript, script: webShortScript(myin.markdown), words: myin.words,
-        durationSeconds: myin.run.words!.durationSeconds, ad: await adBrief(myin.run.sourceId), note: sceneNotes ? undefined : note, sceneNotes, leaseMinutes: minutes, docIds: await myinCardDocIds(WEB_SHORT_CARD_DOCS) }) };
+        durationSeconds: myin.run.words!.durationSeconds, ad: await adBrief(myin.run.sourceId), note: sceneNotes ? undefined : note, sceneNotes, leaseMinutes: minutes, docIds: await myinCardDocIds(WEB_SHORT_CARD_DOCS),
+        photos: await myinRecyclePhotos(myin.run) }) };
     if (myin.run.layout === "short") return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt,
       instructions: shortStoryboardCard({ title: myin.title, headCopy: myin.headCopy, screenScript: myin.screenScript, markdown: myin.markdown, words: myin.words,
         durationSeconds: myin.run.words!.durationSeconds, note: sceneNotes ? undefined : note, sceneNotes, leaseMinutes: minutes, diagrams: DIAGRAM_CATALOG, docIds: await myinCardDocIds(SHORT_CARD_DOCS) }) };
@@ -983,8 +992,9 @@ export async function completeStaffJob(agent: RequestActor, input: Extract<z.inf
     const myin = await currentStoryboardInput(job);
     const catalogTypes = diagramCatalogTypes(await readDiagramCatalog());
     const ad = myin.run.renderer === "web" ? await adBrief(myin.run.sourceId) : null;
+    const photos = myin.run.renderer === "web" ? await myinRecyclePhotos(myin.run) : undefined;
     const checked = await keepIssues(job, m, () => myin.run.renderer === "web"
-      ? checkWebShortResult(input.result, { words: myin.words, script: webShortScript(myin.markdown), headCopy: myin.headCopy, durationSeconds: myin.run.words!.durationSeconds, ad: Boolean(ad) })
+      ? recycledWebShort(checkWebShortResult(input.result, { words: myin.words, script: webShortScript(myin.markdown), headCopy: myin.headCopy, durationSeconds: myin.run.words!.durationSeconds, ad: Boolean(ad) }), photos)
       : myin.run.layout === "short"
       ? checkShortStoryboardResult(input.result, { words: myin.words, speech: myin.speech, headCopy: myin.headCopy, durationSeconds: myin.run.words!.durationSeconds, diagrams: DIAGRAM_CATALOG })
       : checkMyinStoryboardResult(input.result, myin.words, catalogTypes, myin.speech));

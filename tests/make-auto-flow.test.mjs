@@ -8,8 +8,8 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf
 const between = (text, from, to) => text.slice(text.indexOf(from), text.indexOf(to, text.indexOf(from)));
 const run = read("lib/server/myin-run.ts");
 
-test("a 롱폼 confirms its storyboard by itself unless its 제작 설정 asks for a person; a 숏폼 keeps its 확인", () => {
-  assert.match(run, /export const autoConfirms = \(run: Pick<MyinRun, "layout" \| "settings">\) => !run\.layout && run\.settings\?\.confirm !== "person";/);
+test("a 롱폼 (and a 숏폼 cut from one) confirms its storyboard by itself unless its 제작 설정 asks for a person; other 숏폼 keep their 확인", () => {
+  assert.match(run, /export const autoConfirms = \(run: Pick<MyinRun, "layout" \| "settings" \| "recycle">\) => \(!run\.layout \|\| Boolean\(run\.recycle\)\) && run\.settings\?\.confirm !== "person";/);
   const save = between(run, "export async function saveMyinStoryboard", "/** Who confirms a storyboard");
   assert.match(save, /return autoConfirms\(next\) \? confirmByItself\(service, saved\)\.catch\(/, "a failed self-confirm leaves it at 확인 대기");
   const self = between(run, "async function confirmByItself", "/** ③ drafts go to");
@@ -21,7 +21,7 @@ test("a 롱폼 confirms its storyboard by itself unless its 제작 설정 asks f
 
 test("the first storyboard is asked of the starter's AI once the words are ready", () => {
   const words = between(run, "export async function completeMyinWords", "export async function failMyinWords");
-  assert.match(words, /resendStoryboard\(run\.sourceId, record\.id, autoConfirms\(run\) \? run\.settings\?\.by \?\? record\.owner_id \?\? undefined : undefined\)/);
+  assert.match(words, /resendStoryboard\(run\.sourceId, record\.id, autoConfirms\(run\) \? run\.settings\?\.by \?\? record\.owner_id \?\? undefined : undefined, gptStoryboardFor\(run, record\)\)/);
   assert.match(run, /await module\.resendStoryboard\(sourceId\) \?\? \(first \? module\.requestFirstStoryboard\(sourceId, first\) : null\)/);
   const first = between(read("lib/server/youtube-ai-jobs.ts"), "export async function requestFirstStoryboard", "export async function staffJobStatus");
   assert.match(first, /if \(data\?\.length\) return null;/, "only when none was asked before");
@@ -78,3 +78,19 @@ test("whoever opens the video sees whose AI has the storyboard, not a button tha
   assert.match(panel, /const other = run\.storyboardJob && !run\.storyboardJob\.mine \? run\.storyboardJob : null;/);
   assert.match(panel, /\{other\.name\}님 AI · \{other\.status === "active" \? "쓰는 중" : "가져가기를 기다리는 중"\}/);
 });
+
+test("a 숏폼 cut from a longform gets its storyboard from GPT every time it is back at 받아쓰기 끝, from its longform's photos only", () => {
+  assert.match(run, /const gptStoryboardFor = \(run: MyinRun, record: OsRecord\) => run\.recycle \?/);
+  assert.match(run, /gptFor\s*\n?\s*\? import\("\.\/youtube-gpt-jobs"\)\.then\(\(module\) => module\.requestGptStoryboard\(sourceId, gptFor\)\)/);
+  const prep = between(run, "export async function completeMyinPrep", "export async function failMyinPrep");
+  assert.match(prep, /await resendStoryboard\(run\.sourceId, record\.id, undefined, gptStoryboardFor\(run, record\)\);/, "after the 렌더 전 관문");
+  const review = between(run, "export async function reviewMyinStoryboard", "/** ③ drafts go to");
+  assert.match(review, /if \(run\.recycle\) await resendStoryboard\(run\.sourceId, record\.id, undefined, gptStoryboardFor\(run, record\)\);/, "after a 수정 요청");
+  const gpt = read("lib/server/youtube-gpt-jobs.ts");
+  assert.match(gpt, /export async function requestGptStoryboard\(sourceId: string, ownerId: string\)/);
+  assert.match(gpt, /requestStaffJob\(gptActor\(owner\), staffJobRequestSchema\.parse\(\{ task: "storyboard", sourceId \}\), \{ tier \}\)/);
+  const jobs = read("lib/server/youtube-ai-jobs.ts");
+  assert.match(jobs, /photos: await myinRecyclePhotos\(myin\.run\)/, "the card lists the longform's photos");
+  assert.match(jobs, /recycledWebShort\(checkWebShortResult\(/, "a photo not from the longform is sent back");
+});
+
