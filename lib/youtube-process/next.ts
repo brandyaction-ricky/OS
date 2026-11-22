@@ -27,7 +27,12 @@ export function nextAction(project: Pick<YpProject, "id" | "yp">): YpNext {
   const index = stage === "done" ? -1 : YP_STAGE_INDEX[stage];
   const step = stage === "done" ? flow.length : Math.max(0, flow.findIndex(item => item.index === index));
   const base = { href: projectHref(project), step, total: flow.length, stepName: stage === "done" ? "완료" : stepName(index, project.yp.topic.type) };
-  if (stage === "done") return { ...base, tone: "done", text: project.yp.topic.type === "card" ? "끝난 카드뉴스예요" : "끝난 영상이에요", button: "보기" };
+  if (stage === "done" && project.yp.topic.type === "card") {
+    const publication = project.yp.cardPublication;
+    if (!publication) return { ...base, stepName: "게시 기록 확인", tone: "todo", text: "예전 완료 기록의 게시 주소 또는 사유를 확인해 주세요", button: "게시 기록 확인" };
+    return { ...base, tone: "done", text: publication.status === "published" ? `게시 확인 · 주소 ${publication.urls.length}개` : `게시 안 함 · ${publication.reason ?? ""}`, button: "기록 보기" };
+  }
+  if (stage === "done") return { ...base, tone: "done", text: "끝난 영상이에요", button: "보기" };
   const gate = GATE_OF[stage];
   const info = gate ? gates[gate] : null;
   if (gate && info?.state === "wait") return { ...base, tone: "wait", text: `${gateName(gate, project.yp.topic.type)} 대기 중 · PD가 직접 컨펌해도 돼요`, button: "컨펌하기" };

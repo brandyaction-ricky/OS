@@ -19,7 +19,7 @@ export async function GET(request: Request) {
       return NextResponse.json(await referenceTitle(video), { headers: { "cache-control": "private, no-store" } });
     }
     const input = discoverSchema.parse({ category: query.get("category") ?? undefined, q: query.get("q") ?? undefined, days: query.get("days") ?? undefined, refresh: query.get("refresh") === "1" });
-    return NextResponse.json(await discoverYoutube(actor, input), { headers: { "cache-control": "private, no-store" } });
+    return NextResponse.json(await discoverYoutube(actor, input, query.get("cachedOnly") === "1"), { headers: { "cache-control": "private, no-store" } });
   } catch (error) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "DISCOVER_INPUT_INVALID", "분류를 고르거나 검색어를 두 글자 이상 써 주세요."));
     return apiErrorResponse(error);

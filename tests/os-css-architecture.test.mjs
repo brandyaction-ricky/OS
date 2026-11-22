@@ -39,6 +39,7 @@ const FILE_LAYER = {
   "components/development-workspace.css": "os.legacy",
   "components/development-notifications.css": "os.legacy",
   "components/os-ui.css": "os.kit",
+  "components/canon-rail.module.css": "os.kit",
   "components/fullscreen-shell.css": "os.kit",
   "components/fullscreen-content.css": "os.kit",
   "components/fullscreen-documents.css": "os.kit",

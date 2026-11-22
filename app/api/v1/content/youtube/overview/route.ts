@@ -3,7 +3,7 @@ import { z } from "zod";
 import { apiErrorResponse, parseJson } from "@/lib/http";
 import { isDesignatedApprover } from "@/lib/server/document-proposals";
 import { listYoutubeProjects, youtubeActor } from "@/lib/server/youtube-process";
-import { adoptStaffJob, openStaffJobsFor } from "@/lib/server/youtube-ai-jobs";
+import { adoptStaffJob, openStaffJobsFor, resolveStoppedJob } from "@/lib/server/youtube-ai-jobs";
 import { overviewCounts, overviewRows } from "@/lib/youtube-process/overview";
 
 export const runtime = "nodejs";
@@ -15,7 +15,7 @@ export async function GET(request: Request) {
   try {
     const actor = await youtubeActor(request);
     const [projects, canConfirm] = await Promise.all([listYoutubeProjects(actor), isDesignatedApprover(actor.ownerId)]);
-    const jobs = await openStaffJobsFor(new Set(projects.map(project => project.id)));
+    const jobs = await openStaffJobsFor(new Set(projects.filter(project => project.yp.stage !== "done").map(project => project.id)));
     if (new URL(request.url).searchParams.get("counts") === "1")
       return NextResponse.json({ counts: overviewCounts(overviewRows(projects, jobs, { id: actor.ownerId, canConfirm }).rows) }, { headers });
     return NextResponse.json({ projects, jobs, canConfirm }, { headers });
@@ -26,8 +26,9 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const actor = await youtubeActor(request);
-    const { jobId } = z.object({ jobId: z.string().uuid() }).strict().parse(await parseJson(request, 2_000));
+    const { jobId, action } = z.object({ jobId: z.string().uuid(), action: z.enum(["retry", "close"]).optional() }).strict().parse(await parseJson(request, 2_000));
     const projects = await listYoutubeProjects(actor);
-    return NextResponse.json(await adoptStaffJob(actor, jobId, new Set(projects.map(project => project.id))), { headers });
+    return NextResponse.json(action ? await resolveStoppedJob(actor, jobId, action, projects)
+      : await adoptStaffJob(actor, jobId, new Set(projects.map(project => project.id))), { headers });
   } catch (error) { return apiErrorResponse(error); }
 }

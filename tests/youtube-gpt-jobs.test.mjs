@@ -12,7 +12,7 @@ const source = await readFile(new URL("../lib/server/youtube-gpt-jobs.ts", impor
 
 function load({ answers, complete }) {
   const calls = { prompts: [], completed: [], failed: [] };
-  const docs = [{ id: "11111111-2222-3333-4444-555555555555", title: "발행 키트 정본", content_md: "정본 본문" }];
+  const docs = [{ id: "11111111-2222-3333-4444-555555555555", title: "발행 키트 정본", current_version: 2, content_md: "정본 본문" }];
   const supabase = { from: () => ({ select: () => ({ in: (_col, ids) => ({ neq: async () => ({ data: docs.filter((doc) => ids.includes(doc.id)) }) }) }) }) };
   const modules = {
     "next/server": { after: () => undefined }, "@/lib/http": { ApiError }, "@/lib/supabase/server": { createServiceSupabase: () => supabase },
@@ -64,4 +64,13 @@ test("only the derivative tasks and the 카드뉴스 draft take GPT, and a draft
   assert.equal(gptDraft.isGptTask("script"), false, "the 원고 stays with the staff AI (원고 공정 정본 §12-1)");
   assert.equal(gptDraft.draftTag("유쓰", "gpt-6-astra"), "GPT 초안 · GPT-6 Astra");
   assert.equal(gptDraft.draftTag("유쓰", "claude-opus-5-5"), "AI 초안 · 유쓰");
+});
+
+
+test("제작 GPT는 수령한 정본 버전만 열고 중간에 바뀐 문서는 다시 요청한다", async () => {
+  const { jobs } = load({ answers: [], complete: () => ({}) });
+  const ref = { id: "11111111-2222-3333-4444-555555555555", title: "발행 키트 정본", version: 2 };
+  assert.match(await jobs.cardDocs("별도 지시 없음", [ref]), /정본 본문/);
+  assert.equal(await jobs.cardDocs(`추가 자료 (doc_id: ${ref.id})`, []), "");
+  await assert.rejects(jobs.cardDocs("", [{ ...ref, version: 1 }]), /정본이 바뀌었어요/);
 });

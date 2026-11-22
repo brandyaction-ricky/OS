@@ -14,7 +14,7 @@ import { md } from "./youtube-process-frame";
 import { channelOf } from "@/lib/youtube-process/channel-style";
 import { useChannelCards } from "./youtube-channel-styles";
 
-type Filter = "open" | "mine" | "done" | "trash";
+type Filter = "open" | "mine" | "done" | "unpublished" | "trash";
 
 /** 내 영상 (S1, redesigned 2026-10-21 so it reads without a guide): new video in one line, then each video with what it needs next. */
 export function YoutubeProjectsScreen() {
@@ -95,9 +95,11 @@ export function YoutubeProjectsScreen() {
     return rank(a) - rank(b) || b.yp.contentUpdatedAt.localeCompare(a.yp.contentUpdatedAt);
   });
   const trashedHere = trashed.filter(item => (!platform || projectPlatform(item.project.yp.topic) === platform) && inChannel(item.project));
-  const counts = { open: all.filter(row => row.yp.stage !== "done").length, mine: all.filter(row => row.yp.stage !== "done" && row.assigneeId === profile?.id).length, done: all.filter(row => row.yp.stage === "done").length, trash: trashedHere.length };
-  const shown = searchProjects(sorted, query).filter(row => filter === "done" ? row.yp.stage === "done" : row.yp.stage !== "done" && (filter === "open" || row.assigneeId === profile?.id));
-  const legacyShown = filter === "done" || filter === "trash" || (platform && platform !== "longform") ? [] : legacy.filter(topic => !query.trim() || topic.title.toLocaleLowerCase("ko-KR").includes(query.trim().toLocaleLowerCase("ko-KR")));
+  const unposted = (project: YpProject) => project.yp.stage === "done" && project.yp.topic.type === "card" && project.yp.cardPublication?.status !== "published";
+  const counts = { open: all.filter(row => row.yp.stage !== "done").length, mine: all.filter(row => row.yp.stage !== "done" && row.assigneeId === profile?.id).length,
+    done: all.filter(row => row.yp.stage === "done" && !unposted(row)).length, unpublished: all.filter(unposted).length, trash: trashedHere.length };
+  const shown = searchProjects(sorted, query).filter(row => filter === "unpublished" ? unposted(row) : filter === "done" ? row.yp.stage === "done" && !unposted(row) : row.yp.stage !== "done" && (filter === "open" || row.assigneeId === profile?.id));
+  const legacyShown = filter === "unpublished" || filter === "done" || filter === "trash" || (platform && platform !== "longform") ? [] : legacy.filter(topic => !query.trim() || topic.title.toLocaleLowerCase("ko-KR").includes(query.trim().toLocaleLowerCase("ko-KR")));
   const waitingMine = canConfirm ? all.filter(row => nextAction(row).tone === "wait").length : 0;
   const pdName = (id: string | null) => members.find(member => member.id === id)?.name ?? "";
 
@@ -117,7 +119,7 @@ export function YoutubeProjectsScreen() {
     {projects === null && !error ? <p className="yp-hint" role="status">불러오는 중이에요…</p>
       : <>
         <div className="yp-mv-filters">
-          <div className="yp-seg2" role="tablist" aria-label="보기">{([["open", "진행 중"], ["mine", "내가 담당"], ["done", "끝난 영상"], ["trash", "휴지통"]] as const).map(([key, label]) =>
+          <div className="yp-seg2" role="tablist" aria-label="보기">{([["open", "진행 중"], ["mine", "내가 담당"], ["done", "끝난 영상"], ["unpublished", "미게시 · 기록 확인"], ["trash", "휴지통"]] as const).filter(([key]) => key !== "unpublished" || counts.unpublished > 0 || filter === key).map(([key, label]) =>
             <button key={key} type="button" role="tab" aria-selected={filter === key} className={filter === key ? "yp-on" : ""} onClick={() => setFilter(key)}>{label} {counts[key] + (key === "open" && (!platform || platform === "longform") ? legacy.length : 0)}</button>)}</div>
           <label className="yp-platform-filter"><span>플랫폼</span><select className="yp-in" aria-label="영상 플랫폼" value={platform ?? "all"} onChange={event => {
             const params = new URLSearchParams(search.toString());
@@ -148,17 +150,21 @@ export function YoutubeProjectsScreen() {
             // One grid per row (owner request 2026-10-25): title and next step · progress · PD · button line up down the list.
             // The platform as 주제 찾기 names it, in its colour: 롱폼 · 숏폼 · 릴스 · 광고.
             const platform = project.yp.topic.type ? projectPlatform(project.yp.topic) : null;
+            const canMarkTest = demo || mayTrash(project, profile?.id, admin);
+            const testSuggestion = !project.yp.isTest && /\[(?:QA|시험|테스트|시안)[^\]]*\]|\(복사본\)/i.test(project.title);
             const kind = platform ? TOPIC_PLATFORMS[platform].label : null;
             const currentStep = Math.min(next.step + 1, next.total);
             return <div key={project.id} className="yp-mv">
               {/* 로건 QA 10/30: 실사 or 애니메이션 and the last change tell same-titled rows and copies apart without opening them. */}
               <div className="yp-mv-m"><div className="yp-mv-th">{many ? <span className="yp-tag">{channelOf(channels, project.yp.topic.channel)?.name}</span> : null}{kind ? <span className={`yp-tag yp-pf-tag yp-pf-${platform}`}>{kind}</span> : null}
                 {project.yp.topic.type === "live" || project.yp.topic.type === "anim" ? <span className="yp-tag">{YP_KIND_SHORT[project.yp.topic.type]}</span> : null}
+                {project.yp.isTest ? <span className="yp-tag">시험</span> : null}
                 <Link href={next.href} className="yp-mv-t" title={projectName(project)}>{projectName(project)}</Link></div>
                 <div className={`yp-mv-s yp-${next.tone}`}>{next.text}<span className="yp-muted"> · 고친 날 {md(project.yp.contentUpdatedAt)}</span></div></div>
               <div className="yp-mv-bar"><span>{currentStep}/{next.total} · {next.stepName}</span><span className="yp-mv-track" aria-hidden="true"><i className={`yp-${next.tone}`} style={{ width: `${currentStep / next.total * 100}%` }} /></span></div>
               <div className="yp-mv-pd">{pd ? <><span className="yp-mv-av" aria-hidden="true">{pd.slice(0, 1)}</span>{pd}</> : <span className="yp-muted">담당 없음</span>}</div>
               <div className="yp-mv-act"><Link className={`yp-btn${next.tone === "todo" || next.tone === "fix" ? " yp-pri" : ""}`} href={next.href}>{next.button}{next.tone === "todo" || next.tone === "fix" ? <ArrowRight size={14} aria-hidden="true" /> : null}</Link>
+                {canMarkTest && <button type="button" className="yp-btn yp-sm" aria-pressed={Boolean(project.yp.isTest)} disabled={busy} title="결정함·스케줄·정본 통계의 시험 분류" onClick={() => void act(async () => { await client!.update(project.id, project.version, { isTest: !project.yp.isTest }); })}>{project.yp.isTest ? "시험 해제" : testSuggestion ? "시험 표시 제안" : "시험 표시"}</button>}
                 <button type="button" className="yp-ib" aria-label={`${projectName(project)} 복제`} title="복제" onClick={() => openCopy(project)}><Copy size={15} /></button>
                 {mayTrash(project, profile?.id, admin) ? <button type="button" className="yp-ib" aria-label={`${projectName(project)} 삭제`} title="휴지통으로" onClick={() => openTrash(project)}><Trash2 size={15} /></button> : null}</div>
             </div>; })}

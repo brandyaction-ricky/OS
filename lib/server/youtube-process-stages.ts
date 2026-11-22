@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
+import { finishedCardPublication } from "@/lib/cardnews/cards";
 import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { OsRecord } from "@/lib/record-types";
@@ -24,7 +25,7 @@ const shortRefsModule = () => import("./youtube-process-short-refs");
 const gptJobsModule = () => import("./youtube-gpt-jobs");
 const cardsModule = () => import("./youtube-process-cards");
 import { shortScriptMissing } from "@/lib/youtube-process/short-script";
-import { actOnGate, confirmActionSchema, confirmYoutubeGate, conflict, gateActionSchema, getYoutubeProject, notify, readFailed, saveProject } from "./youtube-process";
+import { withLegacyCardEvidence, actOnGate, confirmActionSchema, confirmYoutubeGate, conflict, gateActionSchema, getYoutubeProject, notify, readFailed, saveProject } from "./youtube-process";
 
 // 유튜브 공정 v1 stage records (지시서 6-1): each step keeps its own child record, so a 대표 decision on the project and a PD
 // edit on a step never fight over one version number.
@@ -106,7 +107,8 @@ export const stagePatchSchemas = {
   outline: z.object({ spec: z.object({ runtimeMin: z.number().int().min(1).max(120).nullable(), res: text(60), fps: text(60), ratio: text(60) }).strict(),
     script: text(120_000), saveVersion: z.literal(true), restore: z.number().int().positive(),
     // 구간 의견: write one, set one aside (or back), or put the AI's text for one into the 원고.
-    note: z.object({ quote: z.string().trim().min(1).max(600), before: text(80), after: text(80), text: z.string().trim().min(1).max(1000) }).strict(),
+    note: z.object({ quote: z.string().trim().min(1).max(600), before: text(80), after: text(80), text: z.string().trim().min(1).max(1000),
+      decision: z.object({ key: z.string().regex(/^[a-f0-9]{8}$/), issue: z.string().regex(/^[a-f0-9]{8}$/), action: z.enum(["adopt", "revise", "ignore"]) }).strict().optional() }).strict(),
     noteState: z.object({ id: text(40), state: z.enum(["open", "dismissed"]) }).strict(), applyNote: text(40) }).partial().strict(),
   make: z.object({ editDue: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/), editDueWhy: text(200), status: z.enum(["prep", "shoot", "edit", "done"]),
     thumb: z.object({ slot: z.enum(SLOTS), path: text(300), name: text(240), edit: thumbSavedEditSchema.optional() }).strict(), addFinal: z.object({ path: text(300), name: text(240), bytes: z.number().int().positive() }).strict(),
@@ -397,13 +399,18 @@ export async function moveYoutubeStage(actor: RequestActor, id: string, input: z
     // A 숏폼 has no YouTube thumbnails.
     const missing = short ? "" : thumbsMissing(stages.make.data);
     need(!missing, missing);
-  } else if (project.yp.topic.type === "short" || project.yp.topic.type === "card") {
+  } else if (project.yp.topic.type === "card") {
+    need(input.to === "done" && (project.yp.stage === "upload" || (project.yp.stage === "done" && !project.yp.cardPublication)), "최종 검토 컨펌 OK 뒤에 마칠 수 있어요.");
+    const publication = finishedCardPublication(stages.cards.data, now);
+    need(Boolean(publication), "각 화의 게시 주소를 남기거나 게시 안 함 이유를 저장해 주세요.");
+    return saveProject(actor, project, input.expectedVersion, { yp: { ...project.yp, stage: "done", stageEnteredAt: now, contentUpdatedAt: now, cardPublication: publication } });
+  } else if (project.yp.topic.type === "short") {
     need(project.yp.stage === "upload" && input.to === "done", "최종 검토 컨펌 OK 뒤에 마칠 수 있어요.");
   } else {
     // After the YouTube upload: on to 쇼츠 · 칼럼, or done (from either).
     need((input.to === "shorts" ? project.yp.stage === "upload" : ["upload", "shorts"].includes(project.yp.stage)) && stages.upload.data.run?.status === "done", "유튜브 업로드가 끝난 뒤에 넘어갈 수 있어요.");
   }
-  return saveProject(actor, project, input.expectedVersion, { yp: { ...project.yp, stage: input.to, contentUpdatedAt: now } });
+  return saveProject(actor, project, input.expectedVersion, { yp: { ...project.yp, stage: input.to, stageEnteredAt: now, contentUpdatedAt: now } });
 }
 
 // ── Confirms on 기획안 and 최종 검수 ──
@@ -585,7 +592,7 @@ export async function youtubeSchedule(actor: RequestActor) {
   const { data: rows, error } = await actor.supabase.from("os_records").select("id,version,title,assignee_id,owner_id,updated_at,metadata")
     .eq("record_type", "content_topic").eq("metadata->>workflow", "youtube_v1").is("archived_at", null).limit(500);
   if (error) throw readFailed();
-  const projects = (rows ?? []).map(row => projectFromRecord(row)).filter((row): row is YpProject => Boolean(row));
+  const projects = await withLegacyCardEvidence(actor.supabase, (rows ?? []).map(row => projectFromRecord(row)).filter((row): row is YpProject => Boolean(row)));
   const ids = projects.map(row => row.id);
   const { data: makes, error: makeError } = ids.length ? await actor.supabase.from("os_records").select("id,version,parent_id,metadata").in("parent_id", ids)
     .eq("record_type", "content_package").eq("metadata->>packageKind", "yp_make").is("archived_at", null) : { data: [], error: null };

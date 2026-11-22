@@ -138,7 +138,7 @@ export async function readRenderPcStatus() {
   const rows = (queue.data ?? []) as { kind: string; status: string }[];
   return {
     state: lead === null ? "unknown" as const : online(lead) ? "online" as const : "offline" as const,
-    lastSignalAt: lead?.at ?? null, ageSeconds,
+    lastSignalAt: lead?.at ?? null, ageSeconds, lastSuccessAt: recent.data?.[0]?.updated_at ?? null,
     diskFreeGb: lead?.diskFreeGb ?? null, lowDisk: lead ? lead.diskFreeGb < RENDER_PC_MIN_DISK_GB : false,
     memUsedGb: lead?.memUsedGb ?? null, memTotalGb: lead?.memTotalGb ?? null, job: lead?.job ?? null, packageName: lead?.packageName ?? null,
     pcs: list,

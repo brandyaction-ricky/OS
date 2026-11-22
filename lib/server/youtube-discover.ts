@@ -4,7 +4,7 @@ import { ApiError } from "@/lib/http";
 import { decodeHtmlEntities } from "@/lib/html-entities";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import {
-  categoryQuery, channelNormal, DISCOVER_LETTERS, isBreakout, isLongform, KOREAN, NOT_A_TOPIC, rankPackagingRefs,
+  categoryQuery, channelNormal, DISCOVER_LETTERS, isBreakout, isLongform, KOREAN, NOT_A_TOPIC, matchesDiscoverScope, rankPackagingRefs,
   type DiscoverChannel, type DiscoverLetter, type DiscoverVideo, type PackagingRef,
 } from "@/lib/youtube-process/discover";
 import type { RequestActor } from "./auth";
@@ -85,18 +85,21 @@ async function channelStats(row: Channel, key: string): Promise<DiscoverChannel>
     subscribers, median, breakouts: breakouts.length, best: breakouts[0]?.ratio ?? null, top: breakouts.slice(0, 3) };
 }
 
-export async function discoverYoutube(actor: RequestActor, input: z.infer<typeof discoverSchema>) {
-  const key = process.env.YOUTUBE_API_KEY;
-  if (!key) throw new ApiError(503, "YOUTUBE_NOT_CONFIGURED", "YouTube Data API 키가 아직 연결되지 않았습니다.");
+export async function discoverYoutube(actor: RequestActor, input: z.infer<typeof discoverSchema>, cacheOnly = false) {
   const cacheKey = createHash("sha256").update(JSON.stringify(["v4", input.category ?? "", input.q ?? "", input.days, "KR"])).digest("hex");
   const service = createServiceSupabase();
-  if (!input.refresh) {
-    const { data } = await service.from("os_records").select("metadata").eq("record_type", "content_package").eq("metadata->>packageKind", CACHE_KIND)
-      .eq("metadata->>cacheKey", cacheKey).gte("created_at", new Date(Date.now() - CACHE_HOURS * 3_600_000).toISOString()).is("archived_at", null)
-      .order("created_at", { ascending: false }).limit(1);
+  if (cacheOnly || !input.refresh) {
+    let read = service.from("os_records").select("metadata").eq("record_type", "content_package")
+      .eq("metadata->>packageKind", CACHE_KIND).eq("metadata->>cacheKey", cacheKey).is("archived_at", null);
+    if (!cacheOnly) read = read.gte("created_at", new Date(Date.now() - CACHE_HOURS * 3_600_000).toISOString());
+    const { data, error } = await read.order("created_at", { ascending: false }).limit(1);
+    if (error) throw new ApiError(503, "DISCOVER_CACHE_UNAVAILABLE", "이전 검색 결과를 불러오지 못했어요.");
     const hit = data?.[0]?.metadata as { at?: string; videos?: DiscoverVideo[]; channels?: DiscoverChannel[] } | undefined;
     if (hit?.videos && hit.channels) return { videos: hit.videos, channels: hit.channels, at: hit.at ?? "", cached: true };
+    if (cacheOnly) return { videos: [], channels: [], at: "", cached: true };
   }
+  const key = process.env.YOUTUBE_API_KEY;
+  if (!key) throw new ApiError(503, "YOUTUBE_NOT_CONFIGURED", "YouTube Data API 키가 아직 연결되지 않았습니다.");
   const letters: (DiscoverLetter | null)[] = input.q ? [null] : input.category === "all" ? DISCOVER_LETTERS : [input.category as DiscoverLetter];
   const after: Record<string, string> = input.days === "all" ? {} : { publishedAfter: new Date(Date.now() - Number(input.days) * 86_400_000).toISOString() };
   const searches = await Promise.all(letters.map(letter => {
@@ -122,7 +125,8 @@ export async function discoverYoutube(actor: RequestActor, input: z.infer<typeof
   };
   const at = new Date().toISOString();
   // The search's 터진 영상 and each channel's best stay as 틈새 재료 after the 12-hour cache.
-  await keepFoundBreakouts(service, actor, [...kept.videos.filter(isBreakout), ...kept.channels.flatMap(channel => channel.top)]);
+  const inScope = (video: DiscoverVideo) => matchesDiscoverScope(video.title, input.category ?? "all");
+  await keepFoundBreakouts(service, actor, [...kept.videos.filter(isBreakout), ...kept.channels.flatMap(channel => channel.top)].filter(inScope));
   // ponytail: one cache row per fresh search, never cleaned up; archive rows older than a week if they pile up.
   await service.from("os_records").insert({ record_type: "content_package", title: `주제 찾기 · ${input.q ?? input.category}`, description: "", status: "done", priority: "normal",
     owner_id: actor.ownerId, created_by: actor.ownerId, updated_by: actor.ownerId, team: actor.team, tags: ["주제찾기"],

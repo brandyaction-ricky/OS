@@ -1,5 +1,6 @@
 "use client";
 /* eslint-disable @next/next/no-img-element -- private signed previews do not have stable optimizer URLs */
+import { CanonRail } from "./canon-rail";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Copy, Plus, Search, Sparkles, X } from "lucide-react";
@@ -27,7 +28,7 @@ export function asideAdInstruction(input: { topic: string; query: string; links:
 시청자: ${input.audience || "정본의 현재 타겟"}${input.links.length ? `\n관련 링크: ${input.links.join(" · ")}` : ""}
 
 1. https://www.facebook.com/ads/library/ 를 엽니다. 국가 「대한민국」, 광고 카테고리 「모든 광고」, 상태 「활성 광고」로 두고 검색 키워드와 비슷한 말(2~3개를 바꿔 가며)로 검색합니다. 관련 링크가 있으면 먼저 열어 어떤 제품 · 고민을 다루는지 보고, 같은 광고주나 같은 고민을 다루는 광고도 찾습니다.
-2. 영상 광고만 봅니다. 게재 시작일이 오래된 것부터 봅니다 — 라이브러리는 지금 켜져 있는 광고만 보여 주므로, 오래 켜져 있을수록 돈이 되는 광고일 가능성이 높습니다. 30일 넘게 켜져 있는 것만 후보로 둡니다.
+2. 영상 광고만 봅니다. 게재 시작일이 오래된 것부터 봅니다 — 게재 기간·버전 수는 참고 신호입니다. 광고비·클릭·전환을 확인하지 못한 광고의 성과는 미측정으로 둡니다. 30일 넘게 켜져 있는 것만 후보로 둡니다.
 3. 같은 광고를 여러 버전으로 돌리는지(「N개 버전」 표시) 확인합니다. 오래 켜져 있고 버전이 많을수록 앞에 둡니다.
 4. 최대 ${input.count}개만 고릅니다. 수를 채우려고 약한 광고를 넣지 않습니다. 0개도 정상입니다.
 5. 광고마다 확인합니다: 광고 라이브러리 주소(https://www.facebook.com/ads/library/?id=숫자), 광고주, 게재 시작일(YYYY-MM-DD), 버전 수, 첫 3초 화면의 헤드 카피(화면의 큰 글자 그대로), 본문 첫 줄, CTA 버튼, 연결 페이지 주소. 보이지 않는 값은 「확인 불가」라고 씁니다.
@@ -190,6 +191,7 @@ export function ShortScriptScreen({ page, header }: { page: YpPage; header: Reac
     todo={form && can ? [{ label: "헤드 카피", done: !headCopyProblem(head) }, { label: "핵심 한 줄", done: Boolean(form.insight.trim()) }, { label: "대본", done: Boolean(form.text.trim()) }, { label: "검사 통과", done: Boolean(form.text.trim() && check && !check.problems.length) }] : undefined}>
     {page.bundle && form && project ? project.yp.stage === "topic" ? <LockedStep page={page} name="대본" /> : <div onBlur={() => { if (dirty && can) void save(); }}>
       <GateBanner page={page} gate="draft" />
+      <CanonRail refs={saved?.ai?.trace} check={check && form?.text.trim() ? (check.problems.length ? `자동 검사 · 수정 ${check.problems.length}건` : "자동 검사 통과") : undefined} pending={!started} />
       <Subject page={page} />
       {project.yp.topic.purpose === "ad" ? <AdBrief page={page} editable={can} /> : null}
       {from ? <div className="yp-note yp-gray"><div><b>롱폼에서 온 주제</b> · <Link className="yp-lnk" href={`/content/shorts?project=${from.projectId}`}>{from.title}</Link> · {from.scene}</div></div> : null}
@@ -373,7 +375,7 @@ function ShortRefs({ page, form, can, refs, working, onFetch, onEdit }: {
     {copied ? <p className="yp-note" role="status" style={{ margin: "8px 0 0" }}>복사했어요. 브라우저 AI(Aside) 창에 붙여 넣으면 {copied === "ad" ? "오래 켜진 메타 광고" : "릴스 · 틱톡"}를 찾아 아래 「직접 넣은 링크」에 넣어 줘요.</p> : null}
     {working ? <p className="yp-hint" role="status">참고 영상을 가져오는 중이에요. 영상이 많으면 5~10분 걸려요.</p>
       : refs && refs.status !== "done" ? <p className="yp-errline">가져오지 못했어요. 다시 찾아 주세요.</p> : refs?.error ? <p className="yp-errline">{refs.error}</p> : null}
-    <p className="yp-hint" style={{ margin: "6px 0 0" }}>{ad ? "광고는 게재 기간이 길고 버전이 많을수록 잘 되는 광고예요. 30일 넘게 켜진 것을 넣어요." : `반응도 기준: ${SHORT_REF_BAR_TEXT}`}</p>
+    <p className="yp-hint" style={{ margin: "6px 0 0" }}>{ad ? "참고 신호 · 게재 30일 이상인 광고의 카피와 버전을 비교하세요. 측정 성과는 실제 클릭·전환·광고비로 확인해요." : `반응도 기준: ${SHORT_REF_BAR_TEXT}`}</p>
     {items.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 10, marginTop: 8 }}>{items.map(item => {
       const shown = open === item.url;
       const counts = refCounts(item);

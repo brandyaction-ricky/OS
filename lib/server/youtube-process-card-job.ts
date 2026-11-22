@@ -26,10 +26,12 @@ export const canonVersion = (text: string, current: number) => text.match(/정�
 
 /** The 카드뉴스 정본 by its exact title — still a draft while it is being ground, which the canonical-only lookups skip. */
 export async function cardCanon(supabase: Supabase) {
-  const { data } = await supabase.from("os_documents").select("id,content_md,current_version").eq("title", CARD_CANON_TITLE).neq("status", "archived")
-    .order("updated_at", { ascending: false }).limit(1);
+  const { data, error } = await supabase.from("os_documents").select("id,content_md,current_version").eq("title", CARD_CANON_TITLE).neq("status", "archived")
+    .limit(2);
+  if (error) throw new ApiError(503, "CARD_CANON_UNAVAILABLE", "카드뉴스 정본을 읽지 못했어요.");
+  if ((data?.length ?? 0) > 1) throw new ApiError(409, "CARD_CANON_AMBIGUOUS", "카드뉴스 정본이 여러 개예요. 사용할 정본을 확인해 주세요.");
   const doc = data?.[0];
-  return doc ? { id: doc.id as string, version: canonVersion(String(doc.content_md ?? ""), Number(doc.current_version ?? 0)) } : null;
+  return doc ? { id: doc.id as string, docVersion: Number(doc.current_version), title: CARD_CANON_TITLE, version: canonVersion(String(doc.content_md ?? ""), Number(doc.current_version ?? 0)) } : null;
 }
 
 /** The 카드뉴스 project behind a job, read with the caller's client (so only someone who may see it can ask). */
@@ -155,12 +157,12 @@ export function checkCardResult(value: unknown, formats: CardFormatId[]): CardRe
 /** Adds the new drafts (never touching the ones there), picks the first when nothing is picked, and keeps at most 12 by dropping the
  * oldest AI drafts that are not picked. A save that crossed a PD edit is read again and tried once more. */
 export async function saveCardDrafts(supabase: Supabase, ownerId: string, team: string, project: YpProject, result: CardResult,
-  author: { by: string; model: string; jobId: string; canon: string }) {
+  author: { by: string; model: string; jobId: string; canon: string; trace?: NonNullable<CardDraft["ai"]>["trace"] }) {
   for (let attempt = 0; ; attempt++) {
     const current = (await readStages(supabase, project)).cards;
     const at = new Date().toISOString();
     const fresh: CardDraft[] = result.drafts.map(draft => ({ ...draft, id: randomUUID().slice(0, 8), at, by: author.by,
-      ai: { by: author.by, model: author.model, at, jobId: author.jobId, canon: author.canon, sig: cardSignature(draft) } }));
+      ai: { by: author.by, model: author.model, at, jobId: author.jobId, trace: author.trace, canon: author.canon, sig: cardSignature(draft) } }));
     const picked = current.data.picked || fresh[0].id;
     const drafts = [...current.data.drafts, ...fresh];
     for (let index = 0; drafts.length > DRAFTS_MAX && index < drafts.length - fresh.length;) {

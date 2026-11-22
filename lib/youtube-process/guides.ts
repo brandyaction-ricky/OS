@@ -16,6 +16,7 @@ export const YOUTUBE_V1_GUIDES: Record<string, PageGuideDefinition> = {
   "/content/card-canon": { steps: ["시험 묶음에 원본 3~5개를 넣어요", "[이 정본으로 다시 뽑기]로 지금 정본의 초안을 받아요", "칸을 눌러 평가표로 채점하고, 고칠 점을 보고 정본을 고쳐요"], next: "/content/projects?platform=card" },
   "/content/threads-canon": { steps: ["내가 확정한 스레드 주제를 시험 묶음에 3~5개 넣어요 (넣은 주제의 재료는 팀에 보여요)", "[이 정본으로 다시 뽑기]로 지금 정본의 글타래를 받아요", "칸을 눌러 정본의 검수 관문 여섯 가지로 채점하고, 고칠 점을 보고 정본을 고쳐요"], next: "/automation/topics" },
   "/content/column-canon": { steps: ["원고를 확정한 롱폼을 시험 묶음에 3~5개 넣어요", "[이 정본으로 다시 뽑기]로 지금 정본의 SEO 칼럼을 받아요", "칼럼을 올리는 작업자가 칸을 눌러 평가표 여섯 가지로 채점하고, 고칠 점을 보고 정본에 변경 제안을 보내요"], next: "/content/projects?platform=longform" },
+  "/content/canon": { steps: ["만들 콘텐츠의 정본과 담당자를 확인해요", "현재 버전과 마지막 시험 버전을 비교해요", "달라진 정본은 해당 포맷에서 다시 시험해요"], next: "/content/card-canon" },
   "/content/script-canon": { steps: ["롱폼 구성안 단계에서 원고마다 두 번째 검수를 받아요", "정본 묶음마다 관문 2~6 통과율과 반려된 원고를 봐요", "원고 2편 이상에서 반려된 관문(정본 문제)을 보고 원고 정본을 고쳐요"], next: "/content/projects?platform=longform" },
   "/content/short-canon": { steps: ["대본을 확정한 숏폼을 시험 묶음에 3~5개 넣어요", "[이 정본으로 다시 뽑기]로 지금 정본의 대본을 받아요", "칸을 눌러 정본 판정 검사 여섯 가지로 채점하고, 고칠 점을 보고 정본을 고쳐요"], next: "/content/projects?platform=short" },
 };

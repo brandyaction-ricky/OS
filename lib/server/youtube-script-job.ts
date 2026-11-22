@@ -9,7 +9,9 @@ import { CHARS_PER_MINUTE, checkManuscript, checkScriptBody } from "@/lib/youtub
 import type { RequestActor } from "./auth";
 import { assertExpectedVersion, readPipeline, saveMetadata, scriptReviewWorkflowState, writingWorkflowState } from "./content-pipeline";
 import { assertV1ScriptInputs, isYoutubeV1, saveV1Script, v1ScriptCardInputs, v1ScriptInputKey } from "./youtube-process-ai";
-import { canonIds, SCRIPT_CANON, scriptCanonText } from "./youtube-script-canon";
+import { canonVersion } from "@/lib/canon-grind/grind";
+import type { CanonTrace } from "@/lib/youtube-process/canon-trace";
+import { scriptCanonRows, scriptCanonText } from "./youtube-script-canon";
 
 // ② 원고 by the staff member's own AI (원고 공정 정본 v1.0, owner decision 2026-10-17): the AI reads the canon itself, runs
 // 축 → 설계 → 초안 → 검수 and submits the §8-2 bundle; the OS counts 관문 1, fills 집필 준비 and 원고 검수, and the staff member
@@ -17,7 +19,6 @@ import { canonIds, SCRIPT_CANON, scriptCanonText } from "./youtube-script-canon"
 type Client = Pick<RequestActor, "supabase" | "id"> & { name?: string };
 type Pipeline = Awaited<ReturnType<typeof readPipeline>>;
 const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
-const CANON_TITLES = [...SCRIPT_CANON, "현재기준"].join(" · ");
 const AI_MATERIALS = "[작성 AI 자료]";
 
 export const scriptBundleSchema = z.object({
@@ -50,16 +51,12 @@ export function scriptInputKey(state: Pipeline) {
   return digest(["staff-script-v1", state.signatures[0], packaging ? [packaging.id, packaging.version] : null, state.writing.packageTitle, state.writing.packageCopy]);
 }
 
-async function canonRefs(supabase: Client["supabase"]) {
-  const ids = canonIds();
-  if (!ids.length) return `제목으로 찾습니다: ${CANON_TITLES}. 같은 이름의 [보관] 문서는 읽지 않습니다.`;
-  const { data } = await supabase.from("os_documents").select("id,title").in("id", ids);
-  const titles = new Map((data ?? []).map((doc) => [doc.id as string, doc.title as string]));
-  return `${ids.map((id) => `- ${titles.get(id) ?? "정본"} (doc_id: ${id})`).join("\n")}\n이 ID로 엽니다(제목 검색에는 같은 이름의 옛 문서가 함께 나옵니다).`;
+export async function scriptCanonTrace(supabase: Client["supabase"]): Promise<CanonTrace[]> {
+  return (await scriptCanonRows(supabase)).map(doc => ({ id: String(doc.id), title: String(doc.title), version: Number(doc.current_version), bundle: canonVersion(String(doc.content_md), Number(doc.current_version)) }));
 }
 
 /** The job card: where the inputs are and what to submit. The canon itself is read by the AI, not pasted here. */
-export async function scriptJobCard(supabase: Client["supabase"], state: Pipeline, card: { targetMinutes: number; leaseMinutes: number; role: string; attachments?: string }) {
+export async function scriptJobCard(supabase: Client["supabase"], state: Pipeline, card: { targetMinutes: number; leaseMinutes: number; role: string; attachments?: string; trace?: CanonTrace[] }) {
   const { targetMinutes, leaseMinutes, role } = card;
   const source = state.source;
   const plan = pipelineArtifacts(state.records).research;
@@ -81,7 +78,7 @@ export async function scriptJobCard(supabase: Client["supabase"], state: Pipelin
 [원고 공정 정본]을 처음부터 끝까지 읽고 그 순서(단계 1 축 → 2 설계 → 3 초안 → 4 검수·재작성)대로 원고를 써서 §8-2 묶음으로 제출합니다. 별도 판정(축 채점, 관문 2~6)은 정본 §12-3대로 작성 맥락을 넘기지 않은 새 작업으로 합니다. 재검수는 반려된 관문과 고친 문단이 걸리는 관문만 돌리고, 판정 기준도 원고 검수 정본의 원칙(§0)과 그 관문의 절만 줍니다(관문 6이면 원고 말투 정본을 함께). 현재기준은 원고 공정 정본이 정한 범위만 읽습니다.
 
 ## 먼저 끝까지 열 문서
-${await canonRefs(supabase)}
+${(card.trace ?? await scriptCanonTrace(supabase)).map(ref => `- ${ref.title} (doc_id: ${ref.id}, 문서 v${ref.version})`).join("\n")}
 하나라도 열지 못하면 쓰지 말고 fail로 끝냅니다(정본 §12-2).
 
 ## OS 인사이트 찾기 — 정본만 보고 쓰지 않습니다
@@ -110,13 +107,13 @@ result = ${SCRIPT_RESULT_SHAPE}
 }
 
 /** Saves a submitted bundle: 집필 준비 (자료 · 축 · 설계), a new 원고 and its 검수 기록. Approvals are left to the staff check. */
-export async function saveScriptBundle(client: Client, sourceId: string, bundle: ScriptBundle, author: { type: "staff_ai" | "staff"; model: string; jobId?: string; targetMinutes: number }, expectedVersion?: number) {
+export async function saveScriptBundle(client: Client, sourceId: string, bundle: ScriptBundle, author: { type: "staff_ai" | "staff"; model: string; jobId?: string; targetMinutes: number; trace?: CanonTrace[] }, expectedVersion?: number) {
   const state = await readPipeline(client, sourceId);
   if (expectedVersion !== undefined) assertExpectedVersion(state.source, expectedVersion);
   assertScriptInputs(state);
   const canon = await scriptCanonText(client.supabase);
   // 유튜브 공정 v1: the 원고 goes to the 구성안 as a new version; the 구성안 has no separate staff confirm (4-5).
-  if (isYoutubeV1(state.source)) return { scriptId: "", ...await saveV1Script(client, state, bundle, { model: author.model, jobId: author.jobId, targetMinutes: author.targetMinutes, name: client.name ?? "직원" }, canon) };
+  if (isYoutubeV1(state.source)) return { scriptId: "", ...await saveV1Script(client, state, bundle, { model: author.model, jobId: author.jobId, targetMinutes: author.targetMinutes, name: client.name ?? "직원", trace: author.trace }, canon) };
   const check = checkManuscript(bundle.manuscript, { title: state.writing.packageTitle, targetMinutes: author.targetMinutes, canon });
   if (check.issues.length) throw new ApiError(422, "SCRIPT_FORMAT_INVALID", `원고 형식 검사(관문 1)에서 걸린 곳 ${check.issues.length}건: ${check.issues.join(" / ")}`);
   const source = state.source;
@@ -140,7 +137,7 @@ export async function saveScriptBundle(client: Client, sourceId: string, bundle:
     created_by: client.id, updated_by: client.id, tags: ["유튜브", "원고"],
     metadata: { scriptStep: 5, generatedBy: author.type, model: author.model, ...(author.jobId ? { jobId: author.jobId } : {}), manuscript: bundle.manuscript,
       sections: check.sections, targetMinutes: author.targetMinutes,
-      submission: { canonBundle: bundle.canonBundle, reReviews: bundle.reReviews, editedParagraphs: bundle.editedParagraphs, suggestions: bundle.suggestions,
+      submission: { trace: author.trace, canonBundle: bundle.canonBundle, reReviews: bundle.reReviews, editedParagraphs: bundle.editedParagraphs, suggestions: bundle.suggestions,
         osCheck: { chars: check.chars, paragraphs: check.paragraphs.length, sections: check.sections.length, at: now } } },
   });
   if (error) throw new ApiError(500, "SCRIPT_SAVE_FAILED", "원고를 저장하지 못했습니다. 같은 내용으로 다시 제출해 주세요.");

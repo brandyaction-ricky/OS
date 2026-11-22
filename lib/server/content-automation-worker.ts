@@ -119,6 +119,20 @@ export async function jobInstructions(actor:RequestActor,job:OsRecord){
       shortform?.stage==="cuts"&&shortform.shortformBrief?.mode==="direct"?shortformDirectExample(shortform.shortformBrief.duration):
       RESULT_EXAMPLES[proc as keyof typeof RESULT_EXAMPLES]??"{}"};
 }
+/** Read the same personal queue and pinned instructions without leasing the job, creating a run, or recording results. */
+export async function trialWorker(actor:RequestActor, request:Request) {
+  const ownerId = assertHumanOwner(actor);
+  const browser = await getRegisteredBrowser(actor,request);
+  const rules = await getRunRules(ownerId);
+  const jobs = await listPersonalRecords(actor,"ai_job",500);
+  const [job] = orderedJobs(jobs.filter(row=>row.status==="backlog" && row.stage==="queued"),rules,"now");
+  if (!job) return {browser:browser.name, browserId:browser.id, job:null};
+  const instructions = await jobInstructions(actor,job);
+  if (!instructions.instructions.trim() || !instructions.resultFormat.trim())
+    throw new ApiError(422,"WORKER_TRIAL_INPUT_MISSING","대기 작업의 지침 또는 결과 형식을 읽지 못했어요.");
+  return {browser:browser.name,browserId:browser.id,job:job.title};
+}
+
 export async function workerNext(actor:RequestActor,request:Request,input:{via:WorkerVia;runId?:string}){
   const ownerId=assertHumanOwner(actor),browser=await getRegisteredBrowser(actor,request),rules=await getRunRules(ownerId);
   if(input.via==="sched"&&(!browser.is_main||!rules.enabled))

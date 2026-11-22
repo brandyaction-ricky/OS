@@ -15,7 +15,7 @@ import { canUseContentPlanningHandoff } from "@/lib/content-planning-handoff-gat
 import { canUseContentJevAssist } from "@/lib/content-jev-assist-gate";
 import { canUseContentTopicJevAssist } from "@/lib/content-topic-jev-assist-gate";
 import { youtubeV1Enabled, youtubeV1Mode } from "@/lib/youtube-process/gate";
-import { youtubeV1Screen } from "@/lib/youtube-process/navigation";
+import { YOUTUBE_V1_COMMON_PAGES, YOUTUBE_V1_PLATFORM_STAGES, youtubeV1Screen } from "@/lib/youtube-process/navigation";
 
 // 콘텐츠 screens have their own route so their code is a separate download from the other menus (app/(os)/[stage]/[page]).
 type ContentPageProps = { params: Promise<{ page: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> };
@@ -24,7 +24,12 @@ export async function generateMetadata({ params, searchParams }: ContentPageProp
   const resolved = await params;
   const query = await searchParams;
   const page = findPage(`/content/${resolved.page}?tab=${typeof query.tab === "string" ? query.tab : ""}`);
-  return { title: `${page.label} | 브랜디 OS` };
+  const v1 = youtubeV1Enabled();
+  const listTitle = resolved.page === "projects" && v1
+    ? query.view === "discover" ? "주제 찾기" : YOUTUBE_V1_PLATFORM_STAGES.find(item => item.href === `/content/projects?platform=${query.platform}`)?.pages[0].label
+    : undefined;
+  const commonPage = v1 && YOUTUBE_V1_COMMON_PAGES.find(item => item.href === `/content/${resolved.page}`);
+  return { title: `${listTitle ?? (commonPage ? commonPage.label : page.label)} | 브랜디 OS` };
 }
 
 export default async function ContentPage({ params }: ContentPageProps) {

@@ -70,7 +70,7 @@ async function mockWorkspace(page: Page, editorialReady = true) {
   return state;
 }
 async function prepare(page: Page, route: "insight" | "person", candidates: unknown[]) {
-  await page.getByRole("region", { name: "쓰레드 주제 발굴" }).getByRole("button", { name: route === "insight" ? /인사이트형/ : /인물 분석형/ }).click();
+  await page.getByRole("region", { name: "스레드 주제 발굴" }).getByRole("button", { name: route === "insight" ? /인사이트형/ : /인물 분석형/ }).click();
   await page.getByText("Aside가 준비한 후보 등록", { exact: true }).click();
   await page.getByLabel("Aside 후보 결과").fill(JSON.stringify({ candidates }));
   await page.getByRole("button", { name: "내용 확인", exact: true }).click();
@@ -79,7 +79,7 @@ async function prepare(page: Page, route: "insight" | "person", candidates: unkn
 test("route instructions and candidate preview keep human selection before production", async ({ page }, testInfo) => {
   const state = await mockWorkspace(page);
   await page.goto("/automation/topics");
-  const workspace = page.getByRole("region", { name: "쓰레드 주제 발굴" });
+  const workspace = page.getByRole("region", { name: "스레드 주제 발굴" });
   await expect(workspace.getByRole("link", { name: /레퍼런스형/ })).toHaveAttribute("href", "/automation/references");
   await workspace.getByRole("button", { name: /인사이트형/ }).click();
   await expect(page.getByLabel("Aside 후보 결과")).not.toBeVisible();
@@ -99,10 +99,10 @@ test("route instructions and candidate preview keep human selection before produ
   expect(state.topics).toHaveLength(1); expect(state.items).toHaveLength(0);
   await page.locator(".ca-v07-topic").filter({ hasText: candidate("insight").title }).click();
   await expect(page.getByLabel("한 줄 주제", { exact: true })).toHaveValue(candidate("insight").title);
-  await expect(page.getByLabel("쓰레드 원고를 팀 검토함에 공유", { exact: true })).not.toBeChecked();
+  await expect(page.getByLabel("스레드 원고를 팀 검토함에 공유", { exact: true })).not.toBeChecked();
   await expect(page.getByRole("checkbox", { name: "카드뉴스", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "기획 확인하고 쓰레드 집필로 이동", exact: true })).toBeEnabled();
-  await page.getByRole("button", { name: "기획 확인하고 쓰레드 집필로 이동", exact: true }).click();
+  await expect(page.getByRole("button", { name: "기획 확인하고 스레드 집필로 이동", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "기획 확인하고 스레드 집필로 이동", exact: true }).click();
   await expect(page).toHaveURL(/\/automation\/threads\?sel=/);
   const started = state.writes.find(write => write.path.endsWith("/start"))!;
   expect(started.body).not.toHaveProperty("teamThreads");

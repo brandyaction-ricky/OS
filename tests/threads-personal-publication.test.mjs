@@ -5,6 +5,7 @@ import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
+import * as threadsChecks from '../lib/threads-posts.ts';
 const read=path=>readFile(new URL(`../${path}`,import.meta.url),'utf8');
 class ApiError extends Error { constructor(status,code,message){super(message);Object.assign(this,{status,code});} }
 async function moduleOf(path,deps,globals={}){const compiled=ts.transpileModule(await read(path),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;const mod={exports:{}};runInNewContext(`(function(require,module,exports){${compiled}\n})`,{structuredClone,Buffer,Date,JSON,...globals})(name=>{if(!(name in deps))throw Error(name);return deps[name];},mod,mod.exports);return mod.exports;}
@@ -12,7 +13,7 @@ const publishing=await moduleOf('lib/channel-publishing.ts',{zod:{z}});
 const owner='00000000-0000-4000-8000-000000000001',other='00000000-0000-4000-8000-000000000002',id='00000000-0000-4000-8000-000000000003';
 const actor={type:'user',id:owner,ownerId:owner};
 const posts=['첫 줄\n\n본문은 여기.','관점\n구체적인 장면.','적용 질문.'];
-function source(){return{id,owner_id:owner,version:4,status:'ready',title:'제목',description:'',parent_id:'topic',metadata:{space:'personal',channel:'threads',posts:[...posts]}};}
+function source(){return{id,owner_id:owner,version:4,status:'ready',title:'제목',description:'',parent_id:'topic',metadata:{space:'personal',channel:'threads',posts:[...posts],claims:threadsChecks.threadsClaims(posts,[]).map(claim=>({...claim,kind:'interpretation'}))}};}
 async function setup(options={}){
  const env={THREADS_AUTOMATION_PUBLISH_ENABLED:'true',...options.env};
  const row=options.source??source(),mode=options.mode??'mock';
@@ -39,7 +40,7 @@ async function setup(options={}){
  const provider={create:async(index,parent)=>{calls.push({index,parent,text:posts[index]});return`container-${created++}`;},inspect:async()=>options.processing?'processing':'ready',publish:async container=>{if(options.failAt===published++)throw options.publishError??new publishing.PublicationError('META_PUBLISH_REJECTED','rejected');return{id:`post-${container}`,permalink:''};}};
  const mod=await moduleOf('lib/server/threads-publication.ts',{
  'node:crypto':{createHash,randomUUID:()=> 'operation'},'@/lib/http':{ApiError},'@/lib/channel-publishing':publishing,
- '@/lib/threads-posts':{threadsPostsProblem:(value)=>!Array.isArray(value)||!value.length||value.length>30||value.some(text=>typeof text!=='string'||!text.trim()||Array.from(text).length>500)?'invalid':null},
+ '@/lib/threads-posts':threadsChecks,
  '@/lib/supabase/server':{createServiceSupabase:()=>db},'./content-automation-v07':{assertHumanOwner:a=>{if(a.type!=='user')throw new ApiError(403,'USER_SESSION_REQUIRED','human');return a.ownerId;},getPersonalRecord:async(a,target)=>{if(target!==id||a.ownerId!==owner)throw new ApiError(404,'AUTOMATION_NOT_FOUND','own');return row;}},
  './meta-oauth':{metaAccountKey:row=>`key-${row.owner_id}-${row.external_account_id}`,metaMode:()=>mode,assertMetaModeMatches:()=>{if((connection.account_type==='MOCK')!==(mode==='mock'))throw new ApiError(409,'META_MODE_MISMATCH','mode');},authorizeMetaConnection:async(a,selected)=>{if(selected!==owner&&!connection.team_shared)throw new ApiError(403,'CHANNEL_ACCESS_DENIED','account');return connection;},publicMetaConnection:c=>({ownerId:c.owner_id,platform:'threads',accountName:c.account_name,mock:c.account_type==='MOCK'})},
  './meta-publishing':{metaPublishProvider:(_c,settings)=>{assert.deepEqual(Array.from(settings.parts),posts);return provider;}}
@@ -129,4 +130,18 @@ test('GET omits an inactive shared owner and never reports it ready',async()=>{
 test('GET fails closed when owner active-state lookup fails',async()=>{
  const h=await setup({profileLookupError:true});const result=await h.mod.readThreadsPublicationStatus(actor,id);
  assert.equal(result.ready,false);assert.equal(result.connections.length,0);assert.match(result.reason,/이용 상태/);assert.equal(h.rpcCalls.length,0);
+});
+
+test("a legacy approved draft needs evidence before posting; changing just the evidence invalidates approval",async()=>{
+ const legacy=source();
+ delete legacy.metadata.claims;
+ const h=await setup({source:legacy});
+ assert.equal((await h.mod.readThreadsPublicationStatus(actor,id)).ready,false);
+ await assert.rejects(h.mod.publishPersonalThreads(actor,id,input),e=>e.code==='THREADS_FACT_SOURCE_REQUIRED');
+ assert.equal(h.calls.length,0);assert.equal(h.rpcCalls.length,0);
+ const changed=source();
+ changed.metadata.claims[0]={...changed.metadata.claims[0],kind:'fact',source:'https://example.test/source'};
+ const invalid=await setup({source:changed,approved:source()});
+ await assert.rejects(invalid.mod.publishPersonalThreads(actor,id,input),e=>e.code==='THREADS_REVIEW_REQUIRED');
+ assert.equal(invalid.rpcCalls.length,0);
 });

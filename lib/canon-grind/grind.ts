@@ -67,7 +67,7 @@ export const GRIND_KINDS: Record<GrindKind, { label: string; canonTitle: string;
 };
 export const isGrindKind = (value: unknown): value is GrindKind => value === "card" || value === "short" || value === "threads" || value === "column";
 /** The 정본 §9 graduation: in a run, 80% of the drafts at 중 or better on every criterion with 상 on four, and no automatic finding. */
-export const GRADUATION = { passRate: 0.8, tops: 4 } as const;
+export const GRADUATION = { passRate: 0.8, tops: 4, minimum: 5 } as const;
 export const BENCH_MAX = 8;
 
 /** One 시험 원본, frozen: the text a 카드뉴스 was made from, or a 숏폼's 대본 job card as it was asked (topic · formula · 참고 영상). */
@@ -79,7 +79,7 @@ export interface BenchItem {
 export interface Bench { items: BenchItem[] }
 export interface BenchScore { name: string; grades: Partial<Record<CardCriterion, CardGrade>>; notes: Partial<Record<CardCriterion, string>>; at: string }
 /** One draft of a run: key = item:format (a 숏폼 has the one format 「script」, a 스레드 「posts」, an SEO 칼럼 「html」); the draft, or why GPT could not make one. */
-export interface BenchResult { key: string; itemId: string; title: string; format: string; draft?: BenchDraft; error?: string }
+export interface BenchResult { projectId?: string; isTest?: boolean; key: string; itemId: string; title: string; format: string; draft?: BenchDraft; error?: string }
 export type GrindPrompts = Record<string, { style: string; quality: string }>;
 
 export function experimentPrompt(prompts: GrindPrompts) {
@@ -115,13 +115,14 @@ export const passes = (grades: Record<CardCriterion, CardGrade>) => {
 
 /** How a run did: drafts made, automatic findings, how many are scored and pass, and whether it meets the graduation. */
 export function runSummary(run: Pick<BenchRun, "results" | "scores" | "state">, kind: GrindKind) {
-  const made = run.results.filter(result => result.draft);
-  const failed = run.results.length - made.length;
+  const eligible = run.results.filter(result => !result.isTest);
+  const made = eligible.filter(result => result.draft);
+  const failed = eligible.length - made.length;
   const findings = made.reduce((sum, result) => sum + GRIND_KINDS[kind].findings(result.draft!), 0);
   const merged = made.map(result => mergedGrades(run.scores[result.key])).filter((grades): grades is Record<CardCriterion, CardGrade> => Boolean(grades));
   const passed = merged.filter(passes).length;
   const passRate = merged.length ? passed / merged.length : 0;
-  const graduated = run.state === "done" && made.length > 0 && merged.length === made.length && !failed && !findings && passRate >= GRADUATION.passRate;
+  const graduated = run.state === "done" && made.length >= GRADUATION.minimum && merged.length === made.length && !failed && !findings && passRate >= GRADUATION.passRate;
   return { drafts: made.length, failed, findings, scored: merged.length, passed, passRate, graduated };
 }
 /** 정본 §9 졸업: the two newest finished runs both meet it. */
@@ -136,7 +137,7 @@ export const graduatedTwice = (runs: BenchRun[], kind: GrindKind) => {
  */
 export function fixList(run: Pick<BenchRun, "results" | "scores">, kind: GrindKind) {
   return GRIND_KINDS[kind].criteria.map(c => {
-    const notes = run.results.filter(result => result.draft).flatMap(result => Object.values(run.scores[result.key] ?? {})
+    const notes = run.results.filter(result => !result.isTest && result.draft).flatMap(result => Object.values(run.scores[result.key] ?? {})
       .filter(score => score.grades[c.n] && score.grades[c.n] !== "상")
       .map(score => ({ key: result.key, title: result.title, format: result.format, grade: score.grades[c.n]!, note: score.notes[c.n]?.trim() ?? "", by: score.name })));
     const drafts = new Set(notes.map(note => note.key)).size;
@@ -162,7 +163,7 @@ export function scriptBundles(verdicts: ScriptVerdict[], limit = 3) {
 const turnedBack = (script: ScriptVerdict, gate: number) => script.gates.some(row => row.gate === gate && !row.pass);
 /** 졸업 for 원고: the two newest 정본 묶음 both have 80% of their 원고 through every gate. */
 export const scriptGraduated = (bundles: ReturnType<typeof scriptBundles>) =>
-  bundles.length >= 2 && bundles.slice(0, 2).every(row => row.bundle !== "묶음 모름" && row.passRate >= GRADUATION.passRate);
+  bundles.length >= 2 && bundles.slice(0, 2).every(row => row.bundle !== "묶음 모름" && row.scripts.length >= GRADUATION.minimum && row.passRate >= GRADUATION.passRate);
 /** 고칠 점 of one 정본 묶음: each gate that turned a 원고 back with what it pointed at; turned back on two or more 원고 = 정본 문제. */
 export function scriptFixes(scripts: ScriptVerdict[]) {
   return REVIEW2_GATES.map(gate => {

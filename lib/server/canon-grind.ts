@@ -15,6 +15,8 @@ import { threadsPostsProblem } from "@/lib/threads-posts";
 import { assertThreadsReferencesSelected, THREADS_REFERENCE_KIND, THREADS_REFERENCE_WORKFLOW } from "@/lib/threads-reference";
 import { GPT_TIERS, type GptTier } from "@/lib/youtube-process/gpt-draft";
 import { projectName, type YpProject } from "@/lib/youtube-process/project";
+import { runSummary, scriptBundles } from "@/lib/canon-grind/grind";
+import { productRegistry } from "./production-canon";
 import type { YpReview2 } from "@/lib/youtube-process/stages";
 import { checkShortScript, headCopyProblem, SHORT_SCRIPT } from "@/lib/youtube-process/short-script";
 import type { RequestActor } from "./auth";
@@ -83,7 +85,17 @@ const runOf = (row: Row): BenchRun => {
 
 export async function readGrind(kind: GrindKind) {
   const row = await benchRow(kind);
-  return { bench: benchOf(row), runs: row ? (await runRows(kind, row.id)).map(runOf) : [], canon: await canonOf(kind) };
+  const bench = benchOf(row);
+  const runs = row ? (await runRows(kind, row.id)).map(runOf) : [];
+  const original = new Map(bench.items.map(item => [item.id, item.from?.projectId]));
+  const ids = [...new Set(runs.flatMap(run => run.results.map(result => result.projectId || original.get(result.itemId))).filter((id): id is string => Boolean(id)))];
+  if (ids.length) {
+    const { data, error } = await service().from("os_records").select("id").in("id", ids).eq("record_type", "content_topic").eq("metadata->yp->>isTest", "true");
+    if (error) throw new ApiError(503, "CANON_TEST_READ_FAILED", "시험 프로젝트 표시를 확인하지 못했어요.");
+    const excluded = new Set((data ?? []).map(record => String(record.id)));
+    for (const run of runs) run.results = run.results.map(result => ({ ...result, isTest: excluded.has(result.projectId || original.get(result.itemId) || "") }));
+  }
+  return { bench, runs, canon: await canonOf(kind) };
 }
 
 /** 롱폼 원고 정본 다듬기 (설계서 §9): every 원고's 두 번째 검수 with the 정본 묶음 its writer submitted — nothing is drawn, nothing costs. */
@@ -94,22 +106,27 @@ export async function readScriptCanon() {
     db.from("os_documents").select("id,content_md,current_version").eq("title", "원고 공정 정본").eq("status", "canonical").limit(1),
   ]);
   if (reviews.error || canon.error) throw new ApiError(500, "SCRIPT_CANON_READ_FAILED", "원고 판정을 불러오지 못했어요.");
-  const done = (reviews.data ?? []).map(row => ({ projectId: String(row.parent_id ?? ""), review: row.review as YpReview2 | null }))
-    .filter((row): row is { projectId: string; review: YpReview2 } => Boolean(row.projectId && row.review?.state === "done" && typeof row.review.pass === "boolean"));
+  const done = (reviews.data ?? []).flatMap(row => {
+    const projectId = String(row.parent_id ?? "");
+    const review = row.review as YpReview2 | null;
+    if (!projectId || !review) return [];
+    const versions = [...(review.history ?? []), ...(review.state === "done" ? [review] : [])];
+    return versions.filter(verdict => typeof verdict.pass === "boolean").map(verdict => ({ projectId, review: verdict }));
+  });
   const ids = [...new Set(done.map(row => row.projectId))];
-  const [projects, outlines] = ids.length ? await Promise.all([
-    db.from("os_records").select("id,title").eq("record_type", "content_topic").in("id", ids).is("archived_at", null),
-    db.from("os_records").select("parent_id,bundle:metadata->yp->ai->>canonBundle,by:metadata->yp->ai->>by").eq("record_type", "content_script")
-      .eq("metadata->>scriptKind", "yp_outline").in("parent_id", ids).is("archived_at", null),
-  ]) : [{ data: [], error: null }, { data: [], error: null }];
-  if (projects.error || outlines.error) throw new ApiError(500, "SCRIPT_CANON_READ_FAILED", "원고 판정을 불러오지 못했어요.");
-  const title = new Map((projects.data ?? []).map(row => [String(row.id), projectName({ title: String(row.title ?? "") })]));
-  const writer = new Map((outlines.data ?? []).map(row => [String(row.parent_id), row as { bundle: string | null; by: string | null }]));
-  // A 원고 in the trash drops out with its video.
-  const verdicts: ScriptVerdict[] = done.filter(row => title.has(row.projectId)).map(({ projectId, review }) => ({ projectId, title: title.get(projectId)!, at: review.at,
-    by: writer.get(projectId)?.by ?? "", bundle: scriptBundle(writer.get(projectId)?.bundle), pass: review.pass!, gates: review.gates }));
+  const projects = ids.length ? await db.from("os_records").select("id,title,yp:metadata->yp").eq("record_type", "content_topic").in("id", ids).is("archived_at", null) : { data: [], error: null };
+  if (projects.error) throw new ApiError(500, "SCRIPT_CANON_READ_FAILED", "원고 판정을 불러오지 못했어요.");
+  const title = new Map((projects.data ?? []).filter(row => (row.yp as { isTest?: boolean } | null)?.isTest !== true).map(row => [String(row.id), projectName({ title: String(row.title ?? "") })]));
+  const eligible = done.filter(row => title.has(row.projectId));
+  const verdicts: ScriptVerdict[] = eligible.flatMap(({ projectId, review }) => {
+    const source = review.source;
+    if (source?.origin !== "ai" || !source.trace?.length || !source.bundle) return [];
+    return [{ projectId, title: title.get(projectId)!, at: review.at, by: source.by, bundle: scriptBundle(source.bundle), pass: review.pass!, gates: review.gates }];
+  });
+  // One project contributes its latest verified AI draft per canon bundle.
+  const unique = [...new Map(verdicts.sort((a, b) => a.at.localeCompare(b.at)).map(row => [row.projectId + "/" + row.bundle, row])).values()];
   const doc = canon.data?.[0];
-  return { verdicts, canon: doc ? { id: String(doc.id), version: canonVersion(String(doc.content_md ?? ""), Number(doc.current_version ?? 0)) } : null };
+  return { verdicts: unique, excluded: eligible.length - verdicts.length, canon: doc ? { id: String(doc.id), version: canonVersion(String(doc.content_md ?? ""), Number(doc.current_version ?? 0)) } : null };
 }
 
 export const grindKindSchema = z.enum(["card", "short", "threads", "column"]);
@@ -315,16 +332,27 @@ async function drawRun(kind: GrindKind, runId: string, items: BenchItem[], forma
   const shared = kind === "threads" ? "" : await cardDocs(cardOf(items[0]));
   const shortCanon = kind === "short" ? await canonText(service()) : "";
   const draw = async (item: BenchItem): Promise<BenchResult[]> => {
-    const failed = (error: string) => formats.map(format => ({ key: resultKey(item.id, format), itemId: item.id, title: item.title, format, error }));
+    const failed = (error: string) => formats.map(format => ({ projectId: item.from?.projectId, key: resultKey(item.id, format), itemId: item.id, title: item.title, format, error }));
     if (!cardOf(item)) return failed("시험 원본에 작업 내용이 없어요. 빼고 다시 넣어 주세요.");
     const answer = await ask(tier, kind === "threads" ? await threadsDocs(cardOf(item)) : shared, cardOf(item) + (guidance ? "\n\n## 이번 실험의 편집 지시\n포맷별로 해당 지시만 적용하세요. 정본, 사실 근거, 제출 스키마를 유지하세요.\n" + guidance : ""), async value => kind === "card"
       ? checkCardResult(value, formats as CardFormatId[]).drafts.map(draft => ({ key: resultKey(item.id, draft.format), itemId: item.id, title: item.title, format: draft.format, draft }))
       : [{ key: resultKey(item.id, ONE_FORMAT[kind]), itemId: item.id, title: item.title, format: ONE_FORMAT[kind],
         draft: kind === "short" ? checkShort(value, shortCanon) : kind === "threads" ? checkThreads(value) : checkColumn(value) }]);
-    return answer.results ?? failed(answer.error!);
+    return answer.results?.map(result => ({ ...result, projectId: item.from?.projectId })) ?? failed(answer.error!);
   };
   let results: BenchResult[] = [], failure = "";
   try { results = (await Promise.all(items.map(draw))).flat(); } catch (error) { failure = error instanceof Error ? error.message : "다시 뽑지 못했어요."; }
   const read = async () => (await service().from("os_records").select("id,version,metadata").eq("id", runId).single()).data as Row;
   await update(read, row => ({ ...(row.metadata.run as BenchRun), state: failure ? "failed" as const : "done" as const, results, ...(failure ? { error: failure.slice(0, 300) } : {}) }), "run", by);
+}
+
+export async function productionCanonOverview() {
+  const [script, product, formats] = await Promise.all([readScriptCanon(), productRegistry(), Promise.all((Object.keys(GRIND_KINDS) as GrindKind[]).map(async kind => {
+    const { runs, canon } = await readGrind(kind);
+    const last = runs.find(run => run.state === "done");
+    const sample = last ? runSummary(last, kind).scored : 0;
+    return { label: GRIND_KINDS[kind].label, href: `/content/${kind}-canon`, current: canon?.version ?? "", tested: last?.canon ?? "", sample };
+  }))]);
+  const recent = scriptBundles(script.verdicts, 1)[0];
+  return { formats: [{ label: "롱폼 원고", href: "/content/script-canon", current: script.canon?.version ?? "", tested: recent?.bundle ?? "", sample: recent?.scripts.length ?? 0 }, ...formats], product };
 }

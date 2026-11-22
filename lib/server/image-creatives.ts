@@ -2,6 +2,7 @@ import { referenceUsesBlackWeight } from "@/lib/image-creative/reference-layout"
 import { promptEditPng } from "@/lib/image-creative/prompt-edit-render.mjs";
 import { readImageAdProducts } from "./image-ad-products";
 import { readImageAdReferences } from "./image-ad-references";
+import type { CanonTrace } from "@/lib/youtube-process/canon-trace";
 import { referenceSnapshot } from "@/lib/image-creative/reference-canon";
 import { imageBriefMatchesProduct, onlyImageProductVersionChanged } from "@/lib/image-creative/products";
 import { resolvePlacement } from "@/lib/image-creative/placement";
@@ -18,6 +19,7 @@ import { createServiceSupabase } from "@/lib/supabase/server";
 import { storedZip } from "@/lib/cardnews/zip";
 import { IMAGE_FORMATS, IMAGE_FORMAT_IDS, isImageFormat, isWarehouseFormat } from "@/lib/image-creative/formats";
 
+import { getYoutubeProject } from "./youtube-process";
 import { isReferenceLayout, type ReferenceLayout, canSaveImageBrief, confirmReferenceCopy, attachReferencePhoto, saveReferenceCopyDraft, createImageBatch, emptyImageCreative, sameImageBrief, productionBrief, imageBriefProblems, imageVariantProblems, imageCreativePrompt, ImageCreativeError, normalizeImageRequest, reviseImageDesign, applyImagePromptEdit, isImageDesign,
   imageExperimentSummary, recordImageWinner, selectedImageResults, approveImageFormat, startImageCopyBatch, formatApprovalKey, reviewImageBatch, returnImageReview, type ApprovalStamp,
   type ImageBrief, type ImageDesign, type ImageFormatPlan, type ImageCreativeState, type ImageAsset, type ImageBatchRequest, type ImageBatchResult, type CreativeVariant } from "@/lib/image-creative/model";
@@ -198,6 +200,10 @@ export async function imageBundle(record: OsRecord) {
       target: row.metadata?.target ?? null, model: row.metadata?.model ?? null, executor: row.metadata?.executor === "gpt" ? "gpt" : "staff", requestedAt: row.metadata?.requestedAt, doneAt: row.metadata?.doneAt ?? null })) };
 }
 async function verifyProductBrief(actor: RequestActor, brief: ImageBrief) {
+  if (brief.campaignId) {
+    const source = await getYoutubeProject(actor, brief.campaignId);
+    if (source.yp.topic.purpose !== "ad") throw new ApiError(422, "CAMPAIGN_INVALID", "연결할 광고 프로젝트를 확인해 주세요.");
+  }
   const ref = brief.productSource;
   if (!ref) return;
   const products = await readImageAdProducts(actor);
@@ -275,7 +281,7 @@ function formatInputs(record: OsRecord) {
       ...(plan.direction && {direction:plan.direction, appeals:plan.appeals, previousScenes:plan.previousScenes})}) };
 }
 const recommendationResult = z.object({items:formatItemsSchema}).strict();
-export async function importFormatRecommendations(db: Db, record: OsRecord, result: unknown, jobId: string) {
+export async function importFormatRecommendations(db: Db, record: OsRecord, result: unknown, jobId: string, trace?: CanonTrace[]) {
   const meta = imageMeta(record);
   if (meta.appliedJobs[jobId]) return;
   const {catalog, hasPhoto, appealFirst, count, referenceFirst, mode, conceptFirst, direction, brief, size, previousScenes} = formatInputs(record);
@@ -285,7 +291,7 @@ export async function importFormatRecommendations(db: Db, record: OsRecord, resu
       if (referenceFirst) proposal = {appealOptions:parseAppealOptions(result,mode === "standalone" ? 5 : count).appeals};
       else proposal = direction ? parseScenePlan(result, sceneFormatCatalog(brief,size,direction.medium),previousScenes) : parseConcepts(result,count);
     } catch (error) { throw imageError(error); }
-    const state = {...meta.state, formatRecommendation:{...meta.state.formatRecommendation!, ...proposal}};
+    const state = {...meta.state, formatRecommendation:{...meta.state.formatRecommendation!, trace, ...proposal}};
     await saveImageMeta(db,record,{...meta,state,appliedJobs:{...meta.appliedJobs,[jobId]:referenceFirst ? "appeal-options" : direction ? "scene" : "concepts"}});
     return;
   }
@@ -307,7 +313,7 @@ export async function importFormatRecommendations(db: Db, record: OsRecord, resu
       if (keys.includes("") || new Set(keys).size !== count) throw new ApiError(422, "IMAGE_APPEALS_INVALID", "같은 소구점을 다시 쓰지 말고 고객이 이 상품을 선택할 다른 이유를 제안해 주세요.");
     }
   }
-  const state = { ...meta.state, formatRecommendation: { ...meta.state.formatRecommendation!, items, ...(appeals && {appeals}) } };
+  const state = { ...meta.state, formatRecommendation: { ...meta.state.formatRecommendation!, trace, items, ...(appeals && {appeals}) } };
   await saveImageMeta(db, record, { ...meta, state, appliedJobs: { ...meta.appliedJobs, [jobId]: "formats" } });
 }
 /** New files may arrive while the AI draws. They do not change the frozen brief, base candidate or requested fields. */
@@ -406,7 +412,7 @@ reason은 직원이 실제 제작 장면을 고를 수 있는 한국어 한 문�
     (companyApi ? "등록된 이미지 경로와 크기를 유지하고 새 이미지 생성·외부 호출은 하지 않습니다. " : "유료 AI API·광고 매체 호출은 하지 않습니다. 처리할 수 없으면 fail로 이유를 남깁니다. ") +
     "결과만 준비하고 사용자의 선택이나 승인을 대신하지 않습니다.\n" + submit + " 결과는 요청한 개수와 허용 변경 필드만 담습니다.";
 }
-export async function importImageResults(db: Db, record: OsRecord, request: ImageBatchRequest, result: unknown, by: string, jobId?: string) {
+export async function importImageResults(db: Db, record: OsRecord, request: ImageBatchRequest, result: unknown, by: string, jobId?: string, trace?: CanonTrace[]) {
   const meta = imageMeta(record);
   if (jobId && meta.appliedJobs[jobId]) return { record, batchId: meta.appliedJobs[jobId] };
   checkedImageRequest(record, request);
@@ -443,6 +449,7 @@ export async function importImageResults(db: Db, record: OsRecord, request: Imag
       seen.add(imageKey);
     }
   }
+  if (trace) state = { ...state, batches: state.batches.map(row => row.id === batch.id ? { ...row, trace } : row) };
   state = startImageCopyBatch(meta.state, state, request);
   const saved = await saveImageMeta(db, record, { ...meta, state, appliedJobs: { ...meta.appliedJobs, ...(jobId ? { [jobId]: batch.id } : {}) } });
   return { record: saved, batchId: batch.id };

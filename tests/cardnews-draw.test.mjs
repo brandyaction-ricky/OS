@@ -48,7 +48,9 @@ test("the 웹툰형 job card sends the AI to the 캐릭터 설정 and explains t
   assert.match(job, /WEBTOON_CAST_TITLE = "웹툰형 캐릭터 설정"/);
   assert.match(job, /formats\.includes\("webtoon"\)/);
   assert.match(job, /panel: "scene은 PD가 「AI로 그리기」에 넣을 그림 설명/);
-  assert.match(readFileSync("lib/server/youtube-ai-jobs.ts", "utf8"), /cast: formats\.includes\("webtoon"\) \? \(await namedProcedures\(service\(\), \[WEBTOON_CAST_TITLE\]\)\)\[0\]/);
+  const jobs = readFileSync("lib/server/youtube-ai-jobs.ts", "utf8");
+  assert.match(jobs, /formats\.includes\("webtoon"\) \? \[VOICE_CANON_TITLE, WEBTOON_CAST_TITLE\]/);
+  assert.match(jobs, /cast = references\.find\(doc => doc\.title === WEBTOON_CAST_TITLE\)/);
 });
 
 // 「내 GPT로 그리기」 (대표 2026-11-04): the PD's own ChatGPT gets the picked 창고 pictures as one side-by-side image, then these words.

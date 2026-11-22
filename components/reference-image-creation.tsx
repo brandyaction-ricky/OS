@@ -10,6 +10,7 @@ import { useImageReferenceCatalog } from "./use-image-reference-catalog";
 import { selectedReferencePlan } from "@/lib/image-creative/direction";
 import { imageJobPending, approveImageFormat, confirmReferenceCopy, createImageBatch, imageBriefProblems, sameImageBrief, saveReferenceCopyDraft, startImageCopyBatch, type ImageBrief,
   type CreativeVariant, type ImageBatchRequest, type ImageCreativeState, type ImageFormatPlan } from "@/lib/image-creative/model";
+import { CampaignBriefPicker } from "./ad-campaign-picker";
 import { ImageProductFields, ProductCanonNotice } from "./image-product-fields";
 import type { ImageProductCatalog } from "./use-image-product-catalog";
 import { ImageFormatPicker, ImageFormatSample } from "./image-format-choice";
@@ -287,10 +288,12 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
     {enlargedReference && <img src={enlargedReference.imageUrl} alt={`${enlargedReference.name} 원본 크게 보기`}/>}
   </dialog>;
   return <><ImageReferenceSteps current={step}/>
+    {step>0 && brief.campaignId && <CampaignBriefPicker brief={brief} setBrief={setBrief} locked />}
     {step>0 && <ProductCanonNotice brief={brief} catalog={catalog} disabled={busy} onRecheck={bundle && sameImageBrief(brief,bundle.state.brief) ? recheckProduct : undefined}
       onReview={!approved && !batch ? ()=>setStep(0) : undefined}/>}
     {step===0 && <form className="panel panel-pad-lg ic-panel ic-guided-brief" onSubmit={e=>{e.preventDefault();submitProduct();}}>
       <h2>상품 선택</h2>
+      <CampaignBriefPicker brief={brief} setBrief={setBrief} locked={busy || Boolean(bundle)} />
       <ImageProductFields brief={brief} setBrief={setBrief} catalog={catalog} sample={sample} disabled={busy}
         requireGoal={false}/>
       {mode==="appeal" && !bundle && <label className="ic-field">프로젝트 이름 (선택)<input className="field" value={name} maxLength={120}

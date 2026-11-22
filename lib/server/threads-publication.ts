@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { ApiError } from "@/lib/http";
 import { executePublication, PublicationError, type PublicationSettings, type PublishCheckpoint } from "@/lib/channel-publishing";
-import { threadsPostsProblem } from "@/lib/threads-posts";
+import { threadsClaimsProblem, threadsPostsProblem } from "@/lib/threads-posts";
 import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { RequestActor } from "./auth";
@@ -53,7 +53,8 @@ async function approvedSource(source: OsRecord) {
     .eq("snapshot->>status", "ready").order("id", { ascending: false }).limit(1).maybeSingle();
   const approved = event?.snapshot;
   return !eventError && approved && approved.title === source.title && approved.description === source.description
-    && approved.parent_id === source.parent_id && JSON.stringify(approved.metadata?.posts) === JSON.stringify(source.metadata.posts);
+    && approved.parent_id === source.parent_id && JSON.stringify(approved.metadata?.posts) === JSON.stringify(source.metadata.posts)
+    && JSON.stringify(approved.metadata?.claims) === JSON.stringify(source.metadata.claims);
 }
 export function threadsPublicationAccountKey(connection: MetaConnection) {
   return createHash("sha256").update(JSON.stringify([connection.owner_id, connection.external_account_id,
@@ -100,7 +101,7 @@ export async function readThreadsPublicationStatus(actor: RequestActor, id: stri
   if (run?.state === "running" || run?.state === "uncertain") return { ...status, reason: "직전 발행 결과를 확인해야 합니다. 중복을 막기 위해 다시 게시하지 않습니다." };
   if (!["ready", "scheduled"].includes(source.status) || !await approvedSource(source))
     return { ...status, reason: "현재 원고를 최종 확인에서 승인한 뒤 발행할 수 있습니다." };
-  const problem = threadsPostsProblem(source.metadata.posts, 1);
+  const problem = threadsPostsProblem(source.metadata.posts, 1) ?? threadsClaimsProblem(source.metadata.posts,source.metadata.claims);
   if (problem) return { ...status, reason: problem };
   if (listedConnections.length && !connections.length)
     return { ...status, reason: "연결 계정 소유자의 OS 이용이 중지됐거나 확인되지 않습니다. 관리자에게 문의해 주세요." };
@@ -137,8 +138,16 @@ export async function publishPersonalThreads(actor: RequestActor, id: string, in
   if (!threadsPublicationEnabled()) throw new ApiError(503, "THREADS_PUBLICATION_DISABLED", "공식 API 발행은 아직 활성화하지 않았습니다.");
   if (input.confirm !== true) throw new ApiError(400, "HUMAN_CONFIRMATION_REQUIRED", "게시할 원고와 계정을 직접 확인해 주세요.");
   const source = await sourceFor(actor, id);
+  if(source.status==="published") {
+    const previous=await readThreadsPublicationStatus(actor,id);
+    if(previous.publication?.state==="published") return previous;
+  }
+  if(source.version!==input.expectedVersion || !await approvedSource(source))
+    throw new ApiError(409,"THREADS_REVIEW_REQUIRED","현재 원고와 사실 근거를 최종 확인에서 다시 승인해 주세요.");
   const problem = threadsPostsProblem(source.metadata.posts, 1);
   if (problem) throw new ApiError(422, "THREADS_POSTS_INVALID", problem);
+  const factProblem=threadsClaimsProblem(source.metadata.posts,source.metadata.claims);
+  if(factProblem)throw new ApiError(422,"THREADS_FACT_SOURCE_REQUIRED",factProblem+" 원고를 다시 고쳐 근거를 확인해 주세요.");
   // 다채널 2단계: the account picked, among the owner's Threads accounts; none = their first, as before.
   const connection = await authorizeMetaConnection(actor, input.accountOwnerId, "threads", "use", input.accountKey);
   assertMetaModeMatches(connection);

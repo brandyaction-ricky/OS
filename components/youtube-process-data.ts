@@ -15,7 +15,7 @@ import { markReviewed, setReviewers, type YpReviewer } from "@/lib/youtube-proce
 import { applyFeedback, cleanMarks, FEEDBACK_FILE_MAX, FEEDBACK_FILE_TYPES, FeedbackRuleError, type FeedbackAction, type FeedbackFile, type FeedbackMark, type FeedbackReply } from "@/lib/youtube-process/feedback";
 import { cutsFromScenes, scenesFromCuts, shortsAction, type YpShortAppeal, type YpShortBrief, type YpShortScene } from "@/lib/youtube-process/short";
 import { mondayFields } from "@/lib/cardnews/planning";
-import { CardError, cardsMissing, nextCards, type CardsPatch } from "@/lib/cardnews/cards";
+import { CardError, cardsMissing, finishedCardPublication, nextCards, type CardsPatch } from "@/lib/cardnews/cards";
 import { cardSignature, emptyCardDraft, type CardDraft, type CardPhoto } from "@/lib/cardnews/formats";
 import { CARD_DRAW_SIZE, type CardCharacterView, type CardDrawInput } from "@/lib/cardnews/draw";
 import { cardSourceProjectReady, projectCardSources, type CardSourceChoice } from "@/lib/cardnews/sources";
@@ -28,7 +28,7 @@ const demoCta: { videos: CtaVideo[]; history: CtaChangeView[] } = { history: [],
   { id: "demoVid0003", title: "[예시] 숏폼 · 다른 링크", publishedAt: "2026-10-28T09:00:00Z", description: "전체 영상 보기 ▶ https://youtu.be/demo" },
 ] };
 export interface YpMember { id: string; name: string }
-export interface YpTopicInput { title?: string; kind?: YpKind | null; target?: string; note?: string; refs?: YpRef[]; purpose?: "ad" | null; channel?: string | null; assigneeId?: string | null }
+export interface YpTopicInput { isTest?: boolean; title?: string; kind?: YpKind | null; target?: string; note?: string; refs?: YpRef[]; purpose?: "ad" | null; channel?: string | null; assigneeId?: string | null }
 export interface YpStageView<K extends YpStageKind = YpStageKind> { id: string | null; version: number; data: YpStageData[K] }
 export type YpStagesView = { [K in YpStageKind]: YpStageView<K> };
 export interface YpFinalView { v: number; at: string; source: "myin" | "short" | "upload"; name: string; bytes: number; durationSeconds: number | null; runId?: string; path?: string; aspect?: "1:1" | "4:5" }
@@ -57,7 +57,7 @@ export interface YpClient {
   /** 한눈에 보기: the videos, the open staff-AI jobs on them, and whether I confirm. */
   overview(): Promise<{ projects: YpProject[]; jobs: OvJob[]; canConfirm: boolean }>;
   /** 채택 on 한눈에 보기: an AI result is taken and leaves the list. */
-  adoptJob(jobId: string): Promise<void>;
+  adoptJob(jobId: string, action?: "retry" | "close"): Promise<void>;
   get(id: string): Promise<YpProject>;
   bundle(id: string): Promise<YpBundle>;
   create(input: YpTopicInput): Promise<YpProject>;
@@ -159,7 +159,7 @@ function apiClient(token: string): YpClient {
     demo: false,
     list: async () => (await apiRequest<{ projects: YpProject[] }>(base, { token })).projects,
     overview: () => apiRequest("/api/v1/content/youtube/overview", { token }),
-    adoptJob: async jobId => { await apiRequest("/api/v1/content/youtube/overview", { token, method: "POST", body: json({ jobId }) }); },
+    adoptJob: async (jobId, action) => { await apiRequest("/api/v1/content/youtube/overview", { token, method: "POST", body: json({ jobId, action }) }); },
     get: async id => (await apiRequest<YpBundle>(`${base}/${id}`, { token })).project,
     bundle: id => apiRequest<YpBundle>(`${base}/${id}`, { token }),
     create: async input => (await apiRequest<{ project: YpProject }>(base, { token, method: "POST", body: json(input) })).project,
@@ -375,6 +375,7 @@ const demoShort = (project: YpProject): YpShortView => demoShorts.get(project.id
   brief: { purpose: project.yp.topic.purpose === "ad" ? "ad" : "organic", duration: 30, product: "", audience: project.yp.topic.target, goal: "", landingUrl: "", evidence: "", appeal: "" } };
 const demoFinals = new Map<string, YpFinalView[]>();
 const demoAdopted = new Set<string>();
+const demoJobResolution = new Map<string, "retry" | "close">();
 const demoFeedback = new Map<string, YpFeedbackView[]>();
 const demoFiles = new Map<string, string>();
 const demoCharacters: CardCharacterView[] = [];
@@ -458,13 +459,18 @@ function demoClient(): YpClient {
       const outlining = projects.find(row => row.yp.stage === "outline");
       const jobs: OvJob[] = [
         ...(making ? [{ sourceId: making.id, task: "마이인 기획표(장면 · 비유 · 자료 후보)", status: "active" as const, requestedAt: at(9), claimedAt: at(4), failReason: null }] : []),
-        ...(planning ? [{ sourceId: planning.id, task: "기획안(제목 · 썸네일 문구 · 영상 흐름)", status: "blocked" as const, requestedAt: at(50), claimedAt: at(48), failReason: "참고 영상 주소를 열지 못했어요" }] : []),
+        ...(planning ? [{ id: "demo-job-blocked", ownerId: DEMO_ME, sourceId: planning.id, task: "기획안(제목 · 썸네일 문구 · 영상 흐름)", status: "blocked" as const, requestedAt: at(50), claimedAt: at(48), failReason: "참고 영상 주소를 열지 못했어요" }] : []),
         ...(outlining && !demoAdopted.has("demo-job-arrived") ? [{ id: "demo-job-arrived", ownerId: DEMO_ME, sourceId: outlining.id, task: "원고(축 · 설계 · 초안 · 검수)", status: "done" as const, requestedAt: at(70), claimedAt: at(66), failReason: null, doneAt: at(12),
           report: { conclusion: "[예시] 초안 한 편 완성 · 고칠 곳 2군데만 보면 돼요", did: ["[예시] 축 3개 중 '퇴근 뒤 1시간'으로 설계", "[예시] 초안 9분 분량", "[예시] 관문 1 검사 두 번 돌림"], evidence: ["[예시] 원고 공정 정본 §2", "[예시] 참고 영상 3편 대본"], canon: "[예시] 관문 1 통과 · '여러분' 2곳 바꿈" } }] : []),
       ];
+      for (const job of jobs) {
+        const resolution = job.id ? demoJobResolution.get(job.id) : undefined;
+        if (resolution === "retry") { job.status = "backlog"; job.claimedAt = null; job.failReason = null; }
+        if (resolution === "close") job.closedAt = at(0);
+      }
       return { projects, jobs, canConfirm: true };
     },
-    adoptJob: async jobId => { demoAdopted.add(jobId); },
+    adoptJob: async (jobId, action) => { if (action) demoJobResolution.set(jobId, action); else demoAdopted.add(jobId); },
     get: async id => structuredClone(find(id)),
     bundle: async id => { const project = find(id); return structuredClone({ project, stages: stagesOf(project), finals: demoFinals.get(id) ?? [] }); },
     create: async input => structuredClone(add(input.title ?? "", input)),
@@ -500,7 +506,7 @@ function demoClient(): YpClient {
       return structuredClone(demoCharacters);
     },
     removeCardCharacter: async characterId => { demoCharacters.splice(demoCharacters.findIndex(row => row.id === characterId) >>> 0, 1); return structuredClone(demoCharacters); },
-    update: async (id, expectedVersion, { assigneeId, ...fields }) => {
+    update: async (id, expectedVersion, { assigneeId, isTest, ...fields }) => {
       const project = find(id);
       checkVersion(project.version, expectedVersion);
       const content = Object.keys(fields).length > 0;
@@ -509,8 +515,8 @@ function demoClient(): YpClient {
       return put({
         ...project, version: project.version + 1, updatedAt: new Date().toISOString(),
         title: fields.title ?? project.title, assigneeId: assigneeId !== undefined ? assigneeId : project.assigneeId,
-        yp: content ? { ...project.yp, contentUpdatedAt: new Date().toISOString(), topic: { type: fields.kind !== undefined ? fields.kind : topic.type, target: fields.target ?? topic.target, note: fields.note ?? topic.note, refs: fields.refs ?? topic.refs,
-          ...((fields.purpose !== undefined ? fields.purpose : topic.purpose) ? { purpose: (fields.purpose !== undefined ? fields.purpose : topic.purpose)! } : {}) } } : project.yp,
+        yp: content ? { ...project.yp, ...(isTest !== undefined ? { isTest } : {}), contentUpdatedAt: new Date().toISOString(), topic: { type: fields.kind !== undefined ? fields.kind : topic.type, target: fields.target ?? topic.target, note: fields.note ?? topic.note, refs: fields.refs ?? topic.refs,
+          ...((fields.purpose !== undefined ? fields.purpose : topic.purpose) ? { purpose: (fields.purpose !== undefined ? fields.purpose : topic.purpose)! } : {}) } } : isTest !== undefined ? { ...project.yp, isTest } : project.yp,
       });
     },
     topicGate: (id, action, expectedVersion, reply, to) => gate(id, "topic", action, expectedVersion, reply, to),
@@ -592,9 +598,14 @@ function demoClient(): YpClient {
       const project = find(id);
       checkVersion(project.version, expectedVersion);
       const stages = stagesOf(project);
+      if (project.yp.topic.type === "card" && to === "done") {
+        const evidence = finishedCardPublication(stages.cards.data, new Date().toISOString());
+        if (!["upload", "done"].includes(project.yp.stage) || project.yp.cardPublication || !evidence) throw demoError(409, "STAGE_NOT_READY", "게시 주소 또는 게시 안 함 이유를 저장해 주세요.");
+        return bump(project, { ...project.yp, stage: to, stageEnteredAt: new Date().toISOString(), cardPublication: evidence });
+      }
       const reason = to === "make" ? outlineMissing(stages.outline.data) : to === "review" ? ((demoFinals.get(id) ?? []).length ? thumbsMissing(stages.make.data) : "최종본을 올려주세요") : "";
       if (reason) throw demoError(409, "STAGE_NOT_READY", reason);
-      return bump(project, { ...project.yp, stage: to });
+      return bump(project, { ...project.yp, stage: to, stageEnteredAt: new Date().toISOString() });
     },
     uploadAsset: async (_id, kind, file) => {
       const path = `youtube/demo/${kind}/${crypto.randomUUID()}.${file.name.split(".").pop()?.toLowerCase() ?? "bin"}`;

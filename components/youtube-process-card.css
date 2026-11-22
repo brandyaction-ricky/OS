@@ -36,6 +36,7 @@
 /* 카드뉴스 정본 다듬기: the canon line, runs side by side, the 평가표 and 고칠 점. */
 .linear-shell .ui-v2.yp .yp-grind-canon .yp-card-b { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .linear-shell .ui-v2.yp .yp-grind-canon { margin-bottom: 18px; }
+.linear-shell .ui-v2.yp .yp-grind-canon .yp-tag { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 .linear-shell .ui-v2.yp .yp-card.yp-pf-start:is(.yp-pf-short, .yp-pf-ad) { border-top: 1px solid var(--line-soft); }
 .linear-shell .ui-v2.yp .yp-grind-table { display: grid; gap: 8px; overflow-x: auto; align-items: stretch; }
 .linear-shell .ui-v2.yp .yp-grind-head, .linear-shell .ui-v2.yp .yp-grind-row-h { display: grid; gap: 4px; align-content: start; font-size: 13px; }
@@ -179,9 +180,7 @@
 .linear-shell .ui-v2.yp .yp-edu-links .yp-row-btns { margin-top: 2px; }
 .linear-shell .ui-v2.yp .yp-edu-links .yp-row-btns > input { flex: 1 1 260px; }
 
-}
-
-.linear-shell .yp .yp-format-sample {
+.linear-shell .ui-v2.yp .yp-format-sample {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -191,11 +190,12 @@
   border: 1px solid var(--line);
   border-radius: 10px;
 }
-.yp-format-sample > div:last-child { flex: 1 1 220px; min-width: 0; }
-.yp-format-sample label { display: grid; gap: 6px; max-width: 260px; }
-.yp-format-sample small { color: var(--muted); }
+.linear-shell .ui-v2.yp .yp-format-sample > div:last-child { flex: 1 1 220px; min-width: 0; }
+.linear-shell .ui-v2.yp .yp-format-sample label { display: grid; gap: 6px; max-width: 260px; }
+.linear-shell .ui-v2.yp .yp-format-sample small { color: var(--muted); }
 
-.yp-grind-prompts { display: grid; gap: 12px; margin: 16px 0; }
-.yp-grind-prompts fieldset { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 12px; min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
-.yp-grind-prompts label { display: grid; gap: 6px; }
-.yp-grind-prompts pre, .yp-grind-head pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.linear-shell .ui-v2.yp .yp-grind-prompts { display: grid; gap: 12px; margin: 16px 0; }
+.linear-shell .ui-v2.yp .yp-grind-prompts fieldset { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 12px; min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+.linear-shell .ui-v2.yp .yp-grind-prompts label { display: grid; gap: 6px; }
+.linear-shell .ui-v2.yp .yp-grind-prompts pre, .linear-shell .ui-v2.yp .yp-grind-head pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+}

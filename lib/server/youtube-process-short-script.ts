@@ -1,3 +1,4 @@
+import type { CanonTrace } from "@/lib/youtube-process/canon-trace";
 import { createHash, randomUUID } from "node:crypto";
 import { pastAdsForAi } from "@/lib/youtube-process/ad-results";
 import { adHistory } from "./youtube-ad-results";
@@ -26,6 +27,7 @@ type Service = ReturnType<typeof createServiceSupabase>;
 type Pipeline = Awaited<ReturnType<typeof readPipeline>>;
 export const SHORT_SCRIPT_CANON = "숏폼 대본 정본";
 const TONE_CANON = "원고 말투 정본";
+export const shortScriptRefs = (db: Service, required = false) => namedProcedures(db, [SHORT_SCRIPT_CANON, TONE_CANON], required);
 const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const locked = (message: string) => new ApiError(409, "STAGE_LOCKED", message);
 const docLines = (docs: { id: string; title: string }[], titles: string[]) => titles.map(title => {
@@ -227,17 +229,17 @@ export function assertShortScriptInputs(state: Pipeline) {
   if (project.yp.gates.draft.state === "wait") throw new ApiError(409, "GATE_WAITING", "대표 컨펌을 기다리는 중이에요. 요청을 취소하면 보낼 수 있어요.");
 }
 /** The topic, the search words and the PD's references; the script being edited does not close a job. */
-export const shortScriptInputKey = (state: Pipeline) => {
+export const shortScriptInputKey = (state: Pipeline, campaign?: YpShortBrief) => {
   const { project, shortScript } = v1Stages(state);
-  return digest(["yp-short-script", project.id, project.title, project.yp.topic, project.yp.shortFrom ?? null, shortScript.data.query, shortScript.data.refs]);
+  return digest(["yp-short-script", project.id, project.title, project.yp.topic, project.yp.shortFrom ?? null, shortScript.data.query, shortScript.data.refs, ...(campaign ? [[campaign.product,campaign.audience,campaign.goal,campaign.evidence,campaign.appeal,campaign.landingUrl,campaign.hypothesis ?? "",campaign.successCriterion ?? "",campaign.budget ?? ""]] : [])]);
 };
 export const shortScriptQuery = (state: Pipeline) => { const { project, shortScript } = v1Stages(state); return shortScript.data.query.trim() || projectName(project); };
 
 const SCRIPT_SHAPE = `{ "formulas": [${FORMULA_SHAPE}], "use": "쓴 공식 이름", "insight": "통찰 한 줄", "headCopy": "이 숏폼 첫 화면의 헤드 카피 (20자 이하)", "hooks": [{ "kind": "반전형", "text": "첫 문장" }, { "kind": "직격형", "text": "첫 문장" }], "script": "첫 문장\\n둘째 문장\\n[관계] 비교가 있는 문장\\n…", "picked": ["실제로 본 레퍼런스 주소"], "notes": "출처 메모 · PD에게 한 줄" }`;
 /** fresh: the card as a first draw (no PD script, no 대표 request) — how 정본 다듬기 draws a confirmed 숏폼 again. */
-export async function shortScriptCard(service: Service, state: Pipeline, leaseMinutes: number, market?: PackagingMarket, adBrief?: YpShortBrief, fresh = false) {
+export async function shortScriptCard(service: Service, state: Pipeline, leaseMinutes: number, market?: PackagingMarket, adBrief?: YpShortBrief, fresh = false, references?: CanonTrace[]) {
   const { project, shortScript } = v1Stages(state);
-  const docs = await namedProcedures(service, [SHORT_SCRIPT_CANON, TONE_CANON]);
+  const docs = references ?? await shortScriptRefs(service);
   const from = project.yp.shortFrom;
   const longform = from ? await longformScript(service, from.projectId) : "";
   const draft = shortScript.data;
@@ -249,7 +251,7 @@ export async function shortScriptCard(service: Service, state: Pipeline, leaseMi
   const pastAds = ad ? pastAdsForAi(await adHistory(service).catch(() => [])) : null;
   const inputs = {
     topic: projectName(project), audience: project.yp.topic.target, note: project.yp.topic.note, ...(ad ? { purpose: "광고" } : {}),
-    ...(ad && adBrief ? { brief: { product: adBrief.product, audience: adBrief.audience, goal: adBrief.goal, landingUrl: adBrief.landingUrl, evidence: adBrief.evidence, appeal: adBrief.appeal } } : {}),
+    ...(ad && adBrief ? { brief: { product: adBrief.product, audience: adBrief.audience, goal: adBrief.goal, landingUrl: adBrief.landingUrl, evidence: adBrief.evidence, appeal: adBrief.appeal, hypothesis: adBrief.hypothesis, successCriterion: adBrief.successCriterion, budget: adBrief.budget } } : {}),
     ...(pastAds ? { pastAds } : {}),
     ...(chosen ? { chosen: { formula: chosen, insight: draft.insight } } : {}),
     ...(from ? { from: { longform: from.title, scene: from.scene, paragraph: from.paragraph, script: longform.slice(0, 40_000) } } : {}),
@@ -299,7 +301,7 @@ export const scriptResultSchema = z.object({
   script: z.string().trim().min(1).max(3000), picked: z.array(z.string().trim().max(300)).max(5).default([]), notes: z.string().trim().max(1000).default(""),
 }).strict();
 /** The AI's 대본 fills an empty step; once the PD has written, it waits beside the fields (like the 기획안). */
-export async function saveShortScript(service: Service, ownerId: string, state: Pipeline, value: unknown, author: { by: string; model: string; jobId: string; team: string }, market?: PackagingMarket) {
+export async function saveShortScript(service: Service, ownerId: string, state: Pipeline, value: unknown, author: { by: string; model: string; jobId: string; team: string; trace?: CanonTrace[] }, market?: PackagingMarket) {
   const parsed = scriptResultSchema.safeParse(value);
   if (!parsed.success) throw new ApiError(422, "SHORT_SCRIPT_INVALID", `대본 형식을 확인해 주세요: ${parsed.error.issues.slice(0, 8).map(issue => `${issue.path.join(".") || "result"} ${issue.message}`).join(" / ")}`);
   const result = parsed.data;
@@ -318,7 +320,7 @@ export async function saveShortScript(service: Service, ownerId: string, state: 
   const draft = { text: result.script, hooks: result.hooks, insight: result.insight, formula: result.use, headCopy: result.headCopy };
   // Untouched = empty, or still the AI's last text; then the new draft goes straight in.
   const untouched = !current.text.trim() || current.text === current.ai?.text;
-  const ai = { by: author.by, model: author.model, at: new Date().toISOString(), jobId: author.jobId, ...(market ? { market: { query: market.query, count: market.refs.length } } : {}),
+  const ai = { trace: author.trace, by: author.by, model: author.model, at: new Date().toISOString(), jobId: author.jobId, ...(market ? { market: { query: market.query, count: market.refs.length } } : {}),
     picked, formulas: result.formulas, notes: result.notes, text: result.script };
   const data: YpShortScript = untouched ? { ...current, ...draft, ai, aiDraft: undefined } : { ...current, ai, aiDraft: draft };
   await writeStage(service, ownerId, author.team, stages.project, "shortScript", stages.shortScript, data);

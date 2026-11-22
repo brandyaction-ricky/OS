@@ -2,7 +2,7 @@
 import { editableFields } from "../youtube-process/confirm.ts";
 import type { YpProject } from "../youtube-process/project.ts";
 import type { YpCards } from "../youtube-process/stages.ts";
-import { cardProblems, emptyCardDraft, toonArtMissing, type CardDraft, type CardFormatId } from "./formats.ts";
+import { cardProblems, emptyCardDraft, toonUploads, toonArtMissing, type CardDraft, type CardFormatId } from "./formats.ts";
 
 export class CardError extends Error {
   readonly code: string;
@@ -12,13 +12,57 @@ export class CardError extends Error {
 export const CARD_DRAFTS_MAX = 12;
 
 /** A draft as edited (its AI record stays the stored one), a new empty draft of a format, a draft removed, the one picked; or 내보내기's address. */
-export interface CardsPatch { draft?: Omit<CardDraft, "at" | "by" | "ai">; add?: CardFormatId; remove?: string; pick?: string; focus?: string; brief?: string; exported?: { url: string } }
+export interface CardsPatch { draft?: Omit<CardDraft, "at" | "by" | "ai">; add?: CardFormatId; remove?: string; pick?: string; focus?: string; brief?: string; exported?: { url?: string; episode?: number; withheldReason?: string; downloaded?: true } }
+
+export function instagramPostId(value: string) {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || !["www.instagram.com", "instagram.com"].includes(url.hostname) || url.username || url.password || url.port) return null;
+    return /^\/(?:p|reel|tv)\/([A-Za-z0-9_-]+)\/?$/.exec(url.pathname)?.[1] ?? null;
+  } catch { return null; }
+}
+
+export function cardPublicationProgress(cards: YpCards) {
+  const draft = cards.drafts.find(row => row.id === (cards.confirmed?.draftId ?? cards.picked));
+  const episodes = draft ? toonUploads(draft).length : 1;
+  const saved = cards.exported;
+  const stored = saved?.posts ?? (saved?.url && instagramPostId(saved.url) ? [{ episode: 1, url: saved.url }] : []);
+  const seen = new Set<string>();
+  const positions = new Set<number>();
+  const posts = stored.filter(post => {
+    const id = instagramPostId(post.url);
+    if (!id || !Number.isInteger(post.episode) || post.episode < 1 || post.episode > episodes || positions.has(post.episode) || seen.has(id)) return false;
+    positions.add(post.episode); seen.add(id); return true;
+  }).sort((a, b) => a.episode - b.episode);
+  const urls = posts.map(post => post.url);
+  const missing = episodes - urls.length;
+  const reason = saved?.withheldReason?.trim() ?? "";
+  return { episodes, posts, urls, missing, reason };
+}
+
+export function finishedCardPublication(cards: YpCards, at: string): YpProject["yp"]["cardPublication"] {
+  const { urls, posts, missing, reason } = cardPublicationProgress(cards);
+  if (missing === 0) return { status: "published", at, urls, posts };
+  if (reason) return { status: "withheld", at, urls, posts, reason };
+  return undefined;
+}
 
 export function nextCards(project: Pick<YpProject, "yp">, current: YpCards, patch: CardsPatch, by: string, now: string, newId: () => string): YpCards {
   if (patch.exported) {
     if (project.yp.stage !== "upload" && project.yp.stage !== "done") throw new CardError("STAGE_LOCKED", "최종 검토 컨펌 뒤에 올린 주소를 남길 수 있어요.");
-    if (!/^https:\/\/\S+$/.test(patch.exported.url)) throw new CardError("CARD_URL_INVALID", "https로 시작하는 주소를 넣어 주세요.", 400);
-    return { ...current, exported: { at: now, by, url: patch.exported.url } };
+    if (project.yp.cardPublication && project.yp.stage === "done") throw new CardError("STAGE_LOCKED", "이미 마친 게시 기록이에요.");
+    const evidence = patch.exported;
+    const { episodes, posts, reason } = cardPublicationProgress(current);
+    const episode = evidence.episode ?? 1;
+    if (!Number.isInteger(episode) || episode < 1 || episode > episodes) throw new CardError("CARD_EPISODE_INVALID", "올린 화를 다시 선택해 주세요.", 400);
+    const url = evidence.url?.trim();
+    if (url !== undefined && (!instagramPostId(url) || posts.some(post => post.episode !== episode && instagramPostId(post.url) === instagramPostId(url)))) {
+      throw new CardError("CARD_URL_INVALID", "해당 화의 고유한 인스타그램 게시물 주소를 넣어 주세요.", 400);
+    }
+    const next = url ? [...posts.filter(post => post.episode !== episode), { episode, url }].sort((a, b) => a.episode - b.episode) : posts;
+    const downloadedEpisodes = evidence.downloaded ? [...new Set([...(current.exported?.downloadedEpisodes ?? []), episode])].sort((a, b) => a - b) : current.exported?.downloadedEpisodes;
+    return { ...current, exported: { at: now, by, ...(downloadedEpisodes?.length ? { downloadedEpisodes } : {}), url: next.find(post => post.episode === 1)?.url ?? "", posts: next,
+      withheldReason: next.length === episodes ? "" : evidence.withheldReason?.trim() ?? reason } };
   }
   if (project.yp.stage !== "draft" || editableFields(project, "draft") !== "all")
     throw new CardError("STAGE_LOCKED", project.yp.stage === "topic" ? "주제를 확정하면 카드를 만들 수 있어요." : "카드를 확정했어요. 고치려면 [다시 열기]를 눌러요.");

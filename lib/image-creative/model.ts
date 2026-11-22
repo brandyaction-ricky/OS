@@ -1,5 +1,6 @@
 import { CREATIVE_SIZES, IMAGE_FORMATS, IMAGE_FORMAT_IDS, IMAGE_TEXT_SLOTS, isImageFormat, isWarehouseFormat, recommendImageFormats, type CreativeSize, type ImageFormatId } from "./formats.ts";
 
+import type { CanonTrace } from "../youtube-process/canon-trace.ts";
 import type { FormatTestRun } from "./format-test.ts";
 import { composeReference } from "./reference-composition.ts";
 import { isReferenceLayout, usesReferenceDetailAsset, referenceBrandProblem, referenceCopyProblems, type ReferenceLayout } from "./reference-layout.ts";
@@ -28,7 +29,7 @@ export interface CreativeVariant {
 }
 type CanonVersion = { id: string; version: number };
 export interface ImageBriefProductSource { productId: string; source: CanonVersion; audienceSource?: CanonVersion }
-export interface ImageBrief { productSource?: ImageBriefProductSource; mainMessage?: string; brand?: string; objective: string; funnel: string; audience: string; product: string; offer: string; landingUrl?: string; facts: string }
+export interface ImageBrief { campaignId?: string; hypothesis?: string; successCriterion?: string; budget?: string; productSource?: ImageBriefProductSource; mainMessage?: string; brand?: string; objective: string; funnel: string; audience: string; product: string; offer: string; landingUrl?: string; facts: string }
 export interface ApprovalStamp { by: string; at: string; name?: string }
 export type ReviewStep = "format" | "copy" | "preview" | "final";
 export type ApprovalOutput = { runId: string; target: "render-pc" | "local" };
@@ -44,10 +45,11 @@ export interface ImageExperimentSummary {
   status: "preparing" | "review" | "awaiting_result" | "winner_recorded" | "complete";
 }
 export interface ImageBatchWinner extends ApprovalStamp { variantId: string; runId: string; variantRunId: string; note?: string }
-export interface ImageBatch { winner?: ImageBatchWinner; review?: ImageBatchReview; compareFormats?: true; designRevision?: true; id: string; mode: ImageMode; count: number; baseId?: string; formatIds: string[]; copyFields: CopyField[]; variantIds: string[]; at: string }
+export interface ImageBatch { trace?: CanonTrace[]; winner?: ImageBatchWinner; review?: ImageBatchReview; compareFormats?: true; designRevision?: true; id: string; mode: ImageMode; count: number; baseId?: string; formatIds: string[]; copyFields: CopyField[]; variantIds: string[]; at: string }
 export interface ImageDirection { concept: string; medium: "photo" | "character" | "product" }
 export interface ImageFormatPlan { mode: "standalone" | "appeal" | "initial"; count: number; size: CreativeSize; appealFirst?: true; conceptFirst?: true; referenceFirst?: true }
 export interface FormatRecommendation extends ImageFormatPlan {
+  trace?: CanonTrace[];
   referenceSnapshot?: ReferenceSnapshot;
   appealOptions?: CreativeVariant["appeal"][];
   concepts?: string[]; direction?: ImageDirection; scene?: string; previousScenes?: string[]; directionVersion?: number;
@@ -151,6 +153,7 @@ function briefIdentity(brief: ImageBrief, legacyAddress = "") {
   const source = brief.productSource;
   return [brief.brand ?? "", brief.objective, brief.funnel, brief.audience, brief.product, brief.offer, legacyAddress, brief.facts,
     ...(brief.mainMessage ? [brief.mainMessage] : []),
+    ...(brief.campaignId ? [["campaign", brief.campaignId, brief.hypothesis, brief.successCriterion, brief.budget]] : []),
     ...(source ? [[source.productId, source.source.id, source.source.version, source.audienceSource?.id, source.audienceSource?.version]] : [])];
 }
 export function sameImageBrief(a: ImageBrief, b: ImageBrief) {

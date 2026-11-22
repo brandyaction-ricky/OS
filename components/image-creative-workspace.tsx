@@ -1,4 +1,5 @@
 "use client";
+import { CanonRail } from "./canon-rail";
 import "./image-creative-workspace.css";
 import type { ImageFlowPreview } from "@/lib/image-creative/flow-preview";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -75,7 +76,9 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
   const [copyFields,setCopyFields] = useState<Array<"headline"|"body"|"cta">>(["headline"]);
   const [result,setResult] = useState(""); const [message,setMessage] = useState(""); const [error,setError] = useState(""); const [busy,setBusy] = useState(false);
   const [assetPaths,setAssetPaths] = useState<string[]>([]); const [size,setSize] = useState<CreativeVariant["size"]>("portrait");
-  const saved = bundle?.state; const editing = saved?.variants.find(v => v.id === editingId);
+  const saved = bundle?.state;
+  const sourceBatch = saved?.batches.find(row => row.variantIds.includes(saved.selectedId)) ?? saved?.batches.at(-1);
+   const editing = saved?.variants.find(v => v.id === editingId);
   const refFlow = !showTools && saved?.formatRecommendation?.referenceFirst;
   const firstDraft = refFlow && saved?.batches.length === 1 && !saved.batches[0].review?.copy &&
     !saved.batches[0].review?.history.some(h=>h.step==="copy" && h.decision==="approved");
@@ -571,6 +574,7 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
   );
   return <div className="ic-page">
     <div className="ic-row"><h1>이미지 광고</h1><button type="button" className="secondary-button" disabled={busy} onClick={showTrash}>휴지통</button></div>
+    {saved && <CanonRail refs={sourceBatch ? sourceBatch.trace : saved.formatRecommendation?.trace} check={sourceBatch ? (sourceBatch.review?.final ? "최종 검수 완료" : sourceBatch.review?.copy ? "카피 검수 완료" : "최종 검수 전") : undefined} pending={!sourceBatch && !saved.formatRecommendation?.items?.length && !saved.formatRecommendation?.appealOptions?.length && !saved.formatRecommendation?.concepts?.length} />}
     {demo&&<p className="os-callout" data-tone="info">{flowPreview ? "반영 전 테스트 · 작업은 이 브라우저에만 저장됩니다. AI 생성과 Mac 출력은 실행하지 않습니다." : localDirectionPlanner
       ? "개발 화면 · 작업은 이 브라우저에 저장됩니다."
       : "체험 모드 · 시안과 PNG를 이 브라우저에서 만듭니다. 실제 AI와 Mac 작업은 연결된 OS에서 실행됩니다."}</p>}

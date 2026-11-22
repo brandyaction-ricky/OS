@@ -69,7 +69,7 @@ function assertShortEditable(project: YpProject) {
 }
 
 const briefOf = (brief: ShortformBrief): YpShortBrief => ({ purpose: brief.purpose, duration: brief.duration, product: brief.product, audience: brief.audience,
-  goal: brief.goal, landingUrl: brief.landingUrl, evidence: brief.evidence, appeal: brief.appeal });
+  goal: brief.goal, landingUrl: brief.landingUrl, evidence: brief.evidence, appeal: brief.appeal, hypothesis: brief.hypothesis, successCriterion: brief.successCriterion, budget: brief.budget });
 async function renders(service: Service, itemIds: string[]) {
   if (!itemIds.length) return [];
   const { data, error } = await service.from("os_records").select("*").eq("record_type", "ai_job").eq("metadata->>kind", SHORTFORM_RENDER_KIND)
@@ -113,7 +113,7 @@ const sceneSchema = z.object({ seconds: z.number().min(0).max(60), text: text(24
 export const shortSaveSchema = z.object({
   expectedVersion: z.number().int().positive(),
   brief: z.object({ purpose: z.enum(["organic", "ad"]), duration: z.union([z.literal(15), z.literal(30), z.literal(60)]), product: text(5000), audience: text(5000),
-    goal: text(5000), landingUrl: text(2000), evidence: text(5000), appeal: text(5000) }).partial().strict().optional(),
+    goal: text(5000), landingUrl: text(2000), evidence: text(5000), appeal: text(5000), hypothesis: text(2000), successCriterion: text(2000), budget: text(2000) }).partial().strict().optional(),
   scenes: z.array(sceneSchema).max(20).optional(),
   /** [이 초안으로 바꾸기]: the AI's scenes replace the current ones; images already picked stay on the same scene number. */
   useAiScenes: z.literal(true).optional(),
@@ -263,7 +263,7 @@ const digestOf = (value: unknown) => createHash("sha256").update(JSON.stringify(
 /** The job input: the topic and what to make. A changed brief closes an older job; the scenes being edited do not. */
 export function shortJobInputKey(project: YpProject, brief: ShortformBrief) {
   const { purpose, duration, product, audience, goal, landingUrl, evidence, appeal } = brief;
-  return digestOf(["yp-v1-short", project.id, project.title, project.yp.topic, { purpose, duration, product, audience, goal, landingUrl, evidence, appeal }]);
+  return digestOf(["yp-v1-short", project.id, project.title, project.yp.topic, { purpose, duration, product, audience, goal, landingUrl, evidence, appeal, hypothesis: brief.hypothesis || undefined, successCriterion: brief.successCriterion || undefined, budget: brief.budget || undefined }]);
 }
 export function assertShortJobOpen(project: YpProject) {
   if (project.yp.topic.type !== "short") throw new ApiError(409, "NOT_SHORT_PROJECT", "숏폼 프로젝트에서만 보낼 수 있어요.");
@@ -274,6 +274,7 @@ export function shortJobCard(project: YpProject, brief: ShortformBrief, docs: { 
   const ad = brief.purpose === "ad";
   const inputs = { topic: projectName(project), audience: brief.audience || project.yp.topic.target, note: project.yp.topic.note, references: project.yp.topic.refs.map(ref => ref.url),
     purpose: ad ? "광고" : "일반 콘텐츠", seconds: brief.duration, product: brief.product, goal: brief.goal, landingUrl: brief.landingUrl, evidence: brief.evidence, appeal: brief.appeal,
+    ...(ad ? { hypothesis: brief.hypothesis, successCriterion: brief.successCriterion, budget: brief.budget } : {}),
     ...(script.trim() ? { script } : {}), ...(ad && pastAds ? { pastAds } : {}) };
   return `이 작업 하나만 처리합니다. 승인 · 게시 · 광고 집행 · 삭제는 하지 않습니다.
 

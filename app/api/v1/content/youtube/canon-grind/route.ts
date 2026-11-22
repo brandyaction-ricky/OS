@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { ZodError } from "zod";
+import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { youtubeActor } from "@/lib/server/youtube-process";
-import { actOnGrind, grindActionSchema, grindKindSchema, readGrind, readScriptCanon } from "@/lib/server/canon-grind";
+import { assignProductCanon } from "@/lib/server/production-canon";
+import { productionCanonOverview, actOnGrind, grindActionSchema, grindKindSchema, readGrind, readScriptCanon } from "@/lib/server/canon-grind";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,6 +17,7 @@ const kindOf = (request: Request) => grindKindSchema.parse(new URL(request.url).
 export async function GET(request: Request) {
   try {
     const actor = await youtubeActor(request);
+    if (new URL(request.url).searchParams.get("kind") === "overview") return NextResponse.json(await productionCanonOverview(), { headers });
     if (new URL(request.url).searchParams.get("kind") === "script") return NextResponse.json({ ...(await readScriptCanon()), me: actor.ownerId }, { headers });
     return NextResponse.json({ ...(await readGrind(kindOf(request))), me: actor.ownerId }, { headers });
   } catch (error) {
@@ -28,6 +30,10 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const actor = await youtubeActor(request);
+    if (new URL(request.url).searchParams.get("kind") === "overview") {
+      const input = z.object({ documentId: z.string().uuid(), expectedVersion: z.number().int().min(0) }).strict().parse(await parseJson(request, 1000));
+      return NextResponse.json(await assignProductCanon(actor, input.documentId, input.expectedVersion), { headers });
+    }
     const input = grindActionSchema.parse(await parseJson(request, 20_000));
     return NextResponse.json({ ...(await actOnGrind(actor, kindOf(request), input)), me: actor.ownerId }, { headers });
   } catch (error) {

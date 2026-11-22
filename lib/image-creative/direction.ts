@@ -4,6 +4,7 @@ import { ImageCreativeError, productionBrief, validWarehouseBrand, type Creative
 
 const sourceVersion = z.object({id: z.string().uuid(), version: z.number().int().positive()}).strict();
 export const imageBriefSchema = z.object({
+  campaignId: z.string().uuid().optional(), hypothesis: z.string().max(2000).optional(), successCriterion: z.string().max(2000).optional(), budget: z.string().max(2000).optional(),
   productSource: z.object({productId: z.string().min(1).max(160), source: sourceVersion, audienceSource: sourceVersion.optional()}).strict().optional(),
   mainMessage: z.string().trim().max(2000).optional(), brand: z.string().trim().max(15).optional(), objective: z.string().max(2000), funnel: z.string().max(2000).default(""), audience: z.string().max(2000), product: z.string().max(2000),
   offer: z.string().max(2000), facts: z.string().max(10_000), landingUrl: z.string().max(2000).optional() }).strict().transform(productionBrief);

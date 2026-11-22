@@ -14,7 +14,7 @@ function project(id, kind, stage, extra = {}) {
 const waiting = gate => ({ [gate]: { state: "wait", round: 1, requestedAt: ago(130) } });
 
 // 한눈에 보기 (리키 관제실 시안 P1, 2026-10-31): one list of open work, grouped by what it needs now.
-test("a waiting step is my decision only as the approver or the video's PD; a blocked AI job comes first", () => {
+test("a waiting step is my decision only as the approver or the video's PD; blocked work appears in its own group", () => {
   const projects = [
     project("a", "live", "topic", { gates: waiting("topic") }),
     project("b", "live", "outline"),
@@ -115,4 +115,42 @@ test("채널 확대 lists that channel's day — decisions and AI job moments �
   assert.deepEqual(today.map(item => item.what), ["원고 · AI가 가져감", "원고 · 맡김", "주제 컨펌 → 컨펌"]);
   assert.deepEqual(channelDay(rows, decisionsToday(projects, NOW, 1), "longform", NOW, 1), []);
   assert.deepEqual(channelNext(rows, "card").map(row => row.id), ["c"]);
+});
+
+test("past, superseded and expired jobs stay distinct from current decisions", () => {
+  const old = project("old", "live", "review", { gates: waiting("review") });
+  const stale = project("stale", "live", "make");
+  const stuck = project("stuck", "live", "make");
+  const newest = project("newest", "live", "make");
+  const alternate = project("alternate", "live", "make");
+  const active = id => ({ id, sourceId: id, task: "scene", status: "active", requestedAt: ago(200), claimedAt: ago(100), failReason: null });
+  const jobs = [{ ...active("old"), status: "blocked", failReason: "raw error" }, { ...active("stale"), taskKey: "plan", status: "backlog" },
+    { ...active("stuck"), leaseLive: false }, { ...active("newest"), status: "blocked" },
+    { ...active("newest"), id: "new", status: "done", closedAt: ago(1), requestedAt: ago(20) },
+    { ...active("alternate"), status: "blocked", requestedAt: ago(30) },
+    { ...active("alternate"), id: "completed", status: "done", requestedAt: ago(90), doneAt: ago(20), closedAt: ago(20) }];
+  const { rows } = overviewRows([old, stale, stuck, newest, alternate], jobs, { id: "pd", canConfirm: true }, NOW);
+  const row = id => rows.find(item => item.id === id);
+  assert.equal(row("old").state, "decide");
+  assert.equal(row("old").job, undefined);
+  assert.equal(row("old").pastJobs[0].failReason, "raw error");
+  assert.equal(row("stale").state, "human");
+  assert.equal(row("stuck").state, "blocked");
+  assert.match(row("stuck").now, /응답 없음/);
+  assert.equal(row("newest").state, "human");
+  assert.equal(row("alternate").state, "human");
+});
+test("only explicit tests are hidden and only cards with publication evidence count as done", () => {
+  const marked = project("test", "card", "review"); marked.yp.isTest = true;
+  const real = project("qa-title", "card", "review"); real.title = "[QA]"; real.yp.contentUpdatedAt = ago(60 * 24 * 8);
+  const legacy = project("legacy", "card", "done");
+  const withheld = project("withheld", "card", "done"); withheld.yp.cardPublication = { status: "withheld", at: ago(1), urls: [], reason: "보류" };
+  const posted = project("posted", "card", "done"); posted.yp.cardPublication = { status: "published", at: ago(1), urls: ["https://www.instagram.com/p/example/"] };
+  const all = [marked, real, legacy, withheld, posted], me = { id: "pd", canConfirm: true };
+  const { rows, done } = overviewRows(all, [], me, NOW);
+  assert.equal(done, 1);
+  assert.equal(rows.find(row => row.id === real.id).overdue, true);
+  assert.equal(rows.find(row => row.id === legacy.id).now, "게시 기록 확인");
+  assert.equal(rows.some(row => row.id === marked.id), false);
+  assert.equal(overviewRows(all, [], me, NOW, [], true).rows.some(row => row.id === marked.id), true);
 });

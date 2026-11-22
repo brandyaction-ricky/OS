@@ -1,4 +1,5 @@
 "use client";
+import { CanonRail } from "./canon-rail";
 // 카드뉴스 (설계서 2026-10-30): 주제 → 카드 만들기 → 최종 검토 → 내보내기. Cards are written and seen in one place: the preview is the
 // same drawing the PNG uses (lib/cardnews/card-slide), so what the PD sees is what gets downloaded.
 import "./youtube-process-card.css";
@@ -9,7 +10,7 @@ import { ArrowDown, ArrowRight, ArrowUp, Copy, Download, GalleryHorizontal, Imag
 import { CardSlideView } from "@/lib/cardnews/card-slide";
 import { formatSample } from "@/lib/cardnews/format-sample";
 import { mondayFields, planningOutline } from "@/lib/cardnews/planning";
-import { cardsMissing } from "@/lib/cardnews/cards";
+import { cardPublicationProgress, cardsMissing, instagramPostId } from "@/lib/cardnews/cards";
 import { addCardSlide, CARD_FORMAT_IDS, CARD_FORMATS, CARD_SIZE, cardLetters, cardMaxSlides, cardProblems, moveCardSlide, parseCardHashtags, removeCardSlide, slideSpec, TOON_AIM, toonBattery, toonUploads, type CardDraft, type CardFormatId, type CardPhoto } from "@/lib/cardnews/formats";
 import type { CardSourceChoice } from "@/lib/cardnews/sources";
 import { apiRequest } from "@/lib/api-client";
@@ -115,7 +116,7 @@ export function CardStart({ initial = "" }: { initial?: string }) {
     catch (reason) { setError(errorMessage(reason)); setBusy(false); }
   };
   const open = (projects ?? []).filter(project => project.yp.topic.type === "card" && project.yp.stage !== "done");
-  const done = (projects ?? []).filter(project => project.yp.topic.type === "card" && project.yp.stage === "done");
+  const done = (projects ?? []).filter(project => project.yp.topic.type === "card" && project.yp.stage === "done" && project.yp.cardPublication?.status === "published");
   const ready = form.title.trim().length >= 2 && form.target.trim().length > 0;
   return <>
     <CardSourcePicker client={client} busy={busy} onPick={bring} />
@@ -352,6 +353,7 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
     todo={editable ? [{ label: "초안", done: cards.drafts.length > 0 }, { label: "고른 초안", done: Boolean(picked) }, { label: "글자 수 · 넘침", done: Boolean(draft) && !problems.blocking.length && !overList.length }] : undefined}>
     <GateBanner page={page} gate="draft" />
     <Subject page={page} />
+    <CanonRail refs={draft?.ai?.trace} legacy={draft?.ai?.canon} check={draft ? (problems.blocking.length ? `필수 수정 ${problems.blocking.length}건` : (problems.warnings.length ? `확인 권장 ${problems.warnings.length}건` : "자동 검사 통과")) : undefined} pending={!draft} />
     {cards.source.kind !== "none" ? <details className="yp-card yp-card-src"><summary>원본 · {SOURCE_NAME[cards.source.kind]} 「{cards.source.title}」{cards.focus ? ` · 이 부분 위주로: ${cards.focus}` : ""}</summary>
       <pre>{cards.source.text}</pre></details> : null}
 
@@ -510,6 +512,7 @@ export function CardReviewScreen({ page, header }: { page: YpPage; header: React
     {["topic", "draft"].includes(project.yp.stage) ? <LockedStep page={page} name="최종 검토" /> : <>
       <GateBanner page={page} gate="review" />
       <Subject page={page} />
+    <CanonRail refs={draft?.ai?.trace} legacy={draft?.ai?.canon} check={draft ? (check.blocking.length ? `필수 수정 ${check.blocking.length}건` : (check.warnings.length ? `확인 권장 ${check.warnings.length}건` : "자동 검사 통과")) : undefined} pending={!draft} />
       {draft ? <>
         <YpSection n={1} title="카드" gq={`${CARD_FORMATS[draft.format].name} · ${draft.slides.length}장`}>
           <CardPhotos.Provider value={photos}><div className="yp-card-grid">{draft.slides.map((_, index) => <CardPreview key={index} draft={draft} index={index} width={260} onOver={onOver} />)}</div></CardPhotos.Provider>
@@ -582,40 +585,63 @@ export function CardExportScreen({ page, header }: { page: YpPage; header: React
   const project = page.bundle?.project;
   const cards = page.bundle?.stages.cards;
   const draft = confirmedDraft(page);
+  const [episode, setEpisode] = useState(1);
   const [url, setUrl] = useState("");
+  const [why, setWhy] = useState("");
   const [busy, setBusy] = useState("");
   const [copied, setCopied] = useState(false);
-  useEffect(() => { if (cards?.data.exported?.url) setUrl(cards.data.exported.url); }, [cards?.data.exported?.url]);
+  const publication = project?.yp.stage === "done" ? project.yp.cardPublication : undefined;
+  const progress = cards ? cardPublicationProgress(cards.data) : null;
+  const savedUrl = (publication?.posts ?? progress?.posts)?.find(post => post.episode === episode)?.url ?? "";
+  useEffect(() => { setEpisode(1); }, [project?.id]);
+  useEffect(() => { setUrl(savedUrl); }, [savedUrl, episode, project?.id]);
+  useEffect(() => { setWhy(progress?.reason ?? ""); }, [progress?.reason, project?.id]);
   const photos = useCardPhotoUrls(page, [draft]);
-  if (!page.bundle || !project || !cards) return <YpFrame page={page} view={5} action={null} header={header} title="내보내기" sub="" />;
+  if (!page.bundle || !project || !cards || !progress) return <YpFrame page={page} view={5} action={null} header={header} title="내보내기" sub="" />;
   const run = async (what: string, work: () => Promise<unknown>) => { setBusy(what); try { await work(); } catch (reason) { page.fail(reason); } finally { setBusy(""); } };
   const caption = draft ? [draft.caption.trim(), draft.hashtags.map(tag => `#${tag}`).join(" ")].filter(Boolean).join("\n\n") : "";
   const finish = () => run("finish", async () => { const next = await page.client!.move(project.id, "done", project.version); page.setBundle(current => current ? { ...current, project: next } : current); });
-  const action = stepAction(page, 5, project.yp.stage === "done" ? { kind: "status", status: "끝난 카드뉴스예요" }
-    : { kind: "button", label: "다 올렸으면 끝내기", reason: "", busy: busy === "finish", onClick: () => void finish() });
-  return <YpFrame page={page} view={5} action={action} header={header} title="내보내기" sub="이미지를 내려받아 인스타그램에 올리고, 올린 주소를 남긴 뒤 끝내요."
-    todo={project.yp.stage === "upload" ? [{ label: "이미지 내려받기", done: Boolean(cards.data.exported) || busy.startsWith("zip") }, { label: "올린 주소", done: Boolean(cards.data.exported) }] : undefined}>
+  const dirty = url.trim() !== savedUrl || why.trim() !== progress.reason;
+  const ready = (!progress.missing || progress.reason) && !dirty;
+  const persistEvidence = async (evidence: { url?: string; episode?: number; withheldReason?: string; downloaded?: true }) => {
+    const result = await page.client!.saveStage(project.id, "cards", cards.version, { exported: evidence });
+    page.setBundle(current => current ? { ...current, project: result.project, stages: { ...current.stages, cards: result.stage } } : current);
+  };
+  const save = (evidence: Parameters<typeof persistEvidence>[0]) => run("evidence", () => persistEvidence(evidence));
+  const action = stepAction(page, 5, publication ? { kind: "status", status: publication.status === "published" ? "끝난 카드뉴스 · 게시 확인" : "끝난 카드뉴스 · 게시 안 함" }
+    : { kind: "button", label: progress.missing && progress.reason ? "게시 안 함으로 마치기" : "다 올렸으면 끝내기", reason: ready ? "" : dirty ? "입력한 내용을 먼저 저장해 주세요." : "게시 주소 또는 게시 안 함 이유를 남겨 주세요.", busy: Boolean(busy), onClick: () => void finish() });
+  return <YpFrame page={page} view={5} action={action} header={header} title="내보내기" sub="이미지를 내려받아 인스타그램에 올리고, 올린 주소를 남긴 뒤 끝내요.">
     {!["upload", "done"].includes(project.yp.stage) ? <LockedStep page={page} name="내보내기" /> : <>
       <GateBanner page={page} gate="review" />
       <Subject page={page} />
+      {project.yp.stage === "done" && !publication && <button type="button" className="yp-btn yp-pri" disabled={!ready || Boolean(busy)} onClick={() => void finish()}>게시 기록 확정</button>}
+      {!publication && <p className="yp-hint" role="status">{cards.data.exported?.downloadedEpisodes?.length ? `내보냄 · ${cards.data.exported.downloadedEpisodes.length}/${progress.episodes}화` : "승인 · 내보내기 준비"}</p>}
       <YpSection n={1} title="이미지 · 캡션" gq={draft ? `${draft.slides.length}장 · 1080 × 1350` : ""}>
         {draft ? <CardPhotos.Provider value={photos}><div className="yp-card-strip">{draft.slides.map((_, index) => <CardPreview key={index} draft={draft} index={index} width={120} />)}</div></CardPhotos.Provider> : null}
         <div className="yp-row-btns" style={{ marginTop: 10 }}>
           {(draft && toonUploads(draft).length > 1 ? toonUploads(draft) : [null]).map((post, at) => {
             // 웹툰형 goes up one 화 per post, so each 화 is its own ZIP (대표 2026-11-04).
             const name = post && draft ? draft.slides[post.from].fields.episode?.trim() || `${at + 1}화` : "", key = post ? `zip${at + 1}` : "zip";
-            return <button key={key} type="button" className={at ? "yp-btn" : "yp-btn yp-pri"} disabled={!draft || Boolean(busy)} onClick={() => void run(key, async () => saveBlob(await page.client!.cardsFile(project.id, post ? { zip: true, upload: at + 1 } : { zip: true }), `카드뉴스-${projectName(project).slice(0, 30)}${post ? `-${name}` : ""}.zip`))}>
+            return <button key={key} type="button" className={at ? "yp-btn" : "yp-btn yp-pri"} disabled={!draft || Boolean(busy)} onClick={() => void run(key, async () => {
+              saveBlob(await page.client!.cardsFile(project.id, post ? { zip: true, upload: at + 1 } : { zip: true }), `카드뉴스-${projectName(project).slice(0, 30)}${post ? `-${name}` : ""}.zip`);
+              if (!publication && !cards.data.exported?.downloadedEpisodes?.includes(at + 1)) await persistEvidence({ downloaded: true, episode: at + 1 });
+            })}>
               <Download size={14} aria-hidden="true" /> {busy === key ? "만드는 중…" : post ? `${name} 내려받기 (${post.to - post.from}장)` : "이미지 묶음 내려받기"}</button>;
           })}
           <button type="button" className="yp-btn" disabled={!caption} onClick={() => void navigator.clipboard.writeText(caption).then(() => setCopied(true))}><Copy size={14} aria-hidden="true" /> {copied ? "복사했어요" : "캡션 복사"}</button></div>
       </YpSection>
       <YpSection n={2} title="올린 주소" gq="인스타그램 게시물 주소">
-        <div className="yp-row-btns"><input className="yp-in" style={{ flex: 1 }} value={url} onChange={event => setUrl(event.target.value)} placeholder="https://www.instagram.com/p/…" aria-label="올린 주소" />
-          <button type="button" className="yp-btn" disabled={!/^https:\/\/\S+$/.test(url.trim()) || Boolean(busy) || url.trim() === cards.data.exported?.url}
-            onClick={() => void run("url", async () => { const result = await page.client!.saveStage(project.id, "cards", cards.version, { exported: { url: url.trim() } }); page.setBundle(current => current ? { ...current, project: result.project, stages: { ...current.stages, cards: result.stage } } : current); })}>
-            {busy === "url" ? "남기는 중…" : "주소 남기기"}</button></div>
-        <CardUrlBookmarks ownerId={page.profile?.id} url={url} onLoad={setUrl} />
-        {cards.data.exported ? <p className="yp-hint">남김 · {cards.data.exported.by}</p> : null}
+        {progress.episodes > 1 && <label>게시할 화 <select className="yp-in yp-w-auto" value={episode} onChange={e => setEpisode(Number(e.target.value))}>
+          {Array.from({ length: progress.episodes }, (_, i) => <option key={i} value={i + 1}>{i + 1}화 · {progress.posts.some(post => post.episode === i + 1) ? "주소 있음" : "주소 없음"}</option>)}</select></label>}
+        <div className="yp-row-btns"><input className="yp-in" style={{ flex: 1 }} value={url} readOnly={Boolean(publication)} onChange={event => setUrl(event.target.value)} placeholder="https://www.instagram.com/p/…" aria-label="올린 주소" />
+          {!publication && <button type="button" className="yp-btn" disabled={!instagramPostId(url.trim()) || Boolean(busy) || url.trim() === savedUrl}
+            onClick={() => void save({ url: url.trim(), episode })}>주소 남기기</button>}</div>
+        <CardUrlBookmarks ownerId={page.profile?.id} url={url} onLoad={publication ? undefined : setUrl} />
+        {cards.data.exported ? <p className="yp-hint">남김 · {cards.data.exported.by} · 게시 주소 {progress.urls.length}/{progress.episodes}</p> : null}
+        {publication?.reason && <p>게시 안 함 · {publication.reason}</p>}
+        {!publication && progress.missing > 0 && <details><summary>남은 화 게시 안 함</summary>
+          <label>게시 안 함 이유<input className="yp-in" value={why} maxLength={500} onChange={e => setWhy(e.target.value)} /></label>
+          <button type="button" className="yp-btn" disabled={Boolean(busy) || why.trim() === progress.reason} onClick={() => void save({ withheldReason: why.trim() })}>이유 저장</button></details>}
       </YpSection>
     </>}
   </YpFrame>;

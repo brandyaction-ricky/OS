@@ -85,6 +85,11 @@
     .perf-more-body { right: auto; left: 0; }
   }
   @media (max-width: 520px) {
+    .linear-shell .perf-root :is(.os-chip, button, select, summary, input[type="date"]) { min-height: 40px; }
+    .linear-shell .perf-root .page-header { display: flex; flex-flow: column nowrap; height: auto; align-items: stretch; gap: var(--os-space-4); }
+    .linear-shell .perf-root .header-actions { display: flex; flex-wrap: wrap; justify-content: flex-start; min-width: 0; }
+    .perf-more-filters[open] { flex-basis: 100%; }
+    .perf-more-filters[open] .perf-more-body { position: static; min-width: 0; margin-top: var(--os-space-3); }
     .perf-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .perf-find { min-width: 0; width: 100%; }
   }

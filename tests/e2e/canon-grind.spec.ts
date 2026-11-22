@@ -48,7 +48,7 @@ test("롱폼 원고 정본 다듬기: 두 번째 검수 by 정본 묶음, the ga
   await expect(page.getByRole("heading", { name: "롱폼 원고 정본 다듬기" })).toBeVisible();
   await expect(page.getByText("지금 정본: 원고 공정 정본 v2.5")).toBeVisible();
   await expect(page.getByText("정본 묶음 v2.5", { exact: true })).toBeVisible();
-  await expect(page.getByText("원고 2 · 통과 0 (0%)")).toBeVisible();
+  await expect(page.getByText("원고 2 · 통과 0 · 판단 보류 2건")).toBeVisible();
   await expect(page.getByText("관문 5 사실과 재료 0/2")).toBeVisible();
   await expect(page.getByText("원고 2편에서 반려 · 정본 문제")).toBeVisible();
   await expect(page.getByRole("link", { name: "[예시] 연봉 보고 옮겼는데 또 힘들다면" })).toHaveAttribute("href", /\/content\/plan\?project=demo-1&view=outline/);
@@ -69,4 +69,12 @@ test("카드 정본 실험 지시는 포맷별로 분리되고 다시 불러올 
   await expect(compare.getByLabel("품질 기준")).toHaveValue("같은 기준으로 양쪽 비교");
   await expect(list.getByLabel("스타일 지시")).toHaveValue("현장의 질문으로 시작");
   await expect(list.getByLabel("품질 기준")).toHaveValue("");
+});
+
+test("제작 정본 현황에서 시험 버전 차이와 상품 사실 작성 경로를 확인한다", async ({ page }) => {
+  await page.goto("/content/canon");
+  await expect(page.getByRole("heading", { name: "제작 정본 현황" })).toBeVisible();
+  await expect(page.getByRole("row", { name: /롱폼 원고/ })).toContainText("판단 보류 2건");
+  await page.getByRole("link", { name: "상품 사실 양식으로 작성" }).click();
+  await expect(page.getByRole("textbox", { name: "새 페이지 제목" })).toHaveValue("상품 사실 정본");
 });

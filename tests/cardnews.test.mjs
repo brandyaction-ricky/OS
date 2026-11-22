@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { addCardSlide, CARD_FORMATS, cardProblems, cardSignature, emptyCardDraft, removeCardSlide } from "../lib/cardnews/formats.ts";
-import { cardsMissing, nextCards } from "../lib/cardnews/cards.ts";
+import { cardsMissing, cardPublicationProgress, finishedCardPublication, nextCards } from "../lib/cardnews/cards.ts";
 import { storedZip } from "../lib/cardnews/zip.ts";
 import { applyGateAction, canReopen } from "../lib/youtube-process/confirm.ts";
 import { flowOf, newProjectMeta } from "../lib/youtube-process/project.ts";
@@ -92,4 +92,23 @@ test("the ZIP of cards opens with every file", () => {
   const listing = execFileSync("unzip", ["-l", join(dir, "a.zip")], { encoding: "utf8" });
   assert.match(listing, /01\.png/); assert.match(listing, /caption\.txt/);
   assert.equal(execFileSync("unzip", ["-p", join(dir, "a.zip"), "caption.txt"], { encoding: "utf8" }), "캡션");
+});
+
+test("게시 확인 requires a distinct Instagram post for every episode and honours legacy addresses", () => {
+  const project = cardProject("upload");
+  const draft = filled("webtoon");
+  draft.slides.unshift(structuredClone(draft.slides[0]));
+  const cards = { ...emptyStage("cards", "card"), drafts: [draft], picked: draft.id };
+  const patch = (current, exported) => nextCards(project, current, { exported }, "pd", "2026-11-22", () => "");
+  assert.equal(cardPublicationProgress(cards).episodes, 2);
+  assert.equal(finishedCardPublication(patch(cards, { episode: 1, downloaded: true }), "now"), undefined);
+  const legacy = { ...cards, exported: { url: "https://instagram.com/p/abc", by: "pd", at: "then" } };
+  assert.equal(cardPublicationProgress(legacy).missing, 1);
+  assert.equal(finishedCardPublication(legacy, "now"), undefined);
+  for (const url of ["https://instagram.com/username", "https://instagram.com.evil.com/p/abc", "https://instagram.com/p/abc/?utm=xyz"]) {
+    assert.throws(() => patch(legacy, { episode: 2, url }), error => error.code === "CARD_URL_INVALID");
+  }
+  const withheld = patch(legacy, { withheldReason: "후속 화 보류" });
+  assert.equal(finishedCardPublication(withheld, "now").status, "withheld");
+  assert.equal(finishedCardPublication(patch(withheld, { episode: 2, url: "https://www.instagram.com/reel/xyz/" }), "now").status, "published");
 });

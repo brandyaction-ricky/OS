@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiRequest } from "@/lib/api-client";
 import { spanDays } from "@/lib/performance-period";
 import type { Money, VideoSales } from "@/lib/video-sales";
@@ -17,13 +17,21 @@ export function useVideoSales(from: string, to: string) {
   const { accessToken, demo } = useSession();
   const [sales, setSales] = useState<Sales | null>(null), [error, setError] = useState(""), [busy, setBusy] = useState(false);
   const tooLong = spanDays(from, to) > MAX_DAYS;
+  const generation = useRef(0);
   const load = useCallback(async (fresh = false) => {
+    if (demo || tooLong || !from || !to) return;
+    const current = generation.current + 1;
+    generation.current = current;
     setBusy(true); setError("");
-    try { setSales(await apiRequest<Sales>(`/api/v1/content/video-sales?${new URLSearchParams({ from, to, ...(fresh ? { fresh: "1" } : {}) })}`, { token: accessToken })); }
-    catch (reason) { setSales(null); setError(reason instanceof Error ? reason.message : "마이인 매출을 불러오지 못했어요."); }
-    finally { setBusy(false); }
-  }, [accessToken, from, to]);
-  useEffect(() => { if (!demo && !tooLong && from && to) void load(); }, [demo, tooLong, from, to, load]);
+    try { const result = await apiRequest<Sales>(`/api/v1/content/video-sales?${new URLSearchParams({ from, to, ...(fresh ? { fresh: "1" } : {}) })}`, { token: accessToken }); if (current === generation.current) setSales(result); }
+    catch (reason) { if (current !== generation.current) return; setSales(null); setError(reason instanceof Error ? reason.message : "마이인 매출을 불러오지 못했어요."); }
+    finally { if (current === generation.current) setBusy(false); }
+  }, [accessToken, demo, tooLong, from, to]);
+  useEffect(() => {
+    setSales(null); setError(""); setBusy(false);
+    void load();
+    return () => { generation.current++; };
+  }, [load]);
   return { sales, error: tooLong ? `매출은 ${MAX_DAYS}일까지 볼 수 있어요. 기간을 줄여 주세요.` : error, busy, load, demo, waiting: error.includes("배포 대기") };
 }
 
@@ -36,7 +44,7 @@ export function VideoSalesPanel({ from, to }: { from: string; to: string }) {
     ...sales.nonVideo.map((x) => ({ key: `n-${x.cnt}-${x.cmp}`, label: `프로필·기타 · ${x.cnt ?? "content 없음"}${x.cmp ? ` · ${x.cmp}` : ""}`, money: x.money }))] : [];
   return <section className="panel perf-panel" aria-label="영상별 매출">
     <div className="card-head"><div><span className="card-title">영상별 매출 · 마이인</span><p className="section-meta">결제일 기준 · 구매 전 유입이 기본이고, 최초 유입은 같은 주문을 다르게 본 것이라 더하지 않아요{sales ? ` · 마이인 집계 ${time(sales.measuredAt)}` : ""}</p></div>
-      <button type="button" className="secondary-button compact" disabled={busy} onClick={() => void load(true)}>{busy ? "집계 중…" : "새로 집계"}</button></div>
+      <button type="button" className="secondary-button compact" disabled={busy || spanDays(from, to) > MAX_DAYS} onClick={() => void load(true)}>{busy ? "집계 중…" : "새로 집계"}</button></div>
     {error ? waiting ? <div className="empty-state">마이인 쪽 준비가 끝나면 여기에 영상별 매출이 보여요.</div> : <div className="os-callout" data-tone="danger" role="alert"><div className="os-callout-body">{error}</div></div> : null}
     {sales?.stale ? <div className="os-callout" data-tone="warn" role="status"><div className="os-callout-body">지금 값을 못 불러와 마지막으로 받은 값을 보여 줘요 · {sales.stale.reason}</div></div> : null}
     {t ? <div className="perf-metrics">

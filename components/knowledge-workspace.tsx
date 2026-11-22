@@ -1,4 +1,5 @@
 "use client";
+import { FACT_TEMPLATE } from "@/lib/youtube-process/product-facts";
 
 import { PageTitle } from "./page-title";
 
@@ -281,7 +282,10 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
   const bypassUnload = useRef(false);
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
   const [pendingNewAction, setPendingNewAction] = useState<(() => void) | null>(null);
-  const [newValues, setNewValues] = useState({ title: "", content: "", brand: "", team: "", tags: "" });
+  const [newValues, setNewValues] = useState(() => {
+    const productFacts = searchParams.get("new") === "1" && searchParams.get("template") === "product-facts";
+    return { title: productFacts ? "상품 사실 정본" : "", content: productFacts ? FACT_TEMPLATE : "", brand: "", team: "", tags: "" };
+  });
   const [newImageFiles, setNewImageFiles] = useState<File[]>([]);
   const [newImageAlt, setNewImageAlt] = useState<string[]>([]);
   const [newImageCaptions, setNewImageCaptions] = useState<string[]>([]);

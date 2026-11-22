@@ -72,11 +72,12 @@ export const isCardFormat = (value: unknown): value is CardFormatId => typeof va
 /** A photo kept in the project's files (youtube/<project>/card/…), with its size so the card keeps its ratio. */
 export interface CardPhoto { path: string; w: number; h: number }
 export interface CardSlide { layout?: "spotlight"; type: CardSlideType; fields: Record<string, string>; photo?: CardPhoto }
+import type { CanonTrace } from "../youtube-process/canon-trace";
 export interface CardDraft {
   id: string; format: CardFormatId; slides: CardSlide[]; caption: string; hashtags: string[]; at: string; by: string;
   /** Who drafted it: a staff member's own AI or the company GPT, and under which 카드뉴스 정본 version (for the 정본 다듬기 comparison). */
   /** sig: cardSignature of the draft as the AI handed it in, so 카드 확정 can tell how far the PD changed it. */
-  ai?: { by: string; model: string; at: string; jobId: string; canon: string; sig: string; why?: string };
+  ai?: { trace?: CanonTrace[]; by: string; model: string; at: string; jobId: string; canon: string; sig: string; why?: string };
 }
 
 export const slideSpec = (format: CardFormatId, type: CardSlideType) => CARD_FORMATS[format].slides.find(spec => spec.type === type);

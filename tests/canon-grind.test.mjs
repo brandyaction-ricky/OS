@@ -26,14 +26,20 @@ test("a draft's grade is the lowest any full scorer gave; it passes at 중 or be
 
 test("a run graduates when every draft is scored and 80% pass with no automatic finding; the 정본 needs two in a row", () => {
   const good = { [resultKey("a", "quote")]: { p: score("p", all("상")) }, [resultKey("b", "quote")]: { p: score("p", all("상")) } };
-  assert.equal(runSummary(run("1", good), "card").graduated, true);
+  assert.equal(runSummary(run("1", good), "card").graduated, false, "five or more scored drafts required");
   assert.equal(runSummary(run("1", { [resultKey("a", "quote")]: good[resultKey("a", "quote")] }), "card").graduated, false, "one draft not scored");
   const failed = run("1", good); failed.results[1] = { ...failed.results[1], draft: undefined, error: "x" };
   assert.equal(runSummary(failed, "card").graduated, false, "a draft GPT could not make");
   const long = run("1", good); long.results[0].draft.slides[1].fields.text = "가".repeat(60);
   assert.equal(runSummary(long, "card").findings, 1);
   assert.equal(runSummary(long, "card").graduated, false);
-  assert.equal(graduatedTwice([run("2026-10-30T01", good), run("2026-10-30T02", good)], "card"), true);
+  const full = run("1", { ...good });
+  for (const item of ["c", "d", "e"]) {
+    const key = resultKey(item, "quote");
+    full.results.push({ ...full.results[0], key, itemId: item });
+    full.scores[key] = { p: score("p", all("상")) };
+  }
+  assert.equal(graduatedTwice([full, { ...full, id: "2", at: "2" }], "card"), true);
   assert.equal(graduatedTwice([run("2026-10-30T01", good), run("2026-10-30T02", {})], "card"), false);
   assert.equal(graduatedTwice([run("2026-10-30T01", good), run("2026-10-30T02", good, { state: "running" })], "card"), false, "a run still drawing is not counted");
 });
@@ -57,7 +63,7 @@ test("숏폼 대본: its 평가표 is the 정본 §10 판정 검사, and the aut
   assert.ok(GRIND_KINDS.short.findings({ ...ok, headCopy: "가".repeat(25) }) >= 1, "a 헤드 카피 over 20 letters");
   assert.ok(GRIND_KINDS.short.findings({ ...ok, text: ok.text + "\n" + "가".repeat(35) }) >= 1, "a line over 30 letters");
   const runShort = { state: "done", results: [{ key: "a:script", itemId: "a", title: "a", format: "script", draft: ok }], scores: { "a:script": { p: score("p", all("상")) } } };
-  assert.equal(runSummary(runShort, "short").graduated, true);
+  assert.equal(runSummary(runShort, "short").graduated, false);
 });
 
 test("스레드: its 평가표 is the 정본 §7 관문 여섯; the automatic check is the post limit and no OS address in a public post", () => {
@@ -68,7 +74,7 @@ test("스레드: its 평가표 is the 정본 §7 관문 여섯; the automatic ch
   assert.equal(GRIND_KINDS.threads.findings({ posts: [] }), 1, "no post at all");
   assert.equal(GRIND_KINDS.threads.findings({ posts: ["본문", "https://brandyaction-os.vercel.app/knowledge?document=x"] }), 1, "an OS address in a public post");
   const run = { state: "done", results: [{ key: "a:posts", itemId: "a", title: "a", format: "posts", draft: ok }], scores: { "a:posts": { p: score("p", all("상")) } } };
-  assert.equal(runSummary(run, "threads").graduated, true);
+  assert.equal(runSummary(run, "threads").graduated, false);
 });
 
 test("SEO 칼럼: its 평가표 comes from the 정본 §2–§6 (it has none of its own); the automatic check is the OS column check", () => {
@@ -104,6 +110,7 @@ test("롱폼 원고: 두 번째 검수 by 정본 묶음, a gate turned back on t
   assert.equal(fixes[0].notes.length, 2);
   assert.equal(scriptGraduated(bundles), false);
   const good = [verdict("d", "2026-11-02T00:00:00Z", "v2.7", []), verdict("e", "2026-11-01T00:00:00Z", "v2.6", [])];
-  assert.equal(scriptGraduated(scriptBundles(good)), true);
+  assert.equal(scriptGraduated(scriptBundles(good)), false);
+  assert.equal(scriptGraduated(scriptBundles(good.flatMap(row => Array.from({length:5}, (_, n) => ({...row, projectId:row.projectId + n}))))), true);
   assert.equal(scriptGraduated(scriptBundles([verdict("f", "2026-11-02T00:00:00Z", "묶음 모름", []), good[1]])), false, "an unknown 묶음 never graduates");
 });

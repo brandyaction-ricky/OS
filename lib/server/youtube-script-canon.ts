@@ -7,13 +7,17 @@ export const SCRIPT_CANON = ["원고 공정 정본", "원고 구조 정본", "�
 export const canonIds = () => (process.env.YOUTUBE_SCRIPT_CANON_IDS ?? "").split(",").map((value) => value.trim()).filter((id) => /^[0-9a-f-]{36}$/i.test(id));
 
 /** The four 원고 정본 (현재기준 is not one of them) by title. */
-export async function scriptCanonDocs(supabase: RequestActor["supabase"]) {
+export async function scriptCanonRows(supabase: RequestActor["supabase"]) {
   const ids = canonIds();
-  const query = supabase.from("os_documents").select("title,content_md");
-  const { data, error } = await (ids.length ? query.in("id", ids) : query.in("title", SCRIPT_CANON).eq("status", "canonical"));
+  const query = supabase.from("os_documents").select("id,title,content_md,current_version");
+  const { data, error } = await (ids.length ? query.in("id", ids).neq("status", "archived") : query.in("title", SCRIPT_CANON).eq("status", "canonical"));
   const docs = (data ?? []).filter((doc) => SCRIPT_CANON.includes(doc.title as string));
-  if (error || new Set(docs.map((doc) => doc.title)).size < SCRIPT_CANON.length)
+  if (error || docs.length !== SCRIPT_CANON.length || new Set(docs.map((doc) => doc.title)).size < SCRIPT_CANON.length)
     throw new ApiError(409, "SCRIPT_CANON_UNAVAILABLE", "원고 정본 네 편을 열지 못해 관문 1(정본 겹침)을 셀 수 없습니다. 잠시 뒤 다시 해 주세요.");
+  return docs;
+}
+export async function scriptCanonDocs(supabase: RequestActor["supabase"]) {
+  const docs = await scriptCanonRows(supabase);
   return Object.fromEntries(docs.map((doc) => [String(doc.title), String(doc.content_md ?? "")]));
 }
 /** The four 원고 정본 that the 관문 1 정본 겹침 count compares a script against. */

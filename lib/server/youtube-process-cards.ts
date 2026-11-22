@@ -130,7 +130,7 @@ export const cardsPatchSchema = z.object({
   draft: draftSchema, add: z.enum(CARD_FORMAT_IDS as [CardDraft["format"], ...CardDraft["format"][]]), remove: z.string().max(40), pick: z.string().max(40),
   focus: z.string().max(500), brief: z.string().trim().min(1).max(1800),
   /** 내보내기: where it went up (the address of the post). */
-  exported: z.object({ url: z.string().url().max(500) }).strict(),
+  exported: z.object({ url: z.string().url().max(500).optional(), episode: z.number().int().positive().optional(), withheldReason: z.string().trim().max(500).optional(), downloaded: z.literal(true).optional() }).strict().refine(value => value.url !== undefined || value.withheldReason !== undefined || value.downloaded === true),
 }).partial().strict();
 
 export function nextCardsOnServer(project: YpProject, current: YpCards, patch: z.infer<typeof cardsPatchSchema>, actor: RequestActor, now: string) {

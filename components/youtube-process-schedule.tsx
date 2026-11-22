@@ -12,7 +12,7 @@ const iso = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1)
 const md2 = (date: string) => { const at = new Date(`${date}T00:00:00`); return `${at.getMonth() + 1}/${at.getDate()} (${WD[at.getDay()]})`; };
 const dayDiff = (date: string) => Math.round((Date.parse(`${date}T00:00:00`) - new Date(new Date().toDateString()).getTime()) / 86_400_000);
 type Kind = "up" | "ed" | "cf" | "pub";
-interface Ev { item: YpScheduleItem; kind: Kind; date: string; label: string }
+interface Ev { item: YpScheduleItem; kind: Kind; date: string; label: string; evidenceHref?: string }
 
 /** S9 스케줄 (4-9): every project's 편집 완료 · 업로드 (예상) · 컨펌 대기 on a week or month calendar; drag a date to move it. */
 export function YoutubeScheduleScreen({ header }: { header: ReactNode }) {
@@ -24,6 +24,7 @@ export function YoutubeScheduleScreen({ header }: { header: ReactNode }) {
   const [offset, setOffset] = useState(0);
   const [pd, setPd] = useState("all");
   const [stage, setStage] = useState("all");
+  const [includeTests, setIncludeTests] = useState(false);
   const [showConfirm, setShowConfirm] = useState(true);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<YpScheduleItem | null>(null);
@@ -46,7 +47,8 @@ export function YoutubeScheduleScreen({ header }: { header: ReactNode }) {
   if (mode === "week") start.setDate(anchor.getDate() - anchor.getDay()); else start.setDate(1 - new Date(anchor.getFullYear(), anchor.getMonth(), 1).getDay());
   const monthCells = Math.ceil((new Date(anchor.getFullYear(), anchor.getMonth(), 1).getDay() + new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0).getDate()) / 7) * 7;
   const days = Array.from({ length: mode === "week" ? 7 : monthCells }, (_, index) => { const date = new Date(start); date.setDate(start.getDate() + index); return date; });
-  const shown = (items ?? []).filter(item => (pd === "all" || item.project.assigneeId === pd) && (stage === "all" || String(YP_STAGE_INDEX[item.project.yp.stage]) === stage) && item.project.yp.stage !== "done");
+  const filtered = (items ?? []).filter(item => (includeTests || !item.project.yp.isTest) && (pd === "all" || item.project.assigneeId === pd) && (stage === "all" || String(YP_STAGE_INDEX[item.project.yp.stage]) === stage));
+  const shown = filtered.filter(item => item.project.yp.stage !== "done");
   const events: Ev[] = shown.flatMap(item => [
     ...(item.uploadPlan ? [{ item, kind: "up" as const, date: item.uploadPlan, label: "업로드 예상일" }] : []),
     // 공개 예약 (로건 요청 10/30): set on 업로드 › 5. 공개 범위, not moved here.
@@ -54,6 +56,12 @@ export function YoutubeScheduleScreen({ header }: { header: ReactNode }) {
     ...(item.editDue && ["topic", "draft", "outline", "make"].includes(item.project.yp.stage) ? [{ item, kind: "ed" as const, date: item.editDue, label: "편집 완료일" }] : []),
     ...(showConfirm && item.waiting?.requestedAt ? [{ item, kind: "cf" as const, date: item.waiting.requestedAt.slice(0, 10), label: `${gateName(item.waiting.gate, item.project.yp.topic.type)} 대기` }] : []),
   ]);
+  for (const item of filtered) {
+    const publication = item.project.yp.cardPublication;
+    if (item.project.yp.stage === "done" && publication?.status === "published") {
+      events.push({ item, kind: "pub", date: iso(new Date(publication.at)), label: `게시 확인 · 주소 ${publication.urls.length}개`, evidenceHref: projectHref(item.project) });
+    }
+  }
   const byDay = new Map<string, Ev[]>();
   for (const event of events) byDay.set(event.date, [...(byDay.get(event.date) ?? []), event]);
   const dupDays = [...byDay.entries()].filter(([, list]) => list.filter(event => event.kind === "up").length >= 2).map(([date]) => date);
@@ -75,6 +83,7 @@ export function YoutubeScheduleScreen({ header }: { header: ReactNode }) {
   };
   const open = (item: YpScheduleItem) => { setSelected(""); setEditing(item); setForm({ editDue: item.editDue, uploadPlan: item.uploadPlan, why: "" }); dialog.current?.showModal(); };
   const chip = (event: Ev) => {
+    if (event.evidenceHref) return <Link key={event.item.project.id + "-posted"} className="yp-ev yp-ed" href={event.evidenceHref} title={event.label}>{event.label} · {projectName(event.item.project)}</Link>;
     const draggable = event.kind === "up" || event.kind === "ed";
     return <button key={`${event.item.project.id}-${event.kind}`} type="button" className={`yp-ev yp-${event.kind === "pub" ? "up" : event.kind}`} draggable={draggable && !busy} disabled={busy} aria-label={`${projectName(event.item.project)} · ${event.label}`} title={`${projectName(event.item.project)} · ${event.label}${draggable ? " · 끌어서 날짜 옮기기" : ""}`}
       onDragStart={evt => { evt.dataTransfer.setData("text/plain", JSON.stringify({ id: event.item.project.id, kind: event.kind })); }}
@@ -100,6 +109,7 @@ export function YoutubeScheduleScreen({ header }: { header: ReactNode }) {
         <button type="button" className="yp-btn yp-sm" onClick={() => setOffset(0)}>오늘</button></div>
       <select className="yp-in yp-w-auto" aria-label="담당 PD" value={pd} onChange={event => setPd(event.target.value)}><option value="all">담당 PD 전체</option>{members.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select>
       <select className="yp-in yp-w-auto" aria-label="단계" value={stage} onChange={event => setStage(event.target.value)}><option value="all">단계 전체</option>{YP_FLOW.map((step, index) => <option key={step} value={index}>{step}</option>)}</select>
+      <label><input type="checkbox" checked={includeTests} onChange={e => setIncludeTests(e.target.checked)} /> 시험 포함</label>
       <div className="yp-legend"><span><i className="yp-sw2 yp-up" />업로드 예정</span><span><i className="yp-sw2 yp-ed" />편집 완료</span><button type="button" className="yp-schedule-confirm" aria-pressed={showConfirm} title={showConfirm ? "컨펌 대기 숨기기" : "컨펌 대기 보기"} onClick={() => setShowConfirm(value => !value)}><i className="yp-sw2 yp-cf" />컨펌 대기</button></div>
     </div>
     {dupDays.length ? <div className="yp-note yp-warn" role="status"><AlertTriangle size={16} className="yp-i" aria-hidden="true" /><div>같은 날 업로드가 2건 이상이에요: {dupDays.map(md2).join(", ")}</div></div> : null}
