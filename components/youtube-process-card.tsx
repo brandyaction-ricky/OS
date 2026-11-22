@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { createContext, Fragment, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { ArrowDown, ArrowRight, ArrowUp, Copy, Download, GalleryHorizontal, ImagePlus, Plus, Trash2 } from "lucide-react";
 import { CardSlideView } from "@/lib/cardnews/card-slide";
+import { formatSample } from "@/lib/cardnews/format-sample";
 import { mondayFields, planningOutline } from "@/lib/cardnews/planning";
 import { cardsMissing } from "@/lib/cardnews/cards";
 import { addCardSlide, CARD_FORMAT_IDS, CARD_FORMATS, CARD_SIZE, cardLetters, cardMaxSlides, cardProblems, moveCardSlide, parseCardHashtags, removeCardSlide, slideSpec, TOON_AIM, toonBattery, toonUploads, type CardDraft, type CardFormatId, type CardPhoto } from "@/lib/cardnews/formats";
@@ -223,6 +224,8 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
   const cards = stage?.data;
   const editable = project?.yp.stage === "draft" && project.yp.gates.draft.state !== "ok";
   const [chosen, setChosen] = useState<CardFormatId[]>([]);
+  const [sampleFormat, setSampleFormat] = useState<CardFormatId>("list");
+  const sample = useMemo(() => formatSample(sampleFormat), [sampleFormat]);
   const [planning, setPlanning] = useState(false);
   const [brief, setBrief] = useState("");
   const [rewriting, setRewriting] = useState(false);
@@ -355,14 +358,21 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
     {editable ? <YpSection n={1} title="포맷 고르기" gq="최대 3개를 한 번에 뽑아 나란히 비교해요">
       <div className="yp-card-formats">{CARD_FORMAT_IDS.map(id => { const format = CARD_FORMATS[id]; const on = chosen.includes(id);
         return <label key={id} className={`yp-card-format${on ? " yp-on" : ""}`}>
-          <input type="checkbox" aria-label={format.name} checked={on} disabled={!on && chosen.length >= 3} onChange={() => setChosen(on ? chosen.filter(row => row !== id) : [...chosen, id])} />
+          <input type="checkbox" aria-label={format.name} checked={on} disabled={!on && chosen.length >= 3} onChange={() => { setSampleFormat(id); setChosen(on ? chosen.filter(row => row !== id) : [...chosen, id]); }} />
           <span><b>{format.name}</b>{cards.recommend?.formats.includes(id) ? <span className="yp-tag yp-acc">추천</span> : null}<small>{format.when}</small>
             <small>{format.slides.map(row => row.min === row.max ? `${row.label} ${row.min}` : `${row.label} ${row.min}~${row.max}`).join(" · ")}장</small></span></label>; })}</div>
+      <section className="yp-format-sample" aria-label="포맷 결과 예시">
+        <CardPreview draft={sample} index={1} width={184} />
+        <div><label>본문 카드 예시 <select className="yp-in" value={sampleFormat} onChange={event => setSampleFormat(event.target.value as CardFormatId)}>
+          {CARD_FORMAT_IDS.map(id => <option key={id} value={id}>{CARD_FORMATS[id].name}</option>)}</select></label>
+          <p>{CARD_FORMATS[sampleFormat].when}</p>
+          {Object.entries(sample.slides[1].fields).map(([key,value]) => <p key={key}><small>{slideSpec(sampleFormat, sample.slides[1].type)?.fields.find(field => field.key === key)?.label}</small> {value}</p>)}
+        </div></section>
       {cards.recommend?.why ? <p className="yp-hint">추천 이유: {cards.recommend.why}</p> : null}
       <div className="yp-row-btns">
         <button type="button" className="yp-btn yp-pri" disabled={!chosen.length || job.open} onClick={openPlan}>AI로 초안 뽑기 ({chosen.length}개)</button><CostTag kind="paid" />
-        <button type="button" className="yp-btn" disabled={!chosen.length || busy} onClick={() => void addBlank()}>직접 쓰기</button></div>
-      {sampleProject && !planning && <button type="button" className="yp-btn" onClick={() => { setChosen(["steps"]); setBrief("월요일마다 무거운 직장인 · 일요일 밤의 걱정을 월요일 첫 행동으로 옮긴다.\n" + planningOutline(["steps"])); setPlanning(true); }}>같은 주제로 개선 예시 비교</button>}
+        <button type="button" className="yp-btn" disabled={!chosen.length || busy} onClick={() => void addBlank()}>직접 쓰기</button>
+      {sampleProject && !planning && <button type="button" className="yp-btn" onClick={() => { setChosen(["steps"]); setBrief("월요일마다 무거운 직장인 · 일요일 밤의 걱정을 월요일 첫 행동으로 옮긴다.\n" + planningOutline(["steps"])); setPlanning(true); }}>같은 주제로 개선 예시 비교</button>}</div>
       {planning && <section className="yp-card-b" aria-label="생성 전 기획안">
         <h3>생성 전 기획안 확인</h3><p>{planningOutline(chosen)}</p>
         <label>독자 · 핵심 메시지 · 장별 전개<textarea value={brief} maxLength={1800} rows={5} onChange={event => setBrief(event.target.value)} /></label>

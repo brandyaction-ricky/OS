@@ -85,3 +85,9 @@ test("new drafts are added beside the others, the first is picked, and at most 1
   assert.equal(ids.length, 12);
   assert.ok(ids.includes(saved.picked) && ids.includes("mine") && !ids.includes("old0"));
 });
+
+test("AI submissions reject a repeated body card", () => {
+  const draft = quote();
+  draft.slides[2] = structuredClone(draft.slides[1]);
+  assert.throws(() => job.checkCardResult({ recommend: { formats: [], why: "" }, drafts: [draft] }, ["quote"]), /원고가 앞 장과 같아요/);
+});

@@ -180,3 +180,17 @@
 .linear-shell .ui-v2.yp .yp-edu-links .yp-row-btns > input { flex: 1 1 260px; }
 
 }
+
+.linear-shell .yp .yp-format-sample {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 24px;
+  margin: 16px 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.yp-format-sample > div:last-child { flex: 1 1 220px; min-width: 0; }
+.yp-format-sample label { display: grid; gap: 6px; max-width: 260px; }
+.yp-format-sample small { color: var(--muted); }

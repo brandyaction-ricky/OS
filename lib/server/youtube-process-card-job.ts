@@ -81,6 +81,9 @@ export function cardJobCard(input: { project: Pick<YpProject, "title" | "yp">; c
 
 ## 할 일 — 카드뉴스 초안 ${formats.length}개
 아래 원본으로 인스타 카드뉴스(1080 × 1350, 4:5 세로) 초안을 포맷마다 하나씩, 모두 ${formats.length}개 만듭니다: ${names}.
+- 먼저 독자가 실제로 마주치는 장면 하나와 마지막 장에서 할 행동 하나를 정합니다. 표지는 그 장면 속 말이나 질문으로 열고, 본문은 장마다 서로 다른 판단 기준·예시·행동을 전달합니다.
+- 소제목을 설명에서 되풀이하면 그 장을 다시 씁니다. 예를 들어 ‘작게 시작하세요’는 ‘회의 전에 먼저 물어볼 질문 한 줄을 적어요’처럼 눈으로 확인할 수 있는 행동으로 바꿉니다. 이 예문의 소재는 입력과 관련될 때만 사용합니다.
+- 비교형은 양쪽을 같은 기준으로 비교하고 단계형은 앞 장의 결과가 다음 장의 재료가 되게 씁니다. 정리형은 항목 간 의미가 겹치지 않는지, 웹툰형은 대사 없이도 장면 변화가 읽히는지 제출 전에 점검합니다.
 - 원본에 없는 사실 · 숫자 · 사례를 만들지 않습니다. 숫자를 쓰면 출처를 근거 칸이나 캡션에 적습니다.
 - 진단은 유료예요. ‘무료 진단’이라고 쓰지 않습니다.
 - ‘여러분’은 쓰지 않습니다. 사람이 말하듯 자연스럽게 씁니다.
@@ -133,6 +136,13 @@ export function checkCardResult(value: unknown, formats: CardFormatId[]): CardRe
       if (spec) for (const key of Object.keys(slide.fields)) if (!spec.fields.some(field => field.key === key)) issues.push(`${CARD_FORMATS[format].name} ${index + 1}장에 없는 칸 "${key}"이 있어요`);
       return { type: slide.type, ...(slide.layout && ["item", "step", "part"].includes(slide.type) ? { layout: slide.layout } : {}), fields: Object.fromEntries(Object.entries(slide.fields).map(([key, text]) => [key, text.trim()])) } as CardSlide;
     });
+    const seen = new Set<string>();
+    for (const [index, slide] of slides.entries()) {
+      if (!["item", "pair", "line", "compare", "step", "part"].includes(slide.type)) continue;
+      const copy = Object.values(slide.fields).join(" ").replace(/[\s*]+/g, "");
+      if (copy && seen.has(copy)) issues.push(`${index + 1}장의 원고가 앞 장과 같아요. 다른 사례나 행동으로 써 주세요`);
+      seen.add(copy);
+    }
     const out = { format, slides, caption: draft.caption.trim(), hashtags: draft.hashtags.map(tag => tag.trim().replace(/^#/, "")).filter(Boolean) };
     for (const problem of cardProblems(out).blocking) issues.push(`${CARD_FORMATS[format].name}: ${problem}`);
     return out;

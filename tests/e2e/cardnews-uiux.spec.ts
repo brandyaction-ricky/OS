@@ -422,3 +422,13 @@ test("same-topic planning comparison and single-slide rewrite preserve the basel
   await expect(cover).toContainText("일요일 밤");
   await expect(rows.first().locator("[data-card-field=head]")).toHaveText(original!);
 });
+
+test("all seven format samples are available before generation", async ({ page }) => {
+  await editor(page);
+  const sample = page.getByRole("region", { name: "포맷 결과 예시" });
+  for (const format of ["list", "myth", "quote", "compare", "steps", "structure", "webtoon"]) {
+    await sample.getByRole("combobox").selectOption(format);
+    await expect(sample.locator(".yp-card-pv")).toBeVisible();
+    await expect(sample.getByRole("combobox")).toHaveValue(format);
+  }
+});

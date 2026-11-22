@@ -106,7 +106,12 @@ function Body({ draft, slide, index, theme, src }: { draft: CardDraft; slide: Ca
   switch (slide.type) {
     case "cover": return <div style={column}>{f("head", blue)}{f("sub", blue, { marginTop: 40 })}{slide.photo ? <Photo photo={slide.photo} src={src} maxHeight={520} theme={theme} style={{ marginTop: 64 }} /> : null}</div>;
     case "item": return <div style={column}>
-      <Count n={countOf(draft, index)} color={theme.blue} />{f("title", title, { marginTop: 32 })}{photo(480)}{f("body", ink, { marginTop: after })}</div>;
+      <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
+        <Count n={countOf(draft, index)} color={theme.blue} />
+        <div style={{ display: "flex", height: 4, background: theme.soft, flex: 1 }} />
+      </div>
+      {f("title", title, { marginTop: 48, fontSize: 60 })}{photo(420)}
+      <div style={{ ...box(theme.soft), marginTop: after, borderLeft: `8px solid ${theme.blue}` }}>{f("body", ink)}</div></div>;
     // 전후 변화 도식: the common thought, then what is actually so, with the basis right under it.
     case "pair": return <div style={column}><div style={visual}>
       <div style={box(theme.soft)}><Label color={theme.sub}>흔한 생각</Label>{f("myth", sub)}</div>
