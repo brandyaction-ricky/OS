@@ -49,7 +49,7 @@
 .linear-shell .ui-v2 .yt-swap-info .yt-check { font-size: 12px; }
 .linear-shell .ui-v2 .yt-swap-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .linear-shell .ui-v2 .yt-swap > li > .yt-find { grid-column: 1 / -1; }
-@media (max-width: 640px) { .linear-shell .ui-v2 .yt-swap > li { grid-template-columns: 44px minmax(0, 1fr); } .linear-shell .ui-v2 .yt-swap-actions { grid-column: 1 / -1; justify-content: flex-start; } }
+@media (max-width: 520px) { .linear-shell .ui-v2 .yt-swap > li { grid-template-columns: 44px minmax(0, 1fr); } .linear-shell .ui-v2 .yt-swap-actions { grid-column: 1 / -1; justify-content: flex-start; } }
 /* 메모 칸: the label on its own line, the box full width under it. */
 .linear-shell .ui-v2 .yt-memo { display: grid; gap: 6px; color: var(--text); font-size: 13px; font-weight: 600; }
 .linear-shell .ui-v2 .yt-memo small { margin-left: 4px; font-weight: 400; }
