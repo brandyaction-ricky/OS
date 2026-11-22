@@ -80,7 +80,16 @@ export interface Bench { items: BenchItem[] }
 export interface BenchScore { name: string; grades: Partial<Record<CardCriterion, CardGrade>>; notes: Partial<Record<CardCriterion, string>>; at: string }
 /** One draft of a run: key = item:format (a 숏폼 has the one format 「script」, a 스레드 「posts」, an SEO 칼럼 「html」); the draft, or why GPT could not make one. */
 export interface BenchResult { key: string; itemId: string; title: string; format: string; draft?: BenchDraft; error?: string }
+export type GrindPrompts = Record<string, { style: string; quality: string }>;
+
+export function experimentPrompt(prompts: GrindPrompts) {
+  return Object.entries(prompts).map(([format, rule]) => [
+    `[${format}]`, rule.style && `스타일: ${rule.style}`, rule.quality && `품질 기준: ${rule.quality}`,
+  ].filter(Boolean).join("\n")).join("\n\n");
+}
+
 export interface BenchRun {
+  prompts?: GrindPrompts;
   id: string; canon: string; at: string; by: string; byName: string; model: string; formats: string[];
   state: "running" | "done" | "failed"; error?: string; results: BenchResult[];
   /** result key → scorer id → score; each person scores on their own line. */

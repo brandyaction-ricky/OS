@@ -194,3 +194,8 @@
 .yp-format-sample > div:last-child { flex: 1 1 220px; min-width: 0; }
 .yp-format-sample label { display: grid; gap: 6px; max-width: 260px; }
 .yp-format-sample small { color: var(--muted); }
+
+.yp-grind-prompts { display: grid; gap: 12px; margin: 16px 0; }
+.yp-grind-prompts fieldset { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 12px; min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+.yp-grind-prompts label { display: grid; gap: 6px; }
+.yp-grind-prompts pre, .yp-grind-head pre { white-space: pre-wrap; overflow-wrap: anywhere; }

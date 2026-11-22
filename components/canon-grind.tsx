@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { apiRequest } from "@/lib/api-client";
 import { CARD_FORMAT_IDS, CARD_FORMATS, type CardFormatId } from "@/lib/cardnews/formats";
-import { BENCH_MAX, CARD_GRADES, fixList, GRADUATION, graduatedTwice, GRIND_KINDS, mergedGrades, resultKey, runSummary, scriptBundles, scriptFixes, scriptGraduated,
+import { experimentPrompt, type GrindPrompts, BENCH_MAX, CARD_GRADES, fixList, GRADUATION, graduatedTwice, GRIND_KINDS, mergedGrades, resultKey, runSummary, scriptBundles, scriptFixes, scriptGraduated,
   type ScriptVerdict, type Bench, type BenchResult, type BenchRun, type CardCriterion, type CardDraftPart, type CardGrade, type ColumnDraft, type GrindKind, type ShortDraft, type ThreadsDraft } from "@/lib/canon-grind/grind";
 import { tokenEstimate } from "@/lib/cost";
 import { columnMeta, columnSlots, renderColumn } from "@/lib/seo-column";
@@ -89,6 +89,31 @@ export function CanonGrindScreen({ kind }: { kind: GrindKind }) {
   const [pick, setPick] = useState("");
   const [topic, setTopic] = useState({ title: "", target: "" });
   const [formats, setFormats] = useState<CardFormatId[]>(["list"]);
+  const [settings, setSettings] = useState<GrindPrompts>({});
+  const activeFormats = kind === "card" ? formats : [{ short: "script", threads: "posts", column: "html" }[kind]];
+  const selectedPrompts = Object.fromEntries(activeFormats.flatMap(id => {
+    const rule = settings[id];
+    return rule && (rule.style.trim() || rule.quality.trim()) ? [[id, rule] as const] : [];
+  }));
+  const changeRule = (id: string, field: "style" | "quality", value: string) => setSettings(previous => ({
+    ...previous, [id]: { ...(previous[id] ?? { style: "", quality: "" }), [field]: value },
+  }));
+  const [presetNotice, setPresetNotice] = useState("");
+  const presetKey = view ? `canon-grind-prompt:${view.me}:${kind}` : "";
+  const preset = (restore: boolean) => {
+    try {
+      if (restore) {
+        const raw = localStorage.getItem(presetKey);
+        if (!raw) { setPresetNotice("이 브라우저에 저장한 설정이 없어요."); return; }
+        const saved = JSON.parse(raw) as { settings: GrindPrompts; formats: CardFormatId[] };
+        const clean = Object.fromEntries(Object.entries(saved.settings).filter(([, rule]) =>
+          typeof rule?.style === "string" && typeof rule?.quality === "string"));
+        setSettings(clean);
+        if (kind === "card") setFormats(CARD_FORMAT_IDS.filter(id => saved.formats.includes(id)).slice(0, 3));
+      } else localStorage.setItem(presetKey, JSON.stringify({ settings, formats }));
+      setPresetNotice(restore ? "저장한 설정을 불러왔어요." : "이 브라우저에 설정을 저장했어요.");
+    } catch { setPresetNotice("브라우저 저장소에 접근할 수 없어요."); }
+  };
   const [tier, setTier] = useState<GptTier>("saving");
   const [open, setOpen] = useState<{ runId: string; key: string } | null>(null);
   const { confirm, element: costDialog } = useCostConfirm();
@@ -139,7 +164,7 @@ export function CanonGrindScreen({ kind }: { kind: GrindKind }) {
     const each = tokenEstimate(model, size.input, size.output);
     if (!(await confirm({ model, amount: each === null ? null : each * items * 2, upTo: true,
       detail: `시험 원본 ${items}개${kind === "card" ? ` × 포맷 ${formats.length}개` : ""} · 형식이 틀리면 한 번 더 물어요`, ok: "다시 뽑기" }))) return;
-    await act("run", { action: "run", formats: kind === "card" ? formats : [], tier });
+    await act("run", { action: "run", formats: kind === "card" ? formats : [], tier, prompts: selectedPrompts });
   };
 
   if (!view) return <>{error ? <div className="yp-note yp-warn" role="alert"><div>{error}</div></div> : <p className="yp-hint" role="status">불러오는 중이에요…</p>}</>;
@@ -188,6 +213,15 @@ export function CanonGrindScreen({ kind }: { kind: GrindKind }) {
           onChange={() => setFormats(formats.includes(id) ? formats.filter(row => row !== id) : [...formats, id])} /> {CARD_FORMATS[id].name}</label>) : null}
         <span className="yp-sp" />
         {(["saving", "precise"] as const).map(key => <label key={key} className="yp-chk"><input type="radio" name="grind-tier" checked={tier === key} onChange={() => setTier(key)} /> {GPT_TIERS[key].label}{key === "saving" ? " (권장)" : ""}</label>)}</div>
+      <div className="yp-grind-prompts">
+        {activeFormats.map(id => <fieldset key={id}><legend>{formatName(id)} 실험 프롬프트</legend>
+          <label>스타일 지시<textarea className="yp-in" rows={2} maxLength={600} value={settings[id]?.style ?? ""} onChange={event => changeRule(id, "style", event.target.value)} placeholder="예) 첫 장은 독자가 실제로 하는 질문으로 시작" /></label>
+          <label>품질 기준<textarea className="yp-in" rows={2} maxLength={600} value={settings[id]?.quality ?? ""} onChange={event => changeRule(id, "quality", event.target.value)} placeholder="예) 각 주장에 원본에서 확인되는 사례 하나 포함" /></label>
+        </fieldset>)}
+        {Object.keys(selectedPrompts).length > 0 && <details><summary>이번 실험 지시 미리보기</summary><pre>{experimentPrompt(selectedPrompts)}</pre></details>}
+        <div className="yp-row-btns"><button className="yp-btn yp-sm" onClick={() => preset(false)}>내 설정 저장</button>
+          <button className="yp-btn yp-sm" onClick={() => preset(true)}>내 설정 불러오기</button><small role="status">{presetNotice}</small></div>
+      </div>
       <div className="yp-row-btns" style={{ marginTop: 10 }}>
         <button type="button" className="yp-btn yp-pri" disabled={(kind === "card" && !formats.length) || !view.bench.items.length || Boolean(busy) || running} onClick={() => void runDraw()}>{running ? "다시 뽑는 중…" : "이 정본으로 다시 뽑기"}</button><CostTag kind="paid" /></div>
       {running ? <p className="yp-hint" role="status">GPT가 쓰고 있어요. 끝나면 아래 비교에 새 칸이 생겨요.</p> : null}
@@ -198,6 +232,11 @@ export function CanonGrindScreen({ kind }: { kind: GrindKind }) {
         <div />
         {runs.map(run => { const sum = runSummary(run, kind);
           return <div key={run.id} className="yp-grind-head"><b>정본 {run.canon}</b><small>{day(run.at)} · {run.byName} · {run.model.startsWith("gpt-6-astra") ? "정밀" : "절약"}</small>
+            {run.prompts && Object.keys(run.prompts).length > 0 ? <details><summary>사용한 실험 프롬프트</summary>
+              <pre>{experimentPrompt(run.prompts)}</pre><button className="yp-btn yp-sm" onClick={() => {
+                setSettings(previous => ({ ...Object.fromEntries(Object.entries(previous).filter(([id]) => !run.formats.includes(id))), ...run.prompts }));
+                if (kind === "card") setFormats(CARD_FORMAT_IDS.filter(id => run.formats.includes(id)));
+              }}>이 설정으로 다시 실험</button></details> : <small>기본 정본 지시</small>}
             {run.state === "running" ? <span className="yp-tag yp-warn">뽑는 중</span> : run.state === "failed" ? <span className="yp-tag yp-bad">못 뽑음 · {run.error}</span>
               : <small>채점 {sum.scored}/{sum.drafts} · 통과 {sum.passed} ({Math.round(sum.passRate * 100)}%) · 자동 검사 {sum.findings}{sum.failed ? ` · 실패 ${sum.failed}` : ""}{sum.graduated ? " · 졸업 기준 ✓" : ""}</small>}</div>; })}
         {keys.map(key => { const format = key.split(":")[1]; const title = runs.map(run => result(run, key)?.title).find(Boolean) ?? key;
