@@ -405,3 +405,20 @@ for (const width of [1732, 1440, 390]) for (const theme of ["light", "dark"]) {
     await page.screenshot({ path: info.outputPath(`projects-${width}-${theme}.png`), fullPage: true });
   });
 }
+
+test("same-topic planning comparison and single-slide rewrite preserve the baseline", async ({ page }) => {
+  await editor(page);
+  const rows = page.locator(".yp-card-row");
+  const original = await rows.first().locator("[data-card-field=head]").textContent();
+  await page.getByRole("button", { name: "같은 주제로 개선 예시 비교" }).click();
+  await expect(rows).toHaveCount(1);
+  await page.getByRole("button", { name: "기획 확인 · 로컬 예시 열기" }).click();
+  await expect(rows).toHaveCount(2);
+  const cover = rows.nth(1).locator("[data-card-field=head]");
+  await expect(cover).toContainText("일요일 밤");
+  await page.getByRole("button", { name: "2장 보기", exact: true }).click();
+  await page.getByRole("button", { name: "2장만 다시 만들기" }).click();
+  await expect(rows.nth(1)).toContainText("걱정에 이름 붙이기");
+  await expect(cover).toContainText("일요일 밤");
+  await expect(rows.first().locator("[data-card-field=head]")).toHaveText(original!);
+});

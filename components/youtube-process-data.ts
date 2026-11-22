@@ -14,6 +14,7 @@ import { columnMeta } from "@/lib/seo-column";
 import { markReviewed, setReviewers, type YpReviewer } from "@/lib/youtube-process/reviewers";
 import { applyFeedback, cleanMarks, FEEDBACK_FILE_MAX, FEEDBACK_FILE_TYPES, FeedbackRuleError, type FeedbackAction, type FeedbackFile, type FeedbackMark, type FeedbackReply } from "@/lib/youtube-process/feedback";
 import { cutsFromScenes, scenesFromCuts, shortsAction, type YpShortAppeal, type YpShortBrief, type YpShortScene } from "@/lib/youtube-process/short";
+import { mondayFields } from "@/lib/cardnews/planning";
 import { CardError, cardsMissing, nextCards, type CardsPatch } from "@/lib/cardnews/cards";
 import { cardSignature, emptyCardDraft, type CardDraft, type CardPhoto } from "@/lib/cardnews/formats";
 import { CARD_DRAW_SIZE, type CardCharacterView, type CardDrawInput } from "@/lib/cardnews/draw";
@@ -552,7 +553,17 @@ function demoClient(): YpClient {
           : p.remove ? items.filter(item => item.id !== p.item) : items.map(item => item.id === p.item ? change(item) : item) } as YpStageData[typeof kind];
       }
       if (kind === "cards") {
-        try { data = nextCards(project, current.data as YpStageData["cards"], patch as CardsPatch, "리키", now, () => crypto.randomUUID().slice(0, 8)) as YpStageData[typeof kind]; }
+        try {
+          let cards = current.data as YpStageData["cards"];
+          const uid = () => crypto.randomUUID().slice(0, 8);
+          if ("mondaySample" in patch && id === "demo-p13") {
+            cards = nextCards(project, cards, { add: "steps" }, "데모", now, uid);
+            const sample = cards.drafts.at(-1)!;
+            const slides = sample.slides.map((slide, index) => ({ ...slide, ...(index === 3 ? { layout: "spotlight" as const } : {}), fields: mondayFields(slide, index)! }));
+            cards = nextCards(project, cards, { draft: { ...sample, slides, caption: "일요일 밤 걱정을 내일의 첫 행동으로 옮기는 세 단계", hashtags: ["월요일", "업무기록", "직장인"] }, pick: sample.id }, "데모", now, uid);
+          } else cards = nextCards(project, cards, patch as CardsPatch, "리키", now, uid);
+          data = cards as YpStageData[typeof kind];
+        }
         catch (error) { throw error instanceof CardError ? demoError(error.status, error.code, error.message) : error; }
       }
       const stage = { id: current.id ?? `demo-${kind}-${id}`, version: current.version + 1, data } as YpStageView<typeof kind>;

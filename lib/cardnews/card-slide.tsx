@@ -98,6 +98,11 @@ function Body({ draft, slide, index, theme, src }: { draft: CardDraft; slide: Ca
   const column: CSSProperties = { display: "flex", flexDirection: "column", flex: 1, justifyContent: "center" };
   const visual: CSSProperties = { display: "flex", flexDirection: "column", alignSelf: "center", width: VISUAL };
   const box = (background: string): CSSProperties => ({ display: "flex", flexDirection: "column", background, borderRadius: 24, padding: "36px 40px" });
+  if (slide.layout === "spotlight" && ["item", "step", "part"].includes(slide.type)) {
+    return <div style={column}><Count n={countOf(draft, index)} color={theme.blue} />
+      <div style={{ ...box(theme.blue), marginTop: 32 }}>{f("title", blue)}</div>
+      {photo(420)}{f("body", ink, { marginTop: after })}</div>;
+  }
   switch (slide.type) {
     case "cover": return <div style={column}>{f("head", blue)}{f("sub", blue, { marginTop: 40 })}{slide.photo ? <Photo photo={slide.photo} src={src} maxHeight={520} theme={theme} style={{ marginTop: 64 }} /> : null}</div>;
     case "item": return <div style={column}>

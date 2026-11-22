@@ -46,8 +46,8 @@ export function assertCardJobOpen(project: YpProject) {
   if (project.yp.stage !== "draft" || editableFields(project, "draft") !== "all") throw new ApiError(409, "CARD_JOB_CLOSED", "카드를 확정하기 전에만 초안을 뽑을 수 있어요.");
 }
 /** What the drafts are made from: a change to any of it closes a job asked for before. */
-export const cardInputKey = (project: Pick<YpProject, "title" | "yp">, cards: Pick<YpCards, "source" | "focus">, formats: CardFormatId[], canon: string) =>
-  createHash("sha256").update(JSON.stringify([cards.source.text, cards.focus, project.title, project.yp.topic.target, project.yp.topic.note, formats, canon])).digest("hex");
+export const cardInputKey = (project: Pick<YpProject, "title" | "yp">, cards: Pick<YpCards, "source" | "focus" | "brief">, formats: CardFormatId[], canon: string) =>
+  createHash("sha256").update(JSON.stringify([cards.source.text, cards.focus, project.title, project.yp.topic.target, project.yp.topic.note, formats, canon, ...(cards.brief ? [cards.brief] : [])])).digest("hex");
 
 const NOTES: Partial<Record<CardSlide["type"], string>> = { item: "번호는 OS가 붙여요", summary: "앞 장의 소제목 목록은 OS가 자동으로 넣어요",
   compare: "두 쪽을 같은 기준으로, 왼쪽은 흔한 쪽 · 오른쪽은 권하는 쪽", step: "한 장에 한 단계, 할 일을 행동으로 · 단계 번호와 흐름은 OS가 그려요",
@@ -71,11 +71,11 @@ export function cardFormatSpec(formats: CardFormatId[]) {
   }).join("\n\n");
 }
 
-export function cardJobCard(input: { project: Pick<YpProject, "title" | "yp">; cards: Pick<YpCards, "source" | "focus">; formats: CardFormatId[];
+export function cardJobCard(input: { project: Pick<YpProject, "title" | "yp">; cards: Pick<YpCards, "source" | "focus" | "brief">; formats: CardFormatId[];
   canon: { id: string } | null; voice: { id: string; title: string }[]; cast?: { id: string; title: string } | null; leaseMinutes: number }) {
   const { project, cards, formats } = input;
   const names = formats.map(id => CARD_FORMATS[id].name).join(" · ");
-  const data = { source: { kind: cards.source.kind, title: cards.source.title, text: cards.source.text }, focus: cards.focus,
+  const data = { source: { kind: cards.source.kind, title: cards.source.title, text: cards.source.text }, focus: cards.focus, approvedPlan: cards.brief,
     topic: { title: project.title, target: project.yp.topic.target, note: project.yp.topic.note } };
   return `이 작업 하나만 처리합니다. 승인 · 업로드 · 게시 · 삭제는 하지 않습니다.
 
@@ -84,6 +84,8 @@ export function cardJobCard(input: { project: Pick<YpProject, "title" | "yp">; c
 - 원본에 없는 사실 · 숫자 · 사례를 만들지 않습니다. 숫자를 쓰면 출처를 근거 칸이나 캡션에 적습니다.
 - 진단은 유료예요. ‘무료 진단’이라고 쓰지 않습니다.
 - ‘여러분’은 쓰지 않습니다. 사람이 말하듯 자연스럽게 씁니다.
+- approvedPlan이 있으면 승인된 기획과 장 순서를 따릅니다. 각 본문 장은 서로 다른 관찰이나 행동을 전달하고, 포맷의 시각 구조에 맞게 문구를 나눕니다. 마지막 장에는 오늘 시도할 행동 하나를 씁니다.
+- item·step·part 중 핵심 행동을 강조할 장에는 slide.layout을 "spotlight"로 지정합니다. 나머지는 layout을 생략합니다.
 - 한 장에 한 메시지만. 표지는 처음 보는 사람이 멈추게 씁니다.
 - 장마다 가장 먼저 읽힐 구절 하나를 *별표*로 감쌀 수 있어요(카드에서 파란색, 표지 · 마무리는 노란색). 한 장에 하나까지, 별표는 글자 수에 세지 않습니다. 색 · 글꼴 · 배치는 OS가 디자인 정본대로 그립니다. 사진은 PD가 직접 넣으니 쓰지 않습니다.${cards.focus.trim() ? "\n- 입력의 focus는 PD가 짚은 부분이에요. 그 부분 위주로 씁니다." : ""}${formats.includes("webtoon") ? TOON_STORY : ""}
 
@@ -112,7 +114,7 @@ result = { "recommend": { "formats": [이 원본에 가장 맞는 포맷 id 최�
 
 const resultSchema = z.object({
   recommend: z.object({ formats: z.array(z.string()).max(6), why: z.string().max(400) }),
-  drafts: z.array(z.object({ format: z.string(), slides: z.array(z.object({ type: z.string(), fields: z.record(z.string()) })).max(TOON_MAX_SLIDES),
+  drafts: z.array(z.object({ format: z.string(), slides: z.array(z.object({ type: z.string(), layout: z.literal("spotlight").optional(), fields: z.record(z.string()) })).max(TOON_MAX_SLIDES),
     caption: z.string().max(CAPTION_MAX + 400), hashtags: z.array(z.string().max(60)).max(30) })).min(1).max(3),
 });
 export type CardResult = { recommend: { formats: CardFormatId[]; why: string }; drafts: Pick<CardDraft, "format" | "slides" | "caption" | "hashtags">[] };
@@ -129,7 +131,7 @@ export function checkCardResult(value: unknown, formats: CardFormatId[]): CardRe
     const slides = draft.slides.map((slide, index) => {
       const spec = CARD_FORMATS[format].slides.find(row => row.type === slide.type);
       if (spec) for (const key of Object.keys(slide.fields)) if (!spec.fields.some(field => field.key === key)) issues.push(`${CARD_FORMATS[format].name} ${index + 1}장에 없는 칸 "${key}"이 있어요`);
-      return { type: slide.type, fields: Object.fromEntries(Object.entries(slide.fields).map(([key, text]) => [key, text.trim()])) } as CardSlide;
+      return { type: slide.type, ...(slide.layout && ["item", "step", "part"].includes(slide.type) ? { layout: slide.layout } : {}), fields: Object.fromEntries(Object.entries(slide.fields).map(([key, text]) => [key, text.trim()])) } as CardSlide;
     });
     const out = { format, slides, caption: draft.caption.trim(), hashtags: draft.hashtags.map(tag => tag.trim().replace(/^#/, "")).filter(Boolean) };
     for (const problem of cardProblems(out).blocking) issues.push(`${CARD_FORMATS[format].name}: ${problem}`);

@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { createContext, Fragment, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { ArrowDown, ArrowRight, ArrowUp, Copy, Download, GalleryHorizontal, ImagePlus, Plus, Trash2 } from "lucide-react";
 import { CardSlideView } from "@/lib/cardnews/card-slide";
+import { mondayFields, planningOutline } from "@/lib/cardnews/planning";
 import { cardsMissing } from "@/lib/cardnews/cards";
 import { addCardSlide, CARD_FORMAT_IDS, CARD_FORMATS, CARD_SIZE, cardLetters, cardMaxSlides, cardProblems, moveCardSlide, parseCardHashtags, removeCardSlide, slideSpec, TOON_AIM, toonBattery, toonUploads, type CardDraft, type CardFormatId, type CardPhoto } from "@/lib/cardnews/formats";
 import type { CardSourceChoice } from "@/lib/cardnews/sources";
@@ -222,6 +223,10 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
   const cards = stage?.data;
   const editable = project?.yp.stage === "draft" && project.yp.gates.draft.state !== "ok";
   const [chosen, setChosen] = useState<CardFormatId[]>([]);
+  const [planning, setPlanning] = useState(false);
+  const [brief, setBrief] = useState("");
+  const [rewriting, setRewriting] = useState(false);
+  const [compareAll, setCompareAll] = useState(false);
   const [send, setSend] = useState(false);
   const [draft, setDraft] = useState<CardDraft | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -295,6 +300,35 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
   const current = draft?.slides[slide] ? slide : 0;
   const spec = draft ? slideSpec(draft.format, draft.slides[current].type) : null;
   const addBlank = async () => { for (const format of chosen) if (!(await save({ add: format }))) return; };
+  const sampleProject = page.demo && project.id === "demo-p13";
+  const openPlan = () => {
+    setBrief(cards.brief || [project.title, project.yp.topic.target && `독자 · ${project.yp.topic.target}`,
+      cards.focus || project.yp.topic.note, planningOutline(chosen)].filter(Boolean).join("\n"));
+    setPlanning(true);
+  };
+  const rewrite = async () => {
+    if (!draft || !stage || rewriting || dirty || busy) return;
+    const original = draft.slides[current];
+    const rev = editRev.current;
+    if (!page.demo && !window.confirm("선택한 장의 원고를 회사 GPT로 다시 생성할까요? API 비용이 발생합니다.")) return;
+    setRewriting(true);
+    try {
+      let fields: Record<string, string> | null;
+      if (page.demo) {
+        const first = mondayFields(original, current);
+        fields = mondayFields(original, current, JSON.stringify(original.fields) === JSON.stringify(first));
+      } else {
+        const result = await apiRequest<{ fields: Record<string, string> }>(`/api/v1/content/youtube/projects/${project.id}/cards`, {
+          token: page.accessToken, method: "POST", body: JSON.stringify({ action: "rewrite", draftId: draft.id, index: current, version: stage.version }),
+        });
+        fields = result.fields;
+      }
+      if (!fields) throw new Error("이 장에 해당하는 데모 예시가 없어요.");
+      if (draftRef.current?.id !== draft.id || editRev.current !== rev || pageRef.current.bundle?.stages.cards.version !== stage.version)
+        throw new Error("생성 중 초안이 변경됐어요. 현재 편집본에서 다시 시도해 주세요.");
+      structure({ ...draft, slides: draft.slides.map((row, index) => index === current ? { ...row, fields: { ...row.fields, ...fields } } : row) }, current);
+    } catch (reason) { page.fail(reason); } finally { setRewriting(false); }
+  };
   // A photo (or a drawn picture) lands on the card that was open when it was picked, on the draft as it is by then.
   const placePhoto = (photo: CardPhoto, at: number) => { const latest = draftRef.current; if (latest) edit({ ...latest, slides: latest.slides.map((row, index) => index === at ? { ...row, photo } : row) }); };
   /** True once the picture is on the card (「내 GPT로 그리기」 says so). */
@@ -308,7 +342,7 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
       return true;
     } catch (reason) { page.fail(reason); return false; } finally { setPhotoBusy(false); }
   };
-  const dropPhoto = (at: number) => { if (draft) edit({ ...draft, slides: draft.slides.map((row, index) => index === at ? { type: row.type, fields: row.fields } : row) }); };
+  const dropPhoto = (at: number) => { if (draft) edit({ ...draft, slides: draft.slides.map((row, index) => index === at ? { ...row, photo: undefined } : row) }); };
 
   return <CardPhotos.Provider value={photos}><YpFrame page={page} view={1} action={action} header={header} title="카드 만들기"
     sub={gateSub(project, "draft", "포맷을 골라 초안을 뽑고, 하나를 골라 다듬은 뒤 카드를 확정해요.", "카드를 확정했어요. 최종 검토에서 한 장씩 봐요.")}
@@ -326,25 +360,41 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
             <small>{format.slides.map(row => row.min === row.max ? `${row.label} ${row.min}` : `${row.label} ${row.min}~${row.max}`).join(" · ")}장</small></span></label>; })}</div>
       {cards.recommend?.why ? <p className="yp-hint">추천 이유: {cards.recommend.why}</p> : null}
       <div className="yp-row-btns">
-        <button type="button" className="yp-btn yp-pri" disabled={!chosen.length || job.open} onClick={() => setSend(true)}>AI로 초안 뽑기 ({chosen.length}개)</button><CostTag kind="paid" />
+        <button type="button" className="yp-btn yp-pri" disabled={!chosen.length || job.open} onClick={openPlan}>AI로 초안 뽑기 ({chosen.length}개)</button><CostTag kind="paid" />
         <button type="button" className="yp-btn" disabled={!chosen.length || busy} onClick={() => void addBlank()}>직접 쓰기</button></div>
-      <JobLine job={job} onRetry={() => setSend(true)} />
+      {sampleProject && !planning && <button type="button" className="yp-btn" onClick={() => { setChosen(["steps"]); setBrief("월요일마다 무거운 직장인 · 일요일 밤의 걱정을 월요일 첫 행동으로 옮긴다.\n" + planningOutline(["steps"])); setPlanning(true); }}>같은 주제로 개선 예시 비교</button>}
+      {planning && <section className="yp-card-b" aria-label="생성 전 기획안">
+        <h3>생성 전 기획안 확인</h3><p>{planningOutline(chosen)}</p>
+        <label>독자 · 핵심 메시지 · 장별 전개<textarea value={brief} maxLength={1800} rows={5} onChange={event => setBrief(event.target.value)} /></label>
+        <div className="yp-row-btns"><button className="yp-btn" onClick={() => setPlanning(false)}>취소</button>
+        <button className="yp-btn yp-pri" disabled={!brief.trim() || !chosen.length || busy || dirty || job.open} onClick={async () => {
+          if (!(await save({ brief: brief.trim() }))) return;
+          if (sampleProject && chosen.length === 1 && chosen[0] === "steps") {
+            if (!(await save({ mondaySample: true }))) return;
+            setSlide(0); setCompareAll(true);
+          } else setSend(true);
+          setPlanning(false);
+        }}>{sampleProject && chosen.length === 1 && chosen[0] === "steps" ? "기획 확인 · 로컬 예시 열기" : "기획 확인 · AI 생성 방식 선택"}</button></div>
+      </section>}
+      <JobLine job={job} onRetry={openPlan} />
       <SendDialog page={page} task="card" open={send} onClose={() => setSend(false)} job={job} extra={{ formats: chosen }} />
     </YpSection> : null}
 
-    {cards.drafts.length ? <YpSection n={editable ? 2 : 1} title="초안 비교" gq={`${cards.drafts.length}개 · 표지와 앞 3장`}>
+    {cards.drafts.length ? <YpSection n={editable ? 2 : 1} title="초안 비교" gq={`${cards.drafts.length}개 · 같은 주제`}>
+      <button type="button" className="yp-btn yp-sm" aria-pressed={compareAll} onClick={() => setCompareAll(!compareAll)}>{compareAll ? "앞 4장만 보기" : "전체 장 비교"}</button>
       <div className="yp-card-rows">{cards.drafts.map(row => { const check = cardProblems(row); const mine = row.id === cards.picked;
         return <div key={row.id} className={`yp-card-row${mine ? " yp-on" : ""}`}>
           <div className="yp-card-row-h"><b>{CARD_FORMATS[row.format].name}</b><span className="yp-tag">{draftLabel(row)}</span><span className="yp-muted">{row.slides.length}장</span>
             <span className={check.blocking.length ? "yp-tag yp-bad" : "yp-tag yp-ok"}>{check.blocking.length ? `고칠 곳 ${check.blocking.length}` : "글자 수 통과"}</span><span className="yp-sp" />
             {mine ? <span className="yp-tag yp-acc">고른 초안</span> : editable ? <button type="button" className="yp-btn yp-sm" disabled={busy || dirty} onClick={() => void save({ pick: row.id })}>이걸로 하기</button> : null}
             {editable && !mine ? <button type="button" className="yp-btn yp-sm" aria-label="초안 지우기" disabled={busy} onClick={() => { if (window.confirm("이 초안을 지울까요?")) void save({ remove: row.id }); }}><Trash2 size={13} /></button> : null}</div>
-          <div className="yp-card-strip">{row.slides.slice(0, 4).map((_, index) => <CardPreview key={index} draft={row} index={index} width={150} />)}</div>
+          <div className="yp-card-strip">{row.slides.slice(0, compareAll ? undefined : 4).map((_, index) => <CardPreview key={index} draft={row} index={index} width={150} />)}</div>
         </div>; })}</div>
     </YpSection> : null}
 
     {draft ? <YpSection n={editable ? 3 : 2} title={editable ? "고른 초안 다듬기" : "확정한 카드"} gq={`${CARD_FORMATS[draft.format].name} · ${draft.slides.length}장`}>
       <div className="yp-card-tools" aria-label="카드 장 관리">
+        {editable && (!page.demo || (sampleProject && draft.format === "steps" && draft.slides.length === 6)) && <button type="button" className="yp-btn yp-sm" disabled={rewriting || dirty || busy} onClick={() => void rewrite()}>{rewriting ? "다시 만드는 중…" : `${current + 1}장만 다시 만들기`}</button>}
         <b>카드 {draft.slides.length} / {cardMaxSlides(draft.format)}장{toonUploads(draft).length > 1 ? ` · ${toonUploads(draft).length}화` : ""}</b>
         {editable && CARD_FORMATS[draft.format].slides.filter(item => item.max > item.min).map(item => <button key={item.type} type="button" className="yp-btn yp-sm" disabled={addCardSlide(draft, item.type) === draft} onClick={() => structure(addCardSlide(draft, item.type), current)}><Plus size={13} />{item.type === "toon" ? "다음 화 나누기" : `${item.label} 카드 추가`}</button>)}
         {editable && <button type="button" className="yp-btn yp-sm" disabled={!undo} onClick={() => { if (undo) { edit(undo); setOver({}); setSlide(Math.min(current, undo.slides.length - 1)); setUndo(null); } }}>장 편집 되돌리기</button>}

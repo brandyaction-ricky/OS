@@ -71,7 +71,7 @@ export const isCardFormat = (value: unknown): value is CardFormatId => typeof va
 
 /** A photo kept in the project's files (youtube/<project>/card/…), with its size so the card keeps its ratio. */
 export interface CardPhoto { path: string; w: number; h: number }
-export interface CardSlide { type: CardSlideType; fields: Record<string, string>; photo?: CardPhoto }
+export interface CardSlide { layout?: "spotlight"; type: CardSlideType; fields: Record<string, string>; photo?: CardPhoto }
 export interface CardDraft {
   id: string; format: CardFormatId; slides: CardSlide[]; caption: string; hashtags: string[]; at: string; by: string;
   /** Who drafted it: a staff member's own AI or the company GPT, and under which 카드뉴스 정본 version (for the 정본 다듬기 comparison). */

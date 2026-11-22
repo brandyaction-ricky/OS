@@ -193,7 +193,7 @@ export interface YpScreenCheck {
  * picked, and what 카드 확정 fixed. Drafts of several formats sit side by side; the PD picks one and edits it. */
 export interface YpCardSource { kind: "longform" | "short" | "threads" | "none"; title: string; text: string; at: string }
 export interface YpCards {
-  source: YpCardSource; focus: string; drafts: CardDraft[]; picked: string;
+  source: YpCardSource; focus: string; brief?: string; drafts: CardDraft[]; picked: string;
   recommend?: { formats: CardFormatId[]; why: string };
   /** sig = the confirmed card; aiSig = the AI draft it started from, to see how far the PD moved it (정본 다듬기). */
   confirmed?: { at: string; draftId: string; sig: string; aiSig?: string };
