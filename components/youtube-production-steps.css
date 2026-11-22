@@ -40,6 +40,20 @@
 .linear-shell .ui-v2 .yt-candidates figure { display: grid; gap: 4px; margin: 0; min-width: 0; }
 .linear-shell .ui-v2 .yt-candidates img { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; border-radius: 8px; background: var(--panel-2); }
 .linear-shell .ui-v2 .yt-candidates figcaption { display: grid; gap: 4px; justify-items: start; overflow-wrap: anywhere; }
+/* 장면 그림 바꾸기 (2026-11-22): one line per scene: number, photo and where it came from, then the buttons on the right. */
+.linear-shell .ui-v2 .yt-swap { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.linear-shell .ui-v2 .yt-swap > li { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 6px 10px; padding: 8px 10px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--panel); }
+.linear-shell .ui-v2 .yt-swap-no { color: var(--text); font-weight: 600; font-size: 13px; font-variant-numeric: tabular-nums; }
+.linear-shell .ui-v2 .yt-swap-info { display: grid; gap: 2px; min-width: 0; }
+.linear-shell .ui-v2 .yt-swap-file { color: var(--text); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.linear-shell .ui-v2 .yt-swap-info .yt-check { font-size: 12px; }
+.linear-shell .ui-v2 .yt-swap-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.linear-shell .ui-v2 .yt-swap > li > .yt-find { grid-column: 1 / -1; }
+@media (max-width: 640px) { .linear-shell .ui-v2 .yt-swap > li { grid-template-columns: 44px minmax(0, 1fr); } .linear-shell .ui-v2 .yt-swap-actions { grid-column: 1 / -1; justify-content: flex-start; } }
+/* 메모 칸: the label on its own line, the box full width under it. */
+.linear-shell .ui-v2 .yt-memo { display: grid; gap: 6px; color: var(--text); font-size: 13px; font-weight: 600; }
+.linear-shell .ui-v2 .yt-memo small { margin-left: 4px; font-weight: 400; }
+.linear-shell .ui-v2 .yt-memo textarea { width: 100%; min-height: 72px; resize: vertical; font-weight: 400; }
 .linear-shell .ui-v2 .yt-step-fold > summary { cursor: pointer; color: var(--text-2); font-size: 13px; }
 .linear-shell .ui-v2 .yt-step-fold[open] > summary { margin-bottom: 10px; }
 .linear-shell .ui-v2 .yt-steps p { max-width: 760px; margin: 0; color: var(--text-2); word-break: keep-all; overflow-wrap: anywhere; }

@@ -488,7 +488,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
         {["storyboard_review", "storyboard_confirmed", "cta_pending", "prep_pending", "prep_ready", "clips_pending", "clips_review"].includes(run.stage) ? <div className="yt-note">
           <strong>{run.stage === "storyboard_review" ? "로건, 유쓰 확인" : "기획표 다시 고치기"}</strong>
           {run.stage === "storyboard_review" ? <p>{short ? "확인 완료를 누르면 숏폼 미리보기가 바로 시작돼요." : "확인 완료를 누르면 3단계 미리보기가 바로 시작됩니다. 기획표의 사진 · 도식 · 글자 · 음악으로 미리보기 영상을 만들고, 구독 대사 음성(유료)과 사운드 편집은 미리보기 확인 뒤 4단계에서 합니다."}</p> : null}
-          <label>메모 (수정 요청할 때는 필수)<textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder={short ? "예) 3번 장면은 큰 글자로, 도식 칸 글자를 줄여서" : "예) 7번 비유는 빼고, 구독은 두 번째 섹션 끝으로"} /></label>
+          <label className="yt-memo"><span>메모 <small>수정 요청할 때는 꼭 적어 주세요</small></span><textarea rows={3} value={note} onChange={(event) => setNote(event.target.value)} placeholder={short ? "예) 3번 장면은 큰 글자로, 도식 칸 글자를 줄여서" : "예) 7번 비유는 빼고, 구독은 두 번째 섹션 끝으로"} /></label>
           {run.stage === "storyboard_review" ? <SettingsLine text={`미리보기는 ${placeName(run.settings, run)}에서 만들어요 · GPT 화면 검사 ${run.settings?.screenCheck ?? true ? "켬" : "끔"}`} onChange={openSettings} /> : null}
           <div className="yt-actions">
             {run.stage === "storyboard_review" ? <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void act("confirm", () => post("/myin", "PATCH", { action: "review", runId: run.id, decision: "confirmed", note }))}>{busy === "confirm" ? "저장 중…" : "기획표 확인 완료 · 미리보기 만들기"}</button> : null}
@@ -537,7 +537,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       </div> : null}
       {run?.stage === "clips_review" && !materials && !run.stills ? <div className="yt-note">
         <strong>로건, 유쓰 확인</strong>
-        <label>메모 (수정 요청할 때는 필수)<textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="예) 오프닝 좋음 · 7번 빙산 장면 글자가 넘쳐요" /></label>
+        <label className="yt-memo"><span>메모 <small>수정 요청할 때는 꼭 적어 주세요</small></span><textarea rows={3} value={note} onChange={(event) => setNote(event.target.value)} placeholder="예) 오프닝 좋음 · 7번 빙산 장면 글자가 넘쳐요" /></label>
         {run.clipsStale?.length ? <div className="yt-actions"><p className="yt-note yt-warn">미리보기를 만든 뒤 {run.clipsStale.join(" · ")}이(가) 바뀌었어요. 지금 미리보기는 옛 재료라서 확인할 수 없어요.</p>
           <button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => void act("prep", () => post("/myin", "PATCH", { action: "prepare", runId: run.id }))}>{busy === "prep" ? "시작하는 중…" : "미리보기 다시 만들기"}</button></div> : null}
         {short ? null : <SettingsLine text={`자료 준비 · 전체 영상은 ${placeName(run.settings, run)}에서 만들어요`} onChange={openSettings} />}

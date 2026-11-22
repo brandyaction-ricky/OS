@@ -83,18 +83,24 @@ export function MyinOurImages({ runId, token, onSaved, onScene, open = false }: 
   return <details className="yt-details" open={open || undefined} onToggle={(event) => { if ((event.target as HTMLDetailsElement).open && !state) void load(); }}>
     <summary>장면 그림 바꾸기 (우리 이미지 · 사진 후보)</summary>
     <p className="yt-note">장면에 들어간 사진을 우리가 가진 이미지(워크북 캡처, 직접 받은 인물 사진 등)나 Unsplash · 위키미디어 사진 후보로 바꿔 넣어요. 움직임이 중요한 장면은 MP4 · MOV 영상(20MB 이하)을 올려도 돼요: 그 장면에서 영상이 흘러가고, 영상 소리는 목소리 아래로 작게 깔려요. 올리는 이미지 · 영상은 직접 찍었거나 쓸 권리를 받은 것만 올려 주세요. 후보는 찾아보기만 해서는 아무것도 바뀌지 않고, [사용하기]를 눌러야 바뀌어요. 장면 길이와 목소리는 그대로예요. 길이나 말을 바꾸려면 구성안 원고를 고쳐 음성부터 다시 만들어요.</p>
-    {state ? <ul className="yt-list">{rows.map(({ scene, photo }) => { const row = `${scene}-${photo.file}`; return <li key={row}>
-      {scene ? `${scene}번 장면 · ` : ""}{photo.file} · {from(photo)}{" "}
-      {state.open ? <>
-        <button type="button" className="secondary-button compact" disabled={Boolean(busy)} onClick={() => pick(photo, scene)}>
-          {busy === photo.file ? "바꾸는 중…" : photo.from === "ours" ? "이미지 · 영상으로 바꾸기" : "이미지 · 영상 올리기"}</button>
-        <button type="button" className="secondary-button compact" disabled={Boolean(busy)}
-          onClick={() => setFinding(finding?.row === row ? null : { row, photo, scene, query: wordsOf(photo.file), results: null, missing: [] })}>{finding?.row === row ? "후보 닫기" : "후보 찾기"}</button>
-      </> : null}
-      {scene && onScene ? <button type="button" className="secondary-button compact" onClick={() => onScene(scene)}>점검 시트 보기</button> : null}
-      {shared(photo) && scene && state.open ? <><br /><small>{photo.scenes!.join(" · ")}번 장면이 이 사진을 함께 써요 · </small>
-        <label><input type="checkbox" checked={Boolean(allScenes[photo.file])} onChange={(event) => setAllScenes({ ...allScenes, [photo.file]: event.target.checked })} /> 함께 쓰는 장면 모두 바꾸기</label>
-        <small>{allScenes[photo.file] ? "" : ` (안 고르면 ${scene}번 장면만 바뀌어요)`}</small></> : null}
+    {state ? <ul className="yt-swap">{rows.map(({ scene, photo }) => { const row = `${scene}-${photo.file}`; return <li key={row}>
+      <span className="yt-swap-no">{scene ? `${scene}번` : "–"}</span>
+      <div className="yt-swap-info">
+        <span className="yt-swap-file">{photo.file}</span>
+        <small>{from(photo)}</small>
+        {shared(photo) && scene && state.open ? <label className="yt-check">
+          <input type="checkbox" checked={Boolean(allScenes[photo.file])} onChange={(event) => setAllScenes({ ...allScenes, [photo.file]: event.target.checked })} />
+          {photo.scenes!.join(" · ")}번 장면 모두 바꾸기{allScenes[photo.file] ? "" : ` (안 고르면 ${scene}번만)`}</label> : null}
+      </div>
+      <div className="yt-swap-actions">
+        {state.open ? <>
+          <button type="button" className="secondary-button compact" disabled={Boolean(busy)} onClick={() => pick(photo, scene)}>
+            {busy === photo.file ? "바꾸는 중…" : photo.from === "ours" ? "이미지 · 영상으로 바꾸기" : "이미지 · 영상 올리기"}</button>
+          <button type="button" className="secondary-button compact" disabled={Boolean(busy)}
+            onClick={() => setFinding(finding?.row === row ? null : { row, photo, scene, query: wordsOf(photo.file), results: null, missing: [] })}>{finding?.row === row ? "후보 닫기" : "후보 찾기"}</button>
+        </> : null}
+        {scene && onScene ? <button type="button" className="secondary-button compact" onClick={() => onScene(scene)}>점검 시트 보기</button> : null}
+      </div>
       {finding?.row === row ? <div className="yt-note yt-find">
         <form onSubmit={(event) => { event.preventDefault(); void search(finding.query); }}>
           <input value={finding.query} onChange={(event) => setFinding({ ...finding, query: event.target.value })} aria-label="찾을 말" placeholder="예) phone desk, library" />
@@ -105,9 +111,9 @@ export function MyinOurImages({ runId, token, onSaved, onScene, open = false }: 
           {/* eslint-disable-next-line @next/next/no-img-element -- the source's own address, as its API terms ask (hotlinking) */}
           <img src={candidate.thumb} alt={`${candidate.author} 사진`} loading="lazy" />
           <figcaption>
-            {candidate.authorPage ? <a href={candidate.authorPage} target="_blank" rel="noreferrer">{candidate.author}</a> : candidate.author}
-            {" · "}<a href={candidate.page} target="_blank" rel="noreferrer">{candidate.provider === "unsplash" ? "Unsplash" : "위키미디어"}</a>
-            <br /><small>{candidate.license}{candidate.check ? " · 사용 조건 확인 필요" : ""}</small>
+            <span>{candidate.authorPage ? <a href={candidate.authorPage} target="_blank" rel="noreferrer">{candidate.author}</a> : candidate.author}
+              {" · "}<a href={candidate.page} target="_blank" rel="noreferrer">{candidate.provider === "unsplash" ? "Unsplash" : "위키미디어"}</a></span>
+            <small>{candidate.license}{candidate.check ? " · 사용 조건 확인 필요" : ""}</small>
             <button type="button" className="secondary-button compact" disabled={Boolean(busy)} onClick={() => use(candidate)}>{busy === photo.file ? "바꾸는 중…" : "사용하기"}</button>
           </figcaption></figure>)}</div> : <small>맞는 후보가 없어요. 다른 말로 찾아 주세요.</small>}
       </div> : null}
