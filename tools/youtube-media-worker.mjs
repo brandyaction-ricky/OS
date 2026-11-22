@@ -770,6 +770,15 @@ export async function processMyinWords() {
       const result = some ? { ok: true } : await runOut(speaker.python, ["voice_audit.py", voiceDir, file], { cwd: timing, env });
       try { if (result.ok) audit = JSON.parse(readFileSync(file, "utf8")); } catch { audit = null; }
     }
+    // 발음 확인 (대표 요청 2026-11-22): words both faster-whisper small and medium heard differently from the script (tools/myin_read_check.py).
+    // Only paragraph sounds that changed are heard again. MYIN_READ_CHECK=off skips it; a failure only leaves the list out.
+    let misreads = null;
+    if (speaker.onPc && !job.recycle && process.env.MYIN_READ_CHECK !== "off" && existsSync(path.join(voiceDir, "timings.json"))) {
+      current.step = "read check";
+      const file = path.join(voiceDir, "misreads.json");
+      rmSync(file, { force: true });
+      if ((await runOut(myinPython, [readCheckScript, voiceDir, file])).ok) try { misreads = JSON.parse(readFileSync(file, "utf8")); } catch { misreads = null; }
+    }
     const speech = readFileSync(path.join(voiceDir, "speech.txt"), "utf8");
     const spoken = speech.replace(/\r/g, "").split("\n").filter((line) => line.trim() && !line.startsWith("#SECTION"));
     if (spoken.length !== job.paragraphs.length || spoken.some((text, i) => text !== job.paragraphs[i].text))
@@ -782,7 +791,7 @@ export async function processMyinWords() {
     const bundle = path.join(out, "myin-words.json");
     writeFileSync(bundle, JSON.stringify({ words: JSON.parse(readFileSync(path.join(out, "words.json"), "utf8")),
       subtitlesAss: readFileSync(path.join(out, "subs_myin.ass"), "utf8"), subtitleQc: readFileSync(path.join(out, "subs_qc.md"), "utf8"),
-      speech, durationSeconds: seconds(path.join(voiceDir, "voice.wav")), ...(Array.isArray(audit) ? { audit } : {}), ...(fixed.length ? { fixes: fixed } : {}),
+      speech, durationSeconds: seconds(path.join(voiceDir, "voice.wav")), ...(Array.isArray(audit) ? { audit } : {}), ...(Array.isArray(misreads) ? { misreads } : {}), ...(fixed.length ? { fixes: fixed } : {}),
       ...(readVoiceDictionaries(timing) ? { dictionary: readVoiceDictionaries(timing) } : {}) }));
     current.step = "upload";
     await upload(job.bundleUploadUrl, bundle, "application/json");
@@ -1169,6 +1178,7 @@ print("TIMES " + json.dumps([[s["t0"], s["t1"]] for s in M.resolve(st, w)]))`;
 // 문장 하나 고치기 (요청 2번, 2026-11-17): our script next to this file, run in the voice's engine folder — takes to listen to, a take swapped, a pause added.
 const voiceEditScript = path.join(path.dirname(fileURLToPath(import.meta.url)), "myin_voice_edit.py");
 const wordsScript = path.join(path.dirname(fileURLToPath(import.meta.url)), "myin_words.py");
+const readCheckScript = path.join(path.dirname(fileURLToPath(import.meta.url)), "myin_read_check.py");
 
 /** 테이크 고르기: one sentence's takes from a voice this PC made, up to the OS to listen to (nothing paid). */
 export async function processMyinTakes() {

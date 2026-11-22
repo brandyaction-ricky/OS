@@ -11,6 +11,8 @@ interface VoiceCheckData {
   /** 요청 2번 (2026-11-17): every sentence, and the takes asked for one of them (put up by the render PC that made the voice). */
   all?: { at: number; p: number; sentence: string }[] | null;
   takes?: { p: number; text: string; state: "pending" | "listing" | "ready" | "failed"; code: string | null; files: { name: string; url: string; current: boolean }[] } | null;
+  /** 발음 확인 (2026-11-22): words both transcriptions heard differently from the script (none for a voice made before it). */
+  misreads?: { p: number; at: number; said: string; small: string; medium: string }[] | null;
 }
 type Line = { at: number; p?: number; sentence: string };
 /** Where 「음성 확인 · 수정」 may change a sentence: stage 1, and wherever the video waits for a person after it (the server says where it goes back to). */
@@ -121,6 +123,13 @@ export function MyinVoiceCheck({ runId, stage, fixable, pending, check, token, o
       {data.previewUrl ? <audio ref={audio} controls preload="none" src={data.previewUrl} style={{ width: "100%" }} /> : <p>이 영상은 여기서 들을 음성이 없어요. 위 「음성 내려받기」로 들어요.</p>}
       {data.fixes.length ? <div className="yt-note"><strong>지난번에 고친 곳</strong>
         <ul>{data.fixes.map((fix, at) => <li key={at}>{fix.ok ? "✓" : "✗"} {fix.memo}{fix.report ? <><br /><small style={{ whiteSpace: "pre-line" }}>{fix.report}</small></> : null}</li>)}</ul></div> : null}
+      {data.misreads?.length ? <div className="yt-note"><strong>잘못 읽은 것 같은 곳 {data.misreads.length}곳</strong>
+        <small>받아쓰기 두 번(작은 모델 · 큰 모델)이 모두 대본과 다르게 들은 낱말이에요. 들어 보고 틀렸으면 [메모]를 눌러 읽는 글을 바꾸거나 음성 사전에 읽는 소리를 넣어, 그 문장만 다시 만들어요.</small>
+        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 6 }}>{data.misreads.map((row, at) => <li key={at} style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+          <button type="button" className="secondary-button compact" disabled={!data.previewUrl} onClick={() => play(row.at)}>▶ {mmss(row.at)}</button>
+          <span style={{ flex: "1 1 260px", minWidth: 0 }} title={`작은 모델: ${row.small || "(안 들림)"} · 큰 모델: ${row.medium || "(안 들림)"}`}>대본 「{row.said}」 → 들린 소리 「{row.medium || row.small || "안 들림"}」</span>
+          {open && fixable ? <button type="button" className="secondary-button compact" onClick={() => { setTime(mmss(row.at)); setText(`「${row.said}」가 「${row.medium || row.small}」로 들림`.slice(0, 250)); }}>메모</button> : null}
+        </li>)}</ul></div> : data.misreads ? <p><small>발음 확인: 잘못 읽은 것 같은 곳이 없어요.</small></p> : null}
       {data.listen === null ? <p>이 영상은 들어 볼 문장 목록이 없어요(10/30 이전에 만든 음성).</p>
         : <><p><strong>들어 볼 문장 {data.listen.length}개</strong>{data.sentences ? <small> · 전체 {data.sentences}문장 중</small> : null}</p>
           {data.listen.length ? <ul className="yt-voice-list" style={{ listStyle: "none", padding: 0, display: "grid", gap: 6 }}>{data.listen.map((row, at) => <li key={at} style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
