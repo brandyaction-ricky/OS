@@ -261,7 +261,7 @@ export function TeamMeetingDetail({ meeting, meetings, tasks, token, userId, adm
       <div className="tm-row">{saveNote}</div>
       <details><summary>오늘 안건 보기</summary><textarea className="field is-prose" aria-label="안건" value={agenda} onChange={event => setAgenda(event.target.value)} rows={6} /></details>
       <div className="tm-wizard-cta"><button type="button" className="primary-button" disabled={busy || (!recorder.recording && content.trim().length < 20)} onClick={() => void endMeeting()}>{recorder.recording ? "■ 회의 끝내기 · 자동 정리" : hasAi ? "다시 자동 정리" : "회의 끝내기 · 자동 정리"}</button><CostTag kind="paid" />{hasAi ? <button type="button" className="tm-link-button" onClick={() => setBackToTalk(false)}>정리 결과로 가기 →</button> : null}</div>
-      {!recorder.recording && content.trim().length < 20 ? <p className="tm-muted">메모가 20자 이상 있어야 정리할 수 있어요.</p> : null}
+      {!recorder.recording && content.trim().length < 20 ? <p className="tm-muted">메모가 20자 이상 있어야 정리할 수 있어요. 정리할 내용이 없으면 <button type="button" className="tm-link-button" disabled={busy} onClick={() => { if (window.confirm("자동 정리 없이 회의를 끝낼까요?")) void finishMeeting(); }}>정리 없이 회의 끝내기</button></p> : null}
     </section>
     : <section className="panel panel-pad tm-wizard-panel" aria-label="3단계 정리 확인">
       {thinking ? <><h3>AI가 회의를 정리하고 있어요</h3><p className="tm-ai-status" role="status">{autoAi ? "마지막 녹음 구간을 글로 바꾸는 중… 끝나면 정리가 바로 시작돼요" : `정리하는 중… ${Math.max(0, Math.round((tick - (ai?.startedAt ?? tick)) / 1000))}초 · 보통 1~2분 걸려요. 이 화면을 그대로 두세요.`}</p></>
