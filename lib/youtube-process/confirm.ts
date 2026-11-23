@@ -18,6 +18,10 @@ export const GATE_FIELDS: Record<YpGate, Record<string, string>> = {
   review: { "make.final": "최종본", "make.thumbs": "최종 썸네일" },
   shorts: { "shorts.pick": "고른 쇼츠", "shorts.parts": "구간 · 첫 3초", "shorts.copy": "제목 · 설명" },
 };
+const CARD_GATE_FIELDS: Record<string, string> = { "cards.cover": "표지", "cards.slides": "장별 원고와 디자인", "cards.caption": "캡션", "cards.tags": "해시태그" };
+export function gateFields(gate: YpGate, type: YpMeta["topic"]["type"]) {
+  return type === "card" && (gate === "draft" || gate === "review") ? CARD_GATE_FIELDS : GATE_FIELDS[gate];
+}
 export type YpPdAction = "request" | "cancel" | "confirm" | "reopen";
 export type YpApproverAction = "ok" | "changes" | "hold" | "revert";
 /** `to`: the approver a 컨펌 요청 goes to (owner request 2026-11-02: the PD picks who to ask). */
@@ -113,8 +117,9 @@ export function applyGateAction(project: Pick<YpProject, "yp">, gate: YpGate, ac
       return put({ state: "ok", round: info.round, requestedAt: info.requestedAt, requestedBy: info.requestedBy, decidedAt: input.now, decidedBy: input.actor },
         info.revertedFrom ?? nextStage(gate, yp));
     case "changes": {
-      waitingNeeded();
-      const allowed = Object.keys(GATE_FIELDS[gate]);
+      const directCardReview = yp.topic.type === "card" && (gate === "draft" || gate === "review") && yp.stage === GATE_STAGE[gate] && info.state === "none";
+      if (!directCardReview) waitingNeeded();
+      const allowed = Object.keys({ ...GATE_FIELDS[gate], ...gateFields(gate, yp.topic.type) });
       const fields = [...new Set(input.fields ?? [])];
       if (!fields.length || fields.some(field => !allowed.includes(field))) throw new GateError("FIELDS_REQUIRED", "고칠 칸을 하나 이상 골라 주세요.", 400);
       if (!input.memo?.trim()) throw new GateError("MEMO_REQUIRED", "수정 요청 메모를 써 주세요.", 400);

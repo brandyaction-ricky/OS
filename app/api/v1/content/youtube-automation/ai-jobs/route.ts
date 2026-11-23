@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
-import { requestStaffJob, staffJobRequestSchema, staffJobStatus } from "@/lib/server/youtube-ai-jobs";
+import { cancelCardJob, requestStaffJob, staffJobRequestSchema, staffJobStatus } from "@/lib/server/youtube-ai-jobs";
 import { scheduleGptJob } from "@/lib/server/youtube-gpt-jobs";
 import { isGptTask } from "@/lib/youtube-process/gpt-draft";
 import { canUseYoutubeAutomationPilot, canUseYoutubeStaffScript } from "@/lib/youtube-automation-gate";
@@ -54,4 +54,15 @@ export async function POST(request: Request) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "INVALID_AUTOMATION_INPUT", "콘텐츠와 원고 버전을 확인해 주세요."));
     return apiErrorResponse(error);
   }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const actor = await authenticateRequest(request, { allowAgent: false });
+    if (!open("card")) throw disabled();
+    const id = z.string().uuid().safeParse(new URL(request.url).searchParams.get("jobId"));
+    if (!id.success) throw new ApiError(400, "INVALID_JOB_ID", "작업을 다시 선택해 주세요.");
+    await cancelCardJob(actor, id.data);
+    return NextResponse.json({ cancelled: true }, { headers });
+  } catch (error) { return apiErrorResponse(error); }
 }

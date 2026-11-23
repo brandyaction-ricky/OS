@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
+import { cardCanon, VOICE_CANON_TITLE } from "@/lib/server/youtube-process-card-job";
+import { namedProcedures } from "@/lib/server/content-generation";
 import { youtubeActor } from "@/lib/server/youtube-process";
 import { cardCreateSchema, createCardProject, listCardSources, readCardCovers } from "@/lib/server/youtube-process-cards";
 
@@ -11,6 +13,10 @@ export async function GET(request: Request) {
   try {
     const actor = await youtubeActor(request);
     const params = new URL(request.url).searchParams;
+    if (params.has("canon")) {
+      const [canon, voice] = await Promise.all([cardCanon(actor.supabase), namedProcedures(actor.supabase, [VOICE_CANON_TITLE])]);
+      return NextResponse.json({ canon, voice: voice[0] ?? null }, { headers: { "cache-control": "private, no-store" } });
+    }
     const result = params.has("covers")
       ? { covers: await readCardCovers(actor, z.array(z.string().uuid()).max(40).parse((params.get("covers") ?? "").split(",").filter(Boolean))) }
       : { sources: await listCardSources(actor) };

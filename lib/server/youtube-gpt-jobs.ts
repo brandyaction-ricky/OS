@@ -7,7 +7,7 @@ import type { YpProject } from "@/lib/youtube-process/project";
 import type { RequestActor } from "./auth";
 import { generateContentText } from "./content-model";
 import { creditTier } from "./openai-credit";
-import { claimStaffJob, completeStaffJob, failStaffJob, requestStaffJob, staffJobRequestSchema } from "./youtube-ai-jobs";
+import { cardJobPhase, claimStaffJob, completeStaffJob, failStaffJob, requestStaffJob, staffJobRequestSchema } from "./youtube-ai-jobs";
 import { displayName } from "./youtube-process-ai";
 import { readStages } from "./youtube-process-stages";
 
@@ -54,8 +54,10 @@ export async function runGptJob(jobId: string, owner: Owner, tier: GptTier) {
     // a doc_id typed into the user's advertising brief as permission to read a service-role document.
     const docs = claimed.task === "image-creative" ? "" : await cardDocs(claimed.instructions, claimed.documentRefs);
     for (let attempt = 0; attempt < 2; attempt++) {
+      if (claimed.task === "card") await cardJobPhase(agent, jobId, claimed.lease, "card_writing");
       const text = await generateContentText({ model, effort, maxTokens: 32_000, timeoutMs: 600_000, cachedPrefix: docs ? `${PREFACE}\n\n# 붙인 문서\n${docs}` : PREFACE,
         prompt: `# 작업 카드\n${claimed.instructions}${issues ? `\n\n## 지난 답에서 OS가 돌려준 고칠 점 (고쳐서 다시 답합니다)\n${issues}` : ""}` });
+      if (claimed.task === "card") await cardJobPhase(agent, jobId, claimed.lease, "card_checking");
       lastText = text;
       let result: unknown;
       try { result = unwrap(JSON.parse(text)); } catch { issues = "JSON 객체 하나로만 답해 주세요."; continue; }

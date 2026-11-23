@@ -41,7 +41,26 @@ test("an over-long or empty field, a wrong count or order blocks 카드 확정; 
   const words = filled("quote"); words.slides[1].fields.text = "여러분 무료 진단 받아 보세요"; words.slides[2].fields.text = "직장인 70%가 그래요";
   const { blocking, warnings } = cardProblems(words);
   assert.deepEqual(blocking, []);
-  assert.equal(warnings.length, 3);
+  assert.equal(warnings.length, 4);
+});
+
+test("public copy checks cover the exact caption and hashtag boundaries", () => {
+  const validate = (caption, count = 3) => cardProblems({ ...filled("list"), caption, hashtags: Array.from({ length: count }, (_, n) => String(n)) });
+  for (const length of [125, 126]) assert.equal(validate("가".repeat(length)).warnings.some(msg => msg.includes("125자")), length > 125);
+  for (const length of [299, 300, 800, 801]) assert.equal(validate("가".repeat(length)).warnings.some(msg => msg.includes("300~800")), length < 300 || length > 800);
+  for (const count of [0, 2, 3, 5, 6]) assert.equal(validate("본문", count).warnings.some(msg => msg.includes("해시태그")), count < 3 || count > 5);
+  assert.ok(validate("제공된 설명").blocking.some(msg => msg.startsWith("캡션")));
+  const d = filled("webtoon");
+  d.slides[1].fields.scene = "원본 가상 장면";
+  assert.deepEqual(cardProblems(d).blocking, []);
+  d.slides[1].fields.talk = "원고";
+  assert.ok(cardProblems(d).blocking.some(msg => msg.startsWith("2장 대사")));
+});
+
+test("card approvers may request a copy change directly only at the active gate", () => {
+  const data = { actor: "reviewer", now: "today", fields: ["cards.caption"], memo: "캡션 첫 문장을 고쳐 주세요" };
+  assert.equal(applyGateAction(cardProject("review"), "review", "changes", data).gates.review.state, "changes");
+  assert.throws(() => applyGateAction(cardProject("draft"), "review", "changes", data));
 });
 
 test("cards are added and taken out only within the format's range", () => {
@@ -102,6 +121,16 @@ test("게시 확인 requires a distinct Instagram post for every episode and hon
   const patch = (current, exported) => nextCards(project, current, { exported }, "pd", "2026-11-22", () => "");
   assert.equal(cardPublicationProgress(cards).episodes, 2);
   assert.equal(finishedCardPublication(patch(cards, { episode: 1, downloaded: true }), "now"), undefined);
+  const downloaded = patch(cards, { episode: 2, downloaded: true });
+  assert.deepEqual(downloaded.exported.downloadedEpisodes, [2]);
+  const copied = patch(downloaded, { copied: true });
+  assert.equal(copied.exported.copiedAt, "2026-11-22");
+  const posted = patch(copied, { posted: true });
+  assert.equal(posted.exported.downloadedAt, posted.exported.postedAt);
+  assert.deepEqual(posted.exported.downloadedEpisodes, [2]);
+  assert.equal(finishedCardPublication(posted, "now"), undefined);
+  assert.throws(() => patch(cards, { withheldReason: " 세 글 " }));
+  assert.equal(finishedCardPublication(patch(cards, { withheldReason: "인쇄 보류" }), "now").status, "withheld");
   const legacy = { ...cards, exported: { url: "https://instagram.com/p/abc", by: "pd", at: "then" } };
   assert.equal(cardPublicationProgress(legacy).missing, 1);
   assert.equal(finishedCardPublication(legacy, "now"), undefined);

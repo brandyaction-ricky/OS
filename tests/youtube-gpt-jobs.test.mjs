@@ -10,8 +10,8 @@ import * as gptDraft from "../lib/youtube-process/gpt-draft.ts";
 class ApiError extends Error { constructor(status, code, message) { super(message); this.status = status; this.code = code; } }
 const source = await readFile(new URL("../lib/server/youtube-gpt-jobs.ts", import.meta.url), "utf8");
 
-function load({ answers, complete }) {
-  const calls = { prompts: [], completed: [], failed: [] };
+function load({ answers, complete, task, onPhase = () => {} }) {
+  const calls = { prompts: [], completed: [], failed: [], phases: [] };
   const docs = [{ id: "11111111-2222-3333-4444-555555555555", title: "발행 키트 정본", current_version: 2, content_md: "정본 본문" }];
   const supabase = { from: () => ({ select: () => ({ in: (_col, ids) => ({ neq: async () => ({ data: docs.filter((doc) => ids.includes(doc.id)) }) }) }) }) };
   const modules = {
@@ -21,7 +21,8 @@ function load({ answers, complete }) {
     "./content-model": { generateContentText: async (request) => { calls.prompts.push(request); return answers.shift(); } },
     "./youtube-ai-jobs": {
       staffJobRequestSchema: { parse: (value) => value },
-      claimStaffJob: async (_agent, jobId, byGpt) => { assert.equal(byGpt, true, "GPT takes its own jobs only"); return { jobId, lease: "lease-1", instructions: "## 먼저 끝까지 열 문서 (doc_id로 엽니다)\n- 발행 키트 정본 (doc_id: 11111111-2222-3333-4444-555555555555)\nresult = { desc }" }; },
+      cardJobPhase: async (_agent, _id, _lease, phase) => { calls.phases.push(phase); onPhase(phase); },
+      claimStaffJob: async (_agent, jobId, byGpt) => { assert.equal(byGpt, true, "GPT takes its own jobs only"); return { task, jobId, lease: "lease-1", instructions: "## 먼저 끝까지 열 문서 (doc_id로 엽니다)\n- 발행 키트 정본 (doc_id: 11111111-2222-3333-4444-555555555555)\nresult = { desc }" }; },
       completeStaffJob: async (_agent, input) => { calls.completed.push(input); return complete(input); },
       failStaffJob: async (_agent, input) => { calls.failed.push(input); return { closed: true }; },
       requestStaffJob: async () => ({ id: "job", status: "backlog" }),
@@ -56,6 +57,18 @@ test("GPT gets the card's documents, answers once more with the OS's format prob
   assert.deepEqual(await ok.jobs.runGptJob("job-2", owner, "saving"), { done: true, desc: "설명란" });
   assert.equal(ok.calls.prompts[0].model, "gpt-6.1-sol");
   assert.equal(ok.calls.failed.length, 0);
+});
+
+test("card jobs record progress and a cancelled lease prevents saving a late answer", async () => {
+  const options = { task: "card", answers: ["{}"], complete: () => ({ done: true }) };
+  const first = load(options);
+  await first.jobs.runGptJob("job", owner, "precise");
+  assert.deepEqual(first.calls.phases, ["card_writing", "card_checking"]);
+  const stopped = load({ ...options, answers: ["{}"], onPhase: phase => {
+    if (phase === "card_checking") throw new ApiError(409, "LEASE_LOST", "작업 취소");
+  } });
+  await assert.rejects(stopped.jobs.runGptJob("job", owner, "precise"), /취소/);
+  assert.equal(stopped.calls.completed.length, 0);
 });
 
 test("only the derivative tasks and the 카드뉴스 draft take GPT, and a draft says whose it is", () => {

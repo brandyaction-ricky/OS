@@ -13,7 +13,7 @@ import { CardSlideView } from "@/lib/cardnews/card-slide";
 import { CardError, cardsMissing, nextCards, pickedDraft } from "@/lib/cardnews/cards";
 import { cardLetters, slideSpec, CAPTION_MAX, CARD_FORMAT_IDS, CARD_SIZE, CARD_SLIDE_TYPES, cardSignature, plainCardText, TOON_MAX_SLIDES, toonUploads, type CardDraft } from "@/lib/cardnews/formats";
 import { storedZip } from "@/lib/cardnews/zip";
-import { projectCardSources, visibleThreadSource, type CardSourceChoice } from "@/lib/cardnews/sources";
+import { initialCardRecommendation, isCardTestTitle, projectCardSources, visibleThreadSource, type CardSourceChoice } from "@/lib/cardnews/sources";
 import { applyGateAction, quietHours } from "@/lib/youtube-process/confirm";
 import { GPT_TIERS, type GptTier } from "@/lib/youtube-process/gpt-draft";
 import { newProjectMeta, projectName, type YpProject } from "@/lib/youtube-process/project";
@@ -37,7 +37,7 @@ export async function listCardSources(actor: RequestActor): Promise<CardSourceCh
       .is("archived_at", null).order("updated_at", { ascending: false }).limit(200),
   ]);
   if (threads.error) throw new ApiError(503, "CARD_SOURCE_READ_FAILED", "완료한 주제를 불러오지 못했어요. 다시 시도해 주세요.");
-  const posts: CardSourceChoice[] = (threads.data ?? []).filter(row => visibleThreadSource(row, actor.ownerId)).map(row => ({
+  const posts: CardSourceChoice[] = (threads.data ?? []).filter(row => visibleThreadSource(row, actor.ownerId) && !isCardTestTitle(String(row.title ?? "")) && row.metadata?.isTest !== true).map(row => ({
     id: row.id, from: "threads", kind: "threads", title: String(row.title || "스레드 글").slice(0, 200), updatedAt: row.updated_at,
   }));
   return [...projectCardSources(projects), ...posts].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -67,7 +67,7 @@ export async function readCardCovers(actor: RequestActor, requested: string[]): 
 export const cardCreateSchema = z.discriminatedUnion("from", [
   z.object({ from: z.literal("none"), title: z.string().trim().min(2).max(200), target: z.string().trim().min(1).max(300), note: z.string().max(2000).default(""), channel: z.string().uuid().optional() }).strict(),
   z.object({ from: z.literal("project"), projectId: z.string().uuid(), focus: z.string().max(500).default("") }).strict(),
-  z.object({ from: z.literal("threads"), itemId: z.string().uuid() }).strict(),
+  z.object({ from: z.literal("threads"), itemId: z.string().uuid(), focus: z.string().trim().max(500).default("") }).strict(),
 ]);
 
 /** The text a 카드뉴스 starts from: a longform's 원고 (spoken words) and A title, a 숏폼's confirmed 대본, or a Threads post's 글타래. */
@@ -98,7 +98,7 @@ async function sourceOf(actor: RequestActor, input: z.infer<typeof cardCreateSch
   const posts = Array.isArray(item.metadata?.posts) ? (item.metadata.posts as unknown[]).map(String).filter(post => post.trim()) : [];
   if (!posts.length) throw new ApiError(409, "CARD_SOURCE_EMPTY", "스레드 글이 비어 있어요.");
   const title = String(item.title || posts[0].split("\n")[0]).slice(0, 200);
-  return { title, target: "스레드 글과 같아요", note: "", focus: "", source: { kind: "threads", title, text: posts.join("\n\n").slice(0, SOURCE_MAX), at: now } as YpCardSource,
+  return { title, target: "스레드 글과 같아요", note: "", focus: input.focus, source: { kind: "threads", title, text: posts.join("\n\n").slice(0, SOURCE_MAX), at: now } as YpCardSource,
     from: { kind: "threads" as const, id: item.id as string, title } };
 }
 
@@ -111,7 +111,7 @@ export async function createCardProject(actor: RequestActor, input: z.infer<type
   const meta = newProjectMeta({ type: "card", target: made.target, note: made.note, refs: [], ...(channel ? { channel } : {}) }, now);
   meta.yp = { ...applyGateAction({ yp: meta.yp }, "topic", "confirm", { actor: actor.ownerId, now }), ...("from" in made && made.from ? { cardFrom: made.from } : {}) };
   const project = await insertProject(actor, made.title, actor.ownerId, meta);
-  await writeStage(actor.supabase, actor.id, actor.team, project, "cards", { id: null, version: 0 }, { ...emptyStage("cards", "card"), source: made.source, focus: made.focus } satisfies YpCards);
+  await writeStage(actor.supabase, actor.id, actor.team, project, "cards", { id: null, version: 0 }, { ...emptyStage("cards", "card"), source: made.source, focus: made.focus, recommend: initialCardRecommendation(made.source.kind) } satisfies YpCards);
   await recordConfirmation(project, "topic", "confirm", actor.ownerId, {});
   if (!quietHours(now)) await notify(await approverIds(), "yt_confirm_result", project.id, `self:${project.id}:topic:1`);
   return project;
@@ -130,7 +130,7 @@ export const cardsPatchSchema = z.object({
   draft: draftSchema, add: z.enum(CARD_FORMAT_IDS as [CardDraft["format"], ...CardDraft["format"][]]), remove: z.string().max(40), pick: z.string().max(40),
   focus: z.string().max(500), brief: z.string().trim().min(1).max(1800),
   /** 내보내기: where it went up (the address of the post). */
-  exported: z.object({ url: z.string().url().max(500).optional(), episode: z.number().int().positive().optional(), withheldReason: z.string().trim().max(500).optional(), downloaded: z.literal(true).optional() }).strict().refine(value => value.url !== undefined || value.withheldReason !== undefined || value.downloaded === true),
+  exported: z.object({ url: z.string().url().max(500).optional(), episode: z.number().int().positive().optional(), withheldReason: z.string().trim().max(500).optional(), downloaded: z.literal(true).optional(), copied: z.literal(true).optional(), posted: z.literal(true).optional() }).strict().refine(value => value.url !== undefined || value.withheldReason !== undefined || value.downloaded === true || value.copied === true || value.posted === true),
 }).partial().strict();
 
 export function nextCardsOnServer(project: YpProject, current: YpCards, patch: z.infer<typeof cardsPatchSchema>, actor: RequestActor, now: string) {

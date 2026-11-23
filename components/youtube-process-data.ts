@@ -18,7 +18,7 @@ import { mondayFields } from "@/lib/cardnews/planning";
 import { CardError, cardsMissing, finishedCardPublication, nextCards, type CardsPatch } from "@/lib/cardnews/cards";
 import { cardSignature, emptyCardDraft, type CardDraft, type CardPhoto } from "@/lib/cardnews/formats";
 import { CARD_DRAW_SIZE, type CardCharacterView, type CardDrawInput } from "@/lib/cardnews/draw";
-import { cardSourceProjectReady, projectCardSources, type CardSourceChoice } from "@/lib/cardnews/sources";
+import { initialCardRecommendation, cardSourceProjectReady, projectCardSources, type CardSourceChoice } from "@/lib/cardnews/sources";
 
 /** What the CTA screen shows of one change (lib/server/youtube-cta.ts summary). */
 export interface CtaChangeView { id: string; at: string; by: string; find: string; replace: string; undoneAt: string | null; done: number; undone: number; failed: { videoId: string; error: string }[] }
@@ -145,7 +145,7 @@ export interface YpClient {
   removeCardCharacter(characterId: string): Promise<CardCharacterView[]>;
   demo: boolean;
 }
-export type YpCardInput = { from: "none"; title: string; target: string; note?: string; channel?: string } | { from: "project"; projectId: string; focus?: string } | { from: "threads"; itemId: string };
+export type YpCardInput = { from: "none"; title: string; target: string; note?: string; channel?: string } | { from: "project"; projectId: string; focus?: string } | { from: "threads"; itemId: string; focus?: string };
 export interface YpConfirmExtra { fields?: string[]; memo?: string; reason?: string }
 
 const json = (body: unknown) => JSON.stringify(body);
@@ -481,7 +481,7 @@ function demoClient(): YpClient {
       const title = input.from === "none" ? input.title : from ? from.title : "[예시] 스레드 글";
       const made = add(title, { kind: "card", target: input.from === "none" ? input.target : "원본과 같아요", note: input.from === "none" ? input.note ?? "" : "" });
       const project = put({ ...made, yp: { ...gateApply(made, "topic", "confirm", { actor: DEMO_ME, now }), ...(from ? { cardFrom: { kind: from.yp.topic.type === "short" ? "short" as const : "longform" as const, id: from.id, title: from.title } } : input.from === "threads" ? { cardFrom: { kind: "threads" as const, id: input.itemId, title } } : {}) } });
-      demoStages.set(project.id, { ...stagesOf(project), cards: { id: null, version: 0, data: { ...emptyStage("cards", "card"), source: { kind: from ? (from.yp.topic.type === "short" ? "short" : "longform") : input.from === "threads" ? "threads" : "none", title, text: from ? "[예시] 원고" : "", at: now } } } });
+      demoStages.set(project.id, { ...stagesOf(project), cards: { id: null, version: 0, data: { ...emptyStage("cards", "card"), focus: input.from === "none" ? "" : input.focus ?? "", recommend: initialCardRecommendation(project.yp.cardFrom?.kind ?? "none"), source: { kind: from ? (from.yp.topic.type === "short" ? "short" : "longform") : input.from === "threads" ? "threads" : "none", title, text: from ? "[예시] 원고" : "", at: now } } } });
       return structuredClone(project);
     },
     cardSources: async () => [...projectCardSources(demoProjects()), { id: "demo-approved-thread", from: "threads", kind: "threads", title: "[예시] 스레드 글", updatedAt: daysAgo(0) }],
@@ -563,10 +563,11 @@ function demoClient(): YpClient {
           let cards = current.data as YpStageData["cards"];
           const uid = () => crypto.randomUUID().slice(0, 8);
           if ("mondaySample" in patch && id === "demo-p13") {
+            const previousPick = cards.picked;
             cards = nextCards(project, cards, { add: "steps" }, "데모", now, uid);
             const sample = cards.drafts.at(-1)!;
             const slides = sample.slides.map((slide, index) => ({ ...slide, ...(index === 3 ? { layout: "spotlight" as const } : {}), fields: mondayFields(slide, index)! }));
-            cards = nextCards(project, cards, { draft: { ...sample, slides, caption: "일요일 밤 걱정을 내일의 첫 행동으로 옮기는 세 단계", hashtags: ["월요일", "업무기록", "직장인"] }, pick: sample.id }, "데모", now, uid);
+            cards = nextCards(project, cards, { draft: { ...sample, slides, caption: "일요일 밤 걱정을 내일의 첫 행동으로 옮기는 세 단계", hashtags: ["월요일", "업무기록", "직장인"] }, pick: previousPick }, "데모", now, uid);
           } else cards = nextCards(project, cards, patch as CardsPatch, "리키", now, uid);
           data = cards as YpStageData[typeof kind];
         }

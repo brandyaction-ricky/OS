@@ -1,4 +1,5 @@
 "use client";
+import { CardCanonContext } from "./card-canon-context";
 import { CanonRail } from "./canon-rail";
 // 카드뉴스 (설계서 2026-10-30): 주제 → 카드 만들기 → 최종 검토 → 내보내기. Cards are written and seen in one place: the preview is the
 // same drawing the PNG uses (lib/cardnews/card-slide), so what the PD sees is what gets downloaded.
@@ -11,8 +12,8 @@ import { CardSlideView } from "@/lib/cardnews/card-slide";
 import { formatSample } from "@/lib/cardnews/format-sample";
 import { mondayFields, planningOutline } from "@/lib/cardnews/planning";
 import { cardPublicationProgress, cardsMissing, instagramPostId } from "@/lib/cardnews/cards";
-import { addCardSlide, CARD_FORMAT_IDS, CARD_FORMATS, CARD_SIZE, cardLetters, cardMaxSlides, cardProblems, moveCardSlide, parseCardHashtags, removeCardSlide, slideSpec, TOON_AIM, toonBattery, toonUploads, type CardDraft, type CardFormatId, type CardPhoto } from "@/lib/cardnews/formats";
-import type { CardSourceChoice } from "@/lib/cardnews/sources";
+import { addCardSlide, CARD_FORMAT_IDS, CARD_FORMATS, CARD_SIZE, firstCardLine, cardLetters, cardMaxSlides, cardProblems, moveCardSlide, parseCardHashtags, removeCardSlide, slideSpec, TOON_AIM, toonBattery, toonUploads, type CardDraft, type CardFormatId, type CardPhoto } from "@/lib/cardnews/formats";
+import { isCardTestProject, type CardSourceChoice } from "@/lib/cardnews/sources";
 import { apiRequest } from "@/lib/api-client";
 import { modelName } from "@/lib/cost";
 import { draftTag, GPT_TIERS, type GptTier } from "@/lib/youtube-process/gpt-draft";
@@ -90,7 +91,7 @@ export function CardPreview({ draft, index, width, onOver }: { draft: CardDraft;
 }
 
 /** 주제 찾기 › 카드뉴스: a topic of its own (the other three ways in are buttons on a finished video or an approved Threads post). */
-export function CardStart({ initial = "" }: { initial?: string }) {
+export function CardStart({ initial = "", sheet = false }: { initial?: string; sheet?: boolean }) {
   const { accessToken, demo } = useSession();
   const client = useMemo(() => youtubeProcessClient(accessToken, demo), [accessToken, demo]);
   const router = useRouter();
@@ -101,11 +102,12 @@ export function CardStart({ initial = "" }: { initial?: string }) {
   const [error, setError] = useState("");
   const [projects, setProjects] = useState<YpProject[] | null>(null);
   const [tab, setTab] = useState<"open" | "done">("open");
-  useEffect(() => { let active = true; if (client) client.list().then(rows => { if (active) setProjects(rows); }, reason => { if (active) setError(errorMessage(reason)); }); return () => { active = false; }; }, [client]);
-  const bring = async (source: CardSourceChoice) => {
+  useEffect(() => { let active = true; if (client && !sheet) client.list().then(rows => { if (active) setProjects(rows); }, reason => { if (active) setError(errorMessage(reason)); }); return () => { active = false; }; }, [client, sheet]);
+  const [entry, setEntry] = useState<"source" | "new">("source");
+  const bring = async (source: CardSourceChoice, focus: string) => {
     if (!client || busy) return;
     setBusy(true); setError("");
-    try { const made = await client.createCard(source.from === "project" ? { from: "project", projectId: source.id } : { from: "threads", itemId: source.id }); router.push(stepHref(1, made.id)); }
+    try { const made = await client.createCard(source.from === "project" ? { from: "project", projectId: source.id, focus } : { from: "threads", itemId: source.id, focus }); router.push(stepHref(1, made.id)); }
     catch (reason) { setError(errorMessage(reason)); } finally { setBusy(false); }
   };
   const start = async () => {
@@ -115,11 +117,14 @@ export function CardStart({ initial = "" }: { initial?: string }) {
     try { const made = await client.createCard({ from: "none", title: form.title.trim(), target: form.target.trim(), note: form.note.trim(), ...(channel ? { channel } : {}) }); router.push(stepHref(1, made.id)); }
     catch (reason) { setError(errorMessage(reason)); setBusy(false); }
   };
-  const open = (projects ?? []).filter(project => project.yp.topic.type === "card" && project.yp.stage !== "done");
-  const done = (projects ?? []).filter(project => project.yp.topic.type === "card" && project.yp.stage === "done" && project.yp.cardPublication?.status === "published");
+  const open = (projects ?? []).filter(project => !isCardTestProject(project) && project.yp.topic.type === "card" && project.yp.stage !== "done");
+  const done = (projects ?? []).filter(project => !isCardTestProject(project) && project.yp.topic.type === "card" && project.yp.stage === "done" && project.yp.cardPublication?.status === "published");
   const ready = form.title.trim().length >= 2 && form.target.trim().length > 0;
   return <>
-    <CardSourcePicker client={client} busy={busy} onPick={bring} />
+    {sheet && <div className="yp-row-btns yp-card-entry">{(["source", "new"] as const).map(mode => <button key={mode} className="yp-btn" aria-pressed={entry === mode} onClick={() => setEntry(mode)}>{mode === "source" ? "완료한 콘텐츠에서" : "새 주제로"}</button>)}</div>}
+    {(!sheet || entry === "source") && <CardSourcePicker client={client} busy={busy} onPick={bring} expanded={sheet} />}
+    {sheet && entry === "source" && error && <p role="alert">{error}</p>}
+    {(!sheet || entry === "new") &&
     <form className="yp-card yp-pf-start yp-pf-card" onSubmit={event => { event.preventDefault(); if (ready) void start(); }}>
       <div className="yp-card-h">카드뉴스 시작하기</div>
       <div className="yp-card-b" style={{ display: "grid", gap: 10 }}>
@@ -136,8 +141,8 @@ export function CardStart({ initial = "" }: { initial?: string }) {
         {error ? <p className="yp-errline" role="alert">{error}</p> : null}
         <div className="yp-row-btns"><button type="submit" className="yp-btn yp-pri" disabled={busy || !ready}>{busy ? "만드는 중…" : "카드 만들러 가기"} <ArrowRight size={14} aria-hidden="true" /></button></div>
       </div>
-    </form>
-    <div className="yp-card-tabs" role="tablist" aria-label="카드뉴스 상태" onKeyDown={event => {
+    </form>}
+    {!sheet && <><div className="yp-card-tabs" role="tablist" aria-label="카드뉴스 상태" onKeyDown={event => {
       if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
       event.preventDefault();
       const tabs = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("[role=tab]")];
@@ -147,7 +152,7 @@ export function CardStart({ initial = "" }: { initial?: string }) {
       {([{ key: "open", label: "만드는 중인 카드뉴스", count: open.length }, { key: "done", label: "완료된 카드뉴스", count: done.length }] as const).map(item =>
         <button key={item.key} id={`yp-card-tab-${item.key}`} type="button" role="tab" aria-selected={tab === item.key} aria-controls="yp-card-status-panel" tabIndex={tab === item.key ? 0 : -1} className={tab === item.key ? "yp-on" : ""} onClick={() => setTab(item.key)}>{item.label}<span className="yp-card-tab-count">{item.count}</span></button>)}
     </div>
-    <CardList key={tab} tab={tab} title={tab === "done" ? "완료된 카드뉴스" : "만드는 중인 카드뉴스"} client={client} projects={projects === null ? null : tab === "done" ? done : open} />
+    <CardList key={tab} tab={tab} title={tab === "done" ? "완료된 카드뉴스" : "만드는 중인 카드뉴스"} client={client} projects={projects === null ? null : tab === "done" ? done : open} /></>}
   </>;
 }
 
@@ -224,6 +229,7 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
   const project = page.bundle?.project;
   const cards = stage?.data;
   const editable = project?.yp.stage === "draft" && project.yp.gates.draft.state !== "ok";
+  const editorRef = useRef<HTMLDivElement>(null);
   const [chosen, setChosen] = useState<CardFormatId[]>([]);
   const [sampleFormat, setSampleFormat] = useState<CardFormatId>("list");
   const sample = useMemo(() => formatSample(sampleFormat), [sampleFormat]);
@@ -245,7 +251,12 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
   const picked = cards?.drafts.find(row => row.id === cards.picked) ?? null;
   const photos = useCardPhotoUrls(page, [draft, ...(cards?.drafts ?? [])]);
   useEffect(() => { if (!dirty) setDraft(picked); }, [picked, dirty]);
-  useEffect(() => { if (cards?.recommend?.formats.length && !chosen.length) setChosen(cards.recommend.formats.slice(0, 3)); }, [cards?.recommend, chosen.length]);
+  const defaultsFor = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!project || !cards || defaultsFor.current === project.id) return;
+    defaultsFor.current = project.id;
+    setChosen(cards.recommend?.formats.slice(0, 3) ?? []);
+  }, [project, cards]);
   const reload = page.reload;
   const job = useStaffJob(page, "card", useCallback(() => { setDirty(false); void reload(); }, [reload]));
   const onOver = useCallback((index: number, fields: string[]) => setOver(current => JSON.stringify(current[index] ?? []) === JSON.stringify(fields) ? current : { ...current, [index]: fields }), []);
@@ -301,6 +312,10 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
   const problems = draft ? cardProblems(draft) : { blocking: [], warnings: [] };
   const missing = cardsMissing(draft ? { ...cards, drafts: cards.drafts.map(row => row.id === draft.id ? draft : row) } : cards) || overList[0] || "";
   const action = gateAction(page, "draft", 1, control, missing);
+  if (action.kind === "button" && editable) {
+    action.notice = page.demo ? <span className="yp-hint">연습 · 그림 검사 비용 없음</span> : <CostTag kind="paid" what="확정 시 자동 그림 검사 · 정밀 기준 (잔액이 낮으면 절약)" amount={tokenEstimate(GPT_TIERS.precise.model, 10_000, 8_000)} upTo />;
+    action.extra = <>{action.notice}{action.extra}</>;
+  }
   const current = draft?.slides[slide] ? slide : 0;
   const spec = draft ? slideSpec(draft.format, draft.slides[current].type) : null;
   const addBlank = async () => { for (const format of chosen) if (!(await save({ add: format }))) return; };
@@ -353,6 +368,7 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
     todo={editable ? [{ label: "초안", done: cards.drafts.length > 0 }, { label: "고른 초안", done: Boolean(picked) }, { label: "글자 수 · 넘침", done: Boolean(draft) && !problems.blocking.length && !overList.length }] : undefined}>
     <GateBanner page={page} gate="draft" />
     <Subject page={page} />
+    <CardCanonContext source={page.bundle.stages.cards.data.source} focus={page.bundle.stages.cards.data.focus} />
     <CanonRail refs={draft?.ai?.trace} legacy={draft?.ai?.canon} check={draft ? (problems.blocking.length ? `필수 수정 ${problems.blocking.length}건` : (problems.warnings.length ? `확인 권장 ${problems.warnings.length}건` : "자동 검사 통과")) : undefined} pending={!draft} />
     {cards.source.kind !== "none" ? <details className="yp-card yp-card-src"><summary>원본 · {SOURCE_NAME[cards.source.kind]} 「{cards.source.title}」{cards.focus ? ` · 이 부분 위주로: ${cards.focus}` : ""}</summary>
       <pre>{cards.source.text}</pre></details> : null}
@@ -372,7 +388,8 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
         </div></section>
       {cards.recommend?.why ? <p className="yp-hint">추천 이유: {cards.recommend.why}</p> : null}
       <div className="yp-row-btns">
-        <button type="button" className="yp-btn yp-pri" disabled={!chosen.length || job.open} onClick={openPlan}>AI로 초안 뽑기 ({chosen.length}개)</button><CostTag kind="paid" />
+        <button type="button" className="yp-btn yp-pri" disabled={!chosen.length || job.open} onClick={openPlan}>{cards.recommend?.formats.length === 2 && chosen.length === 2 && chosen.every(id => cards.recommend?.formats.includes(id)) ? "추천 2개로 초안 뽑기" : `AI로 초안 뽑기 (${chosen.length}개)`}</button>
+        <CostTag kind="paid" amount={tokenEstimate(GPT_TIERS.precise.model, 60_000, 32_000)} /><small>정밀 1회 예상 · 3~6분 · 점검 실패 시 1회 재시도</small>
         <button type="button" className="yp-btn" disabled={!chosen.length || busy} onClick={() => void addBlank()}>직접 쓰기</button>
       {sampleProject && !planning && <button type="button" className="yp-btn" onClick={() => { setChosen(["steps"]); setBrief("월요일마다 무거운 직장인 · 일요일 밤의 걱정을 월요일 첫 행동으로 옮긴다.\n" + planningOutline(["steps"])); setPlanning(true); }}>같은 주제로 개선 예시 비교</button>}</div>
       {planning && <section className="yp-card-b" aria-label="생성 전 기획안">
@@ -394,17 +411,38 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
 
     {cards.drafts.length ? <YpSection n={editable ? 2 : 1} title="초안 비교" gq={`${cards.drafts.length}개 · 같은 주제`}>
       <button type="button" className="yp-btn yp-sm" aria-pressed={compareAll} onClick={() => setCompareAll(!compareAll)}>{compareAll ? "앞 4장만 보기" : "전체 장 비교"}</button>
+      {!picked && <p role="status">아직 고르지 않았어요. 초안을 비교한 뒤 선택해 주세요.</p>}
       <div className="yp-card-rows">{cards.drafts.map(row => { const check = cardProblems(row); const mine = row.id === cards.picked;
         return <div key={row.id} className={`yp-card-row${mine ? " yp-on" : ""}`}>
           <div className="yp-card-row-h"><b>{CARD_FORMATS[row.format].name}</b><span className="yp-tag">{draftLabel(row)}</span><span className="yp-muted">{row.slides.length}장</span>
-            <span className={check.blocking.length ? "yp-tag yp-bad" : "yp-tag yp-ok"}>{check.blocking.length ? `고칠 곳 ${check.blocking.length}` : "글자 수 통과"}</span><span className="yp-sp" />
-            {mine ? <span className="yp-tag yp-acc">고른 초안</span> : editable ? <button type="button" className="yp-btn yp-sm" disabled={busy || dirty} onClick={() => void save({ pick: row.id })}>이걸로 하기</button> : null}
+            <span className={check.blocking.length ? "yp-tag yp-bad" : "yp-tag yp-ok"}>{check.blocking.length ? `고칠 곳 ${check.blocking.length}` : "필수 점검 통과"}</span><span className="yp-sp" />
+            {mine ? <span className="yp-tag yp-acc">고른 초안</span> : editable ? <button type="button" className="yp-btn yp-sm" disabled={busy || dirty} onClick={() => void save({ pick: row.id })}>이 초안으로 다듬기</button> : null}
             {editable && !mine ? <button type="button" className="yp-btn yp-sm" aria-label="초안 지우기" disabled={busy} onClick={() => { if (window.confirm("이 초안을 지울까요?")) void save({ remove: row.id }); }}><Trash2 size={13} /></button> : null}</div>
-          <div className="yp-card-strip">{row.slides.slice(0, compareAll ? undefined : 4).map((_, index) => <CardPreview key={index} draft={row} index={index} width={150} />)}</div>
+          <div className="yp-chips">{row.ai?.canon && <span className="yp-tag">생성 정본 {row.ai.canon}</span>}{cards.recommend?.formats.includes(row.format) && <span className="yp-tag">추천</span>}{check.warnings.length > 0 && <span className="yp-tag">참고 {check.warnings.length}건</span>}</div>
+          <ol className="yp-card-lines">{row.slides.map((item, i) => <li key={i}>{firstCardLine(row.format, item)}</li>)}</ol>
+          <div className="yp-card-strip">{row.slides.slice(0, compareAll ? undefined : 4).map((_, index) => <CardPreview key={index} draft={row} index={index} width={index === 0 ? 210 : 150} />)}</div>
         </div>; })}</div>
     </YpSection> : null}
 
     {draft ? <YpSection n={editable ? 3 : 2} title={editable ? "고른 초안 다듬기" : "확정한 카드"} gq={`${CARD_FORMATS[draft.format].name} · ${draft.slides.length}장`}>
+      <div ref={editorRef} className="yp-card-issues">
+        {([["필수 수정", [...problems.blocking, ...overList]], ["참고", problems.warnings]] as const).map(([name, issues]) => issues.length > 0 &&
+          <section key={name}><strong>{name} {issues.length}건</strong><ul>{issues.map((message, i) => {
+            const number = message.match(/^(\d+)장/);
+            const index = number ? Number(number[1]) - 1 : -1;
+            const row = draft.slides[index];
+            const field = row && slideSpec(draft.format, row.type)?.fields.find(item => message.includes(item.label));
+            const label = field?.label ?? (message.startsWith("캡션") ? "공통 캡션" : message.startsWith("해시태그") ? "공통 해시태그" : null);
+            return <li key={i}>{editable && (row || label) ? <button className="yp-btn yp-sm" type="button" onClick={() => {
+              if (row) setSlide(index);
+              requestAnimationFrame(() => {
+                const scope = editorRef.current?.parentElement;
+                const target = label ? scope?.querySelector<HTMLElement>(`[aria-label="${label}"]`) : scope?.querySelector<HTMLElement>(`[aria-label="${index + 1}장 보기"]`);
+                target?.focus(); target?.scrollIntoView({ block: "center" });
+              });
+            }}>{message}</button> : message}</li>;
+          })}</ul></section>)}
+      </div>
       <div className="yp-card-tools" aria-label="카드 장 관리">
         {editable && (!page.demo || (sampleProject && draft.format === "steps" && draft.slides.length === 6)) && <button type="button" className="yp-btn yp-sm" disabled={rewriting || dirty || busy} onClick={() => void rewrite()}>{rewriting ? "다시 만드는 중…" : `${current + 1}장만 다시 만들기`}</button>}
         <b>카드 {draft.slides.length} / {cardMaxSlides(draft.format)}장{toonUploads(draft).length > 1 ? ` · ${toonUploads(draft).length}화` : ""}</b>
@@ -455,9 +493,7 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
         </div>
       </div>
       <CardPostFields key={draft.id} draft={draft} editable={editable} onEdit={edit} onComposing={setComposing} />
-      {problems.blocking.length || overList.length || problems.warnings.length ? <ul className="yp-card-checks">
-        {[...problems.blocking, ...overList].map(text => <li key={text} className="yp-bad">{text}</li>)}
-        {problems.warnings.map(text => <li key={text} className="yp-warn">{text}</li>)}</ul> : null}
+
     </YpSection> : editable && !cards.drafts.length ? <p className="yp-pempty">포맷을 고르고 초안을 뽑으면 여기서 카드를 다듬어요.</p> : null}
   </YpFrame></CardPhotos.Provider>;
 }
@@ -512,6 +548,7 @@ export function CardReviewScreen({ page, header }: { page: YpPage; header: React
     {["topic", "draft"].includes(project.yp.stage) ? <LockedStep page={page} name="최종 검토" /> : <>
       <GateBanner page={page} gate="review" />
       <Subject page={page} />
+    <CardCanonContext source={page.bundle.stages.cards.data.source} focus={page.bundle.stages.cards.data.focus} />
     <CanonRail refs={draft?.ai?.trace} legacy={draft?.ai?.canon} check={draft ? (check.blocking.length ? `필수 수정 ${check.blocking.length}건` : (check.warnings.length ? `확인 권장 ${check.warnings.length}건` : "자동 검사 통과")) : undefined} pending={!draft} />
       {draft ? <>
         <YpSection n={1} title="카드" gq={`${CARD_FORMATS[draft.format].name} · ${draft.slides.length}장`}>
@@ -529,11 +566,12 @@ export function CardReviewScreen({ page, header }: { page: YpPage; header: React
 /** 최종 검토 › 화면 자동 검사 (설계서 §4-3): GPT's look at the confirmed cards as drawn, started by 카드 확정; [다시 검사] asks again. */
 function CardScreenCheck({ page }: { page: YpPage }) {
   const [busy, setBusy] = useState(false);
-  const [tier, setTier] = useState<GptTier>("saving");
+  const [choice, setTier] = useState<GptTier | null>(null);
   const [error, setError] = useState("");
   const cost = useCostConfirm();
   const confirmed = page.bundle?.stages.cards.data.confirmed, check: YpScreenCheck | undefined = page.bundle?.stages.screenCheck.data;
   const current = confirmed && check?.runId === confirmed.draftId && check.sheetsAt === confirmed.sig ? check : null;
+  const tier = choice ?? (check?.model === GPT_TIERS.saving.model ? "saving" : "precise");
   // 카드 확정 starts the check on the server; until it lands this waits for it (one to three minutes).
   const waiting = busy || current?.state === "running" || Boolean(!current && confirmed?.at && Date.parse(confirmed.at) > Date.now() - 5 * 60_000);
   const { reload } = page;
@@ -547,7 +585,7 @@ function CardScreenCheck({ page }: { page: YpPage }) {
     if (page.demo) { setError("연습 화면에서는 GPT를 부르지 않아요."); return; }
     const model = GPT_TIERS[tier].model;
     // Ten cards are about 8,000 image tokens with the prompt; the answer and its thinking at most 6,000.
-    if (!await cost.confirm({ model, amount: tokenEstimate(model, 10_000, 6_000), upTo: true, detail: "카드 그림을 GPT가 봐요", note: "GPT 크레딧(매달 500달러)에서 나가요.", ok: "검사하기" })) return;
+    if (!await cost.confirm({ model, amount: tokenEstimate(model, 10_000, 8_000), upTo: true, detail: "카드 그림을 GPT가 봐요", note: "GPT 크레딧(매달 500달러)에서 나가요.", ok: "검사하기" })) return;
     setBusy(true); setError("");
     try {
       await apiRequest<{ check: YpScreenCheck }>(`/api/v1/content/youtube/projects/${page.bundle!.project.id}/cards`, { token: page.accessToken, method: "POST", body: JSON.stringify({ action: "check", tier }) });
@@ -589,7 +627,7 @@ export function CardExportScreen({ page, header }: { page: YpPage; header: React
   const [url, setUrl] = useState("");
   const [why, setWhy] = useState("");
   const [busy, setBusy] = useState("");
-  const [copied, setCopied] = useState(false);
+
   const publication = project?.yp.stage === "done" ? project.yp.cardPublication : undefined;
   const progress = cards ? cardPublicationProgress(cards.data) : null;
   const savedUrl = (publication?.posts ?? progress?.posts)?.find(post => post.episode === episode)?.url ?? "";
@@ -602,18 +640,32 @@ export function CardExportScreen({ page, header }: { page: YpPage; header: React
   const caption = draft ? [draft.caption.trim(), draft.hashtags.map(tag => `#${tag}`).join(" ")].filter(Boolean).join("\n\n") : "";
   const finish = () => run("finish", async () => { const next = await page.client!.move(project.id, "done", project.version); page.setBundle(current => current ? { ...current, project: next } : current); });
   const dirty = url.trim() !== savedUrl || why.trim() !== progress.reason;
-  const ready = (!progress.missing || progress.reason) && !dirty;
-  const persistEvidence = async (evidence: { url?: string; episode?: number; withheldReason?: string; downloaded?: true }) => {
+  const ready = (!progress.missing || [...progress.reason].length >= 4) && !dirty;
+  const persistEvidence = async (evidence: { url?: string; episode?: number; withheldReason?: string; downloaded?: true; copied?: true; posted?: true }) => {
     const result = await page.client!.saveStage(project.id, "cards", cards.version, { exported: evidence });
     page.setBundle(current => current ? { ...current, project: result.project, stages: { ...current.stages, cards: result.stage } } : current);
   };
   const save = (evidence: Parameters<typeof persistEvidence>[0]) => run("evidence", () => persistEvidence(evidence));
   const action = stepAction(page, 5, publication ? { kind: "status", status: publication.status === "published" ? "끝난 카드뉴스 · 게시 확인" : "끝난 카드뉴스 · 게시 안 함" }
     : { kind: "button", label: progress.missing && progress.reason ? "게시 안 함으로 마치기" : "다 올렸으면 끝내기", reason: ready ? "" : dirty ? "입력한 내용을 먼저 저장해 주세요." : "게시 주소 또는 게시 안 함 이유를 남겨 주세요.", busy: Boolean(busy), onClick: () => void finish() });
-  return <YpFrame page={page} view={5} action={action} header={header} title="내보내기" sub="이미지를 내려받아 인스타그램에 올리고, 올린 주소를 남긴 뒤 끝내요.">
+  const remainingZip = Array.from({ length: progress.episodes }, (_, i) => i + 1).find(i => !cards.data.exported?.downloadedEpisodes?.includes(i));
+  const evidence = cards.data.exported;
+  const todo = [{ label: "이미지 내려받기", done: !remainingZip }, { label: "캡션 복사", done: Boolean(evidence?.copiedAt) },
+    { label: "게시 확인", done: Boolean(evidence?.postedAt) }, { label: "게시 주소", done: !progress.missing }];
+  const nextTask = remainingZip ? { label: progress.episodes > 1 ? `${remainingZip}화 내려받기` : "이미지 내려받기", selector: `[data-card-zip="${remainingZip}"]` }
+    : !evidence?.copiedAt ? { label: "캡션 복사", selector: "[data-card-copy]" }
+    : !evidence.postedAt ? { label: "인스타그램에 올렸어요", selector: "[data-card-posted]" }
+    : { label: "게시 주소 입력", selector: "[data-card-url]" };
+  return <YpFrame page={page} view={5} action={action} todo={todo}
+    mobileAction={project.yp.stage === "upload" && !ready ? { kind: "button", label: nextTask.label, busy: Boolean(busy), onClick: () => {
+      const target = document.querySelector<HTMLElement>(nextTask.selector);
+      if (target instanceof HTMLInputElement) { target.focus(); target.scrollIntoView({ block: "center" }); } else target?.click();
+    } } : undefined} header={header} title="내보내기" sub="이미지를 내려받아 인스타그램에 올리고, 올린 주소를 남긴 뒤 끝내요.">
     {!["upload", "done"].includes(project.yp.stage) ? <LockedStep page={page} name="내보내기" /> : <>
       <GateBanner page={page} gate="review" />
       <Subject page={page} />
+      <CardCanonContext source={cards.data.source} focus={cards.data.focus} />
+      <CanonRail refs={draft?.ai?.trace} legacy={draft?.ai?.canon} />
       {project.yp.stage === "done" && !publication && <button type="button" className="yp-btn yp-pri" disabled={!ready || Boolean(busy)} onClick={() => void finish()}>게시 기록 확정</button>}
       {!publication && <p className="yp-hint" role="status">{cards.data.exported?.downloadedEpisodes?.length ? `내보냄 · ${cards.data.exported.downloadedEpisodes.length}/${progress.episodes}화` : "승인 · 내보내기 준비"}</p>}
       <YpSection n={1} title="이미지 · 캡션" gq={draft ? `${draft.slides.length}장 · 1080 × 1350` : ""}>
@@ -622,26 +674,31 @@ export function CardExportScreen({ page, header }: { page: YpPage; header: React
           {(draft && toonUploads(draft).length > 1 ? toonUploads(draft) : [null]).map((post, at) => {
             // 웹툰형 goes up one 화 per post, so each 화 is its own ZIP (대표 2026-11-04).
             const name = post && draft ? draft.slides[post.from].fields.episode?.trim() || `${at + 1}화` : "", key = post ? `zip${at + 1}` : "zip";
-            return <button key={key} type="button" className={at ? "yp-btn" : "yp-btn yp-pri"} disabled={!draft || Boolean(busy)} onClick={() => void run(key, async () => {
+            return <button key={key} data-card-zip={at + 1} type="button" className={at ? "yp-btn" : "yp-btn yp-pri"} disabled={!draft || Boolean(busy)} onClick={() => void run(key, async () => {
               saveBlob(await page.client!.cardsFile(project.id, post ? { zip: true, upload: at + 1 } : { zip: true }), `카드뉴스-${projectName(project).slice(0, 30)}${post ? `-${name}` : ""}.zip`);
               if (!publication && !cards.data.exported?.downloadedEpisodes?.includes(at + 1)) await persistEvidence({ downloaded: true, episode: at + 1 });
             })}>
               <Download size={14} aria-hidden="true" /> {busy === key ? "만드는 중…" : post ? `${name} 내려받기 (${post.to - post.from}장)` : "이미지 묶음 내려받기"}</button>;
           })}
-          <button type="button" className="yp-btn" disabled={!caption} onClick={() => void navigator.clipboard.writeText(caption).then(() => setCopied(true))}><Copy size={14} aria-hidden="true" /> {copied ? "복사했어요" : "캡션 복사"}</button></div>
+          <button type="button" className="yp-btn" data-card-copy disabled={!caption || Boolean(busy)} onClick={() => void run("copy", async () => {
+            await navigator.clipboard.writeText(caption);
+            if (!publication && !cards.data.exported?.copiedAt) await persistEvidence({ copied: true });
+
+          })}><Copy size={14} aria-hidden="true" /> {cards.data.exported?.copiedAt ? "캡션 다시 복사" : "캡션 복사"}</button></div>
       </YpSection>
+      {!publication && <button className="yp-btn" type="button" data-card-posted disabled={Boolean(busy) || Boolean(cards.data.exported?.postedAt)} onClick={() => void save({ posted: true })}>{cards.data.exported?.postedAt ? "✓ 게시 확인했어요" : "인스타그램에 올렸어요"}</button>}
       <YpSection n={2} title="올린 주소" gq="인스타그램 게시물 주소">
         {progress.episodes > 1 && <label>게시할 화 <select className="yp-in yp-w-auto" value={episode} onChange={e => setEpisode(Number(e.target.value))}>
           {Array.from({ length: progress.episodes }, (_, i) => <option key={i} value={i + 1}>{i + 1}화 · {progress.posts.some(post => post.episode === i + 1) ? "주소 있음" : "주소 없음"}</option>)}</select></label>}
-        <div className="yp-row-btns"><input className="yp-in" style={{ flex: 1 }} value={url} readOnly={Boolean(publication)} onChange={event => setUrl(event.target.value)} placeholder="https://www.instagram.com/p/…" aria-label="올린 주소" />
+        <div className="yp-row-btns"><input className="yp-in" style={{ flex: 1 }} value={url} readOnly={Boolean(publication)} onChange={event => setUrl(event.target.value)} data-card-url placeholder="https://www.instagram.com/p/…" aria-label="올린 주소" />
           {!publication && <button type="button" className="yp-btn" disabled={!instagramPostId(url.trim()) || Boolean(busy) || url.trim() === savedUrl}
             onClick={() => void save({ url: url.trim(), episode })}>주소 남기기</button>}</div>
-        <CardUrlBookmarks ownerId={page.profile?.id} url={url} onLoad={publication ? undefined : setUrl} />
+        <details><summary>자주 쓰는 주소</summary><CardUrlBookmarks ownerId={page.profile?.id} url={url} onLoad={publication ? undefined : setUrl} /></details>
         {cards.data.exported ? <p className="yp-hint">남김 · {cards.data.exported.by} · 게시 주소 {progress.urls.length}/{progress.episodes}</p> : null}
         {publication?.reason && <p>게시 안 함 · {publication.reason}</p>}
         {!publication && progress.missing > 0 && <details><summary>남은 화 게시 안 함</summary>
-          <label>게시 안 함 이유<input className="yp-in" value={why} maxLength={500} onChange={e => setWhy(e.target.value)} /></label>
-          <button type="button" className="yp-btn" disabled={Boolean(busy) || why.trim() === progress.reason} onClick={() => void save({ withheldReason: why.trim() })}>이유 저장</button></details>}
+          <label>게시 안 함 이유 (4자 이상)<input className="yp-in" value={why} maxLength={500} onChange={e => setWhy(e.target.value)} /></label>
+          <button type="button" className="yp-btn" disabled={Boolean(busy) || (Boolean(why.trim()) && [...why.trim()].length < 4) || why.trim() === progress.reason} onClick={() => void save({ withheldReason: why.trim() })}>이유 저장</button></details>}
       </YpSection>
     </>}
   </YpFrame>;

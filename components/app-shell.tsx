@@ -97,7 +97,8 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
   const entrySelected = (href: string) => href.includes("?") ? youtubeV1EntrySelected(href, pathname, params) : href === (page.navHref ?? page.href);
   const activeEntry = activeStage.pages.find(entry => entry.href.includes("?") && entrySelected(entry.href))
     ?? activeStage.pages.find(entry => entry.href === pathname);
-  const pageLabel = youtubeV1Enabled && (activeStage.id === "threads" || activeStage.id.startsWith("yt-") || activeStage.id === "content") ? activeEntry?.label ?? page.label : page.label;
+  const cardPageLabel = stepGroup === "yt-card" ? ({ "/content/plan": params.get("view") === "topic" ? "카드 주제" : "카드 만들기", "/content/final-check": "최종 검토", "/content/upload": "내보내기" } as Record<string, string>)[pathname] : undefined;
+  const pageLabel = cardPageLabel ?? (youtubeV1Enabled && (activeStage.id === "threads" || activeStage.id.startsWith("yt-") || activeStage.id === "content") ? activeEntry?.label ?? page.label : page.label);
   const visibleStages = navStages.filter(item => !item.requiresHr || hrEnabled).map(item => ({ ...item, pages: item.pages
     .filter(entry => entry.href !== "/hr/my-leave"
       && !(hrShell.legacyHidden && (!teamV1Enabled && entry.href === "/organization/members" || !teamV1Enabled && entry.href === "/organization/schedule"))
@@ -356,7 +357,7 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
               <Link className={`compact-group${active ? " active" : ""}`} href={item.pages[0].href} aria-label={item.label} title={item.label}><Icon size={20} /><span>{item.label}</span></Link>
               {item.id !== "home" ? <button className="nav-section-trigger nav-group" data-ui="nav-group" aria-label={groupLabel(item)} onClick={() => toggleGroup(item.id)} aria-expanded={groupOpen(item.id)} aria-controls={`nav-${item.id}`}>
                 <span className="nav-chevron" data-ui="nav-chevron" aria-hidden="true"><ChevronRight size={12} className={groupOpen(item.id) ? "expanded" : ""} /></span><span className="nav-icon"><Icon size={16} /></span><span className="nav-group-label">{groupLabel(item)}{item.id === "settings" && serverOk === false ? <small className="state-dot waiting" title="서버 확인 실패" aria-label="서버 확인 실패" /> : null}</span>{item.id === "ceo" ? <span className={`nav-group-count${confirmWaiting ? " is-alert" : ""}`} title={`컨펌 대기 ${confirmWaiting ?? 0}개`} aria-hidden="true">{confirmWaiting ?? ""}</span>
-                  : youtubeV1Enabled && (item.id === "content" || item.id.startsWith("yt-")) ? (() => { const work = workOf(item.id); return <span className="nav-group-work" title={work ? `확인 ${work.decide} · AI ${work.ai}` : undefined} aria-hidden="true">{work?.decide ? <span className="nav-group-count is-alert">확인 {work.decide}</span> : null}{work?.ai ? <span className="nav-group-count is-ai">AI {work.ai}</span> : null}</span>; })()
+                  : youtubeV1Enabled && (item.id === "content" || item.id.startsWith("yt-")) ? (() => { const work = workOf(item.id); return <span className="nav-group-work" title={work ? `사람의 확인이 필요한 작업 ${work.decide}건 · AI 처리 대기 및 진행 작업 ${work.ai}건` : undefined} aria-hidden="true">{work?.decide ? <span className="nav-group-count is-alert">확인 {work.decide}</span> : null}{work?.ai ? <span className="nav-group-count is-ai">AI {work.ai}</span> : null}</span>; })()
                   : <span className="nav-group-count" title={`하위 메뉴 ${item.pages.length}개`} aria-hidden="true">{item.pages.length}</span>}
               </button> : null}
               <div id={`nav-${item.id}`} className="nav-section-pages" hidden={item.id !== "home" && !groupOpen(item.id)}>

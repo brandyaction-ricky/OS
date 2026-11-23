@@ -134,6 +134,7 @@ export function topicEditable(project: Pick<YpProject, "yp">) {
 /** Topic edit keys (API and form) and the field keys the approver ticks. */
 export const TOPIC_FIELD_OF = { title: "topic.title", kind: "topic.type", target: "topic.target", refs: "topic.refs", note: "topic.note", purpose: "topic.type", channel: "topic.type" } as const;
 export function topicFieldEditable(project: Pick<YpProject, "yp">, key: keyof typeof TOPIC_FIELD_OF) {
+  if (project.yp.topic.type === "card" && project.yp.stage === "draft" && project.yp.gates.draft.state === "none" && (key === "title" || key === "target")) return true;
   const fields = editableFields(project, "topic");
   return fields === "all" || fields.includes(TOPIC_FIELD_OF[key]);
 }

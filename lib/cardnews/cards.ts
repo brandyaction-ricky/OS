@@ -12,7 +12,7 @@ export class CardError extends Error {
 export const CARD_DRAFTS_MAX = 12;
 
 /** A draft as edited (its AI record stays the stored one), a new empty draft of a format, a draft removed, the one picked; or 내보내기's address. */
-export interface CardsPatch { draft?: Omit<CardDraft, "at" | "by" | "ai">; add?: CardFormatId; remove?: string; pick?: string; focus?: string; brief?: string; exported?: { url?: string; episode?: number; withheldReason?: string; downloaded?: true } }
+export interface CardsPatch { draft?: Omit<CardDraft, "at" | "by" | "ai">; add?: CardFormatId; remove?: string; pick?: string; focus?: string; brief?: string; exported?: { url?: string; episode?: number; withheldReason?: string; downloaded?: true; copied?: true; posted?: true } }
 
 export function instagramPostId(value: string) {
   try {
@@ -43,7 +43,7 @@ export function cardPublicationProgress(cards: YpCards) {
 export function finishedCardPublication(cards: YpCards, at: string): YpProject["yp"]["cardPublication"] {
   const { urls, posts, missing, reason } = cardPublicationProgress(cards);
   if (missing === 0) return { status: "published", at, urls, posts };
-  if (reason) return { status: "withheld", at, urls, posts, reason };
+  if ([...reason].length >= 4) return { status: "withheld", at, urls, posts, reason };
   return undefined;
 }
 
@@ -55,13 +55,17 @@ export function nextCards(project: Pick<YpProject, "yp">, current: YpCards, patc
     const { episodes, posts, reason } = cardPublicationProgress(current);
     const episode = evidence.episode ?? 1;
     if (!Number.isInteger(episode) || episode < 1 || episode > episodes) throw new CardError("CARD_EPISODE_INVALID", "올린 화를 다시 선택해 주세요.", 400);
+    const reasonText = evidence.withheldReason?.trim();
+    if (reasonText && [...reasonText].length < 4) throw new CardError("CARD_REASON_SHORT", "게시하지 않은 이유를 4자 이상 적어 주세요.", 400);
     const url = evidence.url?.trim();
     if (url !== undefined && (!instagramPostId(url) || posts.some(post => post.episode !== episode && instagramPostId(post.url) === instagramPostId(url)))) {
       throw new CardError("CARD_URL_INVALID", "해당 화의 고유한 인스타그램 게시물 주소를 넣어 주세요.", 400);
     }
     const next = url ? [...posts.filter(post => post.episode !== episode), { episode, url }].sort((a, b) => a.episode - b.episode) : posts;
     const downloadedEpisodes = evidence.downloaded ? [...new Set([...(current.exported?.downloadedEpisodes ?? []), episode])].sort((a, b) => a - b) : current.exported?.downloadedEpisodes;
-    return { ...current, exported: { at: now, by, ...(downloadedEpisodes?.length ? { downloadedEpisodes } : {}), url: next.find(post => post.episode === 1)?.url ?? "", posts: next,
+    return { ...current, exported: { ...current.exported, at: now, by,
+      ...(evidence.downloaded ? { downloadedAt: now } : {}), ...(evidence.copied ? { copiedAt: now } : {}),
+      ...(evidence.posted ? { postedAt: now } : {}), ...(downloadedEpisodes?.length ? { downloadedEpisodes } : {}), url: next.find(post => post.episode === 1)?.url ?? "", posts: next,
       withheldReason: next.length === episodes ? "" : evidence.withheldReason?.trim() ?? reason } };
   }
   if (project.yp.stage !== "draft" || editableFields(project, "draft") !== "all")

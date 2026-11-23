@@ -5,6 +5,7 @@ import { pastAdsForAi } from "@/lib/youtube-process/ad-results";
 import { adHistory } from "./youtube-ad-results";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
+import { notify } from "./youtube-process";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { OsRecord } from "@/lib/record-types";
 import type { RequestActor } from "./auth";
@@ -158,7 +159,7 @@ const leaseLive = (value?: JobMeta["lease"]) => Boolean(value && Date.parse(valu
 /** What the 영상 제작 screen shows for a job: never the lease token. */
 export function publicStaffJob(job: OsRecord) {
   const m = meta(job);
-  return { id: job.id, status: job.status, task: m.task, inputKey: m.inputKey, requestedAt: m.requestedAt, claimedAt: m.claimedAt ?? null,
+  return { id: job.id, status: job.status, task: m.task, stage: job.stage, inputKey: m.inputKey, requestedAt: m.requestedAt, claimedAt: m.claimedAt ?? null,
     model: m.model ?? null, issues: m.issues ?? [], failReason: m.failReason ?? null, doneAt: m.doneAt ?? null, processing: job.status === "active" && leaseLive(m.lease),
     targetMinutes: m.targetMinutes ?? null, role: m.role ?? null, slot: m.slot ?? null, executor: m.executor ?? "staff", tier: m.tier ?? null, notes: m.noteIds ?? null };
 }
@@ -480,6 +481,23 @@ export async function openStaffJobsFor(projectIds: Set<string>): Promise<OvJob[]
     }
   }));
   return chunks.flat();
+}
+
+/** Transition with the same lease and version used to save the result. A cancellation wins
+ * either before this transition or after it, never halfway through publishing the drafts. */
+export async function cardJobPhase(agent: RequestActor, id: string, lease: string, stage: "card_writing" | "card_checking") {
+  const job = await ownJob(agent, id);
+  const m = liveLease(job, lease);
+  if (m.task !== "card" || job.stage === "card_committing") throw new ApiError(409, "CARD_JOB_CHANGED", "작업 상태를 다시 확인해 주세요.");
+  await saveJob(job, { stage, metadata: m });
+}
+
+export async function cancelCardJob(actor: RequestActor, id: string) {
+  const job = await ownJob(actor, id);
+  const m = meta(job);
+  if (m.task !== "card" || m.executor !== "gpt" || !["backlog", "active"].includes(job.status) || job.stage === "card_committing")
+    throw new ApiError(409, "CARD_JOB_CHANGED", "초안이 저장 중이거나 이미 끝났어요. 작업 상태를 확인해 주세요.");
+  await saveJob(job, { status: "cancelled", stage: "cancelled", metadata: { ...m, lease: undefined, closedAt: new Date().toISOString() } });
 }
 
 /** Requeue a stopped staff job, or close it while keeping the failure record. */
@@ -1008,9 +1026,11 @@ export async function completeStaffJob(agent: RequestActor, input: Extract<z.inf
   if (m.task === "card") {
     const { record, project, canon, formats } = await currentCardInput(job);
     const checked = await keepIssues(job, m, () => checkCardResult(input.result, formats));
+    const committing = await saveJob(job, { stage: "card_committing", metadata: m });
     const saved = await saveCardDrafts(service(), agent.ownerId, record.team ?? "", project, checked,
       { by: await displayName(service(), agent.ownerId, agent.name), model: input.model, jobId: job.id, trace: m.canonTrace, canon: canon?.version ?? "정본 없음" });
-    await saveJob(job, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });
+    await saveJob(committing, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });
+    await notify([agent.ownerId], "ai_result", project.id, `card-drafts:${job.id}`);
     return { done: true, ...saved, next: "담당 PD가 카드뉴스 › 카드 만들기에서 초안을 나란히 보고 하나를 골라 카드를 확정합니다." };
   }
   if (m.task === "column") {

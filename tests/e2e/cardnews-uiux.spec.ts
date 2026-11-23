@@ -30,6 +30,9 @@ for (const [kind, query, summary] of [["longform", "고객 인터뷰", "롱폼"]
     await picker.getByLabel("가져올 주제 검색").fill(query);
     await expect(picker.locator(".yp-source-list li")).toHaveCount(1);
     await picker.getByRole("button", { name: /가져오기$/ }).click();
+    await picker.getByLabel("이 부분 위주로").fill("실행할 한 가지");
+    await picker.getByRole("button", { name: "이 콘텐츠로 시작" }).click();
+    await expect(page.getByRole("region", { name: "현재 제작 기준" })).toContainText("실행할 한 가지");
     await expect(page).toHaveURL(/project=demo-.+&view=draft/);
     await expect(page.getByRole("heading", { name: "카드 만들기", exact: true })).toBeVisible();
     await expect(page.locator(".yp-card-src summary")).toContainText(`원본 · ${summary}`);
@@ -84,7 +87,7 @@ test("a 웹툰 화 starts by hand and each 칸 brings its 장면 to the drawing 
   await page.getByRole("button", { name: "직접 쓰기", exact: true }).click();
   const row = page.locator(".yp-card-row", { has: page.locator(".yp-card-row-h b", { hasText: "웹툰형" }) });
   await expect(row).toHaveCount(1);
-  await row.getByRole("button", { name: "이걸로 하기", exact: true }).click();
+  await row.getByRole("button", { name: "이 초안으로 다듬기", exact: true }).click();
   await expect(page.getByText("웹툰형 · 8장")).toBeVisible();
   await page.getByRole("button", { name: "2장 보기", exact: true }).click();
   await expect(page.locator(".yp-card-big")).toContainText("그림 자리");
@@ -109,7 +112,7 @@ test("a 웹툰 화 starts by hand and each 칸 brings its 장면 to the drawing 
   await page.getByLabel("속마음", { exact: true }).fill("근데 나 왜\n또 괜찮다고 했지?");
   expect(await wordsOnTop("think")).toBe(true);
   await expect(page.getByRole("button", { name: "2장 보기", exact: true })).not.toContainText("넘침");
-  await expect(page.locator(".yp-card-checks")).not.toContainText("넘쳐요");
+  await expect(page.locator(".yp-card-issues")).not.toContainText("넘쳐요");
   await expect(page.getByRole("button", { name: "내 GPT로 그리기" })).toBeVisible();   // beside 「AI로 그리기」 before the panel opens
   await page.getByRole("button", { name: "AI로 그리기", exact: true }).click();
   const panel = page.getByRole("group", { name: "AI로 그리기" });
@@ -122,7 +125,7 @@ test("a 웹툰 화 starts by hand and each 칸 brings its 장면 to the drawing 
   await mine.getByRole("button", { name: "그림 설명 복사" }).click();
   await expect(panel.getByLabel("그림 설명")).toHaveValue(/Scene: 밤 11시 사무실, 서윤이 모니터 앞에서 웃는다/);
   await expect(mine.getByRole("button", { name: "그린 그림 붙여 넣기" })).toBeVisible();
-  await expect(page.locator(".yp-card-checks")).toContainText("1장 그림이 아직 없어요");
+  await expect(page.locator(".yp-card-issues")).toContainText("1장 그림이 아직 없어요");
   // 말풍선 꼬리 맞추기 (1화 시안): once the 칸 has its picture, a tap on the preview says where the speaker is.
   await expect(page.getByRole("button", { name: "말풍선 꼬리 맞추기" })).toHaveCount(0);
   await panel.getByRole("button", { name: "그리기", exact: true }).click();
@@ -161,7 +164,7 @@ test("a 웹툰 화 starts by hand and each 칸 brings its 장면 to the drawing 
   await page.getByRole("button", { name: "다음 화 나누기" }).click();
   await expect(page.locator(".yp-card-tools b")).toHaveText("카드 9 / 100장 · 2화");
   await expect(page.getByRole("button", { name: "7장 보기", exact: true })).toContainText("2화 표지");
-  await expect(page.locator(".yp-card-checks")).toContainText("2화에 칸이 없어요");
+  await expect(page.locator(".yp-card-issues")).toContainText("2화에 칸이 없어요");
 });
 
 // 그림 한꺼번에 (대표 2026-11-04): the 웹툰 cards still to draw are ticked; 내 GPT pictures come back (since 2026-11-08 as one ZIP, each
@@ -171,7 +174,7 @@ test("웹툰 pictures are drawn together: put back from one ZIP, or drawn on the
   await page.getByRole("checkbox", { name: "웹툰형", exact: true }).check();
   await page.getByRole("button", { name: "직접 쓰기", exact: true }).click();
   const row = page.locator(".yp-card-row", { has: page.locator(".yp-card-row-h b", { hasText: "웹툰형" }) });
-  await row.getByRole("button", { name: "이걸로 하기", exact: true }).click();
+  await row.getByRole("button", { name: "이 초안으로 다듬기", exact: true }).click();
   for (const [n, scene] of [[2, "밤 사무실, 서윤이 웃는다"], [3, "아침 사무실, 서윤이 놀란다"]] as const) {
     await page.getByRole("button", { name: `${n}장 보기`, exact: true }).click();
     await page.getByLabel("장면 (그릴 것)", { exact: true }).fill(scene);
@@ -311,6 +314,7 @@ test("URL bookmarks persist per account, load without posting, undo removal and 
   await exportCard(page);
   const address = page.getByLabel("올린 주소", { exact: true });
   await address.fill("https://www.instagram.com/p/qa-card/");
+  await page.getByText("자주 쓰는 주소", { exact: true }).click();
   await page.getByLabel("주소 즐겨찾기 이름").fill("QA 게시물");
   await page.getByRole("button", { name: "현재 주소 즐겨찾기", exact: true }).click();
   await expect(page.getByLabel("저장한 주소").locator("option")).toContainText(["즐겨찾기 선택", "QA 게시물"]);
@@ -370,11 +374,11 @@ test("project platform selector filters every kind, retains search and can leave
   }
   await page.getByLabel("영상 검색").fill("QA 없는 주제");
   await platform.selectOption("card");
-  await expect(page.getByLabel("영상 검색")).toHaveValue("QA 없는 주제");
-  await expect(page.getByText("찾는 영상이 없어요", { exact: true })).toBeVisible();
-  await page.getByLabel("영상 검색").fill("");
-  await page.getByRole("tab", { name: /^끝난 영상/ }).click();
-  await expect(page.getByText("아직 끝난 영상이 없어요", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("카드뉴스 검색")).toHaveValue("QA 없는 주제");
+  await expect(page.getByText("찾는 카드뉴스가 없어요", { exact: true })).toBeVisible();
+  await page.getByLabel("카드뉴스 검색").fill("");
+  await page.getByRole("tab", { name: /^끝난 카드뉴스/ }).click();
+  await expect(page.getByText("아직 끝난 카드뉴스가 없어요", { exact: true })).toBeVisible();
   await expect(platform).toBeVisible();
   await platform.selectOption("longform");
   await expect(page.locator(".yp-mv-list .yp-pf-tag")).toHaveText(["롱폼"]);
@@ -434,6 +438,7 @@ test("same-topic planning comparison and single-slide rewrite preserve the basel
   await expect(rows).toHaveCount(2);
   const cover = rows.nth(1).locator("[data-card-field=head]");
   await expect(cover).toContainText("일요일 밤");
+  await rows.nth(1).getByRole("button", { name: "이 초안으로 다듬기" }).click();
   await page.getByRole("button", { name: "2장 보기", exact: true }).click();
   await page.getByRole("button", { name: "2장만 다시 만들기" }).click();
   await expect(rows.nth(1)).toContainText("걱정에 이름 붙이기");
@@ -449,4 +454,57 @@ test("all seven format samples are available before generation", async ({ page }
     await expect(sample.locator(".yp-card-pv")).toBeVisible();
     await expect(sample.getByRole("combobox")).toHaveValue(format);
   }
+});
+
+test("the list starts a card in place and persists edited title, audience and test visibility", async ({ page }) => {
+  const list = "/content/projects?platform=card";
+  await page.goto(list);
+  await page.getByRole("button", { name: "새 카드뉴스", exact: true }).click();
+  const sheet = page.getByRole("dialog", { name: "새 카드뉴스" });
+  await expect(sheet.getByRole("region", { name: "완료한 주제 가져오기" })).toBeVisible();
+  await sheet.getByRole("button", { name: "새 주제로" }).click();
+  await sheet.getByLabel("한 줄 주제").fill("월요일 아침의 작은 계획");
+  await sheet.getByLabel("누구에게").fill("주말에도 걱정하는 직장인");
+  await sheet.getByRole("button", { name: /카드 만들러 가기/ }).click();
+  await expect(page.getByRole("button", { name: "추천 2개로 초안 뽑기" })).toBeVisible();
+  await page.locator(".yp-subj").getByRole("button", { name: "더 보기" }).click();
+  const details = page.locator(".yp-more form");
+  await details.getByLabel("제목").fill("월요일 오전에 시작할 일");
+  await details.getByLabel("대상").fill("첫 회의를 준비하는 팀장");
+  await details.getByLabel("시험").check();
+  await details.getByRole("button", { name: "카드 정보 저장" }).click();
+  await expect(page.locator(".yp-subj-t")).toHaveText("월요일 오전에 시작할 일");
+  await page.locator(".yp-fl-proj").click();
+  await expect(page).toHaveURL(/platform=card/);
+  await expect(page.locator(".yp-mv-list")).not.toContainText("월요일 오전에 시작할 일");
+  await page.getByLabel("시험·복사본 포함").check();
+  const row = page.locator(".yp-mv-list .yp-mv").filter({ hasText: "월요일 오전에 시작할 일" });
+  await row.getByRole("link", { name: /카드 만들기/ }).click();
+  await page.locator(".yp-subj").getByRole("button", { name: "더 보기" }).click();
+  await expect(details.getByLabel("대상")).toHaveValue("첫 회의를 준비하는 팀장");
+  await expect(details.getByLabel("시험")).toBeChecked();
+});
+
+test("an editorial term blocks confirmation and the issue opens the exact slide field", async ({ page }) => {
+  await editor(page);
+  await page.getByRole("button", { name: "3장 보기", exact: true }).click();
+  const field = page.getByLabel("소제목", { exact: true });
+  await field.fill("제공된 원고");
+  await page.getByRole("button", { name: "1장 보기", exact: true }).click();
+  await page.locator(".yp-card-issues").getByRole("button", { name: /3장 소제목 · 제작 용어/ }).click();
+  await expect(field).toBeFocused();
+  await expect(field).toHaveValue("제공된 원고");
+  await expect(page.locator(".yp-fl-act button.yp-pri")).toBeDisabled();
+});
+
+test("mobile export offers the next task and does not mark a failed download as complete", async ({ page }) => {
+  await exportCard(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const top = page.locator(".yp-fl-act");
+  await top.getByRole("button", { name: "이미지 내려받기", exact: true }).click();
+  await expect(page.getByText(/연습 화면에서는 이미지를 만들지 않아요/).first()).toBeVisible();
+  await expect(top.getByRole("button", { name: "이미지 내려받기", exact: true })).toBeEnabled();
+  await page.getByText("남은 화 게시 안 함", { exact: true }).click();
+  await page.getByLabel("게시 안 함 이유").fill("검토중");
+  await expect(page.getByRole("button", { name: "이유 저장" })).toBeDisabled();
 });

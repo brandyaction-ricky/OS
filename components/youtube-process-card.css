@@ -198,4 +198,15 @@
 .linear-shell .ui-v2.yp .yp-grind-prompts fieldset { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 12px; min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
 .linear-shell .ui-v2.yp .yp-grind-prompts label { display: grid; gap: 6px; }
 .linear-shell .ui-v2.yp .yp-grind-prompts pre, .linear-shell .ui-v2.yp .yp-grind-head pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.linear-shell .ui-v2.yp .yp-card-context { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; margin: 12px 0; padding: 10px 14px; border-left: 3px solid var(--accent); background: var(--panel); font-size: 13px; overflow-wrap: anywhere; }
+.linear-shell .ui-v2.yp .yp-card-lines { display: grid; gap: 4px 24px; grid-template-columns: repeat(auto-fit,minmax(min(100%,220px),1fr)); margin: 10px 0 14px; padding-left: 24px; font-size: 14px; line-height: 1.55; overflow-wrap: anywhere; }
+.linear-shell .ui-v2.yp .yp-card-issues:not(:empty) { display: grid; gap: 10px; margin-bottom: 16px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; }
+.linear-shell .ui-v2.yp .yp-card-issues ul { margin: 6px 0 0; padding-left: 18px; }
+.linear-shell .ui-v2.yp .yp-card-issues button { min-height: 28px; white-space: normal; text-align: start; }
+.linear-shell .ui-v2.yp :is(.yp-card-fields,.yp-card-post) :is(textarea,input):focus { outline: 2px solid var(--accent); outline-offset: 2px; scroll-margin-block: 80px; }
+.linear-shell .ui-v2.yp .yp-card-entry button[aria-pressed=true] { border-color: var(--accent); font-weight: 700; background: var(--panel-3); }
+@media (max-width: 520px) {
+  .linear-shell .ui-v2.yp :is(.yp-card-issues,.yp-source-panel,.yp-card-entry,.yp-card-tools,.yp-card-row-h) button { min-height: 40px; }
+}
 }

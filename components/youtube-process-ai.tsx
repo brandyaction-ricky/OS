@@ -64,17 +64,41 @@ export function useStaffJob(page: JobPage, task: Task, onDone: () => void) {
     const timer = window.setInterval(() => void load(), 20_000);
     return () => window.clearInterval(timer);
   }, [open, load]);
-  return { status, available, open, load };
+  const cancel = async () => {
+    if (!status?.job) return;
+    try {
+      await apiRequest(`/api/v1/content/youtube-automation/ai-jobs?jobId=${status.job.id}`, { token: page.accessToken, method: "DELETE" });
+    } finally { await load(); }
+  };
+  return { status, available, open, load, cancel };
 }
 
 /** 칸 아래 작업 줄 (시안 jobLine): 대기 · 처리 중 · 못 함. */
+function CardJobElapsed({ started }: { started: string }) {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer); }, []);
+  const elapsed = Math.max(0, Math.floor((now - Date.parse(started)) / 1000));
+  return <span>{Math.floor(elapsed / 60)}분 {elapsed % 60}초 경과</span>;
+}
+
 export function JobLine({ job, onRetry }: { job: ReturnType<typeof useStaffJob>; onRetry: () => void }) {
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState("");
   const current = job.status?.job;
+  const stop = async () => {
+    if (!window.confirm("초안 생성을 그만둘까요? 이미 사용한 GPT 비용은 청구될 수 있어요.")) return;
+    setCancelling(true); setCancelError("");
+    try { await job.cancel(); } catch (error) { setCancelError(error instanceof Error ? error.message : "취소하지 못했어요."); }
+    finally { setCancelling(false); }
+  };
+  if (current?.status === "cancelled" && current.task === "card") return <p className="yp-hint" role="status">초안 생성을 중단했어요.</p>;
   if (!current || current.status === "done" || current.status === "cancelled") return null;
   // GPT 초안: the OS itself is working on it, so there is nothing to connect or wait for.
   if (current.executor === "gpt") return current.status === "blocked"
     ? <div className="yp-jobl yp-fail"><span className="yp-tag yp-bad">못 함</span><span>{current.failReason ?? "GPT가 끝내지 못했어요."}</span><span className="yp-sp" /><button type="button" className="yp-btn yp-sm" onClick={onRetry}>다시 만들기</button></div>
-    : <div className="yp-jobl yp-run"><span className="yp-tag yp-warn"><Sparkles size={12} aria-hidden="true" /> GPT 만드는 중</span><span>{current.issues.length ? "형식을 고치는 중이에요" : "3~6분 걸려요. 끝나면 이 칸에 들어가요"}</span></div>;
+    : <div className="yp-jobl yp-run"><span className="yp-tag yp-warn"><Sparkles size={12} aria-hidden="true" /> GPT 만드는 중</span>{current.task === "card" && <><CardJobElapsed started={current.requestedAt} /><span>{modelName(current.model || GPT_TIERS[current.tier ?? "precise"].model)}</span><CostTag kind="paid" amount={tokenEstimate(current.model || GPT_TIERS[current.tier ?? "precise"].model, 60_000, 32_000)} what="1회 예상" /></>}{current.task === "card" && <><span>{current.stage === "card_committing" ? "점검 완료 · 초안 저장 중" : current.stage === "card_checking" ? "형식 · 정본 점검 중" : current.stage === "card_writing" ? "초안 쓰는 중" : current.status === "backlog" ? "시작 대기" : "정본 읽는 중"}</span>
+      <button type="button" className="yp-btn yp-sm" onClick={() => void stop()} disabled={cancelling || current.stage === "card_committing"}>그만두기</button>
+      {cancelError && <span role="alert">{cancelError}</span>}</>}<span>{current.issues.length ? "형식을 고치는 중이에요" : "3~6분 걸려요. 끝나면 이 칸에 들어가요"}</span></div>;
   const seen = since(job.status?.myAi.lastUsedAt ?? null);
   if (current.status === "backlog") return <>
     <div className="yp-jobl yp-wait"><span className="yp-tag yp-acc"><Clock size={12} aria-hidden="true" /> 내 AI 대기</span><span>{seen === null ? "내 AI가 아직 연결되지 않았어요" : `내 AI 마지막 확인: ${agoLabel(seen)}. 다음 확인 때 가져가요`}</span></div>
@@ -146,14 +170,14 @@ export function SendDialog({ page, task, open, onClose, job, defaults, extra, qu
   };
   const tabs: [SendTab, string][] = [...(gptOk ? [["gpt", "GPT로 바로 (추천)"] as [SendTab, string]] : []), ["queue", gptOk ? "내 AI가 가져가게 두기" : "내 AI가 가져가게 두기 (추천)"], ["now", "바로 시키기"], ...(task === "script" ? [["paste", "직접 붙여 넣기"] as [SendTab, string]] : [])];
   // A card plus its documents is about 60,000 letters in; the answer and its thinking at most 20,000 tokens.
-  const gptModel = GPT_TIERS[tier].model, gptCost = tokenEstimate(gptModel, 60_000, 20_000);
+  const gptModel = GPT_TIERS[tier].model, gptCost = tokenEstimate(gptModel, 60_000, task === "card" ? 32_000 : 20_000);
   return <dialog ref={dialog} className="yp-modal" aria-labelledby={`yp-ai-${task}`} onClose={onClose} style={{ maxWidth: 640 }}>
     <div className="yp-modal-h"><span id={`yp-ai-${task}`}>{gptOk ? info.name : `내 AI로 보내기 · ${info.name}`}</span><span className="yp-sp" /><button type="button" className="yp-ib" aria-label="닫기" onClick={onClose}><X size={14} /></button></div>
     <div className="yp-modal-b">
       {waiting ? <div className="yp-note"><div>{byGpt ? "GPT가 곧 만들기 시작해요." : "이미 보낸 작업이 있어요. 내 AI가 다음에 확인할 때 가져가요."}</div></div> : null}
       <dl className="yp-kv" style={{ gridTemplateColumns: "76px minmax(0,1fr)", fontSize: 13, marginBottom: 10 }}>
         <dt>결과</dt><dd>{info.result}</dd>
-        <dt>비용</dt><dd>{tab === "gpt" ? <><CostTag kind="paid" /> GPT 크레딧에서 나가요 · {modelName(gptModel)} 최대 약 {gptCost?.toLocaleString("ko-KR")}원</>
+        <dt>비용</dt><dd>{tab === "gpt" ? <><CostTag kind="paid" /> GPT 크레딧에서 나가요 · {modelName(gptModel)} {task === "card" ? "1회 예상 약" : "최대 약"} {gptCost?.toLocaleString("ko-KR")}원</>
           : <><CostTag kind="ai" /> 내 AI 구독으로 처리돼요</>}{youtube ? <> <CostTag kind="youtube" /> 참고 영상은 유튜브에서 찾아요</> : null}</dd></dl>
       {searches ? <label className="yp-lbl" style={{ display: "block", marginBottom: 10 }}>참고 영상 검색어<span className="yp-gq">OS가 이 말로 유튜브를 찾아 조회수 5만 이상 · 구독자 대비 조회수 순으로 모아요 · 짧은 핵심어(예: 퇴사 고민)가 잘 찾아져요</span>
         <input className="yp-in" value={query} maxLength={60} onChange={event => setQuery(event.target.value)} placeholder="예) 퇴사 고민" /></label> : null}

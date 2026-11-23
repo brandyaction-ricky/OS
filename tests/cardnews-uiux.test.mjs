@@ -18,7 +18,7 @@ const draft = () => {
   const d = formats.emptyCardDraft("list", "draft", "QA", "now");
   return { ...d, slides: d.slides.map((slide, i) => ({ ...slide, fields: { ...slide.fields, title: `QA ${i}` } })) };
 };
-const item = (id, kind = "live", stage = "done") => ({ id, title: `QA ${id}`, updatedAt: "2026-10-30", yp: { ...project.newProjectMeta({ type: kind, target: "QA audience", note: "", refs: [] }, "now").yp, stage } });
+const item = (id, kind = "live", stage = "done") => ({ id, title: `콘텐츠 ${id}`, updatedAt: "2026-10-30", yp: { ...project.newProjectMeta({ type: kind, target: "QA audience", note: "", refs: [] }, "now").yp, stage } });
 
 test("body-card reorder preserves every field and does not mutate the original", () => {
   const before = draft(), snapshot = structuredClone(before);
@@ -107,6 +107,10 @@ test("saved URLs reject executable schemes, credentials and oversized values", (
 
 test("only final-reviewed videos and approved visible Threads can be discovered", () => {
   assert.deepEqual(sources.projectCardSources([item("done"), item("upload", "short", "upload"), item("early", "live", "draft"), item("cards", "card"), item("none", null)]).map(row => row.id), ["done", "upload"]);
+  const sample = item("trial");
+  for (const title of ["[QA테스트] 인터뷰", "[시안] 실험", "기획 (복사본)"]) assert.equal(sources.projectCardSources([{ ...sample, title }]).length, 0);
+  assert.equal(sources.projectCardSources([{ ...sample, yp: { ...sample.yp, isTest: true } }]).length, 0);
+  assert.equal(sources.isCardTestTitle("시험을 앞둔 사람의 마음"), false);
   const row = { owner_id: "me", status: "ready", metadata: { channel: "threads", posts: ["QA source"] } };
   assert.equal(sources.visibleThreadSource(row, "me"), true);
   assert.equal(sources.visibleThreadSource(row, "other"), false);
@@ -137,7 +141,7 @@ function actor(projects, rows, error = null) {
 const plain = value => JSON.parse(JSON.stringify(value));
 test("source catalog uses the actor client, filters archived/approval state and never returns post bodies", async () => {
   const a = actor([item("video")], [
-    { id: "own", title: "QA own", owner_id: "me", status: "ready", metadata: { channel: "threads", posts: ["PRIVATE_BODY_QA"] }, updated_at: "2026-10-30" },
+    { id: "own", title: "인터뷰 발췌", owner_id: "me", status: "ready", metadata: { channel: "threads", posts: ["PRIVATE_BODY_QA"] }, updated_at: "2026-10-30" },
     { id: "hidden", owner_id: "other", status: "ready", metadata: { channel: "threads", posts: ["secret"] }, updated_at: "2026-10-30" },
   ]);
   const result = plain(await server.listCardSources(a));

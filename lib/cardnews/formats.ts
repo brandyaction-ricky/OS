@@ -142,6 +142,11 @@ const josa = (word: string, batchim: string, open: string) => {
 };
 // Owner rules carried into every format: the 진단 is paid (발행 키트 정본 · 2026-10-26), and '여러분' is not our voice (말투 정본).
 const BANNED: [RegExp, string][] = [[/무료\s*(진단|검사)/, "진단은 유료예요 — ‘무료 진단’이라고 쓰지 않아요"], [/여러분/, "‘여러분’은 쓰지 않아요 (말투 정본)"]];
+const editorialTerms = /원본|제공된|가상\s*장면|원고|정본/;
+export function firstCardLine(format: CardFormatId, slide: CardSlide) {
+  return slideSpec(format, slide.type)?.fields.filter(field => !CARD_DRAW_FIELDS.includes(field.key))
+    .map(field => plainCardText(slide.fields[field.key] ?? "").trim()).find(Boolean) || "작성 전";
+}
 const HASHTAGS = { min: 3, max: 5 };
 export const CAPTION_MAX = 2200;
 
@@ -178,6 +183,8 @@ export function cardProblems(draft: Pick<CardDraft, "format" | "slides" | "capti
     if (draft.format === "webtoon" && spec.photo && !slide.photo) warnings.push(`${index + 1}장 그림이 아직 없어요 — 「AI로 그리기」로 그려요`);
     for (const field of spec.fields) {
       const value = (slide.fields[field.key] ?? "").trim();
+      const term = !CARD_DRAW_FIELDS.includes(field.key) && plainCardText(value).match(editorialTerms)?.[0];
+      if (term) blocking.push(`${index + 1}장 ${field.label} · 제작 용어 ‘${term}’를 독자에게 보여 줄 말로 바꿔 주세요`);
       if (!value && !field.optional) blocking.push(`${index + 1}장 ${josa(field.label, "을", "를")} 써 주세요`);
       if (cardLetters(value) > field.max) blocking.push(`${index + 1}장 ${josa(field.label, "이", "가")} ${cardLetters(value) - field.max}자 넘쳐요 (${field.max}자까지)`);
       if (value.length >= 8) { if (seen.has(value)) warnings.push(`${seen.get(value)! + 1}장과 ${index + 1}장에 같은 문장이 있어요`); else seen.set(value, index); }
@@ -185,12 +192,22 @@ export function cardProblems(draft: Pick<CardDraft, "format" | "slides" | "capti
     const marks = Object.values(slide.fields).reduce((sum, value) => sum + (value.split(CARD_MARK).length - 1) / 2, 0);
     if (marks > 1) warnings.push(`${index + 1}장에 강조가 ${marks}곳이에요 — 한 장에 하나만 *별표*로 감싸요`);
   });
-  const all = [...draft.slides.flatMap(slide => Object.values(slide.fields).map(plainCardText)), draft.caption].join("\n");
+  const publicFields = draft.slides.flatMap((slide, index) => (slideSpec(draft.format, slide.type)?.fields ?? [])
+    .filter(field => !CARD_DRAW_FIELDS.includes(field.key))
+    .map(field => ({ label: `${index + 1}장 ${field.label}`, text: plainCardText(slide.fields[field.key] ?? "") })));
+  publicFields.push({ label: "캡션", text: draft.caption });
+  const all = publicFields.map(field => field.text).join("\n");
   for (const [pattern, message] of BANNED) if (pattern.test(all)) warnings.push(message);
-  if (/\d+(\.\d+)?\s*(%|퍼센트|배|명 중)/.test(all) && !/출처|자료|조사|연구|통계/.test(all)) warnings.push("숫자가 있어요 — 출처를 근거 칸이나 캡션에 적어 주세요");
+  const statistic = publicFields.find(field => /\d+(\.\d+)?\s*(%|퍼센트|배|명 중)/.test(field.text));
+  if (statistic && !/출처|자료|조사|연구|통계/.test(all)) warnings.push(`${statistic.label} · 숫자가 있어요 — 근거 칸이나 캡션 마지막 줄에 출처(기관 · 연도 · 대상)를 적어 주세요`);
   if (letters(draft.caption) > CAPTION_MAX) blocking.push(`캡션은 ${CAPTION_MAX.toLocaleString("ko-KR")}자까지예요`);
-  if (!draft.caption.trim()) warnings.push("캡션이 비어 있어요");
-  if (draft.hashtags.length && (draft.hashtags.length < HASHTAGS.min || draft.hashtags.length > HASHTAGS.max)) warnings.push(`해시태그는 ${HASHTAGS.min}~${HASHTAGS.max}개가 좋아요 (지금 ${draft.hashtags.length}개)`);
+  const captionTerm = draft.caption.match(editorialTerms)?.[0];
+  const tagTerm = draft.hashtags.join(" ").match(editorialTerms)?.[0];
+  if (tagTerm) blocking.push(`해시태그 · 제작 용어 ‘${tagTerm}’를 바꿔 주세요`);
+  if (captionTerm) blocking.push(`캡션 · 제작 용어 ‘${captionTerm}’를 바꿔 주세요`);
+  if (letters(draft.caption.split(/\r?\n/).slice(0, 2).join("\n")) > 125) warnings.push("캡션 첫 두 줄을 125자 이내로 줄여 보세요");
+  if (letters(draft.caption.trim()) < 300 || letters(draft.caption.trim()) > 800) warnings.push("캡션은 300~800자가 좋아요");
+  if ((draft.hashtags.length < HASHTAGS.min || draft.hashtags.length > HASHTAGS.max)) warnings.push(`해시태그는 ${HASHTAGS.min}~${HASHTAGS.max}개가 좋아요 (지금 ${draft.hashtags.length}개)`);
   return { blocking, warnings };
 }
 

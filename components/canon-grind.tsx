@@ -1,4 +1,5 @@
 "use client";
+import { isCardTestProject } from "@/lib/cardnews/sources";
 // 정본 다듬기 (카드뉴스 정본 §9, 설계서 §9): the same 시험 묶음 drawn again under each 정본 version, scored on the 평가표, runs side by side,
 // and the 고칠 점 that point at the 정본. One screen for every kind (카드뉴스 · 숏폼 대본 · 스레드 · SEO 칼럼); each 정본 is edited in its OS document.
 // 롱폼 원고 has a screen of its own below: its scores are the 두 번째 검수 each 원고 already got.
@@ -134,7 +135,7 @@ export function CanonGrindScreen({ kind }: { kind: GrindKind }) {
           .map(row => ({ id: row.id, title: row.title }))), () => undefined);
       return;
     }
-    if (client) client.list().then(rows => setChoices(rows.filter(row => kind === "card" ? row.yp.topic.type === "card"
+    if (client) client.list().then(rows => setChoices(rows.filter(row => kind === "card" ? row.yp.topic.type === "card" && !isCardTestProject(row)
       : kind === "column" ? row.yp.topic.type !== "short" && row.yp.topic.type !== "card" && SCRIPT_CONFIRMED.includes(row.yp.stage)
       : row.yp.topic.type === "short" && row.yp.topic.purpose !== "ad" && ["make", "review", "upload", "done"].includes(row.yp.stage)).map(row => ({ id: row.id, title: projectName(row) }))), () => undefined);
   }, [client, kind, demo, accessToken]);

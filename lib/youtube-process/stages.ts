@@ -204,7 +204,7 @@ export interface YpCards {
   recommend?: { formats: CardFormatId[]; why: string };
   /** sig = the confirmed card; aiSig = the AI draft it started from, to see how far the PD moved it (정본 다듬기). */
   confirmed?: { at: string; draftId: string; sig: string; aiSig?: string };
-  exported?: { at: string; by: string; url: string; posts?: { episode: number; url: string }[]; withheldReason?: string; downloadedEpisodes?: number[] };
+  exported?: { at: string; by: string; url: string; posts?: { episode: number; url: string }[]; withheldReason?: string; downloadedAt?: string; copiedAt?: string; postedAt?: string; downloadedEpisodes?: number[] };
 }
 /** 롱폼 주제 (owner 2026-10-30, like the 숏폼's): the title formulas the staff AI drew from the 참고 영상 and the 주제 후보 made from
  * them; the PD picks one and fixes the topic. channels = different channels among a formula's videos (3 = 확인된 주제, as in 틈새). */
