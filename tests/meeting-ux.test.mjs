@@ -27,4 +27,7 @@ test("a live meeting shows one step at a time, each with one main button (owner 
   for (const button of ["● 녹음하며 회의 시작", "회의 끝내기 · 자동 정리", "다음: 검토 · 확정 →"]) assert.ok(actions.includes(button), button);
   // the rarely used controls fold away under one line instead of sitting beside the steps
   assert.match(actions, /<summary>회의 정보 바꾸기 · 내려받기 · 삭제<\/summary>/);
+  // a meeting opened by mistake can be left (2026-11-23): delete it while empty, or step back from 2 to 1
+  assert.match(actions, /owner && empty \? <p className="tm-muted">잘못 열었으면/);
+  assert.ok(actions.includes("← 준비로 돌아가기"));
 });

@@ -26,7 +26,10 @@ test("the recorder keeps the screen on, rotates by the clock, and skips silent s
 
 test("회의로 가기 opens a running meeting without a second recording prompt; a meeting with no notes can still end", async () => {
   const prep = await readFile(new URL("../components/team/prep-actions.tsx", import.meta.url), "utf8");
-  assert.equal(prep.match(/if \(running\) \{ router\.push\(meetingHref\(running\.id\)\); return; \}/g)?.length, 2);
+  // the button only opens the meeting: no auto start, no recording prompt, and the server list is checked before creating
+  assert.doesNotMatch(prep, /record=1|action: "meeting\.start"/);
+  assert.equal(prep.match(/const fresh = await freshRunning\(token, business\);\s*if \(fresh\.running\)/g)?.length, 2);
+  assert.match(prep, /meeting\.status === "active" \|\| meeting\.status === "planned"/);
   const screen = await readFile(new URL("../components/team/meeting-actions.tsx", import.meta.url), "utf8");
   assert.match(screen, /정리 없이 회의 끝내기/);
 });
