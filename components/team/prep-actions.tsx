@@ -50,7 +50,9 @@ function defaultAgenda(brief: Brief, business: Business, members: OsMember[], se
     ...(business !== "company" ? brief.kpis : []).map(kpi => `- KPI: ${kpi.title} · ${kpi.signal}`),
   ].join("\n");
 }
-const recordHref = (id: string) => `/organization/meetings?meeting=${encodeURIComponent(id)}&record=1`;
+// A meeting already running opens as it is (회의로 가기, 대표 2026-11-23): no second recording prompt.
+const meetingHref = (id: string) => `/organization/meetings?meeting=${encodeURIComponent(id)}`;
+const recordHref = (id: string) => `${meetingHref(id)}&record=1`;
 
 /** 녹음 바로 시작 (대표 요청 2026-11-12): one button per business opens today's meeting (or starts one with the usual agenda) and starts recording. */
 export function QuickMeetingStart({ meetings, members, token, onChanged }: { meetings: Meeting[]; members: OsMember[]; token: string; onChanged: () => Promise<void> }) {
@@ -58,7 +60,7 @@ export function QuickMeetingStart({ meetings, members, token, onChanged }: { mee
   const [busy, setBusy] = useState<Business | null>(null), [error, setError] = useState("");
   async function go(business: Business) {
     const running = runningMeeting(meetings, business);
-    if (running) { router.push(recordHref(running.id)); return; }
+    if (running) { router.push(meetingHref(running.id)); return; }
     setBusy(business); setError("");
     try {
       const brief = await prepareMeeting(token, TEAM_BUSINESSES.find(item => item.key === business)!.brand);
@@ -80,7 +82,7 @@ export function TeamPrepView({ meetings, members, token, onChanged }: { meetings
   // A meeting of this business already started today: open it. Pressing 회의 시작 again used to start one more meeting each time.
   const running = runningMeeting(meetings, business);
   async function start() {
-    if (running) { router.push(recordHref(running.id)); return; }
+    if (running) { router.push(meetingHref(running.id)); return; }
     setBusy(true); setError("");
     try {
       const id = await startTeamMeeting(token, meetings, business, agenda, brief?.latestMeeting?.id);
