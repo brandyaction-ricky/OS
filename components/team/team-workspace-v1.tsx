@@ -204,7 +204,7 @@ export function TeamWorkspaceV1({ section }: { section: Section }) {
 
   return <div className="tm-root">
     <header className="page-header"><div className="page-title-group"><h1 className="page-title" data-ui="page-title">{TITLE[section]}</h1><p>{DESCRIPTION[section]}</p></div><div className="header-actions">
-      {section === "meetings" && accessToken && !demo ? <><QuickMeetingStart meetings={data.meetings} members={data.members} token={accessToken} onChanged={load} /><CreateTeamMeeting token={accessToken} projects={data.projects} onChanged={load} /></> : null}
+      {section === "meetings" && accessToken && !demo ? <>{selectedMeeting ? null : <QuickMeetingStart meetings={data.meetings} members={data.members} token={accessToken} onChanged={load} />}<CreateTeamMeeting token={accessToken} projects={data.projects} onChanged={load} /></> : null}
       {section === "tasks" && accessToken && !demo ? <CreateTeamTask token={accessToken} members={data.members} projects={data.projects} onChanged={load} /> : null}
       {section === "schedule" ? <><Link className="secondary-button compact" href="/hr/my-leave">휴가 신청</Link><Link className="primary-button compact" href="/organization/meetings"><Plus size={15}/> 회의 잡기</Link></> : null}
     </div></header>

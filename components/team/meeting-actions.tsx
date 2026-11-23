@@ -215,6 +215,8 @@ export function TeamMeetingDetail({ meeting, meetings, tasks, token, userId, adm
     if (canEdit && !recorder.recording && !elsewhere) void askRecording().then(ok => { if (ok) void recorder.start(); });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- once per arrival with record=1
   }, [autoRecord]);
+  // Nothing written, recorded or extracted yet: a meeting opened by mistake can be deleted from step 1 (대표 2026-11-23).
+  const empty = !content.trim() && !summary.trim() && !items.length && !recorder.recording && !recorder.segments.length;
   const wizardOn = canEdit && (meeting.status === "planned" || meeting.status === "active");
   const nameOf = (id: string) => members.find(member => member.id === id)?.display_name ?? "구성원";
   const thinking = Boolean(ai && !ai.done) || autoAi;
@@ -251,9 +253,11 @@ export function TeamMeetingDetail({ meeting, meetings, tasks, token, userId, adm
       {people}
       <div className="tm-wizard-cta"><button type="button" className="primary-button" disabled={busy || elsewhere || !brand} onClick={() => void startWithRecording()}>● 녹음하며 회의 시작</button><CostTag kind="paid" /><button type="button" className="tm-link-button" disabled={busy || !brand} onClick={() => void startWithoutRecording()}>녹음 없이 메모로 진행</button></div>
       <p className="tm-muted">참석자에게 녹음한다고 알린 뒤 누르세요.</p>
+      {owner && empty ? <p className="tm-muted">잘못 열었으면 <button type="button" className="tm-link-button" disabled={busy} onClick={() => void archive()}>이 회의 지우기</button></p> : null}
     </section>
     : wstep === 2 ? <section className="panel panel-pad tm-wizard-panel" aria-label="2단계 회의">
       <h3>{recorder.recording ? "녹음 중이에요. 회의를 진행하세요" : "회의를 진행하세요"}</h3>
+      {!recorder.recording && !recorder.segments.length && !content.trim() ? <button type="button" className="tm-link-button" onClick={() => { setNoRecording(false); setBackToTalk(false); }}>← 준비로 돌아가기</button> : null}
       {recorder.recording ? <p className="tm-rec-live">● 녹음 중 · 5분마다 글로 받아써서 아래 메모에 붙어요. 탭을 닫거나 새로고침하지 마세요.</p>
         : <div className="tm-row"><span className="tm-muted">지금은 녹음하지 않아요.</span><button type="button" className="secondary-button compact" disabled={busy || elsewhere} onClick={() => void askRecording().then(ok => { if (ok) void recorder.start(); })}>● 녹음 시작</button><CostTag kind="paid" /></div>}
       <RecorderProgress recorder={recorder} />{recorder.error ? <div className="os-callout" data-tone="danger" role="alert">{recorder.error}</div> : null}
