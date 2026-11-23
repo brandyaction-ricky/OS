@@ -1136,6 +1136,18 @@
       "productionApprovedAt": "2026-11-17",
       "appliedEnvironments": ["production"],
       "notes": "Additive and idempotent: reads the deployed os_notification_guard with pg_get_functiondef and adds yt_voice_start next to yt_upload in its two reason lists; stops with an error if the deployed guard does not have exactly two such lists. No rows, policies or grants change. Owner ran it in the Production SQL Editor on 2026-11-17 before the code (#628) went live; the check query (yt_voice_start present in the guard) returned true. Not applied to DEV."
+    },
+    {
+      "file": "20261123070000_meeting_long_notes_one_open.sql",
+      "sha256": "80ccfd716877bb057dac10ccb1905f5f7391098efe14924372483e543e6adc51",
+      "purpose": "Meeting notes hold 200,000 characters; 「회의 열기」 opens one meeting per business per day.",
+      "requiresApproval": true,
+      "developmentApprovedAt": null,
+      "productionApprovedAt": "2026-11-23",
+      "appliedEnvironments": [
+        "production"
+      ],
+      "notes": "Owner-approved and applied to production 2026-11-23, read back (constraint + function). Loosens os_records_description_check for meetings only; replaces os_team_command from the deployed body with an openToday branch (advisory lock per business, returns the open meeting of the KST day). Rolled-back SQL check: second openToday create returned the first id. No rows changed."
     }
   ],
   "legacyMigrations": [
