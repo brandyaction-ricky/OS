@@ -31,3 +31,11 @@ test("a live meeting shows one step at a time, each with one main button (owner 
   assert.match(actions, /owner && empty \? <p className="tm-muted">잘못 열었으면/);
   assert.ok(actions.includes("← 준비로 돌아가기"));
 });
+
+test("long meetings keep saving and two people opening at once share one meeting", async () => {
+  const [sql, prep, route] = await Promise.all([read("supabase/migrations/20261123070000_meeting_long_notes_one_open.sql"), read("components/team/prep-actions.tsx"), read("app/api/v1/team/command/route.ts")]);
+  assert.match(sql, /when record_type='meeting' then 200000 else 20000/);
+  assert.match(sql, /p->>'openToday'[\s\S]*pg_advisory_xact_lock\(pg_catalog\.hashtextextended\('os-meeting-today:'\|\|brand_value,0\)\)[\s\S]*'existing',true/);
+  assert.match(prep, /openToday: true[\s\S]*if \(made\.existing\) return made\.id;/);
+  assert.match(route, /"23514"[\s\S]*TEAM_TEXT_TOO_LONG/);
+});

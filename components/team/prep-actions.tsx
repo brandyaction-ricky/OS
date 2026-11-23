@@ -37,7 +37,9 @@ async function prepareTeamMeeting(token: string, meetings: Meeting[], business: 
   let id: string | undefined = upcoming?.id, version: number | undefined = upcoming?.version, created = false;
   if (!id) {
     const previous = meetings.find(meeting => meeting.id === latestMeetingId && meeting.status === "done" && !meeting.legacy);
-    const made = await teamCommand(token, { action: "meeting.create", title: `${TEAM_BUSINESSES.find(item => item.key === business)!.label} 회의`, brand, previousMeetingId: previous?.id, startsAt: new Date().toISOString() });
+    const made = await teamCommand(token, { action: "meeting.create", title: `${TEAM_BUSINESSES.find(item => item.key === business)!.label} 회의`, brand, previousMeetingId: previous?.id, startsAt: new Date().toISOString(), openToday: true });
+    // Someone else opened today's meeting a moment ago (the server lets one create through per business per day): join it as is.
+    if (made.existing) return made.id;
     id = made.id; version = made.version; created = true;
   }
   if (!id || !version) throw new Error("회의 기록을 만들지 못했습니다.");
