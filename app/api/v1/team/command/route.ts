@@ -41,6 +41,7 @@ export async function POST(request: Request) {
       if (["40001", "PT409"].includes(error.code ?? "")) throw new ApiError(409, "VERSION_CONFLICT", "다른 사람이 먼저 수정했습니다. 새로 불러온 뒤 다시 확인해 주세요.");
       if (error.code === "42501") throw new ApiError(403, "TEAM_FORBIDDEN", "이 작업을 수행할 권한이 없습니다.");
       if (error.code === "P0002") throw new ApiError(404, "TEAM_RECORD_NOT_FOUND", "기록을 찾지 못했습니다.");
+      if (error.code === "23514") throw new ApiError(400, "TEAM_TEXT_TOO_LONG", "회의 메모가 너무 길어 저장하지 못했습니다(최대 20만 자). 창을 닫지 말고 메모를 복사해 두세요.");
       throw new ApiError(400, "TEAM_COMMAND_FAILED", "저장하지 못했습니다. 상태와 입력 내용을 확인해 주세요.");
     }
     // A confirmed meeting's summary goes to the Telegram chats that asked for it; a failed send never undoes the confirm.
