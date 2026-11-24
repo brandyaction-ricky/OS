@@ -51,8 +51,12 @@ export function killTree(pid) {
 const pcName = local ? "" : ((process.env.RENDER_PC_NAME || os.hostname()).replace(/\.local$/, "").replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[^A-Za-z0-9]+/, "").slice(0, 40) || "render-pc");
 const pcField = pcName ? { pc: pcName } : {};
 // 음성도 내 컴퓨터에서 (로건 요청 11-16): a staff computer makes the voices its member gives it only when it has the voice tools —
-// MYIN_LOCAL_VOICE=on, the voice Python and a way to reach Fish — and says so on every heartbeat, so the screen offers it only then.
-const localVoice = local && process.env.MYIN_LOCAL_VOICE === "on" && Boolean(process.env.FISH_API_KEY?.trim()) && existsSync(process.env.MYIN_VOICE_PYTHON || "/nonexistent");
+// MYIN_LOCAL_VOICE=on, the voice Python, and an engine whose voice script can ask Fish through the OS (FISH_TTS_URL; no Fish key on the
+// computer) — and says so on every heartbeat, so the screen offers it only then.
+let localVoiceReady;
+const localVoice = () => localVoiceReady ??= local && process.env.MYIN_LOCAL_VOICE === "on" && existsSync(process.env.MYIN_VOICE_PYTHON || "/nonexistent")
+  && readText(path.join(myinPkg, "tools", "mindmap_pipeline", "stage_voice.py")).includes("FISH_TTS_URL");
+const readText = (file) => { try { return readFileSync(file, "utf8"); } catch { return ""; } };
 const workerRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 let adEngine;
 const adFingerprint = () => adEngine ??= adRuntimeDigest(workerRoot);
@@ -65,7 +69,7 @@ const diskFreeGb = () => { const { bavail, bsize } = statfsSync(mindmapDir || os
 export async function heartbeat() {
   const answer = await call({ action: "heartbeat", diskFreeGb: diskFreeGb(), memUsedGb: gb(os.totalmem() - os.freemem()), memTotalGb: gb(os.totalmem()), job: current,
     packageName: (process.env.MINDMAP_PACKAGE_NAME || path.basename(path.resolve(local ? myinPkg : mindmapDir, ".."))).slice(0, 80),
-    ...(engine() ? { engine: engine() } : {}), ...pcField, ...(local ? { voice: localVoice } : {}) }).catch((error) => { console.error(`heartbeat: ${error.message}`); return null; });
+    ...(engine() ? { engine: engine() } : {}), ...pcField, ...(local ? { voice: localVoice() } : {}) }).catch((error) => { console.error(`heartbeat: ${error.message}`); return null; });
   if (answer?.stopRun && answer.stopRun === current?.runId && stopping !== answer.stopRun) {
     stopping = answer.stopRun;
     console.error(`newer run of this video: stopping ${stopping}`);
@@ -540,11 +544,13 @@ export async function myinRebuild(runId, seed, layout) {
  */
 export function myinVoiceEnv(job, base = process.env) {
   const onPc = job.paragraphs.every((paragraph) => !paragraph.url);
-  const key = base.FISH_API_KEY?.trim() ?? "", voice = job.fishVoice?.referenceId?.trim() || base.FISH_VOICE_ID?.trim() || "";
+  // 키 없이 Fish (로건 요청 11-16 · 2단계): a staff computer asks Fish through the OS for the voice it leased, with its own staff key.
+  const proxy = local && job.runId && job.lease ? `${osUrl}/api/v1/content/youtube-automation/local-render/fish?run=${job.runId}&lease=${job.lease}` : "";
+  const key = proxy ? secret : base.FISH_API_KEY?.trim() ?? "", voice = job.fishVoice?.referenceId?.trim() || base.FISH_VOICE_ID?.trim() || "";
   if (onPc && (!key || !voice)) throw Object.assign(new Error("this render PC has no Fish key or voice to make the voice"), { code: "MYIN_VOICE_KEY_MISSING" });
   // Without a key, his older stage_voice still only joins the OS files: placeholder keys pass its "keys present" check.
   return { onPc, python: base.MYIN_VOICE_PYTHON || myinPython,
-    env: { ...base, PATH: `/opt/homebrew/bin:${base.PATH ?? ""}`, PYTHONIOENCODING: "utf-8", FISH_API_KEY: key || "unused", FISH_VOICE_ID: voice || "unused" } };
+    env: { ...base, PATH: `/opt/homebrew/bin:${base.PATH ?? ""}`, PYTHONIOENCODING: "utf-8", FISH_API_KEY: key || "unused", FISH_VOICE_ID: voice || "unused", ...(proxy ? { FISH_TTS_URL: proxy } : {}) } };
 }
 
 /** Like runAsync, but never throws: what the process printed (stdout and stderr) and whether it ended well. */
@@ -696,7 +702,7 @@ export function recycleVoice(job, voiceDir) {
 }
 
 export async function processMyinWords() {
-  if (!myinPkg || (local && !localVoice)) return false;
+  if (!myinPkg || (local && !localVoice())) return false;
   const job = await call({ action: "myin_claim", ...(local ? { engine: engine() } : { ...shortClaim, ...pcField }) });
   if (job.idle) return false;
   current = { step: "download", runId: job.runId };

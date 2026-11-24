@@ -465,6 +465,18 @@ export async function setMyinVoicePlace(actor: RequestActor, runId: string, plac
   return presentMyinRun(await save(service, record, "backlog", record.stage, next));
 }
 
+/**
+ * 키 없이 Fish (로건 요청 11-16 · 2단계): a member's computer voicing a video it holds the lease of asks Fish through the OS, which calls it
+ * with the company key — only for that video, its voice and the pinned model. The computer never holds the key.
+ */
+export async function localFishVoice(ownerId: string, runId: string, token: string) {
+  const { record, run } = await leased(createServiceSupabase(), runId, token);
+  if (record.stage !== "words_pending" || run.localVoice?.by !== ownerId) throw new ApiError(403, "MYIN_LOCAL_VOICE_NOT_YOURS", "이 컴퓨터가 맡은 음성이 아니에요.");
+  const apiKey = process.env.FISH_API_KEY?.trim() ?? "", referenceId = runVoice(run);
+  if (!apiKey || !referenceId) throw new ApiError(503, "VOICE_WORKER_NOT_CONFIGURED", "Fish Audio 연결을 확인해 주세요.");
+  return { apiKey, referenceId, model: MYIN_VOICE_MODEL };
+}
+
 /** Everyone who can read the video sees its run: 로건 and 유쓰 confirm from their own accounts (RLS decides who reads). */
 /**
  * 원고를 고쳐 다시 누른 영상 (로건 11-16): a newer run of the same video exists, so the render PC stops this one. The render PC kept

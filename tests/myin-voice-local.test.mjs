@@ -33,7 +33,20 @@ test("the staff route hands out and takes back voices, and the worker claims the
   assert.match(run, /voiceFilter\(owner\)\(run\), undefined, undefined, owner \? undefined : \{ name: pc \}/);
   assert.match(run, /record\.stage !== "words_pending" \|\| run\.words \|\| run\.layout/, "only a longform's first voice moves");
   const worker = read("tools/youtube-media-worker.mjs");
-  assert.match(worker, /const localVoice = local && process\.env\.MYIN_LOCAL_VOICE === "on"/);
-  assert.match(worker, /if \(!myinPkg \|\| \(local && !localVoice\)\) return false;/);
-  assert.match(worker, /\.\.\.\(local \? \{ voice: localVoice \} : \{\}\)/);
+  assert.match(worker, /local && process\.env\.MYIN_LOCAL_VOICE === "on" && existsSync\(process\.env\.MYIN_VOICE_PYTHON/);
+  assert.match(worker, /stage_voice\.py"\)\)\.includes\("FISH_TTS_URL"\)/, "only an engine whose voice script can ask Fish through the OS");
+  assert.match(worker, /if \(!myinPkg \|\| \(local && !localVoice\(\)\)\) return false;/);
+  assert.match(worker, /\.\.\.\(local \? \{ voice: localVoice\(\) \} : \{\}\)/);
+});
+
+test("키 없이 Fish: the staff computer sends its staff key to the OS relay, which calls Fish only for the voice it leased", () => {
+  const worker = read("tools/youtube-media-worker.mjs");
+  assert.match(worker, /local-render\/fish\?run=\$\{job\.runId\}&lease=\$\{job\.lease\}/);
+  assert.match(worker, /const key = proxy \? secret : base\.FISH_API_KEY/);
+  const relay = read("app/api/v1/content/youtube-automation/local-render/fish/route.ts");
+  assert.match(relay, /requiredAgentScope: "records\.write"/);
+  assert.match(relay, /input\.reference_id !== fish\.referenceId/);
+  assert.doesNotMatch(relay, /FISH_API_KEY/, "the key is read only by the server function");
+  const run = read("lib/server/myin-run.ts");
+  assert.match(run, /record\.stage !== "words_pending" \|\| run\.localVoice\?\.by !== ownerId/);
 });
