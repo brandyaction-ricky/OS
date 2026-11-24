@@ -112,11 +112,13 @@ export interface YpUpload {
   privacy: "private" | "unlisted" | "public";
   /** 예약 (로건 요청 10/30): goes up private and YouTube makes it public at this time. */
   publishAt?: string | null;
+  /** AI 사용 공개 (직원 요청 11-19): YouTube's altered or synthetic content label, sent as status.containsSyntheticMedia. Unset = not chosen yet. */
+  ai?: "yes" | "no" | null;
   /** 광고 성과 1단계 (로건 QA 10/30): an ad's numbers per period, copied from Meta Ads Manager. */
   ads?: AdResult[];
   run: { at: string; by: string; status: "done" | "failed"; videoId?: string; videoUrl?: string; finalV?: number; /** Which final was sent (its time), 유쓰 요청 공통 조건 3. */ finalAt?: string; thumbnail?: "ok" | "fail" | "skip"; error?: string;
     /** What YouTube reports after the upload: a project not yet audited by YouTube can only upload private. */
-    privacy?: string; publishAt?: string } | null;
+    privacy?: string; publishAt?: string; /** What YouTube reports for the AI label after the upload. */ ai?: boolean } | null;
 }
 /** One SEO 칼럼 (owner request 2026-10-25): the staff AI's HTML from the 구성안 원고 (lib/seo-column.ts), and what fills its image places. */
 export interface YpColumnItem {

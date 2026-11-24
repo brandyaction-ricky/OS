@@ -86,7 +86,7 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
     saving.current = true;
     const rev = editRev.current;
     try {
-      const result = await page.client.saveStage(project.id, "upload", upload.version, patch ?? { utm: next.utm, desc: next.desc, pinned: next.pinned, privacy: next.privacy, publishAt: next.publishAt ?? null });
+      const result = await page.client.saveStage(project.id, "upload", upload.version, patch ?? { utm: next.utm, desc: next.desc, pinned: next.pinned, privacy: next.privacy, publishAt: next.publishAt ?? null, ai: next.ai ?? null });
       page.setBundle(current => current ? { ...current, project: result.project, stages: { ...current.stages, upload: result.stage } } : current);
       setSavedAt(hhmm());
       if (editRev.current === rev) setDirty(false);
@@ -142,7 +142,7 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
   };
 
   const reason = !form ? "" : early ? "최종 검토 컨펌 OK 뒤에 올릴 수 있어요" : !last ? "최종본이 없어요" : !descWritten(form.desc) ? "설명란을 채워 주세요" : !channels.length && !page.demo ? "유튜브 채널을 연결해 주세요"
-    : publishAtProblem(form.publishAt) ? "예약 시각을 10분 뒤 이후로 정해 주세요" : "";
+    : publishAtProblem(form.publishAt) ? "예약 시각을 10분 뒤 이후로 정해 주세요" : !form.ai ? "AI 사용 공개를 골라 주세요" : "";
   const others = form?.utm.others ?? [];
   const setOthers = (list: { note: string; url: string }[], now = false) => edit({ utm: { ...form!.utm, others: list } }, now);
   const missing = form ? linksMissing(form.desc, form.utm) : [];
@@ -155,12 +155,13 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
   const aiDraftWaiting = Boolean(form?.descBy && form.desc !== form.descBy.draft);
 
   return <YpFrame page={page} view={5} action={action} header={header} title="업로드" sub={done ? "유튜브에 올렸어요. 이어서 쇼츠 · 칼럼을 만들어요." : "설명란을 채우고 유튜브에 올려요."} savedAt={savedAt}
-    todo={form && !done ? [{ label: "최종본", done: Boolean(last) }, { label: "설명란", done: descWritten(form.desc) }, { label: "유튜브 채널", done: page.demo || channels.length > 0 }] : undefined}
+    todo={form && !done ? [{ label: "최종본", done: Boolean(last) }, { label: "설명란", done: descWritten(form.desc) }, { label: "유튜브 채널", done: page.demo || channels.length > 0 }, { label: "AI 사용 공개", done: Boolean(form.ai) }] : undefined}
     onSave={editable ? () => void save() : undefined} saveDisabled={!dirty}>
     {page.bundle && form && project && make ? !["make", "review", "upload", "done", "shorts"].includes(project.yp.stage) ? <LockedStep page={page} name="업로드" /> : <div onBlur={() => { if (dirty) void save(); }}>
       {done ? <div className="yp-note yp-ok" role="status"><Check size={16} className="yp-i" aria-hidden="true" /><div><b>유튜브에 올렸어요.</b> {form.run?.thumbnail === "ok" ? "썸네일 A도 넣었어요." : "썸네일은 스튜디오에서 넣어 주세요."}
         {form.run?.publishAt ? ` ${whenKo(form.run.publishAt)}에 공개돼요.` : ""}<br />
         {form.run?.privacy === "private" && !form.run.publishAt && form.privacy !== "private" ? <><b className="yp-warn-t">유튜브가 비공개로 올렸어요.</b> 스튜디오에서 공개 범위를 바꿔 주세요.<br /></> : null}
+        {form.ai && form.run?.ai !== undefined && form.run.ai !== (form.ai === "yes") ? <><b className="yp-warn-t">유튜브의 AI 사용 표시가 고른 값과 달라요.</b> 스튜디오에서 「{form.ai === "yes" ? "예" : "아니요"}」로 바꿔 주세요.<br /></> : null}
         <Processing page={page} account={account} />
         {form.run?.videoUrl ? <a className="yp-lnk" href={form.run.videoUrl} target="_blank" rel="noreferrer">유튜브에서 보기 <ExternalLink size={12} /></a> : null}</div></div> : <GateBanner page={page} gate="review" />}
       <Subject page={page} />
@@ -248,6 +249,11 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
           {form.publishAt ? <label className="yp-lbl">공개할 때 <span className="yp-gq">한국 시간 · 비공개로 올라가고 이 시각에 공개돼요</span>
             <input className="yp-in yp-w-auto" type="datetime-local" value={localInput(form.publishAt)} readOnly={!editable} onChange={event => { const at = new Date(event.target.value); if (!Number.isNaN(at.getTime())) edit({ publishAt: at.toISOString() }, true); }} aria-label="공개 예약 시각" /></label> : null}
           {form.privacy === "public" && !form.publishAt ? <p className="yp-hint">올리자마자 모두에게 보여요.</p> : null}
+          {/* 직원 요청 11-19: YouTube's AI label goes up with the video (status.containsSyntheticMedia); not chosen ≠ 아니요. */}
+          <p className="yp-lbl">AI 사용 공개 <span className="yp-gq">실제처럼 보이는 사람 · 목소리 · 장소 · 사건을 AI로 만들거나 바꿨으면 「예」, 대본 · 자막 · 그래픽에만 썼으면 「아니요」 · <a className="yp-lnk" href="https://support.google.com/youtube/answer/14328491?hl=ko" target="_blank" rel="noreferrer">유튜브 기준</a></span></p>
+          <div className="yp-radio-row">{([["yes", "예"], ["no", "아니요"]] as const).map(([value, text]) =>
+            <label key={value} className={`yp-radio${form.ai === value ? " yp-on" : ""}`}><input type="radio" name="yp-ai" checked={form.ai === value} disabled={!editable} onChange={() => edit({ ai: value }, true)} />{text}</label>)}</div>
+          {!form.ai ? <p className="yp-hint">아직 고르지 않았어요. 골라야 유튜브에 올릴 수 있어요.</p> : null}
           {channelMismatch(runStyle, uploadChannel) ? <p className="yp-note yp-warn" role="status">이 영상은 「{runStyle!.name}」 모양({runStyle!.channel} 채널용)으로 만들었는데, 올릴 채널은 「{uploadChannel}」이에요. 맞는지 확인해 주세요.</p> : null}
           {channels.length > 1 ? <label className="yp-lbl">올릴 채널<select className="yp-in" value={chosen?.channelId ?? ""} onChange={event => pick(event.target.value)}>{channels.map(row => <option key={row.channelId} value={row.channelId}>{row.accountName}{row.teamShared ? " · 팀 공유" : " · 나만"}</option>)}</select></label> : null}
           <div style={{ marginTop: 12 }}>{channels.length ? <span className="yp-chan"><Youtube size={15} aria-hidden="true" /> 유튜브 채널 연결됨 · {chosen?.accountName}</span>
