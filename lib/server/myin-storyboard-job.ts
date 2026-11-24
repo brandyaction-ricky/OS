@@ -59,7 +59,7 @@ ${JSON.stringify(notes.previous)}\n` : ""}`;
 }
 
 export function myinStoryboardCard(input: { title: string; markdown: string; words: [number, number, string][]; durationSeconds: number; note?: string; leaseMinutes: number;
-  catalog?: DiagramCatalog | null; docIds?: Record<string, string>; sceneNotes?: SceneNotesForCard }) {
+  catalog?: DiagramCatalog | null; docIds?: Record<string, string>; sceneNotes?: SceneNotesForCard; pulling?: boolean }) {
   return `이 작업 하나만 처리합니다. 승인 · 업로드 · 게시 · 삭제는 하지 않습니다. 화면은 렌더 PC가 그리고, 이 작업은 기획표(myin_storyboard.json)만 씁니다.
 
 ## 할 일 — ③ 마이인 기획표
@@ -86,8 +86,9 @@ ${MYIN_CARD_REFERENCE_DOCS.map(([title, note]) => `- ${title}${input.docIds?.[ti
 - reel = {"after": "문구", "dur": 3.5}. after는 비트 역할이 「사례」 또는 「교정(반전)」인 첫 비트의 마지막 문장 속 말(words 철자 그대로)이고, 그 문장이 끝나면 쇼릴이 나옵니다.
 - 그 자리는 원본 음성 60~180초 사이여야 합니다. 이 범위에 맞는 자리가 없으면 reel을 아예 쓰지 않습니다.
 - 쇼릴은 3~4초, 카드는 본론 큰 덩어리마다 첫 장면 1장씩 최대 3장입니다(picks를 비워 두면 엔진이 뒤 덩어리에서 고르고, 적으면 3장까지). 라벨은 엔진이 「TODAY · 오늘 볼 이야기」로 씁니다. 구독 대사는 붙이지 않습니다.
-- 구독 대사 cta는 1개(after, line, clicks, head)이고, 쇼릴과 다른 자리입니다: 본론 첫 장면 시작 뒤 60초 안, 영상 전체 길이의 35% 앞에는 넣지 않고, 질문을 던지고 답을 말하기 직전도 피해, 앞 화제의 결론 문장이 끝난 직후에 넣습니다.
-- 두 자리 모두 beat 번호가 바뀌는 곳 중에서 고르고, reasons.cta에 쇼릴 자리와 구독 자리를 고른 이유를 각각 적습니다. 쇼릴 60~180초 · 3~4초 · 3장, 구독 개수 · 60초 · 35% · 쇼릴과 다른 자리는 OS가 검사합니다.
+${input.pulling ? `- 이 영상은 풀링형(기획안에서 PD가 고른 형식, 풀링형 정본 §2)이라 구독 대사가 없습니다: cta는 빈 목록 []으로 둡니다. 말로 구독 · 진단 · 가격을 권하지 않고, 진단 안내는 종료 화면과 고정 댓글이 맡습니다.
+- 쇼릴 자리는 beat 번호가 바뀌는 곳 중에서 고르고, reasons.cta에 쇼릴 자리를 고른 이유와 「풀링형이라 구독 대사 없음」을 적습니다. 쇼릴 60~180초 · 3~4초 · 3장, cta가 비었는지는 OS가 검사합니다.` : `- 구독 대사 cta는 1개(after, line, clicks, head)이고, 쇼릴과 다른 자리입니다: 본론 첫 장면 시작 뒤 60초 안, 영상 전체 길이의 35% 앞에는 넣지 않고, 질문을 던지고 답을 말하기 직전도 피해, 앞 화제의 결론 문장이 끝난 직후에 넣습니다.
+- 두 자리 모두 beat 번호가 바뀌는 곳 중에서 고르고, reasons.cta에 쇼릴 자리와 구독 자리를 고른 이유를 각각 적습니다. 쇼릴 60~180초 · 3~4초 · 3장, 구독 개수 · 60초 · 35% · 쇼릴과 다른 자리는 OS가 검사합니다.`}
 
 ## 마이인 기획표 QA 기준 (로건 2026-10-27 · 전문: 「마이인 기획표 QA 기준 v1 (로건, 2026-10-27)」 — 열 수 있으면 끝까지 읽습니다)
 - 오프닝: 쇼릴 전에는 자막이 없습니다. 말하는 문장마다 화면 글자 줄을 붙입니다(cue = 그 문장 첫 말). 글자 없는 화면이 1초 넘게 이어지지 않게, 사진 위 글씨는 크고 대비 높게.
@@ -105,7 +106,7 @@ ${MYIN_CARD_REFERENCE_DOCS.map(([title, note]) => `- ${title}${input.docIds?.[ti
 ## OS가 검사하는 것 (걸리면 돌려받아 고칩니다)
 - 문구(장면 at, cue와 cue_로 시작하는 키, 제목 조각 ["텍스트", "등장 문구"]의 두 번째 값, cta[].after)는 아래 words의 철자 그대로 씁니다. 받아쓰기가 원고와 다른 철자여도 받아쓰기를 따릅니다. 장면 시작 문구는 앞 장면 시작 뒤 2,500자 안, 나머지 문구는 그 장면 시작 뒤 1,400자 안에 있어야 합니다(글자 수는 한글·영문·숫자만 셉니다).
 - 첫 장면은 opening, 끝은 outro → summary(at_time) → endscreen(at_time). end는 마지막 말이 끝난 뒤 여유를 둔 초입니다(낭독 ${input.durationSeconds.toFixed(1)}초 기준, 마지막 말보다 짧으면 OS가 마지막 말 + 1.5초로 늘립니다).
-- 구독 대사 cta는 1개(after, line, clicks, head) — 본론 시작 60초 뒤 · 영상 35% 뒤, 쇼릴과 다른 자리(위 「쇼릴 · 구독 자리」).
+- ${input.pulling ? "풀링형이라 cta는 빈 목록 [](위 「쇼릴 · 구독 자리」)." : "구독 대사 cta는 1개(after, line, clicks, head) — 본론 시작 60초 뒤 · 영상 35% 뒤, 쇼릴과 다른 자리(위 「쇼릴 · 구독 자리」)."}
 - 장면 종류는 문서에 있는 것${input.catalog ? "과 아래 「도식 창고」 목록에 있는 것" : ""}만 씁니다: ${MYIN_SCENE_TYPES.join(", ")}. 새 비유 도식이 꼭 필요하면 쓰지 말고 suggestions에 적습니다(로건님 코드에 그리는 방법이 먼저 있어야 합니다).
 - 음악(music_cues의 file)은 「마이인 음악 창고」 목록에 있는 파일 이름만 씁니다. 새로 찾아 내려받지 않습니다. 비트의 분위기에 맞는 곡이 창고에 없으면 가장 가까운 곡을 쓰고 suggestions에 "창고에 추가할 곡"을 적습니다.
 - 사진은 위키미디어나 Unsplash에서만 고르고, assets에 적은 뒤(출처 주소, 사용 조건, 쓰는 장면) 기획표에는 그 파일 이름을 씁니다. 로건, 유쓰가 기획표를 확인하면 그 사진이 허락되고 렌더 PC가 직접 받습니다. 사진은 장식으로 쓰지 않고, 실제 사례 · 장소 · 대상이 나오는 곳에 씁니다(매뉴얼 6-3 + 위 제작 기본값). 마이인 사이트 캡처는 home_full.png로 씁니다(렌더 PC가 캡처). 엔드 스크린 진단 이미지는 패키지 것을 씁니다.
@@ -131,12 +132,12 @@ result = ${MYIN_STORYBOARD_RESULT_SHAPE}
 }
 
 /** The result's shape and the storyboard check; 422 lists every problem so the AI can fix them in one pass. */
-export function checkMyinStoryboardResult(value: unknown, words: [number, number, string][], catalogTypes: readonly string[] = [], speech = "") {
+export function checkMyinStoryboardResult(value: unknown, words: [number, number, string][], catalogTypes: readonly string[] = [], speech = "", pulling = false) {
   const parsed = resultSchema.safeParse(value);
   if (!parsed.success) throw new ApiError(422, "MYIN_STORYBOARD_INVALID", `제출 형식을 확인해 주세요: ${parsed.error.issues.slice(0, 8).map((issue) => `${issue.path.join(".")} ${issue.message}`).join(" / ")}`);
   const { issues: storyIssues, ...checked } = checkMyinStory(parsed.data.storyboard, words, catalogTypes, speech);
   const story = myinStoryboardSchema.safeParse(checked.storyboard);
-  const issues = [...storyIssues, ...(story.success ? reelCtaIssues(story.data, words) : [])];
+  const issues = [...storyIssues, ...(story.success ? reelCtaIssues(story.data, words, pulling) : [])];
   if (issues.length) throw new ApiError(422, "MYIN_STORYBOARD_ISSUES", `기획표 검사에서 걸린 곳 ${issues.length}개: ${issues.join(" / ")}`);
   return { ...parsed.data, ...checked, notes: [...checked.notes, ...(parsed.data.suggestions ?? []).map((s) => `제안: ${s}`)] };
 }

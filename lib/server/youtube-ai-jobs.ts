@@ -25,7 +25,7 @@ import { diagramCatalogTypes } from "@/lib/diagram-catalog";
 import { readDiagramCatalog } from "./diagram-catalog";
 import { assertKitInputs, kitInputKey, kitJobCard, saveStaffKit } from "./youtube-kit-job";
 import { assertV1ColumnInputs, assertV1PlanInputs, assertV1RetitleInputs, assertV1ShortsInputs, displayName, isYoutubeV1, saveV1Column, saveV1Plan, saveV1Retitle, saveV1Shorts, v1ColumnCard, v1ColumnInputKey, v1PlanCard, v1PlanInputKey, v1RetitleCard, v1RetitleInputKey, v1ShortsCard, v1ShortsInputKey, v1ShortsSource, v1Stages, v1Title } from "./youtube-process-ai";
-import { SLOTS } from "@/lib/youtube-process/stages";
+import { SLOTS, STAGE_RECORD, ypFormat } from "@/lib/youtube-process/stages";
 import { packagingPick } from "@/lib/youtube-process/discover";
 import { projectName, topicKeywords } from "@/lib/youtube-process/project";
 // A staff AI's result that does not fit its shape is answered in Korean (로건 QA 10/30: six English refusals in a row).
@@ -145,6 +145,13 @@ export const staffJobWorkerSchema = z.discriminatedUnion("action", [
 ]);
 
 const service = () => createServiceSupabase();
+/** 기획안 영상 형식 of the project a 롱폼 run belongs to: a 풀링형 video gets no subscribe line in its 기획표. */
+async function pullingProject(sourceId: string) {
+  const plan = STAGE_RECORD.plan;
+  const { data } = await service().from("os_records").select("metadata").eq("parent_id", sourceId).eq("record_type", plan.recordType)
+    .eq(`metadata->>${plan.key}`, plan.value).is("archived_at", null).order("created_at", { ascending: false }).limit(1);
+  return ypFormat((data?.[0]?.metadata as { yp?: { format?: "keypulling" | "pulling" } } | undefined)?.yp) === "pulling";
+}
 const dbError = () => new ApiError(503, "STAFF_AI_JOB_UNAVAILABLE", "AI 작업을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.");
 const meta = (job: OsRecord) => jobMetaSchema.parse(job.metadata) as JobMeta;
 /** A 틈새 job carries the videos it was asked to group, frozen when it was requested. */
@@ -727,7 +734,8 @@ async function claimJob(agent: RequestActor, jobId: string, byGpt: boolean) {
         durationSeconds: myin.run.words!.durationSeconds, note: sceneNotes ? undefined : note, sceneNotes, leaseMinutes: minutes, diagrams: DIAGRAM_CATALOG, docIds: await myinCardDocIds(SHORT_CARD_DOCS) }) };
     return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt,
       instructions: myinStoryboardCard({ title: myin.title, markdown: myin.markdown, words: myin.words, durationSeconds: myin.run.words!.durationSeconds,
-        note: sceneNotes ? undefined : note, sceneNotes, leaseMinutes: minutes, catalog: await readDiagramCatalog(), docIds: await myinCardDocIds([...MYIN_CARD_DOCS, ...MYIN_CARD_REFERENCE_DOCS]) }) };
+        note: sceneNotes ? undefined : note, sceneNotes, leaseMinutes: minutes, catalog: await readDiagramCatalog(), docIds: await myinCardDocIds([...MYIN_CARD_DOCS, ...MYIN_CARD_REFERENCE_DOCS]),
+        pulling: await pullingProject(myin.run.sourceId) }) };
   }
   if (m.task === "niche") {
     const lease = await take();
@@ -1014,12 +1022,13 @@ export async function completeStaffJob(agent: RequestActor, input: Extract<z.inf
     const photos = myin.run.renderer === "web" ? await myinRecyclePhotos(myin.run) : undefined;
     // 롱폼에서 나온 숏폼: photos GPT asked for by search words are found now (OS search), then checked like any other.
     const queried = photos ? await fillQueryPhotos(input.result, photos) : null;
+    const pulling = myin.run.renderer !== "web" && myin.run.layout !== "short" && await pullingProject(myin.run.sourceId);
     const checked = await keepIssues(job, m, () => myin.run.renderer === "web"
       ? recycledWebShort(checkWebShortResult(queried ? queried.result : input.result, { words: myin.words, script: webShortScript(myin.markdown), headCopy: myin.headCopy, durationSeconds: myin.run.words!.durationSeconds, ad: Boolean(ad) }),
         photos && [...photos, ...queried!.found.map((url) => ({ url }))], queried?.issues)
       : myin.run.layout === "short"
       ? checkShortStoryboardResult(input.result, { words: myin.words, speech: myin.speech, headCopy: myin.headCopy, durationSeconds: myin.run.words!.durationSeconds, diagrams: DIAGRAM_CATALOG })
-      : checkMyinStoryboardResult(input.result, myin.words, catalogTypes, myin.speech));
+      : checkMyinStoryboardResult(input.result, myin.words, catalogTypes, myin.speech, pulling));
     await saveMyinStoryboard(service(), myin.record, myin.run, { storyboard: checked.storyboard, assets: checked.assets, reasons: checked.reasons,
       fuzzy: checked.fuzzy, notes: checked.notes, reading: (checked as { reading?: string[] }).reading, model: input.model });
     await saveJob(job, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });

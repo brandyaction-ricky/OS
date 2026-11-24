@@ -278,3 +278,18 @@ test("쇼릴 · 구독 자리: the reel is a map at 1:00–3:00 apart from the o
   assert.match(reelCtaIssues(board(["말200"], { dur: 7 }), long)[0], /reel\.after/);
   assert.match(reelCtaIssues(board(["말200"], { after: "말90", dur: 7, picks: [3, 4, 5, 6] }), long).join(" "), /3~4초.*3장까지/);
 });
+
+test("풀링형: no subscribe line at all; 키풀링형 still needs exactly one", async () => {
+  const { reelCtaIssues } = await import("../lib/myin-storyboard.ts");
+  const long = Array.from({ length: 300 }, (_, i) => [i, i + 0.9, `말${i}`]);
+  const board = (cta) => ({ end: 310, cta: cta.map((after) => ({ after, line: "구독 눌러 주세요" })), reel: { after: "말90", dur: 3.5 }, scenes: [{ type: "opening", at: "말0" }, { type: "hero", at: "말2" }] });
+  assert.deepEqual(reelCtaIssues(board([]), long, true), []);
+  assert.match(reelCtaIssues(board(["말200"]), long, true)[0], /풀링형.*빈 목록/);
+  assert.match(reelCtaIssues(board([]), long)[0], /구독 대사 cta 1개가 필요해요/);
+  const { readFileSync } = await import("node:fs");
+  const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+  assert.match(read("lib/server/myin-storyboard-job.ts"), /\$\{input\.pulling \? `- 이 영상은 풀링형[^`]*cta는 빈 목록 \[\]으로 둡니다/);
+  const jobs = read("lib/server/youtube-ai-jobs.ts");
+  assert.match(jobs, /pulling: await pullingProject\(myin\.run\.sourceId\)/, "the card asks with the project's 기획안 형식");
+  assert.match(jobs, /checkMyinStoryboardResult\(input\.result, myin\.words, catalogTypes, myin\.speech, pulling\)/, "and the check uses the same");
+});
