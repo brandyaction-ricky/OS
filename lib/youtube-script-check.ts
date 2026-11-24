@@ -83,20 +83,23 @@ export function overlapWith(source: string) {
 }
 // 원고 공정 정본 §8 (정본 묶음 v2.0, 2026-10-26): 공백 포함 490자 = 1분, measured on the v13 voice (6,669자 → 13분 40초).
 export const CHARS_PER_MINUTE = 490;
+// 풀링형 (대표 2026-11-25): measured 0.165 s a letter without spaces (1편 3,254자 538초) → 364자/분, 9분 ≈ 3,270자.
+export const PULLING_CHARS_PER_MINUTE = 364;
 
 /**
  * Body rules that also apply when a staff member edits the narration text directly (no headings left to check).
  * `canon` is the text of the four 원고 정본 for the 정본 겹침 count; without it that count is skipped.
  */
-export function checkScriptBody(paragraphs: string[], targetMinutes: number | null, sourced: Set<number> | null = null, canon = "") {
+export function checkScriptBody(paragraphs: string[], targetMinutes: number | null, sourced: Set<number> | null = null, canon = "", pulling = false) {
   const issues: string[] = [];
   // Length is a note, not a refusal (owner decision 2026-10-26): good content is not cut or padded to fit; the 러닝타임 follows the 원고.
   const notes: string[] = [];
-  const chars = paragraphs.reduce((sum, paragraph) => sum + paragraph.length, 0);
+  const perMinute = pulling ? PULLING_CHARS_PER_MINUTE : CHARS_PER_MINUTE, spaces = pulling ? "공백 제외 " : "";
+  const chars = paragraphs.reduce((sum, paragraph) => sum + (pulling ? paragraph.replace(/\s/g, "").length : paragraph.length), 0);
   if (targetMinutes) {
-    const target = targetMinutes * CHARS_PER_MINUTE;
+    const target = targetMinutes * perMinute;
     if (Math.abs(chars - target) > target * 0.15)
-      notes.push(`총 ${chars}자(약 ${Math.round(chars / CHARS_PER_MINUTE)}분) — 목표 ${targetMinutes}분(${target}자)과 15% 넘게 다릅니다. 내용에 필요한 길이면 러닝타임을 원고에 맞춰 고칩니다.`);
+      notes.push(`총 ${spaces}${chars}자(약 ${Math.round(chars / perMinute)}분) — 목표 ${targetMinutes}분(${spaces}${target}자)과 15% 넘게 다릅니다. 내용에 필요한 길이면 러닝타임을 원고에 맞춰 고칩니다.`);
   }
   let subscribe = 0;
   const windows = canon ? canonWindows(canon) : null;
@@ -183,7 +186,7 @@ export function checkManuscript(text: string, options: { title: string; targetMi
   const most = options.pulling ? 10 : 5;
   if (sections.length < 2 || sections.length > most) issues.push(`섹션(##)이 ${sections.length}개입니다. 2~${most}개여야 합니다.`);
   for (const name of sections) if (name.length > 8) issues.push(`섹션 제목 "${name}"이 ${name.length}자입니다(8자 이내).`);
-  const body = checkScriptBody(paragraphs, options.targetMinutes, sourced, options.canon);
+  const body = checkScriptBody(paragraphs, options.targetMinutes, sourced, options.canon, options.pulling);
   const all = [...issues, ...body.issues];
   return { narration: paragraphs.join("\n\n"), sections, paragraphs, chars: body.chars, notes: body.notes,
     issues: all.length > MAX_ISSUES ? [...all.slice(0, MAX_ISSUES), `외 ${all.length - MAX_ISSUES}건`] : all };

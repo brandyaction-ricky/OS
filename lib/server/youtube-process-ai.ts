@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import type { OsRecord } from "@/lib/record-types";
-import { checkManuscript } from "@/lib/youtube-script-check";
+import { CHARS_PER_MINUTE, checkManuscript, PULLING_CHARS_PER_MINUTE } from "@/lib/youtube-script-check";
 import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
 import { projectFromRecord, projectName } from "@/lib/youtube-process/project";
 import { descWritten, diagnosisLink, finalPair, oneArrow, SLOTS, stageData, STAGE_RECORD, utmCode, withLinks, withScriptVersion, ypFormat, type YpSlot, type YpStageKind, type YpStageData } from "@/lib/youtube-process/stages";
@@ -106,7 +106,7 @@ export function v1ScriptInputKey(state: Pipeline) {
   return digest(["yp-v1-script", project.yp.topic, project.title, confirmed, opening, body, closing, note, ...(stats?.length ? [stats] : [])]);
 }
 /** What the job card hands the AI for a v1 project, in place of the pipeline's ① 기획 record. */
-export function v1ScriptCardInputs(state: Pipeline, card: { targetMinutes: number; role: string; attachments?: string; targetChars: number }) {
+export function v1ScriptCardInputs(state: Pipeline, card: { targetMinutes: number; role: string; attachments?: string }) {
   const { project, plan } = v1Stages(state);
   const confirmed = plan.data.confirmed;
   const pulling = ypFormat(plan.data) === "pulling";
@@ -115,7 +115,7 @@ export function v1ScriptCardInputs(state: Pipeline, card: { targetMinutes: numbe
     title: confirmed?.A?.title ?? projectName(project),
     inputs: {
       projectId: project.id, title: confirmed?.A?.title ?? "", thumbnailCopy: confirmed?.A?.thumb?.copy ?? "",
-      otherTitles: [confirmed?.B?.title, confirmed?.C?.title].filter(Boolean), targetMinutes: card.targetMinutes, targetChars: card.targetChars, role: card.role, format: pulling ? "풀링형" : "원고형",
+      otherTitles: [confirmed?.B?.title, confirmed?.C?.title].filter(Boolean), targetMinutes: card.targetMinutes, targetChars: card.targetMinutes * (pulling ? PULLING_CHARS_PER_MINUTE : CHARS_PER_MINUTE), role: card.role, format: pulling ? "풀링형" : "원고형",
       topic: projectName(project), audience: project.yp.topic.target, references: project.yp.topic.refs.map(ref => ref.url),
       plan: { opening: plan.data.opening, body: plan.data.body, closing: plan.data.closing, note: [project.yp.topic.note, plan.data.note].filter(Boolean).join("\n") },
       staffAttachments: card.attachments ?? null, officialStats: plan.data.stats ?? [],
