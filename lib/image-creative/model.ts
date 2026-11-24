@@ -466,7 +466,8 @@ export function approveImageFormat(state: ImageCreativeState, request: ImageBatc
   if (normalized.baseId && !state.batches.find(b => b.variantIds.includes(normalized.baseId!))?.review?.final)
     throw new ImageCreativeError("IMAGE_FINAL_REQUIRED", "최종 검수를 마친 시안을 다음 테스트의 기준으로 골라 주세요.", 409);
   const firstPlan = firstAppealPlan(state);
-  if (firstPlan?.referenceFirst && !normalized.baseId && !normalized.assetPaths.length &&
+  // Older A/B projects can choose their shared photo after selecting the reference.
+  if (firstPlan?.referenceFirst && (state.adSetup || normalized.mode === "standalone") && !normalized.baseId && !normalized.assetPaths.length &&
       (IMAGE_FORMATS[normalized.formatIds[0]].assetRequired || (state.adSetup && normalized.referenceLayout?.photo && normalized.referenceLayout.reproduction !== "image-ai")))
     fail("이 견본은 사진이 필요해요. 디자인 견본 단계에서 원본을 올리거나 등록된 사진을 골라 주세요.");
   if (firstPlan?.referenceFirst && normalized.referenceLayout && firstPlan.size !== normalized.size)

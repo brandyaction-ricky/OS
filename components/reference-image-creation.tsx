@@ -317,9 +317,10 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
     {bundle && <AdReferencePhotos key={picked} bundle={bundle} photoGuide={chosenRef.photoGuide} busy={referenceBusy} run={run} receive={receive} select={path=>setAssetPaths([path])}/>}
     {photo?.credit && <p>선택한 사진 출처 · <a href={photo.credit.url} target="_blank" rel="noreferrer">{photo.credit.source} · {photo.credit.license}</a></p>}
   </fieldset>;
+  const needsPhotoAtSelection = unified || mode === "standalone";
   const referenceReady=!!chosenRef && (custom
-    ? isReferenceLayout(referenceLayout) && (!needsDetail || !!detail) && (!referenceLayout.photo || referenceLayout.reproduction==="image-ai" || !!photo) && (!photo || photo.path!==referenceLayout.source.path)
-    : !chosenRef.assetRequired || !!photo);
+    ? isReferenceLayout(referenceLayout) && (!needsDetail || !!detail) && (!needsPhotoAtSelection || !referenceLayout.photo || referenceLayout.reproduction==="image-ai" || !!photo) && (!photo || photo.path!==referenceLayout.source.path)
+    : !chosenRef.assetRequired || !!photo || (!needsPhotoAtSelection && !demo && picked !== "report_crop"));
   const referenceDialogView = <dialog ref={referenceDialog} className="ic-flow-reference-dialog" onClose={()=>setEnlargedReference(undefined)}>
     <div><strong>{enlargedReference?.name}</strong><button className="secondary-button" type="button" onClick={()=>referenceDialog.current?.close()}>닫기</button></div>
     {/* eslint-disable-next-line @next/next/no-img-element -- same original image at a larger size */}
@@ -550,7 +551,7 @@ function ReferenceCopyEditor({job,aspects,tier,setTier,evidence,renderPreview,fo
       {/* eslint-disable-next-line @next/next/no-img-element -- chosen original, not a generated result */}
       {(flowPreview ? referenceImageUrl : sourceUrl) && <img className="ic-flow-copy-reference" src={flowPreview ? referenceImageUrl : sourceUrl} alt="선택한 원본 디자인"/>}
       {changeReference && <button className="secondary-button" type="button" disabled={busy} onClick={()=>void run(()=>changeReference(copies))}>{flowPreview ? "레퍼런스로 돌아가기" : "레퍼런스 변경"}</button>}</div>
-    {pending ? <div className="ic-row" role="status">{job?.status==="backlog" ? "카피 생성 대기" : "AI가 초안 작성 중"} · {job?.requestedAt && <JobElapsed started={job.requestedAt}/>} 다른 화면에 다녀와도 결과가 저장됩니다.<button className="secondary-button" type="button" onClick={refresh}>상태 새로고침</button></div>
+    {pending ? <div className="ic-row" role="status">{!aspects?.length && "AI가 초안을 준비하고 있어요. "}{job?.status==="backlog" ? "카피 생성 대기" : "AI가 초안 작성 중"} · {job?.requestedAt && <JobElapsed started={job.requestedAt}/>} 다른 화면에 다녀와도 결과가 저장됩니다.<button className="secondary-button" type="button" onClick={refresh}>상태 새로고침</button></div>
       : canSuggest && <div className="ic-row"><button className="secondary-button" type="button" disabled={busy || needsPhoto} onClick={()=>void run(async()=>{const values=await suggestCopy();
         if(values){setRows(values);setCta(values[0]?.cta ?? "");}})}>{needsPhoto?"공통 이미지를 먼저 선택해 주세요":initial.length ? "AI 카피 다시 받기" : "AI 카피 초안 받기"}</button><ImageTier value={tier} change={setTier}/><CostTag kind="paid" amount={tokenEstimate(GPT_TIERS[tier].model,6000,900)} what={GPT_TIERS[tier].model+" · 약 35초"}/></div>}
     {needsPhoto && <p>직접 쓰려면 레퍼런스 변경에서 원본 이미지를 올리세요.</p>}
