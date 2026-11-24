@@ -49,3 +49,16 @@ test("the page reads one small summary per period; the database adds up with par
   assert.match(read("lib/api-client.ts"), /return metricSummaryPath\(from, to\);/, "the early read asks for the same summary");
   assert.match(read("lib/content-metrics.ts"), /count: group\.reduce\(\(n, record\) => n \+ \(Number\(record\.metadata\.days\) \|\| 1\), 0\)/);
 });
+
+test("the summary adds up a narrow copy of the day rows that triggers keep in step with os_records", () => {
+  const sql = read("supabase/migrations/20261124090000_content_metric_day_table.sql");
+  assert.match(sql, /record_id uuid primary key references public\.os_records\(id\) on delete cascade/);
+  assert.match(sql, /using \(\(select public\.os_is_active_member\(\)\)\)/, "readers match os_records_active_select");
+  assert.match(sql, /after insert on public\.os_records\s+for each row when \(new\.record_type = 'content_metric'\)/);
+  assert.match(sql, /after update on public\.os_records\s+for each row when \(old\.record_type = 'content_metric' or new\.record_type = 'content_metric'\)/);
+  assert.match(sql, /elsif tg_op = 'UPDATE' then\s+delete from public\.os_content_metric_days where record_id = new\.id;/, "archived or changed rows leave the copy");
+  assert.match(sql, /when jsonb_typeof\(m->k\) = 'number'/, "a bad value never stops the os_records write");
+  assert.match(sql, /from public\.os_content_metric_days d\s+where d\.day >= /);
+  assert.match(sql, /security invoker/);
+  assert.match(read("supabase/rollback/20261124090000_content_metric_day_table.down.sql"), /drop table if exists public\.os_content_metric_days;/);
+});
