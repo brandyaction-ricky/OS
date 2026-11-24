@@ -105,7 +105,7 @@ export function YoutubeProjectsScreen() {
   if (discover) return <TopicHub />;
 
   return <>
-    {platform==="ad" ? <AdLibrary projects={projects ? all : null} bin={trashedHere} client={client} onCopy={openCopy} onTrash={openTrash} onRefresh={()=>setAttempt(n=>n+1)} error={error}/> : <>
+    {platform==="ad" && search.get("view") !== "list" ? <AdLibrary projects={projects ? all : null} bin={trashedHere} client={client} onCopy={openCopy} onTrash={openTrash} onRefresh={()=>setAttempt(n=>n+1)} error={error}/> : <>
     <div className="yp-mv-head"><h1 className="page-title" data-ui="page-title">{platform === "card" ? "내 카드뉴스" : platform ? `내 ${TOPIC_PLATFORMS[platform].label} 영상` : "내 영상"}</h1><span style={{ flex: 1 }} />
       <Link className="yp-btn yp-lg" href={platform ? `/content/projects?view=discover&platform=${platform}` : "/content/projects?view=discover&tab=discovery"}><Radar size={16} aria-hidden="true" /> 주제 찾기</Link>
       {/* A 숏폼 or 광고 starts from 주제 찾기 (its draft keywords make the project); a 롱폼 can start from one line here. */}
@@ -123,7 +123,9 @@ export function YoutubeProjectsScreen() {
             <button key={key} type="button" role="tab" aria-selected={filter === key} className={filter === key ? "yp-on" : ""} onClick={() => setFilter(key)}>{label} {counts[key] + (key === "open" && (!platform || platform === "longform") ? legacy.length : 0)}</button>)}</div>
           <label className="yp-platform-filter"><span>플랫폼</span><select className="yp-in" aria-label="영상 플랫폼" value={platform ?? "all"} onChange={event => {
             const params = new URLSearchParams(search.toString());
-            if (event.target.value === "all") params.delete("platform"); else params.set("platform", event.target.value);
+            const selected = event.target.value;
+            if (selected === "all") params.delete("platform"); else params.set("platform", selected);
+            if (selected === "ad") params.set("view", "list"); else params.delete("view");
             router.replace(`/content/projects${params.size ? `?${params}` : ""}`, { scroll: false });
           }}><option value="all">전체 플랫폼</option>{(["card", "ad", "short", "longform"] as const).map(key => <option key={key} value={key}>{TOPIC_PLATFORMS[key].label}</option>)}</select></label>
           {many ? <label className="yp-platform-filter"><span>채널</span><select className="yp-in" aria-label="채널" value={channel} onChange={event => setChannel(event.target.value)}>
