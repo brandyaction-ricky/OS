@@ -92,9 +92,9 @@ export function usesBackgroundPhoto(variant: {formatId: ImageFormatId; asset?: u
   return Boolean(variant.asset && IMAGE_FORMATS[variant.formatId].backgroundPhoto);
 }
 /** Rules-based suggestions, not a performance prediction. No candidate is silently approved. */
-export function recommendImageFormats(brief: { objective: string; funnel: string; audience: string; product: string; offer: string; facts: string; brand?: string }, hasAsset = false, size: CreativeSize = "portrait") {
+export function recommendImageFormats(brief: { objective: string; funnel: string; audience: string; product: string; offer: string; facts: string; brand?: string }, hasAsset = false, size: CreativeSize = "portrait", availableIds: readonly ImageFormatId[] = IMAGE_FORMAT_IDS) {
   const text = Object.values(brief).join(" ").toLocaleLowerCase("ko-KR");
-  return IMAGE_FORMAT_IDS.filter(id => !isWarehouseFormat(id) || (size === "portrait" && hasAsset && Boolean(brief.brand?.trim()))).map(id => {
+  return availableIds.filter(id => !isWarehouseFormat(id) || (size === "portrait" && hasAsset && Boolean(brief.brand?.trim()))).map(id => {
     const entry = IMAGE_FORMATS[id], matches = entry.keywords.filter(word => text.includes(word));
     return { id, name: entry.name, reason: matches.length ? `${matches.join(" · ")} 내용을 담기 좋은 구조예요. ${entry.when}.` : entry.when,
       score: matches.length, needsAsset: entry.assetRequired && !hasAsset, status: entry.status };

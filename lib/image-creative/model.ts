@@ -478,6 +478,10 @@ export function approveImageFormat(state: ImageCreativeState, request: ImageBatc
   }
   const key = formatApprovalKey(state, normalized);
   if (state.formatApproval?.key === key) return state;
+  const previousDraft = state.formatApproval?.copyDraft;
+  if (state.adSetup && firstPlan?.referenceFirst && !normalized.baseId && previousDraft?.length === normalized.count) {
+    state = { ...state, previousCopies: [...(state.previousCopies ?? []), previousDraft] };
+  }
   return { ...state, formatApproval: { ...stamp, request: normalized, key } };
 }
 export function startImageCopyBatch(before: ImageCreativeState, after: ImageCreativeState, request: ImageBatchRequest): ImageCreativeState {
