@@ -173,18 +173,6 @@
     overflow-wrap: anywhere;
   }
 
-  .ad-kind-filter {
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    padding: 0.35rem 0.75rem;
-    color: var(--text);
-    background: var(--panel);
-    cursor: pointer;
-  }
-  .ad-kind-filter[aria-pressed="true"] {
-    color: var(--panel);
-    background: var(--text);
-  }
   .ad-medium {
     display: inline-flex;
     align-items: center;

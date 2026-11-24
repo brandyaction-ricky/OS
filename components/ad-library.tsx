@@ -196,7 +196,7 @@ export function AdLibrary({
           ).map(([value, label]) => (
             <button
               type="button"
-              className="ad-kind-filter"
+              className={kind === value ? "yp-btn yp-sm yp-pri" : "yp-btn yp-sm"}
               key={value}
               aria-pressed={kind === value}
               onClick={() => setKind(value)}
