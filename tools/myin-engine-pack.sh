@@ -62,6 +62,12 @@ if (adRuntimeDigest(root)) buildAdRuntime(root,path.join(process.env.STAGE,"imag
 # The worker reads the shortform diagram list from ../lib when it loads.
 mkdir -p "$STAGE/lib" && cp "$TOOLS/../lib/shortform-diagram-catalog.json" "$STAGE/lib/"
 "$MYIN_PYTHON" -s -m pip freeze > "$STAGE/requirements.lock"
+# 음성도 내 컴퓨터에서 (로건 요청 11-16): the voice Python's packages (torch · librosa · transformers · faster-whisper), so a staff computer can
+# make a video's voice too. Local paths (editable or file:// installs) cannot be installed elsewhere and are left out.
+if [[ -n "$MYIN_VOICE_PYTHON" && -x "$MYIN_VOICE_PYTHON" ]]; then
+  "$MYIN_VOICE_PYTHON" -s -m pip freeze | grep -v -E '^-e |@ file://' > "$STAGE/requirements-voice.lock"
+  "$MYIN_VOICE_PYTHON" -c 'import sys; print("%d.%d" % sys.version_info[:2])' > "$STAGE/python-voice-version"
+fi
 echo "$PY" > "$STAGE/python-version"
 echo "$FP" > "$STAGE/FINGERPRINT"
 echo "$AFP" > "$STAGE/ASSETS"

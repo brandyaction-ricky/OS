@@ -131,7 +131,7 @@ export async function installEngine(info, home) {
     writeFileSync(path.join(venv, ".ready"), info.fingerprint);
   }
   writeFileSync(path.join(dir, ".ready"), info.fingerprint);
-  // Keep this engine and the one before it; older ones only take disk.
+  const voicePython = installVoice(dir, home);
   const older = readdirSync(home).filter((name) => /^engine-[a-f0-9]{32}$/.test(name) && name !== path.basename(dir))
     .map((name) => ({ name, at: statSync(path.join(home, name)).mtimeMs })).sort((a, b) => b.at - a.at);
   for (const old of older.slice(1)) rmSync(path.join(home, old.name), { recursive: true, force: true });
@@ -139,14 +139,44 @@ export async function installEngine(info, home) {
   const named = new Set(readdirSync(home).filter((name) => /^engine-[a-f0-9]{32}$/.test(name))
     .map((name) => { try { return readFileSync(path.join(home, name, "ASSETS"), "utf8").trim(); } catch { return ""; } }));
   for (const name of readdirSync(home).filter((n) => /^assets-[a-f0-9]{64}$/.test(n))) if (!named.has(name.slice(7))) rmSync(path.join(home, name), { recursive: true, force: true });
-  return { dir, python: venvPython(venv) };
+  return { dir, python: venvPython(venv), ...(voicePython ? { voicePython } : {}) };
+}
+
+/**
+ * 음성도 내 컴퓨터에서 (로건 요청 11-16): the render PC's voice packages in their own environment, so this computer can make a video's voice
+ * (Fish through the OS — no key here). Optional: if they do not install here, drafts and the full video still run, and voices stay on the
+ * render PC. One try per package list; delete the venv-voice folder to try again.
+ */
+export function installVoice(dir, home) {
+  const lock = path.join(dir, "requirements-voice.lock");
+  if (!existsSync(lock) || !readFileSync(lock, "utf8").trim()) return null;
+  const version = readFileSync(path.join(dir, "python-voice-version"), "utf8").trim();
+  const id = createHash("sha256").update(readFileSync(lock)).digest("hex").slice(0, 12);
+  const venv = path.join(home, `venv-voice-${version}-${id}`);
+  if (existsSync(path.join(venv, ".ready"))) return venvPython(venv);
+  if (existsSync(path.join(venv, ".failed"))) return null;
+  console.log("음성 도구를 설치하는 중이에요 (처음 한 번, 2GB쯤 받아요)…");
+  try {
+    ensurePython(version);
+    const [command, pre] = python(version);
+    rmSync(venv, { recursive: true, force: true });
+    for (const [cmd, args] of [[command, [...pre, "-m", "venv", venv]], [venvPython(venv), ["-m", "pip", "install", "--quiet", "-r", lock]]])
+      if (spawnSync(cmd, args, { stdio: "inherit" }).status !== 0) throw new Error("pip");
+    writeFileSync(path.join(venv, ".ready"), id);
+    return venvPython(venv);
+  } catch {
+    mkdirSync(venv, { recursive: true }); writeFileSync(path.join(venv, ".failed"), id);
+    console.log("음성 도구를 이 컴퓨터에 설치하지 못했어요. 음성은 영상 만드는 컴퓨터가 만들고, 미리보기 · 전체 영상은 그대로 여기서 만들어요.");
+    return null;
+  }
 }
 
 /** The worker's settings for an installed engine: only the folders the bundle has, as on the render PC. */
 export function workerEnv(engine, home, key) {
   const part = (name) => existsSync(path.join(engine.dir, "engine", name)) ? path.join(engine.dir, "engine", name) : undefined;
   const env = { ...process.env, OS_URL, MYIN_LOCAL_KEY: key, MYIN_PKG: part("pkg"), MYIN_DIAGRAM_DIR: part("diagrams"), MYIN_FONT_DIR: part("fonts"),
-    MYIN_LIBRARY: part("library") ?? path.join(home, "no-library"), MYIN_PYTHON: engine.python, MYIN_WORK: path.join(home, "work"), CHROME_PATH: chrome() };
+    MYIN_LIBRARY: part("library") ?? path.join(home, "no-library"), MYIN_PYTHON: engine.python, MYIN_WORK: path.join(home, "work"), CHROME_PATH: chrome(),
+    ...(engine.voicePython ? { MYIN_VOICE_PYTHON: engine.voicePython, MYIN_LOCAL_VOICE: "on" } : {}) };
   for (const name of Object.keys(env)) if (env[name] === undefined) delete env[name];
   return env;
 }
