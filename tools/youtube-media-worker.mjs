@@ -741,6 +741,8 @@ export async function processMyinWords() {
     } else if (fixes.length && hasVoice && hasTool) {
       current.step = "voice fix";
       await runOut(myinPython, [wordsScript, "snap", voiceDir, out, before]);
+      const defer = readFileSync(path.join(timing, "voice_fix.py"), "utf8").includes("--assemble");   // packages from 2026-11-25 on
+      let deferred = false;
       for (const fix of fixes) {
         // 테이크 바꾸기 · 앞뒤 쉼 (요청 2번, 2026-11-17): our script with the engine's own joins — another take the voice made, or more pause; no Fish.
         if (fix.take || fix.pause) {
@@ -750,9 +752,12 @@ export async function processMyinWords() {
           continue;
         }
         const result = await runOut(speaker.python, ["voice_fix.py", voiceJob, "--memo", fix.memo, ...(fix.say ? ["--say", fix.say] : []), ...(fix.read ? ["--read", fix.read] : []),
-          ...(fix.video ? ["--video", "--video_work", videoJob] : [])], { cwd: timing, env });
+          ...(fix.video ? ["--video", "--video_work", videoJob] : [])], { cwd: timing, env: defer ? { ...env, VOICE_FIX_DEFER: "1" } : env });
         fixed.push({ memo: fix.memo, ok: result.ok, report: fixReport(result.out) });
+        deferred ||= defer;
       }
+      // voice.wav once for the round (2026-11-25: 18 fixes rebuilt the 68 MB voice 18 times); a take or pause edit in between already joins the new sounds.
+      if (deferred) await runAsync(speaker.python, ["voice_fix.py", voiceJob, "--assemble"], { cwd: timing, env });
       // Without the OS's dictionary (an older OS) new lines go back into the package instead.
       if (fixed.some((fix) => fix.ok) && !job.dictionary) mergeVoiceDictionaries(timing, path.join(job.layout === "short" ? myinPkgShort : myinPkg, "tools", "voice_timing"));
     } else if (fixes.length) {
@@ -771,33 +776,36 @@ export async function processMyinWords() {
       finally { for (const name of readdirSync(voiceDir)) if (name.endsWith(REUSE_MARK)) rmSync(path.join(voiceDir, name), { force: true }); }
     }
     // 들어 볼 문장 (his voice_audit): every sentence scored for breaks and long runs, worst first; stage 1 lists the ones worth a listen.
-    let audit = null;
-    if (speaker.onPc && !job.recycle && existsSync(path.join(timing, "voice_audit.py"))) {
-      current.step = "voice check";
+    // It runs beside the read check and the pause check (2026-11-25: 12 of the first pass's 17 minutes were these three one after another).
+    const voiceAudit = async () => {
+      if (!(speaker.onPc && !job.recycle && existsSync(path.join(timing, "voice_audit.py")))) return null;
       const file = path.join(voiceDir, "audit.json");
       const some = existsSync(before) && (await runOut(speaker.python, [wordsScript, "audit", voiceDir, before, file], { cwd: timing, env })).ok;
       const result = some ? { ok: true } : await runOut(speaker.python, ["voice_audit.py", voiceDir, file], { cwd: timing, env });
-      try { if (result.ok) audit = JSON.parse(readFileSync(file, "utf8")); } catch { audit = null; }
-    }
+      try { return result.ok ? JSON.parse(readFileSync(file, "utf8")) : null; } catch { return null; }
+    };
     // 발음 확인 (대표 요청 2026-11-22): words both faster-whisper small and medium heard differently from the script (tools/myin_read_check.py).
     // Only paragraph sounds that changed are heard again. MYIN_READ_CHECK=off skips it; a failure only leaves the list out.
-    let misreads = null;
-    if (speaker.onPc && !job.recycle && process.env.MYIN_READ_CHECK !== "off" && existsSync(path.join(voiceDir, "timings.json"))) {
-      current.step = "read check";
+    const readCheck = async () => {
+      if (!(speaker.onPc && !job.recycle && process.env.MYIN_READ_CHECK !== "off" && existsSync(path.join(voiceDir, "timings.json")))) return null;
       const file = path.join(voiceDir, "misreads.json");
       rmSync(file, { force: true });
-      if ((await runOut(myinPython, [readCheckScript, voiceDir, file])).ok) try { misreads = JSON.parse(readFileSync(file, "utf8")); } catch { misreads = null; }
-    }
+      if (!(await runOut(myinPython, [readCheckScript, voiceDir, file])).ok) return null;
+      try { return JSON.parse(readFileSync(file, "utf8")); } catch { return null; }
+    };
     // 쉼 검사 (로건 11-24, 대표 낭독 규칙): 띄워 읽음 · 덩어리 끊김 · 붙여 읽음 · 낱말 안 끊김, by the engine's own script when the run's
     // package carries it (tools/voice_timing/pause_check_myin.py). MYIN_PAUSE_CHECK=off skips it; a failure only leaves the list out.
-    let pauses = null;
+    // It runs after the read check, which leaves its small-model words in pause_check_cache.json, so whisper small is not run twice.
     const pauseScript = path.join(timing, "pause_check_myin.py");
-    if (speaker.onPc && !job.recycle && process.env.MYIN_PAUSE_CHECK !== "off" && existsSync(pauseScript) && existsSync(path.join(voiceDir, "timings.json"))) {
-      current.step = "pause check";
+    const pauseCheck = async () => {
+      if (!(speaker.onPc && !job.recycle && process.env.MYIN_PAUSE_CHECK !== "off" && existsSync(pauseScript) && existsSync(path.join(voiceDir, "timings.json")))) return null;
       const file = path.join(voiceDir, "pauses.json");
       rmSync(file, { force: true });
-      if ((await runOut(myinPython, [pauseScript, voiceDir, file], { cwd: timing })).ok) try { pauses = JSON.parse(readFileSync(file, "utf8")); } catch { pauses = null; }
-    }
+      if (!(await runOut(myinPython, [pauseScript, voiceDir, file], { cwd: timing })).ok) return null;
+      try { return JSON.parse(readFileSync(file, "utf8")); } catch { return null; }
+    };
+    current.step = "voice check";
+    const [audit, [misreads, pauses]] = await Promise.all([voiceAudit(), readCheck().then(async (found) => [found, await pauseCheck()])]);
     const speech = readFileSync(path.join(voiceDir, "speech.txt"), "utf8");
     const spoken = speech.replace(/\r/g, "").split("\n").filter((line) => line.trim() && !line.startsWith("#SECTION"));
     if (spoken.length !== job.paragraphs.length || spoken.some((text, i) => text !== job.paragraphs[i].text))
@@ -1301,11 +1309,17 @@ export async function processMyinClips() {
   return true;
 }
 
+// 전체 영상 그리기 일꾼 수 (2026-11-25): 4 drew 13.9 frames a second on the 8-core Mac mini; MYIN_RENDER_PROCS sets it per PC.
+const renderProcs = () => String(Math.max(1, Math.min(16, Math.floor(Number(process.env.MYIN_RENDER_PROCS)) || 4)));
+// The full render prints no times of its own; these four lines show where its hour goes.
+const stamp = (what, runId) => console.log(`${new Date().toISOString()} myin final ${what}: ${runId}`);
+
 /** v13 stage 4b: his full render, mix and handouts; the OS gets the video, 한장정리.png, 덱_전체.pdf, subs_youtube.srt and a loudness check. */
 export async function processMyinFinal() {
   if (!myinPkg) return false;
   const job = await call({ action: "myin_final_claim", ...(local ? { engine: engine() } : { ...shortClaim, ...pcField }) });
   if (job.idle) return false;
+  stamp("claimed", job.runId);
   current = { step: "drawing", runId: job.runId };
   const lease = { runId: job.runId, lease: job.lease };
   try {
@@ -1324,15 +1338,18 @@ export async function processMyinFinal() {
       // 피드용 1:1 · 4:5 (asked for on the OS): the same story drawn in each frame, with the same voice
       for (const size of Object.keys(job.sizeUploadUrls ?? {})) await webShort(job, work, videoDir, path.join(videoDir, `final_${size.replace(":", "x")}.mp4`), ["--format", size]);
     } else if (job.layout === "short") {
-      await runAsync(myinPython, ["render_myin.py", "os_myin", "render", "4"], { cwd: myinDir, env: { ...drawEnv, OUTNAME: "final_myin_v1_raw.mp4" } });
+      await runAsync(myinPython, ["render_myin.py", "os_myin", "render", renderProcs()], { cwd: myinDir, env: { ...drawEnv, OUTNAME: "final_myin_v1_raw.mp4", MYIN_VIDEO_ONLY: "1" } });
+      stamp("drawn", job.runId);
       // 숏폼: his picture with the voice alone, as the pilots A1–A3 (no music, no effects), brought to the longform's −14 LUFS
       // (the A1 pilot measured −16 LUFS, peak −0.5 dB); no handouts.
       const end = Number(job.storyboard?.end);
       execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-i", path.join(videoDir, "myin_video_final_myin_v1_raw.mp4"), "-i", path.join(work, "voice", "os_voice", "voice.wav"),
         "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-af", "pan=stereo|c0=c0|c1=c0,loudnorm=I=-14:TP=-1.5:LRA=11", "-ar", "48000", "-c:a", "aac", "-b:a", "192k", ...(end > 0 ? ["-t", String(end)] : []), video], { env });
     } else {
-      await runAsync(myinPython, ["render_myin.py", "os_myin", "render", "4"], { cwd: myinDir, env: { ...drawEnv, OUTNAME: "final_myin_v1_raw.mp4" } });
+      await runAsync(myinPython, ["render_myin.py", "os_myin", "render", renderProcs()], { cwd: myinDir, env: { ...drawEnv, OUTNAME: "final_myin_v1_raw.mp4", MYIN_VIDEO_ONLY: "1" } });
+      stamp("drawn", job.runId);
       await runAsync(myinPython, ["render_myin.py", "os_myin", "remix", "../../voice/os_myin/myin_video_final_myin_v1_raw.mp4", "final_myin_v1.mp4"], { cwd: myinDir, env: drawEnv });
+      stamp("mixed", job.runId);
       await runAsync(myinPython, ["render_myin.py", "os_myin", "handouts"], { cwd: myinDir, env: drawEnv });
     }
     // Per-frame lines go to the verbose log: a 12-minute video printed 1.2 MB of them and overflowed spawnSync's buffer before the summary.
@@ -1347,6 +1364,7 @@ export async function processMyinFinal() {
     await upload(job.srtUploadUrl, path.join(videoDir, "subs_youtube.srt"), "application/x-subrip");
     const sizes = Object.entries(job.renderer === "web" ? job.sizeUploadUrls ?? {} : {});
     for (const [size, url] of sizes) await upload(url, path.join(videoDir, `final_${size.replace(":", "x")}.mp4`), "video/mp4");
+    stamp("uploaded", job.runId);
     await call({ action: "myin_final_complete", ...lease, bytes: readFileSync(video).length, durationSeconds: seconds(video), lufs, peak, ...(sizes.length ? { sizes: true } : {}) });
     console.log(`myin final ready: ${job.runId} (${lufs} LUFS, peak ${peak})`);
   } catch (error) {

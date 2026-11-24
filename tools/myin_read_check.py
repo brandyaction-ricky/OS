@@ -9,6 +9,8 @@ differs in notation (digits, Latin letters: 5 / 다섯, GPT / 지피티) is left
 
 Writes [{"p": paragraph, "at": seconds in voice.wav, "said": script words, "small": heard, "medium": heard}].
 Heard text is kept per paragraph sound (read_check_cache.json), so after a sentence fix only changed paragraphs are heard again.
+The small model's words also go to the pause check's cache (pause_check_cache.json, [[start, end, word]]): it runs the same small
+model with the same settings on the same sound, so it does not hear it a second time (2026-11-25).
 """
 import hashlib, json, os, sys
 from difflib import SequenceMatcher
@@ -104,11 +106,13 @@ def misread(script, heard):
     return found
 
 
-def hear(models, wav):
+def hear(models, wav, pause=None):
+    """{model: [[word, start]]}; pause gets the small model's [[start, end, word]] as pause_check_myin.py keeps them."""
     out = {}
     for name, model in models.items():
-        segs, _ = model.transcribe(wav, language="ko", beam_size=5, word_timestamps=True)
-        out[name] = [[w.word.strip(), round(w.start, 2)] for seg in segs for w in (seg.words or [])]
+        words = [w for seg in model.transcribe(wav, language="ko", beam_size=5, word_timestamps=True)[0] for w in (seg.words or [])]
+        out[name] = [[w.word.strip(), round(w.start, 2)] for w in words]
+        if name == "small" and pause is not None: pause.append([[round(w.start, 3), round(w.end, 3), w.word.strip()] for w in words])
     return out
 
 
@@ -117,7 +121,7 @@ def run(voice, dest):
     cache_file = os.path.join(voice, "read_check_cache.json")
     try: cache = json.load(open(cache_file, encoding="utf-8"))
     except Exception: cache = {}
-    models, rows, keep = None, [], {}
+    models, rows, keep, for_pause = None, [], {}, {}
     for p in timings["paragraphs"]:
         wav = os.path.join(voice, f"p{p['i']:02d}_t.wav")
         if not os.path.exists(wav): continue
@@ -127,11 +131,18 @@ def run(voice, dest):
             if models is None:
                 from faster_whisper import WhisperModel
                 models = {m: WhisperModel(m, device="cpu", compute_type="int8") for m in MODELS}
-            heard = hear(models, wav)
+            small = []
+            heard = hear(models, wav, small)
+            if small: for_pause[key] = small[0]
         keep[key] = heard
         for w0, w1, texts, start in misread(p["text"], {m: heard[m] for m in MODELS}):
             rows.append({"p": p["i"], "at": round(p["start"] + start, 2), "said": spoken(p["text"], w0, w1), **texts})
     json.dump(keep, open(cache_file, "w", encoding="utf-8"), ensure_ascii=False)
+    if for_pause:
+        pause_file = os.path.join(voice, "pause_check_cache.json")
+        try: pause = json.load(open(pause_file, encoding="utf-8"))
+        except Exception: pause = {}
+        json.dump({**for_pause, **pause}, open(pause_file, "w", encoding="utf-8"), ensure_ascii=False)
     json.dump(rows[:LIMIT], open(dest, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     print(f"발음 확인: {len(timings['paragraphs'])}문단 · 잘못 읽은 것 같은 곳 {len(rows)}곳")
 
