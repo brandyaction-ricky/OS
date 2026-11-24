@@ -14,6 +14,7 @@ interface VoiceCheckData {
   /** 발음 확인 (2026-11-22): words both transcriptions heard differently from the script (none for a voice made before it). */
   misreads?: { p: number; at: number; said: string; small: string; medium: string }[] | null;
   /** 쉼 검사 (로건 11-24): 띄워 읽음 · 덩어리 끊김 · 붙여 읽음 · 낱말 안 끊김, ‖ marking the place. */ pauses?: { p: number; at: number; kind: string; gap: number; text: string }[] | null;
+  /** 쉼 점검 → 다시 낭독 (대표 11-24): how many times the caught sentences were voiced again by themselves (2 at most). */ pauseRounds?: number;
 }
 type Line = { at: number; p?: number; sentence: string };
 /** Where 「음성 확인 · 수정」 may change a sentence: stage 1, and wherever the video waits for a person after it (the server says where it goes back to). */
@@ -132,6 +133,7 @@ export function MyinVoiceCheck({ runId, stage, fixable, pending, check, token, o
           {open && fixable ? <button type="button" className="secondary-button compact" onClick={() => { setTime(mmss(row.at)); setText(`「${row.said}」가 「${row.medium || row.small}」로 들림`.slice(0, 250)); }}>메모</button> : null}
         </li>)}</ul></div> : data.misreads ? <p><small>발음 확인: 잘못 읽은 것 같은 곳이 없어요.</small></p> : null}
       {data.pauses?.length ? <div className="yt-note"><strong>어색하게 쉰 곳 {data.pauses.length}곳</strong>
+        {data.pauseRounds ? <small><b>걸린 문장을 저절로 {data.pauseRounds}번 다시 낭독했어요.</b> {data.pauseRounds >= 2 ? "그래도 남은 곳은 낭독 탓이 아니라 문장 탓이에요. 문장을 바꿔 주세요(예: 「첫 번째 결과」 → 「내 첫 결과」)." : ""}</small> : null}
         <small>‖ 자리에서 쉼이 어색해요. 띄워 읽음 = 붙여 읽을 곳에서 쉼, 덩어리 끊김 = 붙어야 할 두 낱말 사이에서 쉼, 붙여 읽음 = 문장 끝에서 안 쉼. 들어 보고 어색하면 [메모]로 그 문장만 다시 만들어요(두 번 넘게 남으면 문장을 바꿔요).</small>
         <ul className="yt-take-list yt-all-lines">{data.pauses.map((row, at) => <li key={at}>
           <button type="button" className="secondary-button compact" disabled={!data.previewUrl} onClick={() => play(row.at)}>▶ {mmss(row.at)}</button>

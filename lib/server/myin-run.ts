@@ -203,6 +203,8 @@ const runSchema = z.object({
   settings: z.object({ place: z.enum(["pc", "local"]), voice: z.enum(["pc", "local"]).optional(), screenCheck: z.boolean(), confirm: z.enum(["auto", "person"]).optional(), by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict().optional(),
   // 로건 11-13: the paid steps (voice, 구독 대사 voice) approved once by a person when the video starts — 「완성」 then asks no more.
   paidOk: z.object({ by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict().optional(),
+  // 쉼 점검 → 다시 낭독 (풀링형 요청 ③, 대표 11-24): how many times the sentences the pause check caught were voiced again by themselves.
+  pauseRounds: z.number().int().min(0).max(5).optional(),
   // 렌더 전 관문 sends at ③ in a row (a person's 수정 요청 resets it); past MYIN_GATE_ROUNDS the video goes on and marks them 사람 확인 필요.
   gateRounds: z.number().int().min(0).max(50).optional(),
   // 사운드 창고 (2026-10-27): Logan's music match report from the ③ preparation, and who last changed the sound at ④.
@@ -287,7 +289,7 @@ export function presentMyinRun(record: OsRecord) {
     localFinish: run.localFinish ? { by: run.localFinish.by, name: run.localFinish.name } : null, clipsStale: previewStale(run),
     localVoice: run.localVoice ? { by: run.localVoice.by, name: run.localVoice.name } : null, waitingSince: record.status === "backlog" ? record.updated_at : null,
     settings: run.settings ? { place: run.settings.place, voice: run.settings.voice ?? "pc", screenCheck: run.settings.screenCheck, confirm: run.settings.confirm ?? "auto", name: run.settings.name } : null,
-    autoConfirm: autoConfirms(run), paidOk: Boolean(run.paidOk), gateRounds: run.gateRounds ?? 0,
+    autoConfirm: autoConfirms(run), paidOk: Boolean(run.paidOk), gateRounds: run.gateRounds ?? 0, pauseRounds: run.pauseRounds ?? 0,
     photoCredits: Object.fromEntries(Object.entries(run.ours ?? {}).map(([file, image]) => [file, image.credit ? { source: image.credit.source, license: image.credit.license, url: image.credit.url }
       : { source: `우리 이미지 · ${image.name}`, license: "", url: null }])), localReady: Boolean(run.words?.voice) && !run.layout,
     // 로건 피드백 10/26-8: when the render PC took this step, so the screen can say how long it has been working.
@@ -1001,6 +1003,17 @@ export async function completeMyinWords(input: { runId: string; lease: string; v
   const resume = run.voiceResume;
   const stage = resume === "draft" ? "storyboard_confirmed" : resume ?? "words_ready";
   if (run.voiceResume) next.voiceChanged = { at: new Date().toISOString(), count: run.voiceFixes?.length ?? 0 };
+  // 쉼 점검 → 다시 낭독 (풀링형 요청 ③, 대표 11-24): a new voice whose pause check caught places has those sentences voiced again by
+  // themselves (voice_fix on the render PC, two takes, the better kept) — at most MYIN_PAUSE_ROUNDS times, only when the paid steps were
+  // approved at the start. What is left after that stays in 「어색하게 쉰 곳」 for a person to change the sentence.
+  const pauseFixes = stage === "words_ready" ? autoPauseFixes(record, run, bundle.data) : [];
+  if (pauseFixes.length) {
+    const by = run.paidOk!.by, at = new Date().toISOString();
+    const again: MyinRun = { ...next, pauseRounds: (run.pauseRounds ?? 0) + 1, voiceFixes: pauseFixes.slice(0, 20).map((fix) => ({ ...fix, by, name: MYIN_PAUSE_FIX_NAME, at })) };
+    delete again.voiceCheck;
+    await save(service, record, "backlog", "words_pending", again);
+    return { runId: record.id, stage: "words_pending" };
+  }
   // 고친 원고 (요청 3번): what the video's earlier run lends; when it cannot, the AI writes the storyboard as before.
   const failedLoan = (error: unknown) => {
     console.error(JSON.stringify({ event: "myin_storyboard_loan_failed", runId: record.id, message: error instanceof Error ? error.message : String(error) }));
@@ -1022,6 +1035,20 @@ export async function completeMyinWords(input: { runId: string; lease: string; v
   if (old && input.voice && old.path !== next.words?.voice?.path)
     await service.storage.from(YOUTUBE_VOICE_BUCKET).remove([...Array.from({ length: old.parts }, (_, n) => voicePartPath(old.path, n)), ...(run.words?.preview ? [run.words.preview.path] : [])]).catch(() => undefined);
   return { runId: record.id, stage };
+}
+
+export const MYIN_PAUSE_ROUNDS = 2;
+export const MYIN_PAUSE_FIX_NAME = "쉼 점검";
+const pauseRow = z.object({ p: z.number(), at: z.number(), kind: z.string(), gap: z.number(), text: z.string() });
+const mmssDot = (seconds: number) => `${Math.floor(seconds / 60)}:${(seconds % 60).toFixed(1).padStart(4, "0")}`;
+/** The pause check's places as voice-fix memos (time + the words around the pause, as voice_fix finds a sentence), one per sentence. */
+function autoPauseFixes(record: OsRecord, run: MyinRun, bundle: Record<string, unknown>) {
+  if (!run.paidOk || run.layout || !voiceFixable(record, run) || (run.pauseRounds ?? 0) >= MYIN_PAUSE_ROUNDS) return [];
+  const pauses = z.array(pauseRow).safeParse(bundle.pauses);
+  if (!pauses.success || !pauses.data.length) return [];
+  const audit = z.array(auditRow).safeParse(bundle.audit);
+  const sentences = audit.success ? audit.data.map((row) => ({ at: row.시각, text: row.문장 })) : [];
+  return planVoiceFix(pauses.data.map((row) => ({ memo: `${mmssDot(row.at)} ${row.text.replace(/‖/g, " ").replace(/\s+/g, " ").trim()} (쉼 점검: ${row.kind} ${row.gap}초)`.slice(0, 300) })), sentences).fixes;
 }
 
 export async function failMyinWords(input: { runId: string; lease: string; code: string }, service: Service = createServiceSupabase()) {
@@ -1078,7 +1105,7 @@ export async function myinVoiceCheck(actor: RequestActor, runId: string) {
   const fixes = z.array(z.object({ memo: z.string(), ok: z.boolean(), report: z.string() }).passthrough()).safeParse(bundle.fixes);
   return { sentences: rows.success ? rows.data.length : null, listen, all, takes,
     misreads: misreads.success ? misreads.data.slice(0, 40).map(({ p, at, said, small, medium }) => ({ p, at, said: said.slice(0, 80), small: small.slice(0, 80), medium: medium.slice(0, 80) })) : null,
-    pauses: pauses.success ? pauses.data.slice(0, 60).map(({ p, at, kind, gap, text }) => ({ p, at, kind: kind.slice(0, 20), gap, text: text.slice(0, 120) })) : null, fixes: fixes.success ? fixes.data.map(({ memo, ok, report }) => ({ memo, ok, report })) : [],
+    pauses: pauses.success ? pauses.data.slice(0, 60).map(({ p, at, kind, gap, text }) => ({ p, at, kind: kind.slice(0, 20), gap, text: text.slice(0, 120) })) : null, pauseRounds: run.pauseRounds ?? 0, fixes: fixes.success ? fixes.data.map(({ memo, ok, report }) => ({ memo, ok, report })) : [],
     previewUrl: run.words.preview ? await sign(service, YOUTUBE_VOICE_BUCKET, run.words.preview.path) : null };
 }
 
