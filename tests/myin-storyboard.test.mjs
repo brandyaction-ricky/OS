@@ -265,12 +265,16 @@ test("photo credits: ④-approved photos for a longform, every listed photo for 
   assert.deepEqual(myinPhotoCreditLines({ renderer: "web", storyboard: { assets }, ours: { "b.jpg": {} } }).map((l) => l.split(" — ")[0]), ["a.jpg"]);
 });
 
-test("쇼릴 · 구독 자리: one subscribe request, 60 s into the body and past 35% of the voice", async () => {
-  const { ctaPlacementIssues } = await import("../lib/myin-storyboard.ts");
-  // 200 words, one a second: the body starts at 2 s, the voice ends at 199.9 s → earliest 1:09 (35%), not 1:02 (body + 60).
-  const long = Array.from({ length: 200 }, (_, i) => [i, i + 0.9, `말${i}`]);
-  const board = (after, cta = [{ after, line: "구독 눌러 주세요" }]) => ({ end: 210, cta, scenes: [{ type: "opening", at: "말0" }, { type: "hero", at: "말2" }] });
-  assert.deepEqual(ctaPlacementIssues(board("말120"), long), []);
-  assert.match(ctaPlacementIssues(board("말65"), long)[0], /^\[구독\] 구독 자리\(1:05\)가 너무 앞이에요 — 1:09 뒤/);
-  assert.match(ctaPlacementIssues(board("말120", [{ after: "말120", line: "a" }, { after: "말150", line: "b" }]), long)[0], /한 곳이에요.*2개를 1개로/);
+test("쇼릴 · 구독 자리: the reel is a map at 1:00–3:00 apart from the one subscribe request past 60 s and 35%", async () => {
+  const { reelCtaIssues } = await import("../lib/myin-storyboard.ts");
+  // 300 words, one a second: the body starts at 2 s, the voice ends at 299.9 s → subscribe not before 1:44 (35%).
+  const long = Array.from({ length: 300 }, (_, i) => [i, i + 0.9, `말${i}`]);
+  const board = (cta, reel) => ({ end: 310, cta: cta.map((after) => ({ after, line: "구독 눌러 주세요" })), ...(reel ? { reel } : {}), scenes: [{ type: "opening", at: "말0" }, { type: "hero", at: "말2" }] });
+  assert.deepEqual(reelCtaIssues(board(["말200"], { after: "말90", dur: 3.5 }), long), []);
+  assert.deepEqual(reelCtaIssues(board(["말200"]), long), [], "no fitting spot: no reel");
+  assert.match(reelCtaIssues(board(["말65"]), long)[0], /^\[구독\] 구독 자리\(1:05\)가 너무 앞이에요 — 1:44 뒤/);
+  assert.match(reelCtaIssues(board(["말200", "말250"]), long)[0], /한 곳이에요.*2개를 1개로/);
+  assert.match(reelCtaIssues(board(["말200"], { after: "말200", dur: 3.5 }), long).join(" "), /쇼릴 자리\(3:20\)가 1:00~3:00 밖.*다른 자리/);
+  assert.match(reelCtaIssues(board(["말200"], { dur: 7 }), long)[0], /reel\.after/);
+  assert.match(reelCtaIssues(board(["말200"], { after: "말90", dur: 7, picks: [3, 4, 5, 6] }), long).join(" "), /3~4초.*3장까지/);
 });
