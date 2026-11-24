@@ -34,8 +34,8 @@ export const scriptBundleSchema = z.object({
 }).strict();
 export type ScriptBundle = z.infer<typeof scriptBundleSchema>;
 export const SCRIPT_RESULT_SHAPE = `{ "manuscript": "§8 형식 원고 전문", "materials": "흔한 생각·바람 표(댓글 있음/없음) · 쓴 재료(출처 doc_id) · 중심 근거 출처", "axis": "채택 축 · 대안 축 · 채점 · 중심 인물", "design": "§4 설계표", "review": "검수 기록", "canonBundle": "정본 묶음 값", "reReviews": 0, "editedParagraphs": [], "suggestions": [] }`;
-/** 풀링형 낭독 실측 (풀링형 정본 §2): 공백 뺀 글자 × 0.125초 → 1분에 480자. */
-const PULLING_CHARS_PER_MINUTE = 480;
+/** 풀링형 낭독 실측: 공백 뺀 글자 × 0.165초 → 1분에 약 364자(2026-11-25, 원리 1·2편과 3편 리메이크 실측). */
+const PULLING_CHARS_PER_MINUTE = 364;
 
 /** Gate 1 (기획) approved and one adopted title and copy: what a script job needs before it can start. */
 export function assertScriptInputs(state: Pipeline) {
