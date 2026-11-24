@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
-import { checkMyinVoice, confirmMyinClips, retryMyinGptStoryboard, requestMyinTakes, createMyinRun, latestMyinRun, myinVoiceCheck, myinVoiceFixPlan, myinVoiceFixSchema, myinVoiceOnRenderPc, requestMyinVoiceFix, myinDownloads, myinEarlierStyles, myinRecord, myinSubtitles, myinSubtitleChangeSchema, saveMyinSubtitles, myinOurImageUpload, myinOutputs, myinPhotos, myinPreviewSheets, myinSoundState, requestMyinRedraw, myinWordsReport, reopenMyinMaterials, reviewMyinStoryboard, saveMyinOurImage, saveMyinSound, separateMyinPhoto, setMyinDraftPlace, setMyinSettings, setMyinScreenCheck, startMyinFinal, startMyinPrep } from "@/lib/server/myin-run";
+import { checkMyinVoice, confirmMyinClips, retryMyinGptStoryboard, requestMyinTakes, createMyinRun, latestMyinRun, myinVoiceCheck, myinVoiceFixPlan, myinVoiceFixSchema, myinVoiceOnRenderPc, requestMyinVoiceFix, myinDownloads, myinEarlierStyles, myinRecord, myinSubtitles, myinSubtitleChangeSchema, saveMyinSubtitles, myinOurImageUpload, myinOutputs, myinPhotos, myinPreviewSheets, myinSoundState, requestMyinRedraw, myinWordsReport, reopenMyinMaterials, reviewMyinStoryboard, saveMyinOurImage, saveMyinSound, separateMyinPhoto, setMyinDraftPlace, setMyinVoicePlace, setMyinSettings, setMyinScreenCheck, startMyinFinal, startMyinPrep } from "@/lib/server/myin-run";
 import { findMyinPhotoCandidates, applyMyinPhotoCandidate } from "@/lib/server/myin-photo-candidates";
 import { readLocalRenderStatus } from "@/lib/server/youtube-render-pc";
 import { checkMyinScreens, myinScreenCheck } from "@/lib/server/myin-screen-check";
@@ -69,9 +69,11 @@ const patchSchema = z.discriminatedUnion("action", [
   // place / screenCheck left out: the video's 제작 설정 decides.
   z.object({ action: z.literal("review"), runId: z.string().uuid(), decision: z.enum(["confirmed", "revise"]), note: z.string().max(2000).default(""), place: z.enum(["pc", "local"]).optional(),
     screenCheck: z.boolean().optional() }),
-  z.object({ action: z.literal("settings"), runId: z.string().uuid(), place: z.enum(["pc", "local"]), screenCheck: z.boolean(), confirm: z.enum(["auto", "person"]).optional() }),
+  z.object({ action: z.literal("settings"), runId: z.string().uuid(), place: z.enum(["pc", "local"]), voice: z.enum(["pc", "local"]).optional(), screenCheck: z.boolean(), confirm: z.enum(["auto", "person"]).optional() }),
   z.object({ action: z.literal("screen_check_auto"), runId: z.string().uuid(), on: z.boolean() }),
   z.object({ action: z.literal("place"), runId: z.string().uuid(), place: z.enum(["pc", "local"]) }),
+  // 음성도 내 컴퓨터에서 (로건 요청 11-16): the waiting first voice of a longform.
+  z.object({ action: z.literal("voice_place"), runId: z.string().uuid(), place: z.enum(["pc", "local"]) }),
   z.object({ action: z.literal("prepare"), runId: z.string().uuid() }),
   z.object({ action: z.literal("storyboard_gpt"), runId: z.string().uuid() }),
   // 점검 시트 장면 의견 › 반영 (직원 요청 11-12): one 수정안 into the storyboard; force after the person saw the scene had changed.
@@ -116,7 +118,8 @@ export async function PATCH(request: Request) {
       : input.action === "web_scene_edit" ? { run: await editWebShortScene(actor, input.runId, input.n, input.texts, input.storyboardAt) }
       : input.action === "screen_check_auto" ? { run: await setMyinScreenCheck(actor, input.runId, input.on) }
       : input.action === "place" ? { run: await setMyinDraftPlace(actor, input.runId, input.place) }
-      : input.action === "settings" ? { run: await setMyinSettings(actor, input.runId, { place: input.place, screenCheck: input.screenCheck, ...(input.confirm ? { confirm: input.confirm } : {}) }) }
+      : input.action === "voice_place" ? { run: await setMyinVoicePlace(actor, input.runId, input.place) }
+      : input.action === "settings" ? { run: await setMyinSettings(actor, input.runId, { place: input.place, screenCheck: input.screenCheck, ...(input.voice ? { voice: input.voice } : {}), ...(input.confirm ? { confirm: input.confirm } : {}) }) }
       : input.action === "clips_ok" ? { run: await confirmMyinClips(actor, input.runId, input.note, input.place) }
       : input.action === "storyboard_gpt" ? await retryMyinGptStoryboard(actor, input.runId)
       // [다시 검사]: only someone who can read the run (myinScreenCheck checks it) asks GPT again.
@@ -146,7 +149,7 @@ export async function POST(request: Request) {
   try {
     pilot();
     const actor = await authenticateRequest(request, { allowAgent: false });
-    const input = z.object({ sourceId: z.string().uuid(), styleId: z.string().uuid().optional(), settings: z.object({ place: z.enum(["pc", "local"]), screenCheck: z.boolean(), confirm: z.enum(["auto", "person"]).optional() }).strict().optional(), paidOk: z.boolean().optional() })
+    const input = z.object({ sourceId: z.string().uuid(), styleId: z.string().uuid().optional(), settings: z.object({ place: z.enum(["pc", "local"]), voice: z.enum(["pc", "local"]).optional(), screenCheck: z.boolean(), confirm: z.enum(["auto", "person"]).optional() }).strict().optional(), paidOk: z.boolean().optional() })
       .passthrough().parse(await parseJson(request, 1_000));
     return NextResponse.json({ run: await createMyinRun(actor, input.sourceId, input.styleId, input.settings, input.paidOk) }, { status: 202, headers });
   } catch (error) {

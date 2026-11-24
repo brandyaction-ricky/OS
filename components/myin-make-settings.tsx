@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api-client";
-import type { LocalRenderStatus } from "@/lib/myin-local";
+import { localVoiceBlocker, type LocalRenderStatus } from "@/lib/myin-local";
 import { CostTag } from "./cost-notice";
 import { DraftPlacePicker, type DraftPlace } from "./myin-local-render";
 import { EarlierStylePick } from "./myin-run-record";
@@ -10,14 +10,15 @@ import { ago, sinceIso, type StaffJobStatus } from "./youtube-production-steps";
 // 제작 설정 (직원 요청 2026-11-05): 채널 모양, 기획표를 쓰는 AI, 만드는 곳, GPT 화면 검사를 영상을 시작할 때 한 번 정한다. 단계 사이에는
 // 다시 묻지 않고, 바꾸면 그다음 단계부터 따른다. 새 영상은 이 브라우저에서 지난번에 고른 값으로 시작한다.
 // 로건 11-13 (대표 11-16): 기획표 확인 「자동」 — the storyboard that passes the OS check goes straight to the scene pictures; 「사람이 확인」 waits as before.
-export interface MakeSettings { place: DraftPlace; screenCheck: boolean; confirm: "auto" | "person" }
+// 음성도 내 컴퓨터에서 (로건 요청 11-16): where the longform voice is made — the render PC, or the chooser's computer once it has the voice tools.
+export interface MakeSettings { place: DraftPlace; voice: DraftPlace; screenCheck: boolean; confirm: "auto" | "person" }
 export interface RunSettings extends MakeSettings { name: string }
 const KEY = "myin-make-settings";
 export function lastSettings(): MakeSettings {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? "null") as Partial<MakeSettings> | null;
-    return { place: saved?.place === "local" ? "local" : "pc", screenCheck: saved?.screenCheck !== false, confirm: saved?.confirm === "person" ? "person" : "auto" };
-  } catch { return { place: "pc", screenCheck: true, confirm: "auto" }; }
+    return { place: saved?.place === "local" ? "local" : "pc", voice: saved?.voice === "local" ? "local" : "pc", screenCheck: saved?.screenCheck !== false, confirm: saved?.confirm === "person" ? "person" : "auto" };
+  } catch { return { place: "pc", voice: "pc", screenCheck: true, confirm: "auto" }; }
 }
 export function rememberSettings(settings: MakeSettings) {
   try { localStorage.setItem(KEY, JSON.stringify(settings)); } catch { /* private window: next video starts from the defaults */ }
@@ -62,7 +63,7 @@ export function MyinMakeSettings({ sourceId, token, short, run, fresh, editing, 
   return <section className="yt-note" id="myin-settings" aria-label="제작 설정">
     <div className="yt-run-head"><strong>제작 설정</strong>
       {!open && run ? <button type="button" className="secondary-button compact" onClick={() => onEditing(true)}>바꾸기</button> : null}</div>
-    {!open && run ? <small>{run.style ? `채널 모양 ${run.style.name} · v${run.style.version} · ` : ""}만드는 곳 {placeName(current, run)} · GPT 화면 검사 {(current?.screenCheck ?? true) ? "켬" : "끔"}
+    {!open && run ? <small>{run.style ? `채널 모양 ${run.style.name} · v${run.style.version} · ` : ""}만드는 곳 {placeName(current, run)}{short ? "" : ` · 음성 ${current?.voice === "local" ? `${current.name}님 컴퓨터` : "영상 만드는 컴퓨터"}`} · GPT 화면 검사 {(current?.screenCheck ?? true) ? "켬" : "끔"}
       {short ? "" : ` · 기획표 확인 ${(current?.confirm ?? "auto") === "auto" ? "자동" : "사람이 확인"}`}
       {current ? "" : " · 이 영상은 제작 설정 전에 시작해서 기본값을 따라요"}</small> : null}
     {open ? <>
@@ -73,7 +74,12 @@ export function MyinMakeSettings({ sourceId, token, short, run, fresh, editing, 
         : run?.style ? <small>채널 모양 {run.style.name} · v{run.style.version} · 음성을 시작할 때 영상에 고정돼요</small> : null}
       <small>기획표를 쓰는 AI · 내 AI · {!myAi ? "확인하는 중" : !myAi.keys ? "아직 연결하지 않았어요(2단계에서 연결 방법을 보여 줘요)" : seen === null ? "연결됨 · 아직 OS를 확인한 적 없음" : `연결됨 · ${ago(seen)} 전에 마지막으로 확인`}</small>
       {short ? <small>만드는 곳 · 영상 만드는 컴퓨터 (숏폼은 세로 엔진이 있는 컴퓨터에서만 만들어요)</small>
-        : <DraftPlacePicker label="만드는 곳 (미리보기 · 자료 준비 · 전체 영상)" value={value.place} onChange={(place) => onChange({ ...value, place })} status={localPc} ready token={token} onConnected={onLocalConnected} />}
+        : <>
+          <fieldset className="yt-choice"><legend>음성 만드는 곳</legend>
+            <label><input type="radio" name={`myin-voice-${sourceId}`} checked={value.voice !== "local"} onChange={() => onChange({ ...value, voice: "pc" })} />영상 만드는 컴퓨터</label>
+            <label><input type="radio" name={`myin-voice-${sourceId}`} checked={value.voice === "local"} disabled={Boolean(localVoiceBlocker(localPc))} onChange={() => onChange({ ...value, voice: "local" })} />
+              내 컴퓨터 <small>{localVoiceBlocker(localPc) ?? "음성 · 받아쓰기 · 자막을 이 컴퓨터에서 만들어요. 문장 고치기도 이 컴퓨터에서 해요."}</small></label></fieldset>
+          <DraftPlacePicker label="만드는 곳 (미리보기 · 자료 준비 · 전체 영상)" value={value.place} onChange={(place) => onChange({ ...value, place })} status={localPc} ready token={token} onConnected={onLocalConnected} /></>}
       <label className="yt-check"><input type="checkbox" checked={value.screenCheck} onChange={(event) => onChange({ ...value, screenCheck: event.target.checked })} />
         점검 시트가 나오면 GPT가 바로 화면을 검사해요 <CostTag kind="paid" /> <small>급하면 끄고 바로 편집으로 넘어가요. 빈 화면 · 그리기 오류 검사는 언제나 해요(무료).</small></label>
       {short ? <small>사람이 확인하는 단계 · 기획표 확인 · 미리보기 확인</small>
