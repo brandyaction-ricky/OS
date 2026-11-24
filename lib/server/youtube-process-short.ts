@@ -53,7 +53,7 @@ async function saveCard(service: Service, row: OsRecord, metadata: Record<string
 
 // A 광고 숏폼 starts as an ad (owner decision 2026-10-30, 광고 A안: ads are made in this scene editor with 9:16 · 1:1 · 4:5).
 const projectSeed = (project: YpProject) => ({ shortformBrief: { ...DEFAULT_SHORTFORM_BRIEF, mode: "direct", audience: project.yp.topic.target.slice(0, 5000),
-  ...(project.yp.topic.purpose === "ad" ? { purpose: "ad" } : {}) }, cuts: [] });
+  ...(project.yp.topic.purpose === "ad" ? { purpose: "ad", ...(project.yp.adSetup && {product:project.yp.adSetup.product, evidence:project.yp.adSetup.evidence, goal:project.yp.adSetup.goal, landingUrl:project.yp.adSetup.landingUrl,duration:30}) } : {}) }, cuts: [] });
 async function shortProject(actor: RequestActor, id: string) {
   const project = await getYoutubeProject(actor, id);
   if (project.yp.topic.type !== "short") throw new ApiError(409, "NOT_SHORT_PROJECT", "숏폼 프로젝트에서만 쓸 수 있어요.");

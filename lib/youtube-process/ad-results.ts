@@ -1,7 +1,9 @@
 // 광고 성과 1단계 (로건 QA 10/30, 대표 결정 2026-10-31 「1단계부터」): the PD copies an ad's numbers from Meta Ads Manager onto its
 // 내보내기 step; the OS works out CPM · CTR · CPA · ROAS · 3초 시청률, and the next ad's 대본 · 장면 AI reads which 구매 이유 and 헤드 카피 did
 // well. 2단계 (Meta 광고 계정 연결) will fill the same numbers by itself.
+import { evaluateAd, type AdMeasurement } from "../ad-production.ts";
 export interface AdResult {
+  measurement?: AdMeasurement;
   id: string; from: string; to: string;
   spend: number; impressions: number; clicks: number; plays3s: number; purchases: number; revenue: number;
   note: string; at: string; by: string;
@@ -20,11 +22,15 @@ export function adNumber(text: string) {
 const ratio = (top: number, bottom: number) => bottom > 0 ? top / bottom : null;
 /** The rates Meta shows, from the counts (null when what it divides by is 0). */
 export function adMetrics(row: AdNumbers) {
+  if ("measurement" in row && row.measurement) {
+    const measured = evaluateAd(row.measurement as AdMeasurement,false);
+    return {cpm:ratio(row.spend*1000,row.impressions),ctr:ratio(row.clicks,row.impressions),cpa:measured.cpa,roas:measured.roas,view3s:ratio(row.plays3s,row.impressions)};
+  }
   const cpm = ratio(row.spend * 1000, row.impressions), ctr = ratio(row.clicks, row.impressions), cpa = ratio(row.spend, row.purchases);
   return { cpm, ctr, cpa, roas: ratio(row.revenue, row.spend), view3s: ratio(row.plays3s, row.impressions) };
 }
 
-export interface AdHistoryRow { projectId: string; title: string; result: AdResult }
+export interface AdHistoryRow { path?:"free"|"paid"; isTest?: boolean; released?: boolean; medium?: "image"|"video"; projectId: string; title: string; result: AdResult }
 /** The ads with money spent, best return first (then the cheapest purchase), for the next ad to learn from. */
 export function rankAds(rows: AdHistoryRow[]) {
   const score = (row: AdHistoryRow) => { const m = adMetrics(row.result); return [m.roas ?? -1, -(m.cpa ?? Infinity)]; };
@@ -39,8 +45,9 @@ export const adLine = (row: AdHistoryRow) => {
   return `「${row.title}」 구매 이유: ${row.result.appeal || "—"} · 헤드 카피: ${row.result.headCopy || "—"} · ROAS ${m.roas === null ? "—" : `${m.roas.toFixed(2)}배`} · CPA ${won(m.cpa)} · CTR ${pct(m.ctr)} · 3초 시청률 ${pct(m.view3s)} · CPM ${won(m.cpm)}`;
 };
 /** What the next ad's AI reads: the best three and the weakest two (no more than five lines). */
-export function pastAdsForAi(rows: AdHistoryRow[]) {
-  const ranked = rankAds(rows);
+export function pastAdsForAi(rows: AdHistoryRow[], path?:AdHistoryRow["path"]) {
+  const ranked = rankAds(rows.filter(r=>(!path || r.path===path) && r.released && r.result.measurement && !evaluateAd(r.result.measurement,!!r.isTest).hold));
+  if (path==="free") ranked.sort((a,b)=>(adMetrics(a.result).cpa??Infinity)-(adMetrics(b.result).cpa??Infinity));
   if (!ranked.length) return null;
   const best = ranked.slice(0, 3), weak = ranked.length > 3 ? ranked.slice(-Math.min(2, ranked.length - 3)) : [];
   return { best: best.map(adLine), weak: weak.map(adLine) };

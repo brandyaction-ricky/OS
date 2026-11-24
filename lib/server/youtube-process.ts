@@ -1,3 +1,4 @@
+import { adSetupSchema } from "@/lib/ad-production-schema";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
@@ -23,7 +24,7 @@ const topicFields = {
   channel: z.string().uuid().nullable(),
   assigneeId: z.string().uuid().nullable(),
 };
-export const projectCreateSchema = z.object(topicFields).partial().strict();
+export const projectCreateSchema = z.object({...topicFields, adSetup:adSetupSchema, isTest:z.boolean()}).partial().strict();
 export const projectPatchSchema = z.object({ ...topicFields, expectedVersion: z.number().int().positive() }).partial().required({ expectedVersion: true }).strict();
 export const gateActionSchema = z.object({ action: z.enum(["confirm", "request", "cancel", "reopen"]), expectedVersion: z.number().int().positive(), reply: z.string().max(200).optional(), to: z.string().uuid().optional() }).strict();
 // note: the 대표 leaves a note on a step the PD confirmed (owner decision 2026-10-26); it changes nothing else.
@@ -112,7 +113,13 @@ export async function createYoutubeProject(actor: RequestActor, input: z.infer<t
   const topic: YpTopic = { type: input.kind ?? null, target: input.target ?? "", note: input.note ?? "", refs: input.refs ?? [],
     ...(input.purpose ? { purpose: input.purpose } : {}), ...(input.channel ? { channel: input.channel } : {}) };
   // 4-2: no PD picked means the person who wrote the topic.
-  return insertProject(actor, input.title ?? "", input.assigneeId ?? actor.ownerId, newProjectMeta(topic, new Date().toISOString()));
+  const meta = newProjectMeta(topic, new Date().toISOString());
+  if (input.adSetup) {
+    if (topic.purpose !== "ad" || topic.type !== "short" || !input.adSetup.aspects.includes("9x16")) throw new ApiError(422,"AD_SETUP_INVALID","영상 광고는 세로 9:16 원본이 필요해요.");
+    meta.yp.adSetup = input.adSetup;
+  }
+  if (input.isTest) meta.yp.isTest = true;
+  return insertProject(actor, input.title ?? "", input.assigneeId ?? actor.ownerId, meta);
 }
 
 export async function updateYoutubeProject(actor: RequestActor, id: string, input: z.infer<typeof projectPatchSchema>) {

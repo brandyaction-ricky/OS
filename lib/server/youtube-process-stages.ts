@@ -1,3 +1,4 @@
+import { adCopyIssues, adDisposition } from "@/lib/ad-production";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
@@ -375,7 +376,8 @@ export function assertColumnOpen(project: YpProject) {
 }
 
 // ── Moving on (S0 '지금 할 일') ──
-export const stageMoveSchema = z.object({ to: z.enum(["make", "review", "shorts", "done"]), expectedVersion: z.number().int().positive() }).strict();
+export const adDispositionSchema = z.object({kind: z.enum(["published", "withheld"]), value: z.string().trim().max(2000)}).strict();
+export const stageMoveSchema = z.object({ to: z.enum(["make", "review", "shorts", "done"]), disposition: adDispositionSchema.optional(), expectedVersion: z.number().int().positive() }).strict();
 export async function moveYoutubeStage(actor: RequestActor, id: string, input: z.infer<typeof stageMoveSchema>) {
   const project = await getYoutubeProject(actor, id);
   if (project.version !== input.expectedVersion) throw conflict();
@@ -397,6 +399,11 @@ export async function moveYoutubeStage(actor: RequestActor, id: string, input: z
     // A 숏폼 has no YouTube thumbnails.
     const missing = short ? "" : thumbsMissing(stages.make.data);
     need(!missing, missing);
+  } else if (project.yp.topic.type === "short" && project.yp.topic.purpose === "ad") {
+    need(input.to === "done" && ["upload","done"].includes(project.yp.stage) && !project.yp.adRelease, "최종 검토를 마친 광고에서 집행을 기록해 주세요.");
+    const decision = adDisposition(input.disposition);
+    if (!decision) throw new ApiError(422,"AD_RELEASE_REQUIRED","광고 ID 또는 집행하지 않은 이유를 입력해 주세요.");
+    return saveProject(actor, project, input.expectedVersion, {yp:{...project.yp,stage:"done",stageEnteredAt:now,contentUpdatedAt:now,adRelease:{...decision,at:now}}});
   } else if (project.yp.topic.type === "short" || project.yp.topic.type === "card") {
     need(project.yp.stage === "upload" && input.to === "done", "최종 검토 컨펌 OK 뒤에 마칠 수 있어요.");
   } else {
@@ -411,6 +418,11 @@ export async function moveYoutubeStage(actor: RequestActor, id: string, input: z
 async function gateMissing(actor: RequestActor, project: YpProject, gate: YpGate) {
   const stages = await readStages(actor.supabase, project);
   if (project.yp.topic.type === "card") return gate === "draft" ? (await cardsModule()).cardsMissing(stages.cards.data) : "";
+  if (gate === "draft" && project.yp.topic.purpose === "ad") {
+    const { brief } = await (await import("./youtube-process-short")).shortJobInputs(createServiceSupabase(), project);
+    const issue = adCopyIssues([stages.shortScript.data.headCopy, stages.shortScript.data.text].join("\n"), brief.evidence)[0];
+    if (issue) return issue;
+  }
   if (gate === "draft") return project.yp.topic.type === "short" ? shortScriptMissing(stages.shortScript.data, await (await shortRefsModule()).doneShortRefs(createServiceSupabase(), project.id, 60)) : draftMissing(stages.plan.data, project.yp.topic.type);
   if (gate === "review") return (await readFinals(actor.supabase, project.id, stages.make.data, project.yp.topic.type)).length ? "" : "최종본을 올려 주세요";
   return "";

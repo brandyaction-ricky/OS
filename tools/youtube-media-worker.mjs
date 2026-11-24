@@ -1364,7 +1364,7 @@ export async function processShortform(){
   // layoutVersion 4 renders 1:1 and 4:5 feed ads as well as 9:16 (owner requests 2026-10-25); an older worker only gets the sizes it draws.
   const diagramTypes=shortformDiagramCapabilities();
   const onlyRenderId=process.env.SHORTFORM_RENDER_ID;
-  const job=await call({action:"shorts_claim",layoutVersion:4,...(onlyRenderId?{renderId:onlyRenderId}:{}),...(diagramTypes.length?{diagramTypes}:{})});
+  const job=await call({action:"shorts_claim",layoutVersion:5,...(onlyRenderId?{renderId:onlyRenderId}:{}),...(diagramTypes.length?{diagramTypes}:{})});
   if(job.idle)return false;
   const dir=mkdtempSync(path.join(os.tmpdir(),"brandyaction-shorts-")),lease={renderId:job.renderId,lease:job.lease};
   current={renderId:job.renderId,step:"drawing"};void heartbeat();
@@ -1381,7 +1381,7 @@ export async function processShortform(){
       }
       scenes.push(input);
     }
-    const result=await renderShortform({mode:job.mode,scenes,sourceFile,dir,aspect:job.aspect??"9:16"});
+    const result=await renderShortform({mode:job.mode,scenes,sourceFile,dir,ad1080:job.ad1080===true,aspect:job.aspect??"9:16"});
     await upload(job.uploadUrl,result.file,"video/mp4");
     const bytes=readFileSync(result.file);
     await call({action:"shorts_complete",...lease,bytes:bytes.length,sha256:createHash("sha256").update(bytes).digest("hex"),duration:result.duration});

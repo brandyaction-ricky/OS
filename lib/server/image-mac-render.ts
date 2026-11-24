@@ -8,7 +8,7 @@ import { usesBackgroundPhoto } from "@/lib/image-creative/formats";
 import { IMAGE_CREATIVE_KIND } from "@/lib/image-creative/storage";
 import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
-import { imageMeta, isApprovedRender, macOutputPath, macPhotoUrl, savedDesignPreview, saveImageMeta, type ImageMacRun, type ImageRenderTarget } from "./image-creatives";
+import { adPlacementPng, imageMeta, isApprovedRender, macOutputPath, macPhotoUrl, savedDesignPreview, saveImageMeta, type ImageMacRun, type ImageRenderTarget } from "./image-creatives";
 import { MEDIA_BUCKET } from "./youtube-process-stages";
 
 const lease = { jobId: z.string().uuid(), lease: z.string().uuid() };
@@ -158,9 +158,10 @@ export async function imageMacWork(computer: Computer, input: Action) {
 }
 
 /** The owner reviews a scaled copy of the completed Mac file; its signed original is released after final approval. */
-export async function macReviewPng(record: OsRecord, id: string, runId: string) {
+export async function macReviewPng(record: OsRecord, id: string, runId: string, aspect?: import("../ad-production").AdAspect) {
   const meta = imageMeta(record);
   const run = meta.renders?.find(row => row.id === runId && row.status === "done" && row.variantIds.includes(id));
+  if (aspect && !meta.state.adSetup?.aspects.includes(aspect)) throw missed();
   const receipt = run?.files?.find(file => file.variantId === id);
   if (!run || !receipt || !isApprovedRender(meta, run)) throw missed();
   const {data, error} = await createServiceSupabase().storage.from(MEDIA_BUCKET).download(macOutputPath(record.id, run, id));
@@ -169,6 +170,7 @@ export async function macReviewPng(record: OsRecord, id: string, runId: string) 
   try {
     const bytes = Buffer.from(await data.arrayBuffer());
     if (sha(bytes) !== receipt.sha256) throw Error("receipt mismatch");
+    if (aspect) return await adPlacementPng(bytes,aspect);
     return await getSharp(undefined)(bytes, { failOn: "warning", limitInputPixels: 1440 * 2560 })
       .resize({ width: 900, withoutEnlargement: true }).png().toBuffer();
   } catch {

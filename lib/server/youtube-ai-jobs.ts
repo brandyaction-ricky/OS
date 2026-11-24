@@ -806,7 +806,7 @@ async function claimJob(agent: RequestActor, jobId: string, byGpt: boolean) {
     const lease = await take();
     const lists = await Promise.all((brief.purpose === "ad" ? ["shorts_proposal", "appeal_candidates"] as const : ["shorts_proposal"] as const).map(action => procedureRefs(service(), action).catch(() => [])));
     const docs = withNamed(await namedProcedures(service(), [SHORTFORM_CANON_TITLE]), lists.flat(), 8);
-    const pastAds = brief.purpose === "ad" ? pastAdsForAi(await adHistory(service()).catch(() => [])) : null;
+    const pastAds = brief.purpose === "ad" ? pastAdsForAi(await adHistory(service(),project.ownerId).catch(() => []),project.yp.adSetup?.path) : null;
     return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: shortJobCard(project, brief, docs, minutes, script, pastAds) };
   }
   if (m.task === "thumbs") {

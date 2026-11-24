@@ -8,7 +8,7 @@ export const maxDuration = 120;
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const actor = await authenticateRequest(request), id = z.string().uuid().parse((await params).id);
-    const input = z.object({ variantId: z.string().max(100).optional(), batchId: z.string().max(100).optional() }).strict()
+    const input = z.object({ aspect:z.enum(["4x5","1x1","9x16"]).optional(),variantId: z.string().max(100).optional(), batchId: z.string().max(100).optional() }).strict()
       .refine(value => Boolean(value.variantId) !== Boolean(value.batchId)).parse(Object.fromEntries(new URL(request.url).searchParams));
     const record = await imageRecord(actor.supabase, actor.ownerId, id);
     const file = await exportImageCreative(record, input);

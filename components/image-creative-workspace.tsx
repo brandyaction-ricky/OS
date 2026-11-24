@@ -1,6 +1,10 @@
 "use client";
+import Link from "next/link";
 import "./image-creative-workspace.css";
 import type { ImageFlowPreview } from "@/lib/image-creative/flow-preview";
+import { AdDelivery } from "./ad-delivery";
+import {demoImageKey as key, loadDemoImages as loadDemo, demoImageRow as projectRow} from "./image-creative-demo";
+import "./ad-production.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "./session-provider";
 import { apiRequest } from "@/lib/api-client";
@@ -21,7 +25,7 @@ import { ImageProjectTrash,ImageProjectTrashConfirm } from "./image-project-tras
 import { ImageSavedSteps } from "./image-saved-steps";
 
 type Asset = ImageAsset & { url:string };
-export type ImageProjectRow = { id:string; title:string; version:number; archivedAt?:string|null; updatedAt?:string; experiment?: ReturnType<typeof imageExperimentSummary> };
+export type ImageProjectRow = {step?:number;released?:boolean;isTest?:boolean; id:string; title:string; version:number; archivedAt?:string|null; updatedAt?:string; experiment?: ReturnType<typeof imageExperimentSummary> };
 type Project = ImageProjectRow;
 export type ImageProjectBundle = {
   project: Project; state: ImageCreativeState; assets: Asset[];
@@ -45,9 +49,6 @@ const fields = [
   ["offer", "제공 내용", "고객이 실제 받는 내용"],
   ["facts", "확인된 내용", "상품과 고객에 대해 확인한 내용"],
 ] as const;
-const key = "os-image-creatives-demo-v1";
-function loadDemo(): ImageProjectBundle[] { try { const saved: unknown = JSON.parse(localStorage.getItem(key) || "[]"); return Array.isArray(saved) ? saved as ImageProjectBundle[] : []; } catch { return []; } }
-const projectRow = (bundle: ImageProjectBundle): Project => ({...bundle.project, experiment:imageExperimentSummary(bundle.state)});
 const blankCopy = { appeal: "", headline: "", body: "", cta: "" };
 
 export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=false, flowPreview}: {previewProducts?:ImagePreviewProduct[];localDirectionPlanner?:boolean;flowPreview?:ImageFlowPreview} = {}) {
@@ -135,7 +136,7 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
     if (next.project.id !== bundle?.project.id) {
       rememberProject(next.project.id);
       setTarget("render-pc"); setShowConnect(false); setFormatIds([]); setMode("initial"); setSize("portrait"); setCount(5); setResult("");
-      setEditingId(""); setShowSafeZone(false); setManual(blankCopy); setFixFormatInputs(false); setCopyFields(["headline"]); setAssetPaths([]); previewBlobs.current.clear();
+      setEditingId(""); setShowSafeZone(next.state.variants.some(v=>v.size==="story") || Boolean(next.state.adSetup?.aspects.includes("9x16"))); setManual(blankCopy); setFixFormatInputs(false); setCopyFields(["headline"]); setAssetPaths([]); previewBlobs.current.clear();
       const pending = next.state.formatApproval?.request;
       if (pending) {
         setMode(pending.mode); setFormatIds((pending.formatIds || []).filter(isImageFormat)); setCount(pending.count); setSize(pending.size || "portrait");
@@ -224,6 +225,7 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setExperimentList(params.get("view") === "tests");
+    if(params.get("view")==="trash" && (demo || accessToken)) showTrash();
     const id = params.get("project");
     if (!id || linkedProject.current === id || (!demo && !accessToken)) return;
     linkedProject.current = id;
@@ -294,7 +296,7 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
   }
   function updateDemo(state: ImageCreativeState, renders = bundle?.renders) {
     if (!bundle) return;
-    applyBundle({...bundle, state, renders, project:{...bundle.project,version:bundle.project.version+1}});
+    applyBundle({...bundle, state, renders, project:{...bundle.project,updatedAt:new Date().toISOString(),version:bundle.project.version+1}},bundle.project.version);
   }
   const demoStamp = () => ({by:"브라우저 체험",at:new Date().toISOString()});
   function approveRequest() {
@@ -520,15 +522,15 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
     if (onReferenceUploaded) await onReferenceUploaded(uploaded);
     else setAssetPaths(old=>old.includes(uploaded.path)?old:[...old,uploaded.path]);
   });
-  async function storedExport(id: string, kind: "variant" | "batch") {
+  async function storedExport(id: string, kind: "variant" | "batch", aspect?: import("@/lib/ad-production").AdAspect) {
     if (!bundle || !accessToken) throw new Error("로그인 후 내보낼 수 있어요.");
-    const address = `/api/v1/content/image-creatives/${encodeURIComponent(bundle.project.id)}/export?${kind === "variant" ? "variantId" : "batchId"}=${encodeURIComponent(id)}`;
+    const address = `/api/v1/content/image-creatives/${encodeURIComponent(bundle.project.id)}/export?${kind === "variant" ? "variantId" : "batchId"}=${encodeURIComponent(id)}${aspect?"&aspect="+aspect:""}`;
     const result = await apiRequest<{url:string;name:string}>(address, {token:accessToken});
     const url = new URL(result.url);
     if (url.protocol !== "https:") throw new Error("다운로드 주소를 확인할 수 없어요.");
     return { url: url.href, name: result.name };
   }
-  const download = (id:string, kind:"variant"|"batch"="variant") => void run(async () => {
+  const download = (id:string, kind:"variant"|"batch"="variant", aspect?: import("@/lib/ad-production").AdAspect) => void run(async () => {
     if (!bundle) return;
     const ids = kind === "variant" ? [id] : bundle.state.batches.find(batch=>batch.id===id)?.variantIds || [];
     const variants = ids.map(key=>bundle.state.variants.find(row=>row.id===key)).filter((v): v is CreativeVariant => Boolean(v));
@@ -541,10 +543,10 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
         const visible = previewBlobs.current.get(v.id);
         if (visible) return visible;
         throw new Error("체험 출력본을 확인한 뒤 다시 시도해 주세요.");
-      }, kind === "variant" ? id + ".png" : id + ".zip", kind, { brief: productionBrief(bundle.state.brief), batch: bundle.state.batches.find(batch=>batch.id===id) });
+      }, kind === "variant" ? id + (aspect ? "-"+aspect : "") + ".png" : id + ".zip", kind, { brief: productionBrief(bundle.state.brief), batch: reviewed }, aspect ? [aspect] : bundle.state.adSetup?.aspects);
       return;
     }
-    const file = await storedExport(id,kind);
+    const file = await storedExport(id,kind,aspect);
     const anchor = document.createElement("a"); anchor.href=file.url; anchor.download=file.name; anchor.rel="noopener noreferrer"; anchor.click();
   });
   function startFormatComparison() {
@@ -570,7 +572,7 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
       </section>
   );
   return <div className="ic-page">
-    <div className="ic-row"><h1>이미지 광고</h1><button type="button" className="secondary-button" disabled={busy} onClick={showTrash}>휴지통</button></div>
+    <div className="ic-row"><Link href="/content/projects?platform=ad">내 광고</Link><h1>이미지 광고</h1><button type="button" className="secondary-button" disabled={busy} onClick={showTrash}>휴지통</button></div>
     {demo&&<p className="os-callout" data-tone="info">{flowPreview ? "반영 전 테스트 · 작업은 이 브라우저에만 저장됩니다. AI 생성과 Mac 출력은 실행하지 않습니다." : localDirectionPlanner
       ? "개발 화면 · 작업은 이 브라우저에 저장됩니다."
       : "체험 모드 · 시안과 PNG를 이 브라우저에서 만듭니다. 실제 AI와 Mac 작업은 연결된 OS에서 실행됩니다."}</p>}
@@ -624,8 +626,16 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
     </>}
     </>}
     {bundle && !firstDraft && (showTools || Boolean(saved?.batches.length)) && <ImageSavedSteps key={bundle.project.id} bundle={bundle} busy={busy} leave={leaveProject} enabled={!showTools && !!refReview}>
-      {refReview && <ImageReferenceSteps current={refReview.preview ? 5 : refReview.copy ? 4 : 3}/>}
+      {refReview && <ImageReferenceSteps current={refReview.final ? 5 : refReview.preview ? 4 : 3}/>}
       {(!demo || !refFlow) && (showTools || saved?.batches.some(batch=>batch.review?.copy && !batch.review.final && (!batch.review.preview || bundle.renders?.some(row=>row.id===batch.review?.preview?.runId && row.status==="failed")))) && machinePicker}
+      {saved?.batches.at(-1)?.review?.final && (() => {
+        const batch=saved.batches.at(-1)!,v=saved.variants.find(v=>batch.variantIds.includes(v.id) && v.id===saved.selectedId) ?? saved.variants.find(v=>batch.variantIds.includes(v.id));
+        return v && <>{saved.adSetup && <section className="panel panel-pad-lg"><h2>승인한 파일 내려받기</h2><div className="ic-row">{saved.adSetup.aspects.map(aspect=><button type="button" className="secondary-button" key={aspect} disabled={busy} onClick={()=>download(v.id,"variant",aspect)}>{aspect.replace("x",":")} PNG</button>)}<button className="secondary-button" onClick={()=>download(batch.id,"batch")}>전체 규격 ZIP</button></div></section>}<AdDelivery path={saved.adSetup?.path} key={batch.id} medium="image" headline={v.copy.headline} body={v.copy.body} cta={v.copy.cta}
+          landing={saved.brief.landingUrl??""} campaign={saved.adSetup?.campaign??saved.brief.campaignId??bundle.project.id} aspects={saved.adSetup?.aspects??[v.size==="portrait"?"4x5":v.size==="story"?"9x16":"1x1"]}
+          release={saved.adRelease} measurement={saved.adMeasurement} isTest={!!saved.isTest}
+          save={async disposition=>{if(demo)updateDemo({...saved,adRelease:{...disposition,at:new Date().toISOString()}});else applyBundle(await patch({action:"release-ad",disposition,batchId:batch.id}));}}
+          measure={async measurement=>{if(demo)updateDemo({...saved,adMeasurement:measurement});else applyBundle(await patch({action:"measure-ad",measurement}));}}/></>;
+      })()}
       <section id="image-creative-results" className="panel panel-pad-lg ic-panel" aria-labelledby="creative-results-title"><h2 id="creative-results-title">{showTools ? "4. 시안 비교·선택" : refReview ? refReview.preview ? "확정" : refReview.copy ? "디자인 수정" : "카피 작성" : "광고 시안 검토"}</h2>
         {editing && <ImageDesignEditor key={editing.id} projectId={bundle.project.id} base={editing}
           assetUrl={bundle.assets.find(a => a.path === editing.asset?.path)?.url} referenceUrl={bundle.assets.find(a => a.path === editing.referenceLayout?.source.path)?.url} detailUrl={bundle.assets.find(a => a.path === editing.detailAsset?.path)?.url}
@@ -634,7 +644,7 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
           propose={proposePromptEdit} apply={applyPromptEdit} onSave={saveDesign} onClose={() => setEditingId("")}/>}
         {saved?.batches.some(batch=>batch.review?.copy) && <label className="ic-check ic-guide-switch"><input type="checkbox" checked={showSafeZone}
           onChange={event => setShowSafeZone(event.target.checked)}/> 결과에 세이프 존 표시</label>}
-        {saved?.batches.length ? saved.batches.map((batch,index)=>{const review = <ImageApprovalBatch key={[batch.id,batch.review?.copy?.at,batch.review?.preview?.runId,batch.review?.final?.runId,JSON.stringify(batch.variantIds.map(id=>{const v=saved.variants.find(row=>row.id===id);return [id,v?.referenceArtwork?.inputHash,v?.referenceArtwork?.image.path,v?.promptEdit?.image.path,v?.asset?.path];}))].join("-")} batch={batch} index={index}
+        {saved?.batches.length ? saved.batches.map((batch,index)=>{const review = <ImageApprovalBatch aspects={saved.adSetup?.aspects} key={[batch.id,batch.review?.copy?.at,batch.review?.preview?.runId,batch.review?.final?.runId,JSON.stringify(batch.variantIds.map(id=>{const v=saved.variants.find(row=>row.id===id);return [id,v?.referenceArtwork?.inputHash,v?.referenceArtwork?.image.path,v?.promptEdit?.image.path,v?.asset?.path];}))].join("-")} batch={batch} index={index}
           variants={batch.variantIds.map(id=>saved.variants.find(v=>v.id===id)!).filter(Boolean)} assets={bundle.assets}
           projectId={bundle.project.id} target={target} render={bundle.renders?.find(row=>row.id===batch.review?.preview?.runId)}
           demo={demo} guided={!showTools} busy={busy} showGuide={showSafeZone} selectedId={saved.selectedId} rendered={bundle.rendered} reviewable={bundle.reviewable}

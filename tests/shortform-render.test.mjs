@@ -186,7 +186,7 @@ test("local queue → real worker MP4 → verified upload → same draft, with m
       if(String(url).endsWith("/media")){
         const input=JSON.parse(options.body);let result;
         if(input.action==="heartbeat"){signals.push(input);result={ok:true};}
-        else if(input.action==="shorts_claim"){assert.equal(input.layoutVersion,4);result=await h.api.claimShortformRender(h.service,input.layoutVersion);}
+        else if(input.action==="shorts_claim"){assert.equal(input.layoutVersion,5);result=await h.api.claimShortformRender(h.service,input.layoutVersion);}
         else if(input.action==="shorts_complete")result=await h.api.completeShortformRender(input,h.service);
         else if(input.action==="shorts_fail")result=await h.api.failShortformRender(input,h.service);
         else throw new Error("Unexpected paid/network operation "+input.action);
@@ -224,14 +224,15 @@ test("each ad size is its own job beside the vertical one; old workers skip what
   const square=await h.api.enqueueShortformRenderFor(owner,item(),item().version,true,"1:1");
   const portrait=await h.api.enqueueShortformRenderFor(owner,item(),item().version,true,"4:5");
   assert.equal(new Set([vertical.runId,square.runId,portrait.runId]).size,3);
-  // A version 2 worker gets the vertical job and never an ad size; version 3 gets the square and never the 4:5.
-  const first=await h.api.claimShortformRender(h.service,2);
+  // Earlier workers do not know the 1080-pixel ad output contract.
+  assert.equal((await h.api.claimShortformRender(h.service,4)).idle,true);
+  const first=await h.api.claimShortformRender(h.service,5);
   assert.equal(first.renderId,vertical.runId);assert.equal(first.aspect,"9:16");
   assert.equal((await h.api.claimShortformRender(h.service,2)).idle,true);
-  const second=await h.api.claimShortformRender(h.service,3);
+  const second=await h.api.claimShortformRender(h.service,5);
   assert.equal(second.renderId,square.runId);assert.equal(second.aspect,"1:1");
   assert.equal((await h.api.claimShortformRender(h.service,3)).idle,true);
-  const third=await h.api.claimShortformRender(h.service,4);
+  const third=await h.api.claimShortformRender(h.service,5);
   assert.equal(third.renderId,portrait.runId);assert.equal(third.aspect,"4:5");
   // All three renders ask for the same narration; Fish is called once.
   for(const job of [first,second,third])await h.api.shortformVoice({renderId:job.renderId,lease:job.lease,index:0},h.service);

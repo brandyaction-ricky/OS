@@ -1,5 +1,6 @@
 "use client";
 /* eslint-disable @next/next/no-img-element -- private signed previews do not have stable optimizer URLs */
+import {adCopyIssues} from "@/lib/ad-production";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Copy, Plus, Search, Sparkles, X } from "lucide-react";
@@ -175,7 +176,9 @@ export function ShortScriptScreen({ page, header }: { page: YpPage; header: Reac
 
   const done = shortRefs.done;
   const check = form ? checkShortScript(form.text, { refs: refTexts(form, done) }) : null;
-  const missing = !form ? "" : dirty ? "저장한 뒤에 확정해요" : shortScriptMissing(form, done);
+  const [evidence,setEvidence]=useState<string>();
+  const adIssues=form && project?.yp.topic.purpose==="ad" ? adCopyIssues(form.headCopy+"\n"+form.text,evidence??project.yp.adSetup?.evidence??"") : [];
+  const missing = !form ? "" : dirty ? "저장한 뒤에 확정해요" : adIssues[0] || shortScriptMissing(form, done);
   const action = page.bundle ? gateAction(page, "draft", 1, control, missing) : null;
   const from = project?.yp.shortFrom;
   // From what is saved, so the two choice cards do not vanish (and the page jump) on the first key pressed.
@@ -191,7 +194,7 @@ export function ShortScriptScreen({ page, header }: { page: YpPage; header: Reac
     {page.bundle && form && project ? project.yp.stage === "topic" ? <LockedStep page={page} name="대본" /> : <div onBlur={() => { if (dirty && can) void save(); }}>
       <GateBanner page={page} gate="draft" />
       <Subject page={page} />
-      {project.yp.topic.purpose === "ad" ? <AdBrief page={page} editable={can} /> : null}
+      {project.yp.topic.purpose === "ad" ? <><AdBrief page={page} editable={can} onEvidence={setEvidence}/>{adIssues.length>0 && <ul role="status" aria-label="광고 규칙 검사">{adIssues.map(issue=><li key={issue}>{issue}</li>)}</ul>}</> : null}
       {from ? <div className="yp-note yp-gray"><div><b>롱폼에서 온 주제</b> · <Link className="yp-lnk" href={`/content/shorts?project=${from.projectId}`}>{from.title}</Link> · {from.scene}</div></div> : null}
 
       {can ? (job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => void askAi(job.status?.job?.executor === "gpt" ? "gpt" : "queue")} />

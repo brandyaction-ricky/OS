@@ -36,7 +36,7 @@ export function probeShortform(file,ffprobe=process.env.SHORTFORM_FFPROBE||"ffpr
     audio:value.streams.find(stream=>stream.codec_type==="audio")};
 }
 /** Local files only. URL fetching and credentials stay in the worker. */
-export async function renderShortform({mode,scenes,sourceFile,dir,aspect="9:16",ffmpeg=process.env.SHORTFORM_FFMPEG||"ffmpeg",python=process.env.MINDMAP_PYTHON||"python3"}){
+export async function renderShortform({mode,scenes,sourceFile,dir,aspect="9:16",ad1080=false,ffmpeg=process.env.SHORTFORM_FFMPEG||"ffmpeg",python=process.env.MINDMAP_PYTHON||"python3"}){
   const L=SHORTFORM_LAYOUTS[aspect];
   if(!L||!["direct","reuse"].includes(mode)||!Array.isArray(scenes)||!scenes.length||scenes.length>20)throw fail("SHORTFORM_PLAN_INVALID");
   scenes=await prepareShortformDiagrams({mode,scenes,dir,aspect,python,ffmpeg});
@@ -85,12 +85,13 @@ export async function renderShortform({mode,scenes,sourceFile,dir,aspect="9:16",
   // PCM intermediates avoid AAC priming at every cut. Use editorial durations
   // for the next cut's timestamp, then encode audio once on the joined timeline.
   writeFileSync(list,segments.map(({file,duration})=>`file '${path.basename(file)}'\nduration ${duration}`).join("\n"));
+  const outWidth=ad1080?1080:L.w,outHeight=ad1080?Math.round(1080*L.h/L.w):L.h;
   await run(ffmpeg,["-v","error","-y","-f","concat","-safe","1","-i",list,
-    "-af","aresample=async=1:first_pts=0","-t",String(total),"-r","30",
+    ...(ad1080?["-vf",`scale=${outWidth}:${outHeight}:flags=lanczos`]:[]),"-af","aresample=async=1:first_pts=0","-t",String(total),"-r","30",
     "-c:v","libx264","-preset","veryfast","-crf","23","-threads","2",
     "-c:a","aac","-ar","48000","-ac","2","-b:a","128k","-movflags","+faststart",output]);
   const result=probeShortform(output);
-  if(result.video?.width!==L.w||result.video?.height!==L.h||!result.audio||Math.abs(result.duration-total)>0.2
+  if(result.video?.width!==outWidth||result.video?.height!==outHeight||!result.audio||Math.abs(result.duration-total)>0.2
     ||readFileSync(output).length>50_000_000)throw fail("SHORTFORM_OUTPUT_INVALID");
   return {file:output,duration:result.duration};
 }

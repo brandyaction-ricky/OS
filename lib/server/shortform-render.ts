@@ -32,7 +32,7 @@ type AdAspect=Exclude<ShortformAspect,"9:16">;
 /** The first worker layoutVersion that draws each ad size; an older worker would draw it as 9:16 or fail, so it never gets the job. */
 const AD_LAYOUT:Record<AdAspect,number>={"1:1":3,"4:5":4};
 type Plan={
-  layoutVersion:2;aspect?:AdAspect;
+  layoutVersion:2;aspect?:AdAspect;ad1080?:true;
   mode:"reuse"|"direct";duration:number;brief:unknown;memo:string;
   cuts:{start:number;end:number;text:string;voice:string;assetId?:string;assetVersion?:number;assetPath?:string;diagram?:ShortformDiagram}[];
   source?:{id:string;key:string};
@@ -75,7 +75,7 @@ async function buildPlan(service:Service,item:OsRecord,aspect:ShortformAspect="9
   if(!parsed.success||parsed.data.cuts.length>20)throw new ApiError(422,"SHORTFORM_CUTS_INVALID","1~20개 장면을 준비해 주세요.");
   if(brief.mode==="direct")validateDirectCuts(parsed.data,brief.duration);
   if(aspect!=="9:16"&&brief.purpose!=="ad")throw new ApiError(422,"SHORTFORM_ASPECT_AD_ONLY","정사각형 · 4:5는 광고 숏폼에서 만들어요.");
-  const plan:Plan={layoutVersion:2,...(aspect!=="9:16"?{aspect}:{}),mode:brief.mode,duration:0,brief,memo:item.description??"",cuts:[]};
+  const plan:Plan={layoutVersion:2,...(brief.purpose==="ad" && {ad1080:true}),...(aspect!=="9:16"?{aspect}:{}),mode:brief.mode,duration:0,brief,memo:item.description??"",cuts:[]};
   let sourceDuration=0;
   if(brief.mode==="reuse"){
     const source=z.object({id:z.string().uuid(),key:z.string().regex(/^[a-f0-9]{64}$/)}).safeParse(item.metadata.shortformSource);
@@ -178,7 +178,7 @@ async function sign(service:Service,bucket:string,path:string){
   if(error||!data)throw new ApiError(503,"SHORTFORM_SIGN_FAILED","제작 파일을 열지 못했습니다.");
   return data.signedUrl;
 }
-export async function claimShortformRender(service:Service=createServiceSupabase(),layoutVersion:2|3|4=2,diagramTypes:readonly string[]=[],onlyRenderId?:string){
+export async function claimShortformRender(service:Service=createServiceSupabase(),layoutVersion:2|3|4|5=2,diagramTypes:readonly string[]=[],onlyRenderId?:string){
   const query=service.from("os_records").select("*").eq("record_type","ai_job").eq("metadata->>kind",SHORTFORM_RENDER_KIND)
     .in("status",["backlog","in_progress"]).is("archived_at",null).order("created_at").limit(30);
   const {data:rows,error}=await (onlyRenderId?query.eq("id",onlyRenderId):query);
@@ -186,6 +186,7 @@ export async function claimShortformRender(service:Service=createServiceSupabase
   for(const row of (rows??[]) as OsRecord[]){
     let run:Run;try{run=verifyShortformRun(row);}catch{continue;}
     // A worker older than an ad size (1:1 from layoutVersion 3, 4:5 from 4) gets only the sizes it draws.
+    if(run.plan.ad1080 && layoutVersion<5)continue;
     if(run.plan.aspect&&layoutVersion<AD_LAYOUT[run.plan.aspect])continue;
     if(run.plan.cuts.some(cut=>cut.diagram&&!diagramTypes.includes(cut.diagram.type)))continue;
     if(run.lease&&Date.parse(run.lease.expiresAt)>Date.now())continue;
@@ -202,7 +203,7 @@ export async function claimShortformRender(service:Service=createServiceSupabase
       const source=run.plan.source?await readShortformLongform({supabase:service},run.plan.source.id,run.plan.source.key,()=>service):null;
       for(const cut of run.plan.cuts)scenes.push({start:cut.start,end:cut.end,text:cut.text,hasVoice:Boolean(cut.voice.trim()),
         ...(cut.assetPath?{imageUrl:await sign(service,BUCKET,cut.assetPath)}:{}),...(cut.diagram?{diagram:cut.diagram}:{})});
-      return {renderId:row.id,lease:lease.token,mode:run.plan.mode,aspect:run.plan.aspect??"9:16",duration:run.plan.duration,scenes,
+      return {renderId:row.id,lease:lease.token,mode:run.plan.mode,ad1080:run.plan.ad1080,aspect:run.plan.aspect??"9:16",duration:run.plan.duration,scenes,
         sourceUrl:source?.videoUrl,uploadUrl:upload.signedUrl};
     }catch{
       await save(service,claimed,"blocked","failed",{...verifyShortformRun(claimed),error:"SHORTFORM_FILES_UNAVAILABLE",lease:undefined});

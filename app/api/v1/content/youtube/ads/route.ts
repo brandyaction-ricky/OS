@@ -10,6 +10,6 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   try {
     const actor = await youtubeActor(request);
-    return NextResponse.json({ rows: await adHistory(actor.supabase) }, { headers: { "cache-control": "private, no-store" } });
+    return NextResponse.json({ rows: await adHistory(actor.supabase,actor.ownerId) }, { headers: { "cache-control": "private, no-store" } });
   } catch (error) { return apiErrorResponse(error); }
 }

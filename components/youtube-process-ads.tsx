@@ -55,7 +55,7 @@ export function AdHistoryCard({ client }: { client: YpClient | null }) {
   return <section className="yp-card yp-mt14"><div className="yp-card-h">지난 광고 성과 {rows?.length ? `${rows.length}` : ""}</div>
     <div className="yp-card-b">{rows === null ? <p className="yp-hint" role="status">불러오는 중이에요…</p>
       : rows.length ? <ul className="yp-hist">{rows.slice(0, 5).map(row => { const m = adMetrics(row.result); return <li key={`${row.projectId}-${row.result.id}`} className="yp-adrow">
-        <span className="yp-grow"><Link className="yp-lnk" href={stepHref(5, row.projectId)}><b>{row.title}</b></Link><br />
+        <span className="yp-grow"><Link className="yp-lnk" href={row.medium==="image"?"/content/images?project="+encodeURIComponent(row.projectId):stepHref(5, row.projectId)}><b>{row.title}</b></Link><br />
           <span className="yp-muted yp-sub13">구매 이유 {row.result.appeal || "—"} · 헤드 카피 {row.result.headCopy || "—"}</span></span>
         <span className="yp-adnum"><b>ROAS {ROAS(m.roas)}</b><br /><span className="yp-muted">CPA {adWon(m.cpa)} · CTR {adPct(m.ctr)}</span></span></li>; })}</ul>
       : <p className="yp-pempty">아직 적은 광고 성과가 없어요. 광고를 내보낸 뒤 내보내기 › 광고 성과에 숫자를 적어요.</p>}
