@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { diagramCatalogCardSection, diagramCatalogTypes } from "@/lib/diagram-catalog";
 import { ApiError } from "@/lib/http";
@@ -154,7 +155,8 @@ export async function applySceneNote(actor: RequestActor, runId: string, noteId:
   const proposal = m.proposal, story = await storyboardJson(service, run);
   const n = sceneNow({ ...m.scene, n: proposal.base.n, at: String(proposal.base.scene.at ?? ""), storyboardAt: proposal.base.storyboardAt }, scenesOf(story), run.storyboard.at);
   if (!n) throw new ApiError(409, "SCENE_NOTE_LOST", "이 수정안의 장면을 지금 기획표에서 찾지 못했어요. 의견을 다시 보내 주세요.");
-  if (!force && JSON.stringify(story.scenes[n - 1]) !== JSON.stringify(proposal.base.scene))
+  // base.scene comes back from jsonb with its keys reordered, so compare values, not text (the 3편 #26 409 came from key order alone).
+  if (!force && !isDeepStrictEqual(JSON.parse(JSON.stringify(story.scenes[n - 1])), JSON.parse(JSON.stringify(proposal.base.scene))))
     throw new ApiError(409, "SCENE_CHANGED", "수정안을 만든 뒤 이 장면이 바뀌었어요. 지금 장면을 보고 그래도 반영할지 정해 주세요.");
   const { words, speech } = await myinRunWords(service, run.sourceId);
   const checked = await checkedSplice(story, n, proposal.scenes, words, speech, diagramCatalogTypes(await readDiagramCatalog()));

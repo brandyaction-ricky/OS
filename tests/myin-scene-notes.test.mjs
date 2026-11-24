@@ -55,7 +55,7 @@ test("scene-notes jobs wait in turn, a 수정안 is checked like a storyboard an
   assert.doesNotMatch(save, /saveMyinSceneEdit/, "a 수정안 does not touch the storyboard");
   const apply = notes.slice(notes.indexOf("export async function applySceneNote"));
   assert.match(apply, /\["storyboard_review", "clips_review"\]\.includes\(record\.stage \?\? ""\) \|\| run\.clipsReview/);
-  assert.match(apply, /if \(!force && JSON\.stringify\(story\.scenes\[n - 1\]\) !== JSON\.stringify\(proposal\.base\.scene\)\)/);
+  assert.match(apply, /if \(!force && !isDeepStrictEqual\(JSON\.parse\(JSON\.stringify\(story\.scenes\[n - 1\]\)\), JSON\.parse\(JSON\.stringify\(proposal\.base\.scene\)\)\)\)/);
   const run = read("lib/server/myin-run.ts");
   assert.match(run, /storyboardPath: run\.storyboard!\.path/);
 });
