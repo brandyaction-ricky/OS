@@ -788,6 +788,16 @@ export async function processMyinWords() {
       rmSync(file, { force: true });
       if ((await runOut(myinPython, [readCheckScript, voiceDir, file])).ok) try { misreads = JSON.parse(readFileSync(file, "utf8")); } catch { misreads = null; }
     }
+    // 쉼 검사 (로건 11-24, 대표 낭독 규칙): 띄워 읽음 · 덩어리 끊김 · 붙여 읽음 · 낱말 안 끊김, by the engine's own script when the run's
+    // package carries it (tools/voice_timing/pause_check_myin.py). MYIN_PAUSE_CHECK=off skips it; a failure only leaves the list out.
+    let pauses = null;
+    const pauseScript = path.join(timing, "pause_check_myin.py");
+    if (speaker.onPc && !job.recycle && process.env.MYIN_PAUSE_CHECK !== "off" && existsSync(pauseScript) && existsSync(path.join(voiceDir, "timings.json"))) {
+      current.step = "pause check";
+      const file = path.join(voiceDir, "pauses.json");
+      rmSync(file, { force: true });
+      if ((await runOut(myinPython, [pauseScript, voiceDir, file], { cwd: timing })).ok) try { pauses = JSON.parse(readFileSync(file, "utf8")); } catch { pauses = null; }
+    }
     const speech = readFileSync(path.join(voiceDir, "speech.txt"), "utf8");
     const spoken = speech.replace(/\r/g, "").split("\n").filter((line) => line.trim() && !line.startsWith("#SECTION"));
     if (spoken.length !== job.paragraphs.length || spoken.some((text, i) => text !== job.paragraphs[i].text))
@@ -800,7 +810,7 @@ export async function processMyinWords() {
     const bundle = path.join(out, "myin-words.json");
     writeFileSync(bundle, JSON.stringify({ words: JSON.parse(readFileSync(path.join(out, "words.json"), "utf8")),
       subtitlesAss: readFileSync(path.join(out, "subs_myin.ass"), "utf8"), subtitleQc: readFileSync(path.join(out, "subs_qc.md"), "utf8"),
-      speech, durationSeconds: seconds(path.join(voiceDir, "voice.wav")), ...(Array.isArray(audit) ? { audit } : {}), ...(Array.isArray(misreads) ? { misreads } : {}), ...(fixed.length ? { fixes: fixed } : {}),
+      speech, durationSeconds: seconds(path.join(voiceDir, "voice.wav")), ...(Array.isArray(audit) ? { audit } : {}), ...(Array.isArray(misreads) ? { misreads } : {}), ...(Array.isArray(pauses) ? { pauses } : {}), ...(fixed.length ? { fixes: fixed } : {}),
       ...(readVoiceDictionaries(timing) ? { dictionary: readVoiceDictionaries(timing) } : {}) }));
     current.step = "upload";
     await upload(job.bundleUploadUrl, bundle, "application/json");

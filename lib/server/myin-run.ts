@@ -1013,10 +1013,12 @@ export async function myinVoiceCheck(actor: RequestActor, runId: string) {
   const service = createServiceSupabase();
   const { data } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).download(run.words.path);
   if (!data) throw new ApiError(404, "MYIN_BUNDLE_MISSING", "받아쓰기 결과 파일을 찾지 못했습니다.");
-  const bundle = JSON.parse(await data.text()) as { audit?: unknown; fixes?: unknown; misreads?: unknown };
+  const bundle = JSON.parse(await data.text()) as { audit?: unknown; fixes?: unknown; misreads?: unknown; pauses?: unknown };
   const rows = z.array(auditRow).safeParse(bundle.audit);
   // 발음 확인 (2026-11-22): words both transcriptions heard differently from the script; none for a voice made before it.
   const misreads = z.array(z.object({ p: z.number(), at: z.number(), said: z.string(), small: z.string(), medium: z.string() })).safeParse(bundle.misreads);
+  // 쉼 검사 (로건 11-24): where the voice paused oddly (the engine's pause_check_myin.py); none for a voice made before it.
+  const pauses = z.array(z.object({ p: z.number(), at: z.number(), kind: z.string(), gap: z.number(), text: z.string() })).safeParse(bundle.pauses);
   // 이음 (2026-11-17, 영상 피드백 71): sentences whose join the engine fixed (끝소리 잘림 · 앞 조각) are worth a listen too.
   const joins = (row: z.infer<typeof auditRow>) => z.array(z.string()).catch([]).parse((row as { 이음?: unknown }).이음).slice(0, 4);
   const listen = rows.success ? rows.data.filter((row) => row.점수 >= 0.8 || row.긴호흡 > 0 || joins(row).length).sort((a, b) => a.시각 - b.시각).slice(0, 80)
@@ -1028,7 +1030,8 @@ export async function myinVoiceCheck(actor: RequestActor, runId: string) {
     files: asked.state === "ready" ? await Promise.all((asked.files ?? []).map(async (file) => ({ name: file.name, current: file.current, url: await sign(service, YOUTUBE_VOICE_BUCKET, file.path) }))) : [] } : null;
   const fixes = z.array(z.object({ memo: z.string(), ok: z.boolean(), report: z.string() }).passthrough()).safeParse(bundle.fixes);
   return { sentences: rows.success ? rows.data.length : null, listen, all, takes,
-    misreads: misreads.success ? misreads.data.slice(0, 40).map(({ p, at, said, small, medium }) => ({ p, at, said: said.slice(0, 80), small: small.slice(0, 80), medium: medium.slice(0, 80) })) : null, fixes: fixes.success ? fixes.data.map(({ memo, ok, report }) => ({ memo, ok, report })) : [],
+    misreads: misreads.success ? misreads.data.slice(0, 40).map(({ p, at, said, small, medium }) => ({ p, at, said: said.slice(0, 80), small: small.slice(0, 80), medium: medium.slice(0, 80) })) : null,
+    pauses: pauses.success ? pauses.data.slice(0, 60).map(({ p, at, kind, gap, text }) => ({ p, at, kind: kind.slice(0, 20), gap, text: text.slice(0, 120) })) : null, fixes: fixes.success ? fixes.data.map(({ memo, ok, report }) => ({ memo, ok, report })) : [],
     previewUrl: run.words.preview ? await sign(service, YOUTUBE_VOICE_BUCKET, run.words.preview.path) : null };
 }
 
