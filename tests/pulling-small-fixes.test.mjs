@@ -17,9 +17,9 @@ test("풀링형 (cta []) may start without an opening; 키풀링형 still needs 
   assert.match(read("lib/server/myin-storyboard-job.ts"), /풀링형은 오프닝 없이 첫 대사부터/);
 });
 
-test("풀링형 예상 길이 = 공백 뺀 글자 × 0.125초; 키풀링형 stays 350자/분", () => {
-  const md = "가".repeat(3696);
-  assert.equal(lengthEstimate(md, null, null, true).label, "약 7분 30초");   // 462초 = 7.7분
-  assert.equal(lengthEstimate(md, null, null).label, "약 10분 30초");       // 3696 / 350 = 10.56분
-  assert.equal(paragraphTimes(["가".repeat(80), "나".repeat(80)], null, true)[1].at, 10);
+test("풀링형 예상 길이 = 공백 뺀 글자 × 0.165초(실측: 원리 1편 3,254자 538초); 키풀링형 stays 350자/분", () => {
+  assert.equal(lengthEstimate("가".repeat(3254), null, null, true).label, "약 8분 30초");   // 537초(화면은 30초 단위로 내림) — 실제 538초
+  assert.equal(lengthEstimate("가".repeat(3696), null, null).label, "약 10분 30초");   // 3696 / 350 = 10.56분
+  assert.equal(Math.round(paragraphTimes(["가".repeat(80), "나".repeat(80)], null, true)[1].at * 10) / 10, 13.2);
+  assert.match(readFileSync(new URL("../lib/server/youtube-script-job.ts", import.meta.url), "utf8"), /const PULLING_CHARS_PER_MINUTE = 364;/);
 });

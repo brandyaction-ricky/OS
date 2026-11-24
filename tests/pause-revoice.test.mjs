@@ -22,6 +22,6 @@ test("쉼 점검 → 다시 낭독: only a new voice, only when paid steps were 
   assert.match(run, /Date\.parse\(record\.created_at\) < Date\.parse\(MYIN_PAUSE_REVOICE_SINCE\)\) return \[\];/, "only runs cloned with the fixed pause check");
   assert.match(run, /const MYIN_PAUSE_REVOICE_SINCE = "\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z";/);
   assert.match(run, /await save\(service, record, "backlog", "words_pending", again\);/, "back to the render PC, which redoes only those sentences");
-  assert.match(read("components/myin-v13-panel.tsx"), /\+ 쉼 점검에 걸린 문장 다시 낭독\(2번까지\)/);
+  assert.match(read("components/myin-v13-panel.tsx"), /\+ 쉼 · 음이탈 점검에 걸린 문단 다시 낭독\(2번까지\)/);
   assert.match(read("components/myin-voice-check.tsx"), /걸린 문장을 저절로 \{data\.pauseRounds\}번 다시 낭독했어요/);
 });

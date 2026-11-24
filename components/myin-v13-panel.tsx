@@ -70,9 +70,9 @@ const finalWhere = (run: MyinRun) => run.localFinish ? `${run.localFinish.name}�
 const finalMinutes = (run: MyinRun) => Math.ceil((run.words?.durationSeconds ?? 780) / 60 * 5);   // 60fps, 5-second pieces: a 13-minute video ≈ 1 hour on the Mac mini (2026-10-29 test)
 // ponytail: a 숏폼's minutes are guesses from the A1 pilot (40 s, one draft of the whole short); measure after the first ones.
 const SHORT_MIN: Record<string, number> = { words_pending: 6, prep_pending: 3, clips_pending: 5, final_pending: 8 };
-// 롱폼 음성은 문장마다 4번 만들어 받아쓰기로 고른다(음성 고르기 v2, 2026-11-11 맥미니 시험: 한 문장 약 27초).
-// v2.1 (2026-11-12, two paragraphs at a time): 39 paragraphs took 63–66 minutes on 11-13, so 1.4 a paragraph.
-const typicalMinutes = (run: MyinRun) => run.voiceOnPc && run.stage === "words_pending" ? (run.layout === "short" ? 8 : 10 + Math.ceil(run.paragraphs * 1.4))
+// 롱폼 음성은 문단마다 한 번에 만든다(대표 2026-11-25, 맥미니 pkg-staging-20261125-guide): 3편 42문단 음성 약 3분 + 들어 볼 문장 ·
+// 발음 확인 · 쉼 점검 약 10분(11-25 실측). 예전 방식(문장마다 네 테이크, 1문단 1.4분)은 55분쯤 걸렸다.
+const typicalMinutes = (run: MyinRun) => run.voiceOnPc && run.stage === "words_pending" ? (run.layout === "short" ? 8 : 8 + Math.ceil(run.paragraphs * 0.2))
   : run.layout === "short" ? SHORT_MIN[run.stage] : run.stage === "clips_pending" ? Math.ceil(((run.storyboard?.metaphors.length ?? 0) + 1) * 1.5)
   : run.stage === "final_pending" ? finalMinutes(run) : TYPICAL_MIN[run.stage];
 // What a stop means and what 다시 하기 redoes, so a staff member knows whether pressing again can help (2026-10-26: three presses hit
@@ -128,10 +128,11 @@ const when = (iso: string) => new Intl.DateTimeFormat("ko-KR", { month: "numeric
  * storyboard and its confirmation, the drafts (2026-10-27: before the paid CTA voice and the sound pass), then the finished video and handouts. Where the pilot is closed
  * (production today) it says so instead.
  */
-export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, voiceText, title = "", short = false, channel, folded = false, finals = 0, recycled = false }: { sourceId: string; finalNote?: ReactNode; embedded?: boolean; onFinal?: () => void;
+export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, voiceText, title = "", short = false, channel, folded = false, finals = 0, recycled = false, pulling = false }: { sourceId: string; finalNote?: ReactNode; embedded?: boolean; onFinal?: () => void;
   /** 로건 11-13 「제작 탭 = 편집 화면 하나」: the editor screen in the page, where the video is now (with its one next action) and the five
    *  step cards folded under it; `finals` is how many finished versions 제작 lists. */ folded?: boolean; finals?: number;
   /** The project's 채널 카드 (다채널 1단계): its look is picked first; none means the 기본 채널, the first. */ channel?: string;
+  /** 풀링형 (기획안 형식): no 구독 대사, so its voice is not counted in the start confirm. */ pulling?: boolean;
   /** The video name, for downloaded file names. */ title?: string;
   /** The spoken paragraphs, for the company-money estimate shown before the voice is made (owner request 2026-10-25). */ voiceText?: string;
   /** 숏폼 (2026-10-28): drawn 9:16 by the render PC — no music, 구독 대사 or handouts, and its ④ goes straight on to the full video. */ short?: boolean;
@@ -141,20 +142,19 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
   const askVoice = async (text: string, again: string, takes = false) => {
     if (!text.trim() || recycled) return true;
     const estimate = voiceEstimate(text, myinVoice);
-    // 영상 만드는 컴퓨터가 음성을 만들면: 숏폼은 끊긴 문장만 한 번 더(로건 2026-10-29, 많게는 두 배), 롱폼은 문장마다 4번 만들어
-    // 가장 자연스러운 것을 고른다(음성 고르기 v2, 로건 2026-11-11) — 네 배.
-    const takesNote = !takes ? "" : short ? "끊긴 문장은 한 번 더 만들어 많게는 2배 · " : "문장마다 4번 만들어 가장 자연스러운 것을 골라요 · ";
-    return cost.confirm({ model: myinVoice, amount: takes && !short ? estimate.krw * 4 : estimate.krw, detail: `${estimate.chars.toLocaleString("ko-KR")}자 · ${takesNote}${again}`, ok: "확인하고 만들기" });
+    // 영상 만드는 컴퓨터가 음성을 만들면: 숏폼은 끊긴 문장만 한 번 더(로건 2026-10-29, 많게는 두 배), 롱폼은 문단마다 한 번에(대표 2026-11-25).
+    const takesNote = !takes ? "" : short ? "끊긴 문장은 한 번 더 만들어 많게는 2배 · " : "문단마다 한 번에 만들어요 · ";
+    return cost.confirm({ model: myinVoice, amount: estimate.krw, detail: `${estimate.chars.toLocaleString("ko-KR")}자 · ${takesNote}${again}`, ok: "확인하고 만들기" });
   };
   // 로건 11-13: a 롱폼 that goes on by itself asks once, at the start, for every paid step up to the finished video — the voice and the
   // 구독 대사 voice (300자까지, as the editor's 「완성」 counted it) — and 「완성」 asks no more.
   const askStart = (text: string, takes: boolean, kept = "") => {
     if (recycled) return Promise.resolve(true);
     const voice = voiceEstimate(text, myinVoice), cta = voiceEstimate("가".repeat(600), myinVoice), photos = MYIN_AI_PHOTOS_MAX * AI_PHOTO_KRW;
-    // 쉼 점검 → 다시 낭독: up to 20 caught sentences (~1,600자), two takes each, twice.
-    const again = voiceEstimate("가".repeat(Math.min(text.length, 1_600) * 4), myinVoice);
-    return cost.confirm({ model: myinVoice, amount: voice.krw * (takes ? 4 : 1) + cta.krw + photos + again.krw, upTo: true, ok: "확인하고 시작",
-      detail: `${kept}음성 ${voice.chars.toLocaleString("ko-KR")}자${takes ? "(문장마다 4번 만들어 골라요)" : ""} + 구독 대사 음성(300자까지) + 기획표가 고른 AI 사진(${MYIN_AI_PHOTOS_MAX}장까지, 장당 약 ${AI_PHOTO_KRW.toLocaleString("ko-KR")}원) + 쉼 점검에 걸린 문장 다시 낭독(2번까지) · 지금 한 번 확인하면 「완성」까지 다시 묻지 않아요 · 켜 둔 GPT 화면 검사는 GPT 크레딧에서 따로 빠져요` });
+    // 쉼 · 음이탈 점검 → 다시 낭독: the caught paragraphs (up to ~1,600자) once more, twice. 풀링형 has no 구독 대사 (cta []).
+    const again = voiceEstimate("가".repeat(Math.min(text.length, 1_600) * 2), myinVoice);
+    return cost.confirm({ model: myinVoice, amount: voice.krw + (pulling ? 0 : cta.krw) + photos + again.krw, upTo: true, ok: "확인하고 시작",
+      detail: `${kept}음성 ${voice.chars.toLocaleString("ko-KR")}자${takes && !short ? "(문단마다 한 번에)" : takes ? "(끊긴 문장은 한 번 더)" : ""}${pulling ? "" : " + 구독 대사 음성(300자까지)"} + 기획표가 고른 AI 사진(${MYIN_AI_PHOTOS_MAX}장까지, 장당 약 ${AI_PHOTO_KRW.toLocaleString("ko-KR")}원) + 쉼 · 음이탈 점검에 걸린 문단 다시 낭독(2번까지) · 지금 한 번 확인하면 「완성」까지 다시 묻지 않아요 · 켜 둔 GPT 화면 검사는 GPT 크레딧에서 따로 빠져요` });
   };
   const { accessToken } = useSession();
   const [run, setRun] = useState<MyinRun | null>(null);
@@ -444,11 +444,11 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       {run?.scriptChanged ? <p className="yt-note yt-warn">{short ? "확정한 대본이 바뀌었어요. 아래 작업은 옛 대본으로 만든 것이라 더 진행되지 않아요. 새로 만들면 기획표와 미리보기 확인도 다시 거쳐요." : "구성안 원고가 바뀌었어요. 아래 작업은 옛 원고로 만든 것이라 더 진행되지 않아요. 새로 만들면 기획표와 미리보기 확인도 다시 거쳐요."}</p> : null}
       {!run || (run.status === "blocked" && !run.words) || run.scriptChanged ? <div className="yt-actions">
         <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void start()}>{busy === "start" ? "시작하는 중…" : run?.scriptChanged ? short ? "바뀐 대본으로 음성 다시 만들기" : "바뀐 원고로 v13 음성 다시 만들기" : run ? short ? "음성 다시 시작" : "v13 음성 다시 시작" : short ? "음성 만들기" : "v13 음성 만들기"}</button>
-        {recycled ? <small>롱폼 음성을 잘라 써요 · 음성 비용 0원</small> : <small><CostTag kind="paid" amount={voiceText ? voiceEstimate(run?.scriptChanged && run.voiceReuse ? run.voiceReuse.text : voiceText, myinVoice).krw * (voiceOnPc && !short ? 4 : 1) : null} /> 같은 {short ? "대본" : "원고"}으로 다시 누르면 만든 음성을 이어 써요.</small> }
+        {recycled ? <small>롱폼 음성을 잘라 써요 · 음성 비용 0원</small> : <small><CostTag kind="paid" amount={voiceText ? voiceEstimate(run?.scriptChanged && run.voiceReuse ? run.voiceReuse.text : voiceText, myinVoice).krw : null} /> 같은 {short ? "대본" : "원고"}으로 다시 누르면 만든 음성을 이어 써요.</small> }
       </div> : null}
       {run ? <div className="yt-run">
         <div className="yt-run-head"><span className="status-pill" data-status={run.status === "blocked" && !run.words ? "failed" : run.words && !run.voiceFixes?.length ? "approved" : "scheduled"}>{run.voiceFixes?.length && run.stage === "words_pending" ? "고친 곳 다시 만드는 중" : run.words ? "받아쓰기·자막 완료" : phase}</span>
-          {run.voiceOnPc ? <small>음성 {run.paragraphs}문단 · 영상 만드는 컴퓨터가 문장마다 만들어 고름</small> : <small>음성 {run.paragraphsReady}/{run.paragraphs}문단</small>}
+          {run.voiceOnPc ? <small>음성 {run.paragraphs}문단 · 영상 만드는 컴퓨터가 문단마다 한 번에 만들어요</small> : <small>음성 {run.paragraphsReady}/{run.paragraphs}문단</small>}
           {run.style ? <small>채널 모양 {run.style.name} · v{run.style.version}</small> : null}
           {!run.words && run.stage === "words_pending" && run.status !== "blocked" ? <RunWait run={run} /> : null}</div>
         {voiceWaiting ? voiceButtons(run) : null}
