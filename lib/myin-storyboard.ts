@@ -18,7 +18,7 @@ export const myinStoryboardSchema = z.object({
   end: z.number().positive(),
   scenes: z.array(scene).min(5).max(200),
   music_cues: z.record(z.object({ file: z.string().min(1), start: z.number().nonnegative().optional() }).passthrough()).optional(),
-  reel: z.object({ dur: z.number().positive() }).passthrough().optional(),
+  reel: z.object({ dur: z.number().positive().optional(), after: z.string().min(1).optional() }).passthrough().optional(),
   cta: z.array(z.object({ after: z.string().min(1), line: z.string().min(1) }).passthrough()).min(1).max(3),
 }).passthrough();
 export type MyinStoryboard = z.infer<typeof myinStoryboardSchema>;
@@ -121,6 +121,7 @@ export function myinCueMisses(story: MyinStoryboard, words: [number, number, str
     pos = scp + 1;
   });
   story.cta.forEach((cta, k) => { scene = 0; if (find(cta.after, 0, 400_000) === null) misses.push(`[구독 ${k + 1}] after 문구 못 찾음: ${cta.after}`); });
+  if (story.reel?.after && find(story.reel.after, 0, 400_000) === null) misses.push(`[쇼릴] after 문구 못 찾음: ${story.reel.after}`);
   return { misses, fuzzy };
 }
 
@@ -135,7 +136,7 @@ export function anchorMyinCues(raw: unknown, words: [number, number, string][], 
   const S = myinNorm(speech.split("\n").filter((line) => !line.startsWith("#SECTION")).join(""));
   const T = words.map(([, , word]) => myinNorm(word)).join("");
   if (!S || !T || !raw || typeof raw !== "object" || !Array.isArray((raw as { scenes?: unknown }).scenes)) return { storyboard: raw, changed };
-  const story = structuredClone(raw) as { scenes: Record<string, unknown>[]; cta?: { after?: unknown }[] };
+  const story = structuredClone(raw) as { scenes: Record<string, unknown>[]; cta?: { after?: unknown }[]; reel?: { after?: unknown } };
   const blocks = matchingBlocks(S, T);
   const toT = (si: number) => {
     let pe = 0, te = 0;
@@ -185,6 +186,7 @@ export function anchorMyinCues(raw: unknown, words: [number, number, string][], 
     pos = tStart + 1; spos = sStart + 1;
   });
   (story.cta ?? []).forEach((cta, k) => { if (typeof cta.after === "string") cta.after = fix(cta.after, 0, 0, 400_000, `[구독 ${k + 1}] after 문구`); });
+  if (story.reel && typeof story.reel.after === "string") story.reel.after = fix(story.reel.after, 0, 0, 400_000, "[쇼릴] after 문구");
   return { storyboard: story as unknown, changed };
 }
 
@@ -200,7 +202,7 @@ export function myinCuesAsScript(raw: unknown, words: [number, number, string][]
   for (let r = 0; r < text.length; r++) if (myinNorm(text[r])) at.push(r);
   const S = myinNorm(text), T = words.map(([, , word]) => myinNorm(word)).join("");
   if (!S || !T || !raw || typeof raw !== "object" || !Array.isArray((raw as { scenes?: unknown }).scenes)) return raw;
-  const story = structuredClone(raw) as { scenes: Record<string, unknown>[]; cta?: { after?: unknown }[] };
+  const story = structuredClone(raw) as { scenes: Record<string, unknown>[]; cta?: { after?: unknown }[]; reel?: { after?: unknown } };
   const blocks = matchingBlocks(T, S);
   const toS = (ti: number) => {
     let pe = 0, se = 0;
@@ -242,6 +244,7 @@ export function myinCuesAsScript(raw: unknown, words: [number, number, string][]
     pos = from + 1;
   });
   (story.cta ?? []).forEach((cta) => { if (typeof cta.after === "string") cta.after = back(cta.after, 0, 400_000).phrase; });
+  if (story.reel && typeof story.reel.after === "string") story.reel.after = back(story.reel.after, 0, 400_000).phrase;
   return story as unknown;
 }
 
@@ -437,20 +440,31 @@ function photoFocusIssues(story: MyinStoryboard) {
 const ctaWordingIssues = (story: MyinStoryboard) => story.cta.flatMap((cta, k) => /눌러\s*두/.test(cta.line) ? [`[구독 ${k + 1}] 「눌러 두…」 대신 「눌러 주세요」로 써요`] : []);
 
 /**
- * 쇼릴 · 구독 자리 (로건 2026-11-24): one subscribe request a video — the engine plays the deck reel right before it — at least 60 s into
- * the body and past 35% of the voice. New storyboards only (the AI's), so an older one lent to an edited script still renders.
+ * 쇼릴 · 구독 자리 (로건 2026-11-24 재요청 · 대표 OK, 91편 시청 지속률): the deck reel is a 「오늘 볼 ①②③」 map early in the body —
+ * reel.after between 1:00 and 3:00 of the voice (no fitting spot = no reel), 3–4 s, at most 3 cards — and the one subscribe request stays
+ * apart, 60 s into the body and past 35% of the voice. New storyboards only (the AI's), so an older one lent to an edited script still renders.
  */
-export function ctaPlacementIssues(story: MyinStoryboard, words: [number, number, string][]) {
+export function reelCtaIssues(story: MyinStoryboard, words: [number, number, string][]) {
   if (!words.length) return [];
-  const issues = story.cta.length > 1 ? [`[구독] 구독 요청은 영상당 한 곳이에요(쇼릴이 바로 앞에 함께 나와요) — cta ${story.cta.length}개를 1개로 줄여요`] : [];
+  const issues = story.cta.length > 1 ? [`[구독] 구독 요청은 영상당 한 곳이에요 — cta ${story.cta.length}개를 1개로 줄여요`] : [];
   const find = myinCueFinder(words);
   const ends: number[] = [];
   words.reduce((n, [, , word]) => { ends.push(n + myinNorm(word).length); return n + myinNorm(word).length; }, 0);
   const timeAt = (at: number) => words[Math.max(0, ends.findIndex((end) => end > at))][0];
   const body = story.scenes[0]?.type === "opening" && story.scenes.length > 1 ? timeAt(sceneStarts(story, find)[1]) : words[0][0];
   const earliest = Math.max(body + 60, words[words.length - 1][1] * 0.35);
-  const hit = find(story.cta[0].after, 0, 400_000);
-  if (hit && timeAt(hit.at) < earliest) issues.push(`[구독] 구독 자리(${mmss(timeAt(hit.at))})가 너무 앞이에요 — ${mmss(earliest)} 뒤(본론 시작 60초 뒤 · 영상 35% 뒤), 앞 화제의 결론 문장이 끝난 곳으로 옮겨요(질문 뒤 답 직전은 안 돼요)`);
+  const cta = find(story.cta[0].after, 0, 400_000);
+  const ctaAt = cta ? timeAt(cta.at) : null;
+  if (ctaAt !== null && ctaAt < earliest) issues.push(`[구독] 구독 자리(${mmss(ctaAt)})가 너무 앞이에요 — ${mmss(earliest)} 뒤(본론 시작 60초 뒤 · 영상 35% 뒤), 앞 화제의 결론 문장이 끝난 곳으로 옮겨요(질문 뒤 답 직전은 안 돼요)`);
+  const reel = story.reel as { after?: string; dur?: number; picks?: unknown[] } | undefined;
+  if (!reel) return issues;
+  if (!reel.after) return [...issues, "[쇼릴] reel.after(그 문장이 끝난 뒤 쇼릴)가 없어요 — 1:00~3:00 사이 첫 사례 · 반전 비트가 끝나는 문장을 적거나, 맞는 자리가 없으면 reel을 빼요"];
+  const hit = find(reel.after, 0, 400_000);
+  const reelAt = hit ? timeAt(hit.at) : null;
+  if (reelAt !== null && (reelAt < 60 || reelAt > 180)) issues.push(`[쇼릴] 쇼릴 자리(${mmss(reelAt)})가 1:00~3:00 밖이에요 — 그 사이 첫 사례 · 반전 비트가 끝나는 문장으로 옮기고, 맞는 자리가 없으면 reel을 빼요`);
+  if (reel.dur !== undefined && (reel.dur < 3 || reel.dur > 4)) issues.push(`[쇼릴] 쇼릴은 3~4초예요(지금 ${reel.dur}초)`);
+  if (Array.isArray(reel.picks) && reel.picks.length > 3) issues.push(`[쇼릴] 쇼릴 카드는 3장까지예요(지금 ${reel.picks.length}장)`);
+  if (reelAt !== null && ctaAt !== null && Math.abs(ctaAt - reelAt) < 10) issues.push("[구독] 구독 카드는 쇼릴과 다른 자리에 둬요 — 쇼릴에는 구독 대사를 붙이지 않아요");
   return issues;
 }
 

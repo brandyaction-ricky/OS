@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { diagramCatalogCardSection, type DiagramCatalog } from "@/lib/diagram-catalog";
-import { anchorMyinCues, checkMyinStoryboard, ctaPlacementIssues, MYIN_SCENE_TYPES, myinPhotoFetchUrl, myinPhotoFolders, myinStoryboardSchema } from "@/lib/myin-storyboard";
+import { anchorMyinCues, checkMyinStoryboard, MYIN_SCENE_TYPES, myinPhotoFetchUrl, myinPhotoFolders, myinStoryboardSchema, reelCtaIssues } from "@/lib/myin-storyboard";
 import { checkShortStoryboard, SHORT_DIAGRAM_SHARE, SHORT_LINE_MAX_PX, SHORT_PERSONA, shortDiagramList, type ShortDiagram } from "@/lib/myin-short-storyboard";
 import { checkWebShort, WEB_SUB_MAX, webShortBoard, webShortPhotos, webShortResultShape, webShortSceneList } from "@/lib/web-short-storyboard";
 
@@ -81,12 +81,13 @@ ${MYIN_CARD_REFERENCE_DOCS.map(([title, note]) => `- ${title}${input.docIds?.[ti
 - 렌더 전 관문: 영상 만드는 컴퓨터가 엔진 시각으로 말보다 1.5초 넘게 늦게 바뀌는 곳, 장면 시작 뒤 1초 넘게 빈 화면(첫 장면 0.3초), 3초 미만 장면(장 표시는 2.5초), 같은 화면이 한 장면 건너 되돌아오는 곳을 재서, 걸리면 기획표를 돌려보냅니다.
 - 멈춤(비유 도식 장면 끝 · hold)은 그 장면 마지막 문장 끝에서만 합니다: 멈추는 장면 바로 다음 장면의 시작 문구(at)는 문장 첫 말로 둡니다. 문장 중간이면 엔진이 그 문장 끝까지 다음 장면을 미루고, 미룰 수 없으면 관문이 「멈춤이 문장 중간」으로 돌려보냅니다.
 
-## 쇼릴 · 구독 자리 (로건 2026-11-24 · 대표 의견 반영 — 매뉴얼 A-2 · B-8과 구조 문서 2절의 「쇼릴 7초를 인트로에」보다 앞섭니다)
-- 인트로(본론 시작 전)에는 쇼릴을 넣지 않습니다. 쇼릴은 본론 한가운데의 큰 화제 전환 지점에 한 번, 같은 자리의 구독 카드 바로 앞에 나옵니다.
-- 구독 대사 cta는 1개(after, line, clicks, head)이고, 구독 요청은 영상 전체에서 이 한 곳뿐입니다. 영상 만드는 컴퓨터가 그 자리에 쇼릴 → 구독 카드를 이어서 멈춥니다(구독 대사는 쇼릴이 끝나는 순간에 시작).
-- reel은 {"dur": 7}만 적습니다. 카드는 엔진이 그 자리 뒤에 나올 장면에서 고르고, 라벨은 「NEXT · 이어서 볼 이야기」입니다(picks를 적으면 그 뒤 장면만 씁니다).
-- 자리: 본론 첫 장면 시작 뒤 60초 안, 영상 전체 길이의 35% 앞에는 넣지 않습니다. 질문을 던지고 답을 말하기 직전에는 넣지 않고, 앞 화제의 결론 문장이 끝난 직후에 넣습니다(after = 그 결론 문장의 마지막 말).
-- 화제 전환은 beat 번호가 바뀌는 곳 중에서 고르고, reasons.cta에 왜 그 자리인지 적습니다. 구독 개수와 60초 · 35% 자리는 OS가 검사합니다.
+## 쇼릴 · 구독 자리 (로건 2026-11-24 재요청 · 대표 OK, 우리 채널 91편 시청 지속률 — 매뉴얼 A-2 · B-8과 구조 문서 2절의 「쇼릴 7초를 인트로에」보다 앞섭니다)
+- 쇼릴은 인트로가 아니라 본론 초반의 「오늘 볼 ①②③」 지도입니다. 큰 이탈이 끝나는 1:00 무렵에 끝까지 볼 이유를 보여 줍니다.
+- reel = {"after": "문구", "dur": 3.5}. after는 비트 역할이 「사례」 또는 「교정(반전)」인 첫 비트의 마지막 문장 속 말(words 철자 그대로)이고, 그 문장이 끝나면 쇼릴이 나옵니다.
+- 그 자리는 원본 음성 60~180초 사이여야 합니다. 이 범위에 맞는 자리가 없으면 reel을 아예 쓰지 않습니다.
+- 쇼릴은 3~4초, 카드는 본론 큰 덩어리마다 첫 장면 1장씩 최대 3장입니다(picks를 비워 두면 엔진이 뒤 덩어리에서 고르고, 적으면 3장까지). 라벨은 엔진이 「TODAY · 오늘 볼 이야기」로 씁니다. 구독 대사는 붙이지 않습니다.
+- 구독 대사 cta는 1개(after, line, clicks, head)이고, 쇼릴과 다른 자리입니다: 본론 첫 장면 시작 뒤 60초 안, 영상 전체 길이의 35% 앞에는 넣지 않고, 질문을 던지고 답을 말하기 직전도 피해, 앞 화제의 결론 문장이 끝난 직후에 넣습니다.
+- 두 자리 모두 beat 번호가 바뀌는 곳 중에서 고르고, reasons.cta에 쇼릴 자리와 구독 자리를 고른 이유를 각각 적습니다. 쇼릴 60~180초 · 3~4초 · 3장, 구독 개수 · 60초 · 35% · 쇼릴과 다른 자리는 OS가 검사합니다.
 
 ## 마이인 기획표 QA 기준 (로건 2026-10-27 · 전문: 「마이인 기획표 QA 기준 v1 (로건, 2026-10-27)」 — 열 수 있으면 끝까지 읽습니다)
 - 오프닝: 쇼릴 전에는 자막이 없습니다. 말하는 문장마다 화면 글자 줄을 붙입니다(cue = 그 문장 첫 말). 글자 없는 화면이 1초 넘게 이어지지 않게, 사진 위 글씨는 크고 대비 높게.
@@ -104,7 +105,7 @@ ${MYIN_CARD_REFERENCE_DOCS.map(([title, note]) => `- ${title}${input.docIds?.[ti
 ## OS가 검사하는 것 (걸리면 돌려받아 고칩니다)
 - 문구(장면 at, cue와 cue_로 시작하는 키, 제목 조각 ["텍스트", "등장 문구"]의 두 번째 값, cta[].after)는 아래 words의 철자 그대로 씁니다. 받아쓰기가 원고와 다른 철자여도 받아쓰기를 따릅니다. 장면 시작 문구는 앞 장면 시작 뒤 2,500자 안, 나머지 문구는 그 장면 시작 뒤 1,400자 안에 있어야 합니다(글자 수는 한글·영문·숫자만 셉니다).
 - 첫 장면은 opening, 끝은 outro → summary(at_time) → endscreen(at_time). end는 마지막 말이 끝난 뒤 여유를 둔 초입니다(낭독 ${input.durationSeconds.toFixed(1)}초 기준, 마지막 말보다 짧으면 OS가 마지막 말 + 1.5초로 늘립니다).
-- 구독 대사 cta는 1개(after, line, clicks, head) — 본론 시작 60초 뒤 · 영상 35% 뒤(위 「쇼릴 · 구독 자리」).
+- 구독 대사 cta는 1개(after, line, clicks, head) — 본론 시작 60초 뒤 · 영상 35% 뒤, 쇼릴과 다른 자리(위 「쇼릴 · 구독 자리」).
 - 장면 종류는 문서에 있는 것${input.catalog ? "과 아래 「도식 창고」 목록에 있는 것" : ""}만 씁니다: ${MYIN_SCENE_TYPES.join(", ")}. 새 비유 도식이 꼭 필요하면 쓰지 말고 suggestions에 적습니다(로건님 코드에 그리는 방법이 먼저 있어야 합니다).
 - 음악(music_cues의 file)은 「마이인 음악 창고」 목록에 있는 파일 이름만 씁니다. 새로 찾아 내려받지 않습니다. 비트의 분위기에 맞는 곡이 창고에 없으면 가장 가까운 곡을 쓰고 suggestions에 "창고에 추가할 곡"을 적습니다.
 - 사진은 위키미디어나 Unsplash에서만 고르고, assets에 적은 뒤(출처 주소, 사용 조건, 쓰는 장면) 기획표에는 그 파일 이름을 씁니다. 로건, 유쓰가 기획표를 확인하면 그 사진이 허락되고 렌더 PC가 직접 받습니다. 사진은 장식으로 쓰지 않고, 실제 사례 · 장소 · 대상이 나오는 곳에 씁니다(매뉴얼 6-3 + 위 제작 기본값). 마이인 사이트 캡처는 home_full.png로 씁니다(렌더 PC가 캡처). 엔드 스크린 진단 이미지는 패키지 것을 씁니다.
@@ -135,7 +136,7 @@ export function checkMyinStoryboardResult(value: unknown, words: [number, number
   if (!parsed.success) throw new ApiError(422, "MYIN_STORYBOARD_INVALID", `제출 형식을 확인해 주세요: ${parsed.error.issues.slice(0, 8).map((issue) => `${issue.path.join(".")} ${issue.message}`).join(" / ")}`);
   const { issues: storyIssues, ...checked } = checkMyinStory(parsed.data.storyboard, words, catalogTypes, speech);
   const story = myinStoryboardSchema.safeParse(checked.storyboard);
-  const issues = [...storyIssues, ...(story.success ? ctaPlacementIssues(story.data, words) : [])];
+  const issues = [...storyIssues, ...(story.success ? reelCtaIssues(story.data, words) : [])];
   if (issues.length) throw new ApiError(422, "MYIN_STORYBOARD_ISSUES", `기획표 검사에서 걸린 곳 ${issues.length}개: ${issues.join(" / ")}`);
   return { ...parsed.data, ...checked, notes: [...checked.notes, ...(parsed.data.suggestions ?? []).map((s) => `제안: ${s}`)] };
 }
