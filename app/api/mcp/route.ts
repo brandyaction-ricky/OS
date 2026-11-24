@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { MCP_TOOLS, callMcpTool } from "@/lib/server/mcp";
+import { createHash } from "node:crypto";
 import { createServiceSupabase } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -56,9 +57,14 @@ class UpstreamToolError extends Error {
 
 function toolError(id: string | number | null | undefined, error: unknown) {
   let message = "도구 실행에 실패했습니다.";
-  if (error instanceof ZodError) message = "도구 입력값을 확인해 주세요.";
+  if (error instanceof ZodError) message = `도구 입력값을 확인해 주세요: ${error.issues.slice(0, 3).map(issue => `${issue.path.join(".") || "입력"} ${issue.message}`).join(", ")}`;
   else if (error instanceof Error && !/bos_pat_|Bearer\s+/i.test(error.message)) message = error.message.slice(0, 1_000);
   return jsonRpc(id, { isError: true, ...(error instanceof UpstreamToolError ? { structuredContent: { status: error.status } } : {}), content: [{ type: "text", text: message }] });
+}
+
+async function keyOrganization(token: string) {
+  const { data } = await createServiceSupabase().from("os_agent_keys").select("organization_id").eq("key_hash", createHash("sha256").update(token, "utf8").digest("hex")).maybeSingle();
+  return data?.organization_id ? String(data.organization_id) : null;
 }
 
 export async function POST(request: Request) {
@@ -84,12 +90,14 @@ export async function POST(request: Request) {
 
   try {
     const query = new URL(request.url).searchParams;
-    const organizationId = organizationIdSchema.parse(query.get("organizationId"));
     // [내 AI 연결] hands out a URL with ?key= so a staff member pastes one line into Claude's 커넥터 추가 (no header field there).
     // ponytail: the key then sits in request logs; it is a 초안 쓰기, 90-day, self-revocable key. Move to OAuth if that matters.
     const urlKey = query.get("key");
     const authorization = request.headers.get("authorization") ?? (urlKey ? `Bearer ${urlKey}` : "");
     if (!authorization.startsWith("Bearer bos_pat_")) return jsonRpcError(body.id, -32001, "유효한 연결 키가 필요합니다.", 401);
+    // A bare /api/mcp URL (no ?organizationId=) used to fail every call as bad input; the key already belongs to one organization.
+    const organizationId = query.get("organizationId") ? organizationIdSchema.parse(query.get("organizationId")) : await keyOrganization(authorization.slice(7));
+    if (!organizationId) return jsonRpcError(body.id, -32001, "유효한 연결 키가 필요합니다.", 401);
     const params = z.object({ name: z.string().min(1), arguments: z.unknown().optional() }).parse(body.params);
     const fetchApi = async (path: string, init: RequestInit = {}) => {
       const response = await fetch(new URL(path, request.url), {
