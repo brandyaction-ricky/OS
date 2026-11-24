@@ -1,7 +1,7 @@
 // 썸네일 합성 틀: one component draws the thumbnail both on screen (the 기획안 picker, the 제작 editor) and as the final PNG (next/og on the
 // server), so what the PD picks and edits is what goes up. Only styles next/og understands (flex, absolute positions, px sizes,
 // filter brightness, overflow hidden — checked on its renderer 2026-11-11). The picture's place is worked out in thumbLayout.
-import { cleanThumbEdit, thumbAccentParts, thumbLayout, type ThumbCopy, type ThumbEdit, type ThumbExtraColor, type ThumbStyle, type ThumbSubject } from "./thumb-style.ts";
+import { cleanThumbEdit, THUMB_PERSON, thumbAccentParts, thumbLayout, type ThumbCopy, type ThumbEdit, type ThumbExtraColor, type ThumbStyle, type ThumbSubject } from "./thumb-style.ts";
 
 const EXTRA_COLOR = (style: ThumbStyle): Record<ThumbExtraColor, { color: string; band?: string }> => ({
   ink: { color: style.title.ink }, accent: { color: style.title.accent }, red: { color: "#D92B2B" }, white: { color: "#FFFFFF", band: style.title.ink },
@@ -11,6 +11,7 @@ export function ThumbFrame({ style, image, copy, edit: raw, subject, titleFamily
   const edit = cleanThumbEdit(raw, style);
   const layout = thumbLayout(copy, style, edit, subject), t = style.title;
   const box = layout.photoBox, extraColor = EXTRA_COLOR(style);
+  if (layout.person) return <PersonFrame style={style} image={image} edit={edit} layout={layout} titleFamily={titleFamily} extraColor={extraColor} />;
   return (
     <div style={{ width: style.width, height: style.height, display: "flex", position: "relative", overflow: "hidden", background: style.background }}>
       {image ? (
@@ -33,6 +34,35 @@ export function ThumbFrame({ style, image, copy, edit: raw, subject, titleFamily
       {(edit.extras ?? []).map((extra) => (
         <div key={extra.id} style={{ position: "absolute", left: extra.x, top: extra.y, display: "flex", fontFamily: titleFamily, fontWeight: t.weight, fontSize: extra.size,
           lineHeight: t.lineHeight, letterSpacing: Math.round(t.tracking * extra.size * 10) / 10, whiteSpace: "pre", color: extraColor[extra.color].color,
+          ...(extraColor[extra.color].band ? { background: extraColor[extra.color].band, padding: `0 ${Math.round(extra.size * 0.2)}px`, borderRadius: Math.round(extra.size * 0.12) } : {}) }}>
+          {extra.text}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** 인물형: photo over the whole frame (mirrored when flip), darker on the left, then the band and the boxes from the bottom-left. */
+function PersonFrame({ style, image, edit, layout, titleFamily, extraColor }: { style: ThumbStyle; image?: string | null; edit: ThumbEdit; layout: ReturnType<typeof thumbLayout>;
+  titleFamily: string; extraColor: ReturnType<typeof EXTRA_COLOR> }) {
+  const P = THUMB_PERSON, box = layout.photoBox, person = layout.person!;
+  return (
+    <div style={{ width: style.width, height: style.height, display: "flex", position: "relative", overflow: "hidden", background: "#111111" }}>
+      {/* eslint-disable-next-line @next/next/no-img-element -- the same element is drawn by next/og, which takes no Image component */}
+      {image ? <img src={image} alt="" width={box.width} height={box.height}
+        style={{ position: "absolute", left: box.left, top: box.top, width: box.width, height: box.height, objectFit: "cover",
+          ...(edit.flip ? { transform: "scaleX(-1)" } : {}), ...(edit.photo ? { filter: `brightness(${edit.photo.brightness})` } : {}) }} /> : null}
+      <div style={{ position: "absolute", left: 0, top: 0, width: style.width, height: style.height, display: "flex",
+        backgroundImage: "linear-gradient(90deg, rgba(0,0,0,0.67) 0%, rgba(0,0,0,0) 70%)" }} />
+      {person.band ? <div style={{ position: "absolute", left: P.sidePx, top: person.band.top, display: "flex", fontFamily: titleFamily, fontWeight: 900,
+        fontSize: person.band.size, lineHeight: 1, color: P.text, whiteSpace: "pre", textShadow: "0 0 4px rgba(0,0,0,0.9)" }}>{person.band.text}</div> : null}
+      {person.boxes.map((row, i) => (
+        <div key={i} style={{ position: "absolute", left: P.sidePx, top: row.top, height: row.height, display: "flex", alignItems: "center", padding: `0 ${P.padX / 2}px`,
+          background: row.bg, borderRadius: 12, fontFamily: titleFamily, fontWeight: 900, fontSize: layout.size, lineHeight: 1, color: P.text, whiteSpace: "pre" }}>{row.text}</div>
+      ))}
+      {(edit.extras ?? []).map((extra) => (
+        <div key={extra.id} style={{ position: "absolute", left: extra.x, top: extra.y, display: "flex", fontFamily: titleFamily, fontWeight: 900, fontSize: extra.size,
+          lineHeight: style.title.lineHeight, whiteSpace: "pre", color: extraColor[extra.color].color,
           ...(extraColor[extra.color].band ? { background: extraColor[extra.color].band, padding: `0 ${Math.round(extra.size * 0.2)}px`, borderRadius: Math.round(extra.size * 0.12) } : {}) }}>
           {extra.text}
         </div>

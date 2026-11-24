@@ -132,7 +132,7 @@ export const staffJobRequestSchema = z.discriminatedUnion("task", [
   z.object({ task: z.literal("topic-formula"), sourceId: z.string().uuid(), query: z.string().trim().max(60).optional() }).strict(),
   // 롱폼 애니메이션 썸네일 (2026-11-09): pictures made with the PD's own image tool from the 기획안's words; query = the 참고 영상 검색어.
   z.object({ task: z.literal("thumbs"), sourceId: z.string().uuid(), tool: z.enum(THUMB_TOOLS).default("flow"), count: z.number().int().min(1).max(12).default(6),
-    query: z.string().trim().max(60).optional() }).strict(),
+    frame: z.literal("person").optional(), query: z.string().trim().max(60).optional() }).strict(),
 ]);
 export const staffJobWorkerSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("claim"), jobId: z.string().uuid() }).strict(),
@@ -275,7 +275,7 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
     // One at a time: a second request while candidates are being made would cut the first off (the loop below cancels a changed job).
     for (const job of await openJobs(actor.id, input.sourceId, "thumbs"))
       if (job.status === "backlog" || leaseLive(meta(job).lease)) throw new ApiError(409, "THUMB_JOB_OPEN", "후보를 만드는 중이에요. 끝나면 더 만들 수 있어요.");
-    source = state.source; title = jobTitle(state); inputKey = v1ThumbsInputKey(state, input.tool, input.count, await thumbsMadeCount(input.sourceId));
+    source = state.source; title = jobTitle(state); inputKey = v1ThumbsInputKey(state, input.tool, input.count, await thumbsMadeCount(input.sourceId), input.frame);
     const { project } = v1Stages(state); const topic = topicKeywords(projectName(project), project.yp.topic.target); marketFor = { query: input.query || topic, short: false, topic };
   } else if (input.task === "scene-notes") {
     const picked = await sceneNoteInputs(actor.supabase, input.sourceId, [...new Set(input.notes)]);
@@ -396,7 +396,7 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
   const metadata: JobMeta = { kind: STAFF_AI_JOB_KIND, task: input.task, sourceId: input.sourceId, inputKey, requestedAt: now, ...(market ? { market } : {}),
     ...(input.task === "scene-plan" ? { templateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION } : input.task === "storyboard" ? { myinRunId }
       : { targetMinutes, role, ...(attachments ? { attachments } : {}), ...(slot ? { slot } : {}) }), ...(pool ? { pool } : {}),
-    ...(input.task === "card" ? { formats: input.formats } : {}), ...(input.task === "thumbs" ? { thumbTool: input.tool } : {}),
+    ...(input.task === "card" ? { formats: input.formats } : {}), ...(input.task === "thumbs" ? { thumbTool: input.tool, ...(input.frame ? { thumbFrame: input.frame } : {}) } : {}),
     ...(input.task === "script-notes" || input.task === "scene-notes" ? { noteIds: [...new Set(input.notes)] } : {}),
     ...(input.task === "scene-notes" ? { myinRunId } : {}),
     ...(input.task === "image-creative" ? { space: "personal", ...(imagePhase ? {imagePhase} : {}), proc:"image-creative", targetId:input.sourceId, sub:"phase" in input.request ? "formats" : "copy", imageRequest: input.request, ...(input.target ? {target:input.target} : {}) } : {}),
@@ -813,7 +813,7 @@ async function claimJob(agent: RequestActor, jobId: string, byGpt: boolean) {
     const state = await readPipeline({ supabase: service() }, m.sourceId);
     try { assertV1ThumbsInputs(state); } catch { await closeStale(job, m); }
     const lease = await take();
-    return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: await v1ThumbsCard(state, minutes, thumbTool(m), m.targetMinutes ?? 6, m.market) };
+    return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: await v1ThumbsCard(state, minutes, thumbTool(m), m.targetMinutes ?? 6, m.market, thumbFrame(m)) };
   }
   if (m.task === "scene-notes") {
     const { state, picked } = await currentSceneNotesInput(job);
@@ -872,6 +872,7 @@ async function keepIssues<T>(job: OsRecord, m: JobMeta, check: () => Promise<T> 
   }
 }
 
+const thumbFrame = (m: JobMeta) => (m as { thumbFrame?: unknown }).thumbFrame === "person" ? "person" as const : undefined;
 const thumbTool = (m: JobMeta) => { const tool = (m as { thumbTool?: unknown }).thumbTool; return tool === "chatgpt" ? "chatgpt" as const : "flow" as const; };
 /** 썸네일 후보 올리기 · 등록, only while this AI holds the job. */
 export async function thumbJobStep(agent: RequestActor, input: Extract<z.infer<typeof staffJobWorkerSchema>, { action: "upload" | "add" }>) {
@@ -880,7 +881,7 @@ export async function thumbJobStep(agent: RequestActor, input: Extract<z.infer<t
   if (!leaseLive(m.lease)) throw new ApiError(409, "STAFF_AI_JOB_LEASE", "작업 시간이 지났어요. 목록에서 다시 가져와 주세요.");
   if (m.task !== "thumbs") throw new ApiError(400, "STAFF_AI_JOB_ACTION", "upload · add는 썸네일 후보 작업에서만 써요.");
   if (input.action === "upload") return thumbUploadUrl(job.parent_id!, input.mimeType, input.fileSize);
-  return addThumbCandidate(job, thumbTool(m), await displayName(service(), agent.ownerId, agent.name), input.candidate);
+  return addThumbCandidate(job, thumbTool(m), await displayName(service(), agent.ownerId, agent.name), input.candidate, thumbFrame(m));
 }
 
 export async function completeStaffJob(agent: RequestActor, input: Extract<z.infer<typeof staffJobWorkerSchema>, { action: "complete" }>) {

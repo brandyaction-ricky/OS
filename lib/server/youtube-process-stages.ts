@@ -6,7 +6,7 @@ import type { OsRecord } from "@/lib/record-types";
 import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
 import { editableFields } from "@/lib/youtube-process/confirm";
 import { parseYoutubeRef, projectFromRecord, projectName, type YpGate, type YpKind, type YpProject } from "@/lib/youtube-process/project";
-import { oneArrow,
+import { oneArrow, pickFrame,
   confirmPlan, draftMissing, hiddenTagsOf, lateMakeOk, outlineMissing, PLAN_FIELD_KEY, scriptFromPlan, SLOTS, stageData, STAGE_RECORD, thumbsMissing, withScriptVersion, withNotePatch,
   columnSignature, type YpColumn, type YpColumnItem, type YpColumnMyin, type YpMake, type YpOutline, type YpPlan, type YpStageKind, type YpStages, type YpUpload,
 } from "@/lib/youtube-process/stages";
@@ -99,7 +99,7 @@ const refSchema = z.object({ url: z.string().url().max(300), videoId: z.string()
 const statSchema = z.object({ fact: text(200), value: text(40), unit: text(20), period: text(20), table: text(120), organization: text(60),
   sourceUrl: z.string().max(300).regex(/^https:\/\/kosis\.kr\//) }).strict();
 const thumbSchema = z.object({ id: text(40), mode: z.enum(["img", "text"]), path: text(300).optional(), screen: text(500).optional(), copy: text(120).optional(),
-  pick: z.object({ candidate: z.string().uuid(), accent: text(20).optional(), diff: z.enum(["카피", "그림", "배치"]).optional() }).strict().optional() }).strict();
+  pick: z.object({ candidate: z.string().uuid(), accent: text(20).optional(), diff: z.enum(["카피", "그림", "배치"]).optional(), frame: z.literal("person").optional(), flip: z.boolean().optional() }).strict().optional() }).strict();
 export const stagePatchSchemas = {
   plan: z.object({ titles: z.array(z.object({ id: text(40), text: text(200) }).strict()).min(1).max(12), thumbs: z.array(thumbSchema).min(1).max(8),
     opening: text(2000), body: text(6000), closing: text(2000), note: text(2000), extraRefs: z.array(refSchema).max(50), stats: z.array(statSchema).max(3), format: z.enum(["keypulling", "pulling"]), aiDraft: z.null() }).partial().strict(),
@@ -453,7 +453,7 @@ async function pickedThumbsToMake(service: Supabase, actor: RequestActor, projec
     const path = `youtube/${project.id}/thumb/${randomUUID()}.${picked.path.split(".").pop()}`;
     const { error } = await service.storage.from(MEDIA_BUCKET).copy(picked.path, path);
     if (!error) thumbs[slot] = { path, name: `기획안 ${slot}`, at: now,
-      ...(picked.pick && picked.copy ? { edit: { candidate: picked.pick.candidate, copy: { text: picked.copy, accent: picked.pick.accent ?? "" } } } : {}) };
+      ...(picked.pick && picked.copy ? { edit: { candidate: picked.pick.candidate, copy: { text: picked.copy, accent: picked.pick.accent ?? "" }, ...pickFrame(picked.pick) } } : {}) };
   }
   if (Object.keys(thumbs).length !== Object.keys(make.data.thumbs).length)
     await writeStage(service, actor.id, actor.team, project, "make", make, { ...make.data, thumbs }).catch(() => undefined);
