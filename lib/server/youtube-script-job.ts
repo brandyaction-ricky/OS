@@ -5,7 +5,7 @@ import { pickedPackaging, pickedPlanningCandidate, pipelineArtifacts } from "@/l
 import { SCRIPT_REVIEW_SCHEMA_VERSION, scriptReviewWorkflowOf } from "@/lib/content-script-review";
 import { WRITING_WORKFLOW_SCHEMA_VERSION, WRITING_WORKFLOW_STEPS, writingWorkflowOf } from "@/lib/content-writing-workflow";
 import type { OsRecord } from "@/lib/record-types";
-import { CHARS_PER_MINUTE, checkManuscript, checkScriptBody } from "@/lib/youtube-script-check";
+import { CHARS_PER_MINUTE, PULLING_CHARS_PER_MINUTE, checkManuscript, checkScriptBody } from "@/lib/youtube-script-check";
 import type { RequestActor } from "./auth";
 import { assertExpectedVersion, readPipeline, saveMetadata, scriptReviewWorkflowState, writingWorkflowState } from "./content-pipeline";
 import { assertV1ScriptInputs, isYoutubeV1, saveV1Script, v1ScriptCardInputs, v1ScriptInputKey } from "./youtube-process-ai";
@@ -35,7 +35,6 @@ export const scriptBundleSchema = z.object({
 export type ScriptBundle = z.infer<typeof scriptBundleSchema>;
 export const SCRIPT_RESULT_SHAPE = `{ "manuscript": "§8 형식 원고 전문", "materials": "흔한 생각·바람 표(댓글 있음/없음) · 쓴 재료(출처 doc_id) · 중심 근거 출처", "axis": "채택 축 · 대안 축 · 채점 · 중심 인물", "design": "§4 설계표", "review": "검수 기록", "canonBundle": "정본 묶음 값", "reReviews": 0, "editedParagraphs": [], "suggestions": [] }`;
 /** 풀링형 낭독 실측: 공백 뺀 글자 × 0.165초 → 1분에 약 364자(2026-11-25, 원리 1·2편과 3편 리메이크 실측). */
-const PULLING_CHARS_PER_MINUTE = 364;
 
 /** Gate 1 (기획) approved and one adopted title and copy: what a script job needs before it can start. */
 export function assertScriptInputs(state: Pipeline) {
@@ -73,7 +72,7 @@ export async function scriptJobCard(supabase: Client["supabase"], state: Pipelin
   const source = state.source;
   const plan = pipelineArtifacts(state.records).research;
   const materials = writingWorkflowOf(source.metadata.writingWorkflow).materials;
-  const v1 = isYoutubeV1(source) ? v1ScriptCardInputs(state, { targetMinutes, role, attachments: card.attachments, targetChars: targetMinutes * CHARS_PER_MINUTE }) : null;
+  const v1 = isYoutubeV1(source) ? v1ScriptCardInputs(state, { targetMinutes, role, attachments: card.attachments }) : null;
   const title = v1?.title ?? state.writing.packageTitle;
   const inputs = v1?.inputs ?? {
     sourceId: source.id, title: state.writing.packageTitle, thumbnailCopy: state.writing.packageCopy,
