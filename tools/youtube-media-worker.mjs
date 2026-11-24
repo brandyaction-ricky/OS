@@ -550,7 +550,7 @@ export function myinVoiceEnv(job, base = process.env) {
   if (onPc && (!key || !voice)) throw Object.assign(new Error("this render PC has no Fish key or voice to make the voice"), { code: "MYIN_VOICE_KEY_MISSING" });
   // Without a key, his older stage_voice still only joins the OS files: placeholder keys pass its "keys present" check.
   return { onPc, python: base.MYIN_VOICE_PYTHON || myinPython,
-    env: { ...base, PATH: `/opt/homebrew/bin:${base.PATH ?? ""}`, PYTHONIOENCODING: "utf-8", FISH_API_KEY: key || "unused", FISH_VOICE_ID: voice || "unused", ...(proxy ? { FISH_TTS_URL: proxy } : {}) } };
+    env: { ...base, PATH: ["/opt/homebrew/bin", base.PATH ?? ""].join(path.delimiter), PYTHONIOENCODING: "utf-8", FISH_API_KEY: key || "unused", FISH_VOICE_ID: voice || "unused", ...(proxy ? { FISH_TTS_URL: proxy } : {}) } };
 }
 
 /** Like runAsync, but never throws: what the process printed (stdout and stderr) and whether it ended well. */

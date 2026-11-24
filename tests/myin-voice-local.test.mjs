@@ -50,3 +50,17 @@ test("키 없이 Fish: the staff computer sends its staff key to the OS relay, w
   const run = read("lib/server/myin-run.ts");
   assert.match(run, /record\.stage !== "words_pending" \|\| run\.localVoice\?\.by !== ownerId/);
 });
+
+test("the staff installer adds the voice tools when the engine brings their package list, and runs without them otherwise", async () => {
+  const { installVoice, workerEnv } = await import("../public/myin-local/myin-local.mjs");
+  const { mkdtempSync } = await import("node:fs");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const dir = mkdtempSync(path.join(os.tmpdir(), "myin-voice-"));
+  assert.equal(installVoice(dir, dir), null, "no requirements-voice.lock: no voice tools, nothing installed");
+  const env = workerEnv({ dir, python: "/py", voicePython: "/voice/py" }, dir, "bos_pat_x");
+  assert.equal(env.MYIN_VOICE_PYTHON, "/voice/py");
+  assert.equal(env.MYIN_LOCAL_VOICE, "on");
+  assert.equal(workerEnv({ dir, python: "/py" }, dir, "bos_pat_x").MYIN_LOCAL_VOICE, undefined);
+  assert.match(read("tools/myin-engine-pack.sh"), /MYIN_VOICE_PYTHON" -s -m pip freeze \| grep -v -E '\^-e \|@ file:\/\/' > "\$STAGE\/requirements-voice\.lock"/);
+});
