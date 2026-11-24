@@ -135,6 +135,9 @@ test("인물형 틀 (대표 확정 2026-11-24): photo over the frame, band · bl
   assert.equal(layout.person.band.top, 330);
   assert.deepEqual(layout.photoBox, { left: 0, top: 0, width: 1280, height: 720 });
   assert.ok(layout.checks.every((c) => c.ok), layout.checks.filter((c) => !c.ok).map((c) => c.text).join());
+  const slashed = thumbLayout({ text: "직무 고민 중이라면 / “다 괜찮아 보이는데..?” / 맞는 직무는 이름에 없습니다" }, style, { frame: "person" });
+  assert.equal(slashed.person.band.text, "직무 고민 중이라면");
+  assert.ok(slashed.checks.every((c) => c.ok), slashed.checks.filter((c) => !c.ok).map((c) => c.text).join());
   const two = thumbLayout({ text: "5년 동안 뭐 했지?\n물경력은 역할에서 생깁니다" }, style, { frame: "person" });
   assert.equal(two.person.band, null);
   assert.ok(thumbLayout({ text: "가\n나\n다\n라" }, style, { frame: "person" }).checks.some((c) => !c.ok), "four lines do not fit the 인물형");
@@ -145,4 +148,9 @@ test("인물형 틀 (대표 확정 2026-11-24): photo over the frame, band · bl
   assert.match(jobs, /frame: z\.literal\("person"\)\.optional\(\), query:/);
   assert.match(thumbs, /if \(frame === "person"\) return personThumbsCard\(/);
   assert.match(thumbs, /!ok && !\(frame && key === "white"\)/);
+  // A job sent without the frame (an older screen) still takes person candidates: the AI marks them itself.
+  assert.match(thumbs, /frame: z\.literal\("person"\)\.optional\(\), flip: z\.boolean\(\)\.optional\(\),/);
+  assert.match(thumbs, /const frame = jobFrame \?\? input\.frame;/);
+  assert.match(thumbs, /candidate에 "frame": "person"을 넣고/);
+  assert.match(read("components/youtube-thumb-picker.tsx"), /if \(current\?\.frame\) \{ setFrame\(current\.frame\); setFlip\(Boolean\(current\.flip\)\); \}/);
 });

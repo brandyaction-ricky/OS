@@ -105,7 +105,8 @@ export const THUMB_PERSON = { blue: "#315FFA", black: "#000000", text: "#FFFFFF"
 
 function personLayout(copy: ThumbCopy, style: ThumbStyle, edit?: ThumbEdit): ThumbLayout {
   const P = THUMB_PERSON;
-  const all = copy.text.replace(/\r/g, "").split("\n").map((line) => line.trim()).filter(Boolean);
+  // 기획안 문구 칸은 한 줄이라 「 / 」로 나눠 쓰기도 한다(서율 3편 리메이크 2026-11-25) — 인물형에서는 줄바꿈과 같게 센다.
+  const all = copy.text.replace(/\r/g, "").split(/\n|\s\/\s/).map((line) => line.trim()).filter(Boolean);
   const band = all.length >= 3 ? all[0] : null, lines = (band ? all.slice(1) : all).slice(0, 2);
   const widest = Math.max(1, ...lines.map((line) => thumbLineEm(line, 0)));
   const fit = Math.floor((style.width - 2 * P.sidePx - P.padX) / widest);

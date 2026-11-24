@@ -35,12 +35,14 @@ export const thumbCandidateSchema = z.object({
   path: z.string().max(200), scene: z.string().trim().min(1).max(400), prompt: z.string().trim().min(1).max(2000),
   copies: z.array(copySchema).min(1).max(3), refs: z.array(z.string().trim().max(40)).max(8).default([]), why: z.string().trim().max(300).default(""),
   checks: z.object({ sparkle: z.boolean(), white: z.boolean(), color: z.boolean(), photo: z.boolean() }).strict(),
+  // 인물형 후보(대표 2026-11-25): the AI may mark one itself (a job sent without the frame still gets person candidates); flip = mirror the photo.
+  frame: z.literal("person").optional(), flip: z.boolean().optional(),
   // Where the subject is (px), so the frame can put it big above the title. Candidates from before 2026-11-11 have none.
   subject: z.object({ box: z.tuple([px, px, px, px]), size: z.tuple([px, px]) }).strict()
     .refine(({ box: [x0, y0, x1, y1], size: [w, h] }) => x0 < x1 && y0 < y1 && x1 <= w && y1 <= h && (x1 - x0) * (y1 - y0) >= w * h * 0.02, "box는 그림 안의 [왼, 위, 오른, 아래] 픽셀, size는 [가로, 세로] 픽셀이에요.").optional(),
 }).strict();
 export interface ThumbCandidate extends Omit<z.infer<typeof thumbCandidateSchema>, "copies" | "subject"> {
-  id: string; n: number; at: string; jobId: string; by: string; tool: ThumbTool; copies: ThumbCopy[]; subject?: ThumbSubject; frame?: "person";
+  id: string; n: number; at: string; jobId: string; by: string; tool: ThumbTool; copies: ThumbCopy[]; subject?: ThumbSubject; frame?: "person"; flip?: boolean;
 }
 /** The 피드 neighbours: market videos the PD's candidate is seen among (top of the job's frozen search). */
 export interface ThumbFeedRef { id: string; title: string; channel: string; views: number; thumbnail: string }
@@ -123,6 +125,7 @@ OS가 그림에 문구를 얹어 합성하고, 담당 PD가 기획안 화면에�
 7. 등록: process_youtube_ai_job에 action=add, job_id, lease, candidate. 등록하면 바로 PD 화면에 뜹니다. 하나 만들 때마다 올리고 등록합니다.
    candidate = { "path": "upload가 준 path", "scene": "장면 설명 한두 문장", "prompt": "그림에 쓴 프롬프트", "copies": [{ "text": "문구", "accent": "파랑으로 칠할 말(없으면 빈 문자열)" }, … 3개], "refs": ["근거 레퍼런스 영상 id(market rows의 url 끝)"], "why": "왜 눌릴지 한 줄", "checks": { "sparkle": true, "white": true, "color": true, "photo": true }, "subject": { "box": [왼, 위, 오른, 아래], "size": [가로, 세로] } }
    checks는 다듬은 뒤 직접 본 결과입니다(sparkle = ✦ 없음, white = 바탕 순백, color = 전체 컬러, photo = 실사). 하나라도 false면 고쳐서 올립니다.
+   인물형 후보(상황 사진이 화면을 채우고 작은 띠 · 파랑 박스 · 검정 박스 세 줄 문구)를 낼 때는 candidate에 "frame": "person"을 넣고(사람이 왼쪽에 있으면 "flip": true), 문구를 「작은 띠\\n파랑 박스\\n검정 박스」 세 줄로, subject 없이 checks.white는 false로 보냅니다.
    subject는 올린 그림에서 순백이 아닌 부분을 감싸는 네모(픽셀)와 그림 크기입니다. OS가 이걸 보고 피사체를 제목 바로 위까지 크게 놓아요. 재는 법:
    python3 -c "from PIL import Image, ImageChops as C; im=Image.open('그림.png').convert('RGB'); print(list(C.difference(im, Image.new('RGB', im.size, 'white')).convert('L').point(lambda v: 255 if v > 12 else 0).getbbox()), list(im.size))"
 8. ${count}개를 다 올렸으면 action=complete, result = { "made": 올린 수, "notes": "남길 말(없으면 빈 문자열)" }.
@@ -172,7 +175,7 @@ OS가 사진에 문구를 얹어 합성하고, 담당 PD가 기획안 화면에�
 6. 올리기: process_youtube_ai_job에 action=upload, job_id, lease, mime_type, file_size → 받은 upload_url에 그 파일을 PUT 합니다.
 7. 등록: process_youtube_ai_job에 action=add, job_id, lease, candidate. 등록하면 바로 PD 화면에 뜹니다.
    candidate = { "path": "upload가 준 path", "scene": "장면 설명 한두 문장", "prompt": "사진에 쓴 프롬프트", "copies": [{ "text": "작은 띠\\n파랑 박스\\n검정 박스", "accent": "" }, … 3개], "refs": ["근거 레퍼런스 영상 id"], "why": "왜 눌릴지 한 줄", "checks": { "sparkle": true, "white": false, "color": true, "photo": true } }
-   인물형은 subject를 보내지 않고, checks.white는 false로 둡니다(흰 바탕이 아닙니다).
+   인물형은 subject를 보내지 않고, checks.white는 false로 둡니다(흰 바탕이 아닙니다). 사진 속 사람이 왼쪽에 있으면 "flip": true를 넣으면 OS가 좌우를 뒤집어 사람을 오른쪽에 둡니다.
 8. ${count}개를 다 올렸으면 action=complete, result = { "made": 올린 수, "notes": "남길 말(없으면 빈 문자열)" }.
 
 ## 인물형 규칙
@@ -197,11 +200,12 @@ export async function thumbUploadUrl(projectId: string, mimeType: "image/png" | 
 }
 
 /** 7 등록: the picture must be up and the copies must read on the frame; then it is the project's next candidate. */
-export async function addThumbCandidate(job: OsRecord, tool: ThumbTool, by: string, value: unknown, frame?: "person") {
+export async function addThumbCandidate(job: OsRecord, tool: ThumbTool, by: string, value: unknown, jobFrame?: "person") {
   const service = createServiceSupabase();
   const parsed = thumbCandidateSchema.safeParse(value);
   if (!parsed.success) throw new ApiError(422, "THUMB_CANDIDATE_INVALID", `candidate 형식을 확인해 주세요: ${parsed.error.issues.slice(0, 6).map(i => `${i.path.join(".")} ${i.message}`).join(" / ")}`);
   const input = parsed.data, projectId = job.parent_id!;
+  const frame = jobFrame ?? input.frame;
   if (!candidatePath(projectId).test(input.path)) throw new ApiError(422, "THUMB_PATH", "path는 action=upload가 준 그대로 보내 주세요.");
   const folder = input.path.slice(0, input.path.lastIndexOf("/")), name = input.path.slice(input.path.lastIndexOf("/") + 1);
   const { data: files } = await service.storage.from(BUCKET).list(folder, { search: name, limit: 1 });
@@ -220,7 +224,7 @@ export async function addThumbCandidate(job: OsRecord, tool: ThumbTool, by: stri
   const lab = await changeLab(service, { id: projectId, team: owner?.team ?? "", ownerId: owner?.owner_id ?? job.owner_id }, current => {
     if (current.candidates.some(c => c.path === input.path)) { added = current.candidates.find(c => c.path === input.path)!; return current; }
     if (current.candidates.length >= MAX_CANDIDATES) throw new ApiError(409, "THUMB_LAB_FULL", `후보가 ${MAX_CANDIDATES}개라 더 받지 않아요.`);
-    added = { ...input, copies: input.copies.map(c => ({ text: c.text, ...(c.accent ? { accent: c.accent } : {}) })), id: randomUUID(), ...(frame ? { frame } : {}),
+    added = { ...input, copies: input.copies.map(c => ({ text: c.text, ...(c.accent ? { accent: c.accent } : {}) })), id: randomUUID(), frame, flip: frame && input.flip ? true : undefined,
       n: Math.max(0, ...current.candidates.map(c => c.n)) + 1, at: new Date().toISOString(), jobId: job.id, by, tool };
     return { ...current, candidates: [...current.candidates, added] };
   });

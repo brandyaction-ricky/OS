@@ -9,7 +9,7 @@ import type { useYpBundle } from "./youtube-process-frame";
 
 // 롱폼 애니메이션 썸네일 고르기 (요청 2026-11-09): a YouTube home feed with the PD's candidate among the market videos the AI read.
 // Picture ‹ › and copy ‹ › turn apart; 고정 keeps the copy while the pictures turn. 고르기 makes the PNG with the same frame.
-type Candidate = { id: string; n: number; at: string; by: string; path: string; url: string | null; scene: string; why: string; refs: string[]; copies: ThumbCopy[]; tool: ThumbTool; subject?: ThumbSubject; frame?: "person" };
+type Candidate = { id: string; n: number; at: string; by: string; path: string; url: string | null; scene: string; why: string; refs: string[]; copies: ThumbCopy[]; tool: ThumbTool; subject?: ThumbSubject; frame?: "person"; flip?: boolean };
 type Feed = { id: string; title: string; channel: string; views: number; thumbnail: string };
 type View = { style: string | null; feed: Feed[]; candidates: Candidate[] };
 export type ThumbPicked = { path: string; name: string; copy: ThumbCopy; pick: YpThumbPick };
@@ -80,7 +80,9 @@ export function ThumbPicker({ page, title, planCopies, picked, can, busyJob, onP
     return out;
   }, [planCopies, current]);
   const copy = pinned ?? copies[Math.min(cpy, Math.max(0, copies.length - 1))] ?? { text: title };
-  const turnImage = (step: number) => { if (!list.length) return; const next = (img + step + list.length) % list.length; setImg(next); setFrame(list[next]?.frame ?? frame); if (!pinned) setCpy(0); };
+  const turnImage = (step: number) => { if (!list.length) return; setImg((img + step + list.length) % list.length); if (!pinned) setCpy(0); };
+  // A 인물형 candidate opens in its frame (and mirror) — the PD can still switch.
+  useEffect(() => { if (current?.frame) { setFrame(current.frame); setFlip(Boolean(current.flip)); } }, [current?.id, current?.frame, current?.flip]);
   const turnCopy = (step: number) => { if (!copies.length || pinned) return; setCpy((cpy + step + copies.length) % copies.length); };
   const checks = style ? thumbLayout(copy, style, look).checks : [];
   const pick = async (slot: YpSlot) => {
