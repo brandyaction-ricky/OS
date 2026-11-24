@@ -1148,6 +1148,18 @@
         "production"
       ],
       "notes": "Owner-approved and applied to production 2026-11-23, read back (constraint + function). Loosens os_records_description_check for meetings only; replaces os_team_command from the deployed body with an openToday branch (advisory lock per business, returns the open meeting of the KST day). Rolled-back SQL check: second openToday create returned the first id. No rows changed."
+    },
+    {
+      "file": "20261124090000_content_metric_day_table.sql",
+      "sha256": "6d266f1aa7f99e97e5e269f6e8568300bcd4758d0198079f84090918631f1dff",
+      "purpose": "영상 성과 reads a narrow trigger-kept copy of the YouTube Analytics day rows, so a cold 30-day summary touches dozens of pages instead of ~1,600.",
+      "requiresApproval": true,
+      "developmentApprovedAt": null,
+      "productionApprovedAt": "2026-11-24",
+      "appliedEnvironments": [
+        "production"
+      ],
+      "notes": "Owner-approved and applied to production 2026-11-24, read back (table 12,950 rows, 2 triggers, summary reads the copy; 30-day views 157,319 unchanged). Additive: new table os_content_metric_days (RLS: active members), helper os_metric_number, trigger function + 2 triggers on os_records (content_metric only), backfill of the live day rows, os_content_metric_summary reads the copy. Rolled-back check on production data: 30-day and previous-30-day summaries identical (56 days, 276 videos, rows equal); insert/update/archive/unarchive keep the copy in step; a non-number value becomes null instead of failing the write."
     }
   ],
   "legacyMigrations": [
