@@ -17,7 +17,7 @@ test("the longform voice price counts four takes a sentence; shorts keep 많게�
 test("a longform voice lease grows with the script, so four takes a sentence are not refused as late; the panel's time follows", () => {
   const run = readFileSync(new URL("../lib/server/myin-run.ts", import.meta.url), "utf8");
   assert.match(run, /run\.voiceOn && !run\.layout \? WORDS_LEASE_MS \+ run\.paragraphs\.length \* 3 \* 60_000 : WORDS_LEASE_MS/);
-  assert.match(run, /claim\(service, "words_pending", wordsLeaseMs, fits\(short\)/);
+  assert.match(run, /claim\(service, "words_pending", wordsLeaseMs, \(run\) => fits\(short\)\(run\)/);
   assert.match(run, /typeof leaseMs === "function" \? leaseMs\(run\) : leaseMs/);
   assert.match(run, /Date\.parse\(run\.lease\.expiresAt\) < Date\.now\(\)/, "a late result is still refused");
   assert.match(panel, /run\.layout === "short" \? 8 : 10 \+ Math\.ceil\(run\.paragraphs \* 1\.4\)/);

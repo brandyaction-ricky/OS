@@ -30,6 +30,8 @@ export const renderPcSignalSchema = z.object({
   // makes ③ drafts only while its hash equals the render PC's, so a draft looks like the full video the render PC makes later.
   engine: z.string().regex(/^[a-f0-9]{16,64}$/).optional(),
   pc: z.string().regex(RENDER_PC_NAME).optional(),
+  // 음성도 내 컴퓨터에서 (로건 요청 11-16): a staff computer that can make a video's voice says so.
+  voice: z.boolean().optional(),
 }).strict();
 // since: when a named PC began reporting its current engine.
 type Signal = Omit<z.infer<typeof renderPcSignalSchema>, "action" | "pc"> & { at: string; since?: string };
@@ -58,7 +60,7 @@ export async function renderPcGone(name: string) {
   return !signal || ageOf(signal)! > RENDER_PC_GONE_SECONDS;
 }
 const signalOf = (input: z.infer<typeof renderPcSignalSchema>): Signal => ({ diskFreeGb: input.diskFreeGb, memUsedGb: input.memUsedGb, memTotalGb: input.memTotalGb,
-  job: input.job, packageName: input.packageName, ...(input.engine ? { engine: input.engine } : {}), at: new Date().toISOString() });
+  job: input.job, packageName: input.packageName, ...(input.engine ? { engine: input.engine } : {}), ...(input.voice ? { voice: true } : {}), at: new Date().toISOString() });
 async function readPcs(): Promise<Pc[]> {
   const listed = await createServiceSupabase().storage.from(YOUTUBE_VOICE_TIMING_BUCKET).list("render-pc/pcs", { limit: 100 });
   const names = (listed.data ?? []).map((file) => file.name.replace(/\.json$/, "")).filter((name) => RENDER_PC_NAME.test(name));
@@ -105,6 +107,7 @@ export async function readLocalRenderStatus(ownerId: string) {
     state: mine === null ? "unknown" as const : ageSeconds! > OFFLINE_AFTER_SECONDS ? "offline" as const : "online" as const,
     lastSignalAt: mine?.at ?? null, ageSeconds, job: mine?.job ?? null,
     engine: !mine?.engine || !pcEngine ? "unknown" as const : mine.engine === pcEngine ? "same" as const : "different" as const,
+    voice: Boolean(mine?.voice),
   };
 }
 /** A staff Mac may take a ③ draft only with the render PC's engine. */

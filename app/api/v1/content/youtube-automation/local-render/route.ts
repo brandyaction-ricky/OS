@@ -3,7 +3,7 @@ import { imageMacActions, imageMacWork, isImageMacAction } from "@/lib/server/im
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
-import { claimMyinClips, claimMyinFinal, claimMyinPrep, claimMyinRedraw, completeMyinClips, completeMyinFinal, completeMyinPrep, completeMyinRedraw, failMyinPrep, failMyinRedraw, failMyinStage, myinStillsUpload, redrawResultSchema, stillFiles, stills } from "@/lib/server/myin-run";
+import { MYIN_VOICE_PARTS, claimMyinClips, claimMyinFinal, claimMyinPrep, claimMyinRedraw, claimMyinWords, completeMyinWords, failMyinWords, completeMyinClips, completeMyinFinal, completeMyinPrep, completeMyinRedraw, failMyinPrep, failMyinRedraw, failMyinStage, myinStillsUpload, redrawResultSchema, stillFiles, stills } from "@/lib/server/myin-run";
 import { assertLocalEngine, renderPcEngine, renderPcSignalSchema, saveLocalRenderSignal } from "@/lib/server/youtube-render-pc";
 import { currentEngineDownload } from "@/lib/server/render-engine";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
@@ -35,6 +35,12 @@ const inputSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("myin_final_complete"), ...lease, bytes: z.number().int().positive(), durationSeconds: z.number().positive().max(14_400),
     lufs: z.number().min(-70).max(0), peak: z.number().min(-70).max(6), sizes: z.boolean().optional() }).strict(),
   z.object({ action: z.literal("myin_stage_fail"), ...lease, code: z.string().max(80) }).strict(),
+  // 음성도 내 컴퓨터에서 (로건 요청 11-16): stage 1 of a video its member gave to this computer — the render PC's own actions and results.
+  z.object({ action: z.literal("myin_claim"), engine }).strict(),
+  z.object({ action: z.literal("myin_complete"), ...lease,
+    voice: z.object({ parts: z.number().int().min(1).max(MYIN_VOICE_PARTS), bytes: z.number().int().positive(), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict().optional(),
+    preview: z.object({ bytes: z.number().int().positive() }).strict().optional() }).strict(),
+  z.object({ action: z.literal("myin_fail"), ...lease, code: z.string().max(80) }).strict(),
 ]);
 
 /**
@@ -48,7 +54,7 @@ export async function POST(request: Request) {
     const actor = await authenticateRequest(request, { allowAgent: true, requiredAgentScope: "records.write" });
     if (actor.type !== "agent") throw new ApiError(403, "LOCAL_RENDER_KEY_REQUIRED", "「내 컴퓨터 연결」 키로만 쓸 수 있어요.");
     const input = inputSchema.parse(await parseJson(request, 32_000));
-    if (input.action === "myin_prep_claim" || input.action === "myin_clips_claim" || input.action === "myin_final_claim" || input.action === "myin_redraw_claim") await assertLocalEngine(input.engine);
+    if (input.action === "myin_prep_claim" || input.action === "myin_clips_claim" || input.action === "myin_final_claim" || input.action === "myin_redraw_claim" || input.action === "myin_claim") await assertLocalEngine(input.engine);
     const result = isImageMacAction(input) ? await imageMacWork({target:"local",ownerId:actor.ownerId},input)
       : input.action === "heartbeat" ? await saveLocalRenderSignal(actor.ownerId, input)
       : input.action === "engine" ? await currentEngineDownload(await renderPcEngine(), Boolean(input.split))
@@ -63,6 +69,9 @@ export async function POST(request: Request) {
       : input.action === "myin_clips_complete" ? await completeMyinClips(input)
       : input.action === "myin_final_claim" ? await claimMyinFinal(undefined, false, actor.ownerId)
       : input.action === "myin_final_complete" ? await completeMyinFinal(input)
+      : input.action === "myin_claim" ? await claimMyinWords(undefined, false, undefined, actor.ownerId)
+      : input.action === "myin_complete" ? await completeMyinWords(input)
+      : input.action === "myin_fail" ? await failMyinWords(input)
       : await failMyinStage(input);
     return NextResponse.json(result, { headers: { "cache-control": "no-store" } });
   } catch (error) {

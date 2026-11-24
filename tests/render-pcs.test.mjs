@@ -90,7 +90,7 @@ test("claims carry the PC's name, the run keeps it, and a PC without the folder 
   assert.match(section("export async function failMyinStage", "/**"), /input\.code === "MYIN_WORK_MISSING" && !localOwner\(run\) && run\.words\?\.voice/);
   assert.equal((media.match(/short: z\.literal\(true\)\.optional\(\), pc(, stills: z\.literal\(true\)\.optional\(\))? \}\)\.strict\(\)/g) ?? []).length, 6, "every v13 render-PC claim takes the name");
   assert.equal((worker.match(/\.\.\.shortClaim, \.\.\.pcField/g) ?? []).length, 6, "the worker sends its name on every v13 claim");
-  assert.match(worker, /\.\.\.\(engine\(\) \? \{ engine: engine\(\) \} : \{\}\), \.\.\.pcField \}\)/, "and on its heartbeat");
+  assert.match(worker, /\.\.\.\(engine\(\) \? \{ engine: engine\(\) \} : \{\}\), \.\.\.pcField, \.\.\.\(local \? \{ voice: localVoice \} : \{\}\) \}\)/, "and on its heartbeat");
   assert.match(worker, /const worked = held \? false : await/, "a held PC takes no work");
   assert.match(worker, /export async function processMyinCta\(\) \{[\s\S]*?if \(job\.seed\) await myinRebuild\(job\.runId, job\.seed, job\.layout\);[\s\S]*?myinDirs\(job\.runId\)/);
   assert.match(worker, /copyEngine\(layout === "short" \? myinPkgShort : myinPkg, work\)/, "a moved 숏폼 is rebuilt from the vertical engine");

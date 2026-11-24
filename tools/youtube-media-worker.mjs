@@ -50,6 +50,9 @@ export function killTree(pid) {
 // RENDER_PC_NAME names it on the screen; without one, the computer's own name.
 const pcName = local ? "" : ((process.env.RENDER_PC_NAME || os.hostname()).replace(/\.local$/, "").replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[^A-Za-z0-9]+/, "").slice(0, 40) || "render-pc");
 const pcField = pcName ? { pc: pcName } : {};
+// 음성도 내 컴퓨터에서 (로건 요청 11-16): a staff computer makes the voices its member gives it only when it has the voice tools —
+// MYIN_LOCAL_VOICE=on, the voice Python and a way to reach Fish — and says so on every heartbeat, so the screen offers it only then.
+const localVoice = local && process.env.MYIN_LOCAL_VOICE === "on" && Boolean(process.env.FISH_API_KEY?.trim()) && existsSync(process.env.MYIN_VOICE_PYTHON || "/nonexistent");
 const workerRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 let adEngine;
 const adFingerprint = () => adEngine ??= adRuntimeDigest(workerRoot);
@@ -62,7 +65,7 @@ const diskFreeGb = () => { const { bavail, bsize } = statfsSync(mindmapDir || os
 export async function heartbeat() {
   const answer = await call({ action: "heartbeat", diskFreeGb: diskFreeGb(), memUsedGb: gb(os.totalmem() - os.freemem()), memTotalGb: gb(os.totalmem()), job: current,
     packageName: (process.env.MINDMAP_PACKAGE_NAME || path.basename(path.resolve(local ? myinPkg : mindmapDir, ".."))).slice(0, 80),
-    ...(engine() ? { engine: engine() } : {}), ...pcField }).catch((error) => { console.error(`heartbeat: ${error.message}`); return null; });
+    ...(engine() ? { engine: engine() } : {}), ...pcField, ...(local ? { voice: localVoice } : {}) }).catch((error) => { console.error(`heartbeat: ${error.message}`); return null; });
   if (answer?.stopRun && answer.stopRun === current?.runId && stopping !== answer.stopRun) {
     stopping = answer.stopRun;
     console.error(`newer run of this video: stopping ${stopping}`);
@@ -693,8 +696,8 @@ export function recycleVoice(job, voiceDir) {
 }
 
 export async function processMyinWords() {
-  if (!myinPkg) return false;
-  const job = await call({ action: "myin_claim", ...shortClaim, ...pcField });
+  if (!myinPkg || (local && !localVoice)) return false;
+  const job = await call({ action: "myin_claim", ...(local ? { engine: engine() } : { ...shortClaim, ...pcField }) });
   if (job.idle) return false;
   current = { step: "download", runId: job.runId };
   const lease = { runId: job.runId, lease: job.lease };
@@ -1395,7 +1398,7 @@ async function runLocal() {
   void heartbeat();
   setInterval(() => void heartbeat(), 60_000).unref();
   do {
-    const worked = await processMyinRedraw().then((done) => done || processMyinPrep()).then((done) => done || processMyinClips()).then((done) => done || processMyinFinal()).then((done) => done || processImageAds()).catch((error) => {
+    const worked = await processMyinWords().then((done) => done || processMyinRedraw()).then((done) => done || processMyinPrep()).then((done) => done || processMyinClips()).then((done) => done || processMyinFinal()).then((done) => done || processImageAds()).catch((error) => {
       // The render PC moved to another engine: exit 3 between jobs, so the runner (public/myin-local) installs it and starts again.
       if (error.code === "MYIN_ENGINE_DIFFERENT") { console.error(`${error.message} (engine ${engine()})`); process.exit(3); }
       console.error(error.message);

@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { myinBreathText, myinCleanScript, myinRunMatchesScript, myinScriptMarkdown } from "@/lib/myin-script";
-import { localOwner, movePinned, pinnedElsewhere, placeFilter, settingsPlace } from "@/lib/myin-local";
+import { localOwner, localVoiceBlocker, movePinned, pinnedElsewhere, placeFilter, settingsPlace, voiceFilter } from "@/lib/myin-local";
 import { changedMaterials, type MyinMaterials } from "@/lib/myin-materials";
 import { myinStop } from "@/lib/myin-stop";
 import { planVoiceFix } from "@/lib/myin-voice-plan";
@@ -17,7 +17,7 @@ import { MYIN_VOICE_TUNING, synthesizeFishWav } from "./fish-audio";
 import { readDiagramCatalog } from "./diagram-catalog";
 import { readSoundCatalog } from "./sound-catalog";
 import { readYoutubeAutomationInput } from "./youtube-automation-input";
-import { RENDER_PC_NAME, renderPcEngine, renderPcGone, renderPcJobs } from "./youtube-render-pc";
+import { readLocalRenderStatus, RENDER_PC_NAME, renderPcEngine, renderPcGone, renderPcJobs } from "./youtube-render-pc";
 import { readChannelStyles } from "./youtube-channel-styles";
 import { channelOf, channelToneSchema, pinStyle, type ChannelStyle } from "@/lib/youtube-process/channel-style";
 import { assertSpokenScript } from "./youtube-script-canon";
@@ -189,10 +189,12 @@ const runSchema = z.object({
   // 직원 요청 2026-11-03: ④ 자료 준비 and the full video on a member's own computer too — both, since the video is drawn from the folder
   // the preparation filled. The render PC still makes the 구독 대사 voice (the Fish key and Logan's voice tools live only there).
   localFinish: z.object({ by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict().optional(),
+  // 음성도 내 컴퓨터에서 (로건 요청 11-16): stage 1 and its 문장 고치기 on this member's own computer, which said it has the voice tools.
+  localVoice: z.object({ by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict().optional(),
   // 제작 설정 (직원 요청 2026-11-05): where every later step is made and whether GPT checks the screens, chosen once when the video starts
   // (or changed later) instead of at each step. 「내 컴퓨터」 is the computer of whoever chose it.
   // 로건 11-13 (대표 11-16 「자동」): whether the storyboard waits for a person's 확인 or goes on by itself once the OS check passes (기본 자동, 롱폼).
-  settings: z.object({ place: z.enum(["pc", "local"]), screenCheck: z.boolean(), confirm: z.enum(["auto", "person"]).optional(), by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict().optional(),
+  settings: z.object({ place: z.enum(["pc", "local"]), voice: z.enum(["pc", "local"]).optional(), screenCheck: z.boolean(), confirm: z.enum(["auto", "person"]).optional(), by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict().optional(),
   // 로건 11-13: the paid steps (voice, 구독 대사 voice) approved once by a person when the video starts — 「완성」 then asks no more.
   paidOk: z.object({ by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict().optional(),
   // 렌더 전 관문 sends at ③ in a row (a person's 수정 요청 resets it); past MYIN_GATE_ROUNDS the video goes on and marks them 사람 확인 필요.
@@ -277,7 +279,8 @@ export function presentMyinRun(record: OsRecord) {
     style: run.style ? { id: run.style.id, name: run.style.name, version: run.style.version, channel: run.style.channel } : null,
     lastErrorCode: run.lastError?.code ?? null, waitingPhotos: (run.lastError?.files ?? []).filter((file) => !run.ours?.[file]), createdAt: record.created_at, local: run.local ? { by: run.local.by, name: run.local.name } : null,
     localFinish: run.localFinish ? { by: run.localFinish.by, name: run.localFinish.name } : null, clipsStale: previewStale(run),
-    settings: run.settings ? { place: run.settings.place, screenCheck: run.settings.screenCheck, confirm: run.settings.confirm ?? "auto", name: run.settings.name } : null,
+    localVoice: run.localVoice ? { by: run.localVoice.by, name: run.localVoice.name } : null, waitingSince: record.status === "backlog" ? record.updated_at : null,
+    settings: run.settings ? { place: run.settings.place, voice: run.settings.voice ?? "pc", screenCheck: run.settings.screenCheck, confirm: run.settings.confirm ?? "auto", name: run.settings.name } : null,
     autoConfirm: autoConfirms(run), paidOk: Boolean(run.paidOk), gateRounds: run.gateRounds ?? 0,
     photoCredits: Object.fromEntries(Object.entries(run.ours ?? {}).map(([file, image]) => [file, image.credit ? { source: image.credit.source, license: image.credit.license, url: image.credit.url }
       : { source: `우리 이미지 · ${image.name}`, license: "", url: null }])), localReady: Boolean(run.words?.voice) && !run.layout,
@@ -415,7 +418,7 @@ function placeStep(run: MyinRun, actor: RequestActor, place?: "pc" | "local") {
 }
 
 /** 제작 설정 바꾸기: steps that start after this follow the new choice; a step already waiting is moved with 만드는 곳 buttons. */
-export async function setMyinSettings(actor: RequestActor, runId: string, choice: { place: "pc" | "local"; screenCheck: boolean; confirm?: "auto" | "person" }) {
+export async function setMyinSettings(actor: RequestActor, runId: string, choice: { place: "pc" | "local"; voice?: "pc" | "local"; screenCheck: boolean; confirm?: "auto" | "person" }) {
   const service = createServiceSupabase();
   const { record, run } = await visibleRun(actor, runId);
   if (run.final && record.stage === "final_ready") throw new ApiError(409, "MYIN_SETTINGS_DONE", "완성된 영상이에요. 다시 만들 때 바꿔 주세요.");
@@ -441,6 +444,25 @@ export async function setMyinDraftPlace(actor: RequestActor, runId: string, plac
   draftPlace(next, actor, place);
   if (run.clipsReview) return presentMyinRun(await beginPrep(service, record, next, actor.id));
   return presentMyinRun(await save(service, record, "backlog", record.stage!, next));
+}
+
+/**
+ * [내 컴퓨터로 돌리기] · [영상 만드는 컴퓨터로 보내기] (로건 요청 11-16): move a longform's first voice while it waits. Only the first one:
+ * 문장 고치기 work in the folder the voice was made in, so after that the voice stays where it is.
+ */
+export async function setMyinVoicePlace(actor: RequestActor, runId: string, place: "pc" | "local") {
+  const service = createServiceSupabase();
+  const { record, run } = await visibleRun(actor, runId);
+  if (record.stage !== "words_pending" || run.words || run.layout) throw new ApiError(409, "MYIN_VOICE_PLACE_NOT_OPEN", "롱폼의 첫 음성을 기다리는 동안에만 만들 곳을 바꿀 수 있어요.");
+  if (run.lease && Date.parse(run.lease.expiresAt) > Date.now()) throw new ApiError(409, "MYIN_PLACE_BUSY", "지금 만드는 중이에요. 끝난 뒤에 바꿔 주세요.");
+  const next: MyinRun = { ...run, attempts: 0 };
+  delete next.lease; delete next.lastError; delete next.localVoice;
+  if (place === "local") {
+    const blocker = localVoiceBlocker(await readLocalRenderStatus(actor.ownerId).catch(() => null));
+    if (blocker) throw new ApiError(409, "MYIN_LOCAL_VOICE_NOT_READY", blocker);
+    next.localVoice = { by: actor.ownerId, name: actor.name, at: new Date().toISOString() };
+  }
+  return presentMyinRun(await save(service, record, "backlog", record.stage, next));
 }
 
 /** Everyone who can read the video sees its run: 로건 and 유쓰 confirm from their own accounts (RLS decides who reads). */
@@ -579,7 +601,7 @@ async function recycleFrom(recycle: { runId: string; cuts: [number, number][] })
   return { recycle: { from: recycle.runId, cuts: recycle.cuts }, pc: run.pc };
 }
 
-export async function createMyinRun(actor: RequestActor, sourceId: string, styleId?: string, settings?: { place: "pc" | "local"; screenCheck: boolean; confirm?: "auto" | "person" }, paidOk = false) {
+export async function createMyinRun(actor: RequestActor, sourceId: string, styleId?: string, settings?: { place: "pc" | "local"; voice?: "pc" | "local"; screenCheck: boolean; confirm?: "auto" | "person" }, paidOk = false) {
   const input = await currentInput(actor.supabase, sourceId);
   const cards = (await readChannelStyles()).styles;
   const picked = styleId ? cards.find((style) => style.id === styleId) : undefined;
@@ -604,6 +626,7 @@ export async function createMyinRun(actor: RequestActor, sourceId: string, style
     voiceModel: MYIN_VOICE_MODEL, voiceReferenceFingerprint: fingerprint, ...(channelVoice ? { voiceReference: channelVoice } : {}), attempts: 0, ...(input.layout ? { layout: input.layout } : {}), ...(input.renderer ? { renderer: input.renderer } : {}), ...(onPc ? { voiceOn: "render_pc" as const } : {}),
     ...(picked ? { style: pinStyle(picked) } : {}), ...(recycled ? { recycle: recycled.recycle, pc: recycled.pc } : {}),
     ...(settings ? { settings: { ...settings, by: actor.ownerId, name: actor.name, at: new Date().toISOString() } } : {}),
+    ...(await voiceHere(actor, settings?.voice, input.layout) ? { localVoice: { by: actor.ownerId, name: actor.name, at: new Date().toISOString() } } : {}),
     ...(paidOk && actor.type === "user" ? { paidOk: { by: actor.ownerId, name: actor.name, at: new Date().toISOString() } } : {}),
     paragraphs: input.spoken.map((text, index) => ({ index, textHash: sha(text), status: "pending" })) };
   const { data, error } = await actor.supabase.from("os_records").insert({
@@ -768,8 +791,14 @@ export const fishVoice = (run?: { voiceReference?: string }) => ({ referenceId: 
 /** A 숏폼 run goes only to a render PC whose worker has the vertical engine (it says `short`); an older worker keeps taking longforms. */
 const fits = (short: boolean) => (run: MyinRun) => short || !run.layout;
 
-export async function claimMyinWords(service: Service = createServiceSupabase(), short = false, pc?: string) {
-  const claimed = await claim(service, "words_pending", wordsLeaseMs, fits(short), undefined, undefined, { name: pc });
+/** 음성도 내 컴퓨터에서: a longform's voice goes to the chooser's own computer only while that computer says it can make one. */
+async function voiceHere(actor: { ownerId: string }, choice: "pc" | "local" | undefined, layout?: string | null) {
+  return choice === "local" && !layout && !localVoiceBlocker(await readLocalRenderStatus(actor.ownerId).catch(() => null));
+}
+
+/** A render PC takes every voice no member's computer was given (`owner` absent); a member's computer (`owner`) takes only its own. */
+export async function claimMyinWords(service: Service = createServiceSupabase(), short = false, pc?: string, owner?: string) {
+  const claimed = await claim(service, "words_pending", wordsLeaseMs, (run) => fits(short)(run) && voiceFilter(owner)(run), undefined, undefined, owner ? undefined : { name: pc });
   if (!claimed) return { idle: true as const };
   const { record, run, lease } = claimed;
   // 음성 시작 알림 (2026-11-17): a voice that waited for the render PC (another video's voice, a final render) tells who started it.

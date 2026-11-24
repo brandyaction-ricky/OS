@@ -17,6 +17,7 @@ import { MyinScreenCheck } from "./myin-screen-check";
 import { MyinSceneNotes, sceneSheets, type SceneSheetsReply } from "./myin-scene-notes";
 import { MyinVoiceCheck, type MyinVoiceCheckView, type MyinVoiceFixView } from "./myin-voice-check";
 import { localBlocker, useLocalRender, type DraftPlace } from "./myin-local-render";
+import { localVoiceBlocker, VOICE_FALLBACK_MS } from "@/lib/myin-local";
 import { lastSettings, MyinMakeSettings, placeName, rememberSettings, SettingsLine, type MakeSettings, type RunSettings } from "./myin-make-settings";
 import { assToSrt } from "@/lib/subtitle-files";
 import { myinRetryScope, myinStop } from "@/lib/myin-stop";
@@ -28,7 +29,8 @@ interface Storyboard { scenes: number; model: string; at: string; metaphors: { s
   summary: { title: string; points: string[] } | null; reasons: { metaphors: string; cta: string; summary: string };
   assets: { kind: string; file: string; url: string; source: string; license: string; use: string }[]; fuzzy: string[]; notes: string[]; reading?: string[];
   /** 고친 원고 (요청 3번): lent by the video's earlier run — paragraphs the edit changed, scenes the AI fixed. */ carried?: { changed: number; scenes: number } }
-interface MyinRun { id: string; status: string; stage: string; layout?: "short" | null; renderer?: "web" | null; paragraphs: number; paragraphsReady: number; voiceOnPc?: boolean; lastErrorCode: string | null; waitingPhotos?: string[];
+interface MyinRun { id: string; status: string; stage: string;
+  /** 음성도 내 컴퓨터에서 (로건 요청 11-16): whose computer makes this voice; when the step began waiting (backlog only). */ localVoice?: { by: string; name: string } | null; waitingSince?: string | null; layout?: "short" | null; renderer?: "web" | null; paragraphs: number; paragraphsReady: number; voiceOnPc?: boolean; lastErrorCode: string | null; waitingPhotos?: string[];
   words: { words: number; subtitleLines: number; durationSeconds: number } | null; storyboard: Storyboard | null;
   review: { decision: "confirmed" | "revise"; name: string; note: string; at: string } | null;
   assetDecisions: Record<string, { decision: "approved" | "excluded" }>; ctaReady: string | null;
@@ -86,7 +88,7 @@ function StopNote({ run }: { run: MyinRun }) {
 const placedOn = (run: MyinRun) => run.clipsReview ? run.localFinish : run.local;
 const maker = (run: MyinRun) => { const local = placedOn(run); return local ? `${local.name}님 컴퓨터` : run.pc ? `영상 만드는 컴퓨터(${run.pc})` : "영상 만드는 컴퓨터"; };
 // 로건 사람 말투 음성 (2026-10-29): the render PC makes the voice too — about 13 seconds a paragraph before the transcription.
-const phaseLabel = (run: MyinRun) => run.voiceOnPc && run.stage === "words_pending" ? "영상 만드는 컴퓨터가 음성 · 받아쓰기 · 자막 만드는 중"
+const phaseLabel = (run: MyinRun) => run.voiceOnPc && run.stage === "words_pending" ? `${run.localVoice ? `${run.localVoice.name}님 컴퓨터` : "영상 만드는 컴퓨터"}가 음성 · 받아쓰기 · 자막 만드는 중`
   : run.stage === "cta_pending" && run.localFinish && run.voiceOnPc ? `영상 만드는 컴퓨터가 구독 대사 음성을 만들어요 · 그다음 ${maker(run)}가 자료 준비`
   : run.stage === "final_pending" ? `${maker(run)}가 전체 영상 만드는 중`
   : run.stage === "prep_pending" ? run.clipsReview ? `${maker(run)}가 자료 준비 · 다시 점검 중` : `${maker(run)}가 미리보기 준비 · ${run.layout === "short" ? "" : "자동 선곡 · "}점검 중`
@@ -190,7 +192,9 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
   }, [accessToken]);
   const draftWaiting = Boolean(run && !run.clipsReview && ["prep_pending", "clips_pending"].includes(run.stage));
   const finishWaiting = Boolean(run?.clipsReview && !short && ["cta_pending", "prep_pending", "prep_ready", "final_pending"].includes(run.stage));
-  const { status: localPc, reload: reloadLocal } = useLocalRender(accessToken, !run || Boolean(run.scriptChanged) || editingSettings || draftWaiting || finishWaiting);
+  // 음성도 내 컴퓨터에서 (로건 요청 11-16): a longform's first voice waiting for the render PC (or given to a member's computer).
+  const voiceWaiting = Boolean(run && run.voiceOnPc && run.stage === "words_pending" && !run.words && run.layout !== "short" && run.status !== "blocked");
+  const { status: localPc, reload: reloadLocal } = useLocalRender(accessToken, !run || Boolean(run.scriptChanged) || editingSettings || draftWaiting || finishWaiting || voiceWaiting);
   const load = useCallback(async () => {
     if (!accessToken) return;
     try {
@@ -300,8 +304,17 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       : !localBlocker(localPc, target.localReady) && !target.workingSince ? <button type="button" className="secondary-button compact" disabled={Boolean(busy)}
         onClick={() => move(target, "local")}>내 컴퓨터로 만들기</button> : null}
   </div>;
+  // The render PC has not taken the voice for VOICE_FALLBACK_MS: offer this computer, when it has the voice tools.
+  const voiceButtons = (target: MyinRun) => {
+    if (target.localVoice) return <div className="yt-actions"><small>음성 만드는 곳 · {target.localVoice.name}님 컴퓨터</small>
+      {!target.workingSince ? <button type="button" className="secondary-button compact" disabled={Boolean(busy)} onClick={() => void act("voice_place", () => post("/myin", "PATCH", { action: "voice_place", runId: target.id, place: "pc" }))}>영상 만드는 컴퓨터로 보내기</button> : null}</div>;
+    if (target.workingSince || !target.waitingSince || Date.now() - Date.parse(target.waitingSince) < VOICE_FALLBACK_MS) return null;
+    const blocker = localVoiceBlocker(localPc);
+    return <div className="yt-actions"><small>영상 만드는 컴퓨터가 5분 넘게 음성을 가져가지 않았어요{blocker ? ` · 내 컴퓨터로는 아직 못 해요(${blocker})` : ""}</small>
+      {!blocker ? <button type="button" className="secondary-button compact" disabled={Boolean(busy)} onClick={() => void act("voice_place", () => post("/myin", "PATCH", { action: "voice_place", runId: target.id, place: "local" }))}>내 컴퓨터로 돌리기</button> : null}</div>;
+  };
   const openSettings = () => {
-    if (run?.settings) setSettings({ place: run.settings.place, screenCheck: run.settings.screenCheck, confirm: run.settings.confirm ?? "auto" });
+    if (run?.settings) setSettings({ place: run.settings.place, voice: run.settings.voice ?? "pc", screenCheck: run.settings.screenCheck, confirm: run.settings.confirm ?? "auto" });
     setEditingSettings(true);
     window.setTimeout(() => document.getElementById("myin-settings")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
   };
@@ -431,6 +444,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
           {run.voiceOnPc ? <small>음성 {run.paragraphs}문단 · 영상 만드는 컴퓨터가 문장마다 만들어 고름</small> : <small>음성 {run.paragraphsReady}/{run.paragraphs}문단</small>}
           {run.style ? <small>채널 모양 {run.style.name} · v{run.style.version}</small> : null}
           {!run.words && run.stage === "words_pending" && run.status !== "blocked" ? <RunWait run={run} /> : null}</div>
+        {voiceWaiting ? voiceButtons(run) : null}
         {run.status === "blocked" && !run.words ? <StopNote run={run} /> : null}
         {run.stage === "voice_pending" ? <progress max={run.paragraphs} value={run.paragraphsReady} aria-label="음성 진행" /> : null}
         {run.words ? <small>낭독 {Math.floor(run.words.durationSeconds / 60)}분 {Math.round(run.words.durationSeconds % 60)}초 · 받아쓴 단어 {run.words.words.toLocaleString()}개 · 자막 {run.words.subtitleLines}줄</small> : null}
