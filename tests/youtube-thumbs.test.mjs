@@ -145,4 +145,9 @@ test("인물형 틀 (대표 확정 2026-11-24): photo over the frame, band · bl
   assert.match(jobs, /frame: z\.literal\("person"\)\.optional\(\), query:/);
   assert.match(thumbs, /if \(frame === "person"\) return personThumbsCard\(/);
   assert.match(thumbs, /!ok && !\(frame && key === "white"\)/);
+  // A job sent without the frame (an older screen) still takes person candidates: the AI marks them itself.
+  assert.match(thumbs, /frame: z\.literal\("person"\)\.optional\(\), flip: z\.boolean\(\)\.optional\(\),/);
+  assert.match(thumbs, /const frame = jobFrame \?\? input\.frame;/);
+  assert.match(thumbs, /candidate에 "frame": "person"을 넣고/);
+  assert.match(read("components/youtube-thumb-picker.tsx"), /if \(current\?\.frame\) \{ setFrame\(current\.frame\); setFlip\(Boolean\(current\.flip\)\); \}/);
 });
