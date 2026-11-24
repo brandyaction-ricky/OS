@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { checkManuscript, checkScriptBody, sourcedParagraphs } from "../lib/youtube-script-check.ts";
 
@@ -135,7 +136,6 @@ test("풀링형 scripts may have up to 10 sections (풀링형 정본 §2); 키�
 });
 
 test("기획안 영상 형식: the PD picks 키풀링형 or 풀링형 and the 원고 job reads the 풀링형 정본 with it", async () => {
-  const { readFileSync } = await import("node:fs");
   const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
   assert.match(read("lib/server/youtube-process-stages.ts"), /format: z\.enum\(\["keypulling", "pulling"\]\)/);
   assert.match(read("lib/youtube-process/stages.ts"), /titles: "draft\.tt", format: "draft\.format"/);
@@ -145,5 +145,21 @@ test("기획안 영상 형식: the PD picks 키풀링형 or 풀링형 and the �
   assert.match(ai, /checkManuscript\(bundle\.manuscript, \{ title, targetMinutes: author\.targetMinutes, canon, pulling: ypFormat\(stages\.plan\.data\) === "pulling" \}\)/);
   const job = read("lib/server/youtube-script-job.ts");
   assert.match(job, /\.ilike\("title", "풀링형 롱폼%"\)\.neq\("status", "archived"\)/, "found by title, so its doc id is not in the code");
-  assert.match(job, /\$\{await canonRefs\(supabase, v1\?\.pulling\)\}/);
+  assert.match(job, /\$\{await canonRefs\(supabase, pulling\)\}/);
+});
+
+test("원고 작업 지시문 follows 원고 공정 정본 v2.9: one axis + one alternative, one independent review, no comment quota (대표 2026-11-24)", () => {
+  const job = readFileSync(new URL("../lib/server/youtube-script-job.ts", import.meta.url), "utf8");
+  for (const gone of [/10번 안팎/, /6개 이상/, /축 후보 채점/, /관문마다 통과/]) assert.doesNotMatch(job, gone);
+  assert.match(job, /축 1개 \+ 대안 1개를 세워 작성 AI가 채점표\(§3\)로 직접 고릅니다/);
+  assert.match(job, /관문 2~6은 독립 검수 한 번으로 한꺼번에 판정합니다/);
+  assert.match(job, /3번이면 그 상태로 제출하고/);
+  assert.match(job, /댓글 원문이 없거나 적어도 원고를 씁니다/);
+  assert.match(job, /「제가 만난 분」처럼 다른 관계로 바꿔 말하지 않습니다/);
+  // 풀링형: no persuasion material and no OS search, 관문 1 · 6 only, length in letters without spaces.
+  assert.match(job, /대표 라이브 발언 · 대표 실제 경험 · 고객 후기 금지/);
+  assert.match(job, /관문 6\(말투\)만 독립 검수 한 번으로 봅니다/);
+  assert.match(job, /원고 구조 정본과 현재기준은 열지 않습니다/);
+  assert.match(job, /\$\{pulling \? "" : `\n## 재료 — 쓸 것만 찾습니다/);
+  assert.match(job, /공백 제외 약 \$\{targetMinutes \* PULLING_CHARS_PER_MINUTE\}자/);
 });
