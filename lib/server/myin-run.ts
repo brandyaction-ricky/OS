@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { after } from "next/server";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { myinBreathText, myinCleanScript, myinRunMatchesScript, myinScriptMarkdown } from "@/lib/myin-script";
@@ -7,7 +8,7 @@ import { changedMaterials, type MyinMaterials } from "@/lib/myin-materials";
 import { myinStop } from "@/lib/myin-stop";
 import { planVoiceFix } from "@/lib/myin-voice-plan";
 import { applySubtitleEdits, subtitleIssues, subtitleLines, subtitleTextProblem } from "@/lib/myin-subtitles";
-import { applyMyinSoundPlan, MYIN_METAPHOR_TYPES, myinColumnMaterials, myinDriftPairs, myinOnlySoundChanged, myinTextPairs, myinPhotoFetchUrl, myinPhotoFolders, myinPhotoCreditLines, myinPrepPhotos, myinSceneStarts, myinSoundIssues, myinSoundPlan, myinCuesAsScript, myinStoryboardSchema, type MyinSoundPlan } from "@/lib/myin-storyboard";
+import { applyMyinSoundPlan, MYIN_AI_PHOTO_MODEL, MYIN_METAPHOR_TYPES, myinColumnMaterials, myinDriftPairs, myinOnlySoundChanged, myinTextPairs, myinPhotoFetchUrl, myinPhotoFolders, myinPhotoCreditLines, myinPrepPhotos, myinSceneStarts, myinSoundIssues, myinSoundPlan, myinCuesAsScript, myinStoryboardSchema, type MyinSoundPlan } from "@/lib/myin-storyboard";
 import { diagramCatalogTypes } from "@/lib/diagram-catalog";
 import { checkMyinStory } from "./myin-storyboard-job";
 import type { OsRecord } from "@/lib/record-types";
@@ -22,6 +23,7 @@ import { readChannelStyles } from "./youtube-channel-styles";
 import { channelOf, channelToneSchema, pinStyle, type ChannelStyle } from "@/lib/youtube-process/channel-style";
 import { assertSpokenScript } from "./youtube-script-canon";
 import { notify } from "./youtube-process";
+import { drawImageBytes } from "./card-draw";
 import { digestVoiceValue, voiceRunId, YOUTUBE_VOICE_BUCKET, YOUTUBE_VOICE_TIMING_BUCKET } from "./youtube-voice-run";
 import { readVoiceDictionary, reportVoiceDictionary } from "./youtube-voice-dictionary";
 import { dictionaryFiles, type VoiceDictionaryFiles } from "@/lib/youtube-process/voice-dictionary";
@@ -134,7 +136,9 @@ const runSchema = z.object({
     cta: z.array(z.object({ after: z.string(), line: z.string() }).strict()),
     summary: z.object({ title: z.string(), points: z.array(z.string()) }).strict().nullable(),
     reasons: z.object({ metaphors: z.string(), cta: z.string(), summary: z.string() }).strict(),
-    assets: z.array(z.object({ kind: z.enum(["people", "situations", "bgm"]), file: z.string(), url: z.string(), source: z.string(), license: z.string(), use: z.string() }).strict()),
+    // ai: an AI 사진 (풀링형 요청, 대표 2026-11-24) — no address; the OS draws it from prompt and keeps it as ours.
+    assets: z.array(z.object({ kind: z.enum(["people", "situations", "bgm"]), file: z.string(), url: z.string(), source: z.string(), license: z.string(), use: z.string(),
+      ai: z.literal(true).optional(), prompt: z.string().max(1500).optional(), desc: z.string().max(300).optional() }).strict()),
     fuzzy: z.array(z.string()), notes: z.array(z.string()), reading: z.array(z.string()).optional(),
     // 고친 원고 (요청 3번, 2026-11-17): lent by the video's earlier run — how many paragraphs the edit changed, how many scenes went to the AI.
     carried: z.object({ changed: z.number().int().min(0), scenes: z.number().int().min(0) }).strict().optional() }).strict().optional(),
@@ -150,6 +154,8 @@ const runSchema = z.object({
   // credit (사진 후보, 2026-11-03): a candidate photo kept as ours, with the Unsplash · 위키미디어 credit it needs in the description.
   ours: z.record(z.string(), z.object({ path: z.string(), bytes: z.number().int().positive(), by: z.string().uuid(), name: z.string(), at: z.string().datetime(),
     credit: z.object({ source: z.string().max(300), license: z.string().max(120), url: z.string().url().max(600) }).strict().optional() }).strict()).optional(),
+  // AI 사진: being drawn after the storyboard came in, or the files that could not be drawn (「AI 사진 다시 만들기」).
+  aiPhotos: z.object({ state: z.enum(["drawing", "failed"]), at: z.string().datetime(), files: z.array(z.string()).max(20) }).strict().optional(),
   // `pc`: a line the render PC made with Logan's stage_cta for a member's own computer (a finished file, used as it is).
   cta: z.array(z.object({ index: z.number().int().min(0), textHash: hex, status: z.enum(["pending", "ready"]), path: z.string().optional(), pc: z.literal(true).optional() }).strict()).optional(),
   // storyboardPath: the storyboard file the sheets show, kept once a 장면 수정안 changes the storyboard under them (직원 요청 11-12).
@@ -277,7 +283,7 @@ export function presentMyinRun(record: OsRecord) {
     voiceFixes: (run.voiceFixes ?? []).map(({ memo, say, read, name }) => ({ memo, say: say ?? null, read: read ?? null, name })), voiceCheck: run.voiceCheck ?? null,
     voiceFixable: voiceFixable(record, run), voiceChanged: run.voiceChanged ?? null, subtitleEdits: run.subtitleEdits ? run.subtitleEdits.lines.length : 0,
     style: run.style ? { id: run.style.id, name: run.style.name, version: run.style.version, channel: run.style.channel } : null,
-    lastErrorCode: run.lastError?.code ?? null, waitingPhotos: (run.lastError?.files ?? []).filter((file) => !run.ours?.[file]), createdAt: record.created_at, local: run.local ? { by: run.local.by, name: run.local.name } : null,
+    aiPhotos: run.aiPhotos ?? null, lastErrorCode: run.lastError?.code ?? null, waitingPhotos: (run.lastError?.files ?? []).filter((file) => !run.ours?.[file]), createdAt: record.created_at, local: run.local ? { by: run.local.by, name: run.local.name } : null,
     localFinish: run.localFinish ? { by: run.localFinish.by, name: run.localFinish.name } : null, clipsStale: previewStale(run),
     localVoice: run.localVoice ? { by: run.localVoice.by, name: run.localVoice.name } : null, waitingSince: record.status === "backlog" ? record.updated_at : null,
     settings: run.settings ? { place: run.settings.place, voice: run.settings.voice ?? "pc", screenCheck: run.settings.screenCheck, confirm: run.settings.confirm ?? "auto", name: run.settings.name } : null,
@@ -325,11 +331,52 @@ export async function saveMyinStoryboard(service: Service, record: OsRecord, run
   const carried = value.carried ?? (run.review?.name === MYIN_CARRY_NAME ? run.storyboard?.carried : undefined);
   const next: MyinRun = { ...run, storyboard: storyboardEntry(await storyboardFile(service, record, run, value.storyboard), { ...value, carried }) };
   delete next.review;
+  delete next.aiPhotos;
+  const missing = aiPhotosMissing(next);
+  if (missing.length) next.aiPhotos = { state: "drawing", at: new Date().toISOString(), files: missing.map((asset) => asset.file) };
   const saved = await save(service, record, "backlog", "storyboard_review", next);
+  // AI 사진 are drawn after this answer (a few at once, ~1 minute); the storyboard goes on by itself once they are in.
+  if (missing.length) { after(() => drawMyinAiPhotos(saved.id).then(() => undefined, (error) => console.error(JSON.stringify({ event: "ai_photos_failed", runId: saved.id, message: error instanceof Error ? error.message : String(error) })))); return saved; }
   return autoConfirms(next) ? confirmByItself(service, saved).catch((error) => {
     console.error(JSON.stringify({ event: "storyboard_auto_confirm_failed", runId: record.id, message: error instanceof Error ? error.message : String(error) }));
     return saved;
   }) : saved;
+}
+
+const aiPhotosMissing = (run: MyinRun) => (run.storyboard?.assets ?? []).filter((asset) => asset.ai && asset.prompt && !run.ours?.[asset.file]);
+/**
+ * Draws the storyboard's AI 사진 that are not in yet and keeps each as the run's image for its file (as an uploaded 우리 이미지).
+ * One that fails stays listed for 「AI 사진 다시 만들기」; when all are in, a storyboard waiting for them goes on as it would have.
+ */
+export async function drawMyinAiPhotos(runId: string) {
+  const service = createServiceSupabase();
+  const first = await runRecord(service, runId);
+  const missing = aiPhotosMissing(first.run);
+  const folder = ourImageFolder(first.record, first.run);
+  const drawn = await Promise.allSettled(missing.map(async (asset) => {
+    const { bytes } = await drawImageBytes({ prompt: asset.prompt!, files: [], size: "1536x1024", quality: "high", model: MYIN_AI_PHOTO_MODEL });
+    const path = `${folder}/${md5(asset.file).slice(0, 12)}-${Date.now().toString(36)}.png`;
+    const { error } = await service.storage.from(OUTPUT_BUCKET).upload(path, bytes, { contentType: "image/png", upsert: true });
+    if (error) throw new ApiError(502, "MYIN_AI_PHOTO_SAVE", "AI 사진을 저장하지 못했어요.");
+    return [asset.file, path, bytes.length] as const;
+  }));
+  // Read again: the run may have moved while drawing (a minute or so).
+  const { record, run } = await runRecord(service, runId);
+  const at = new Date().toISOString(), ours = { ...run.ours };
+  for (const result of drawn) if (result.status === "fulfilled") ours[result.value[0]] = { path: result.value[1], bytes: result.value[2], by: run.settings?.by ?? record.owner_id ?? record.created_by ?? "", name: "AI 사진", at };
+  const next: MyinRun = { ...run, ours };
+  const failed = aiPhotosMissing(next).map((asset) => asset.file);
+  if (failed.length) next.aiPhotos = { state: "failed", at, files: failed }; else delete next.aiPhotos;
+  const saved = await save(service, record, record.status, record.stage ?? "", next);
+  return !failed.length && saved.stage === "storyboard_review" && autoConfirms(next) ? confirmByItself(service, saved) : saved;
+}
+/** 「AI 사진 다시 만들기」: the ones that failed (or were never drawn), by a member who can see the run. */
+export async function redrawMyinAiPhotos(actor: RequestActor, runId: string) {
+  const { record, run } = await visibleRun(actor, runId);
+  if (!aiPhotosMissing(run).length) return presentMyinRun(record);
+  const service = createServiceSupabase();
+  await save(service, record, record.status, record.stage ?? "", { ...run, aiPhotos: { state: "drawing", at: new Date().toISOString(), files: aiPhotosMissing(run).map((asset) => asset.file) } });
+  return presentMyinRun(await drawMyinAiPhotos(runId));
 }
 
 /** Who confirms a storyboard that went on by itself (the panel and the news name it in place of a person). */
@@ -1168,6 +1215,8 @@ export function myinReferencedFiles(storyboard: unknown) {
 function photosInUse(run: MyinRun, story: Awaited<ReturnType<typeof storyboardJson>>) {
   const byFile = new Map((run.storyboard?.assets ?? []).map((a) => [a.file, a]));
   const used = [...myinReferencedFiles(story)].filter((file) => byFile.has(file));
+  const drawing = used.filter((file) => byFile.get(file)!.ai && !run.ours?.[file]);
+  if (drawing.length) throw new ApiError(409, "MYIN_AI_PHOTOS_MISSING", `AI 사진 ${drawing.length}장이 아직 없어요(${drawing.join(", ")}). 「AI 사진 다시 만들기」를 눌러 주세요.`);
   const unreachable = used.filter((file) => !run.ours?.[file] && !myinPhotoFetchUrl(byFile.get(file)!.url));
   if (unreachable.length) throw new ApiError(409, "MYIN_PREP_ASSETS", `자동으로 받을 수 없는 사진입니다(위키미디어, Unsplash 사진 파일 주소만): ${unreachable.join(", ")}. 수정 요청으로 바꿔 주세요.`);
   return used;

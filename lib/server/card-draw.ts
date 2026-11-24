@@ -82,10 +82,10 @@ function drawError(status: number, body: { error?: { code?: unknown; message?: u
 }
 
 /** Shared provider transport only: callers own project access, review and saving. Never retries or changes provider. */
-export async function drawImageBytes(input: { prompt: string; files: File[]; size: string; quality: "medium" | "high" }) {
+export async function drawImageBytes(input: { prompt: string; files: File[]; size: string; quality: "medium" | "high"; model?: string }) {
   const key = process.env.OPENAI_API_KEY?.trim();
   if (!key) throw new ApiError(503, "OPENAI_NOT_CONFIGURED", "OpenAI 연결이 아직 없어서 그림을 수정하거나 만들 수 없어요.");
-  const model = imageModel(), files = input.files;
+  const model = input.model ?? imageModel(), files = input.files;
   const common = { model, prompt: input.prompt, size: input.size, quality: input.quality, n: 1, output_format: "png" };
   let body: BodyInit;
   const headers: Record<string, string> = { authorization: `Bearer ${key}` };

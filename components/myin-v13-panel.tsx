@@ -24,13 +24,18 @@ import { myinRetryScope, myinStop } from "@/lib/myin-stop";
 import { MyinRunRecord } from "./myin-run-record";
 import { MyinSubtitleEdit } from "./myin-subtitle-edit";
 import { EditorScreenEntry } from "./editor-screen";
+import { imageEstimate } from "@/lib/cost";
+import { MYIN_AI_PHOTO_MODEL, MYIN_AI_PHOTOS_MAX } from "@/lib/myin-storyboard";
 
+/** One AI 사진 at high quality, in 원 (the planning figure in lib/cost.ts). */
+const AI_PHOTO_KRW = imageEstimate(MYIN_AI_PHOTO_MODEL, "high", 0) ?? 0;
 interface Storyboard { scenes: number; model: string; at: string; metaphors: { scene: number; type: string; at: string }[]; cta: { after: string; line: string }[];
   summary: { title: string; points: string[] } | null; reasons: { metaphors: string; cta: string; summary: string };
-  assets: { kind: string; file: string; url: string; source: string; license: string; use: string }[]; fuzzy: string[]; notes: string[]; reading?: string[];
+  assets: { kind: string; file: string; url: string; source: string; license: string; use: string; ai?: true; desc?: string }[]; fuzzy: string[]; notes: string[]; reading?: string[];
   /** 고친 원고 (요청 3번): lent by the video's earlier run — paragraphs the edit changed, scenes the AI fixed. */ carried?: { changed: number; scenes: number } }
 interface MyinRun { id: string; status: string; stage: string;
   /** 음성도 내 컴퓨터에서 (로건 요청 11-16): whose computer makes this voice; when the step began waiting (backlog only). */ localVoice?: { by: string; name: string } | null; waitingSince?: string | null; layout?: "short" | null; renderer?: "web" | null; paragraphs: number; paragraphsReady: number; voiceOnPc?: boolean; lastErrorCode: string | null; waitingPhotos?: string[];
+  /** AI 사진: being drawn after the storyboard came in, or the ones that could not be drawn. */ aiPhotos?: { state: "drawing" | "failed"; files: string[]; at: string } | null;
   words: { words: number; subtitleLines: number; durationSeconds: number } | null; storyboard: Storyboard | null;
   review: { decision: "confirmed" | "revise"; name: string; note: string; at: string } | null;
   assetDecisions: Record<string, { decision: "approved" | "excluded" }>; ctaReady: string | null;
@@ -145,9 +150,9 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
   // 구독 대사 voice (300자까지, as the editor's 「완성」 counted it) — and 「완성」 asks no more.
   const askStart = (text: string, takes: boolean, kept = "") => {
     if (recycled) return Promise.resolve(true);
-    const voice = voiceEstimate(text, myinVoice), cta = voiceEstimate("가".repeat(600), myinVoice);
-    return cost.confirm({ model: myinVoice, amount: voice.krw * (takes ? 4 : 1) + cta.krw, upTo: true, ok: "확인하고 시작",
-      detail: `${kept}음성 ${voice.chars.toLocaleString("ko-KR")}자${takes ? "(문장마다 4번 만들어 골라요)" : ""} + 구독 대사 음성(300자까지) · 지금 한 번 확인하면 「완성」까지 다시 묻지 않아요 · 켜 둔 GPT 화면 검사는 GPT 크레딧에서 따로 빠져요` });
+    const voice = voiceEstimate(text, myinVoice), cta = voiceEstimate("가".repeat(600), myinVoice), photos = MYIN_AI_PHOTOS_MAX * AI_PHOTO_KRW;
+    return cost.confirm({ model: myinVoice, amount: voice.krw * (takes ? 4 : 1) + cta.krw + photos, upTo: true, ok: "확인하고 시작",
+      detail: `${kept}음성 ${voice.chars.toLocaleString("ko-KR")}자${takes ? "(문장마다 4번 만들어 골라요)" : ""} + 구독 대사 음성(300자까지) + 기획표가 고른 AI 사진(${MYIN_AI_PHOTOS_MAX}장까지, 장당 약 ${AI_PHOTO_KRW.toLocaleString("ko-KR")}원) · 지금 한 번 확인하면 「완성」까지 다시 묻지 않아요 · 켜 둔 GPT 화면 검사는 GPT 크레딧에서 따로 빠져요` });
   };
   const { accessToken } = useSession();
   const [run, setRun] = useState<MyinRun | null>(null);
@@ -214,7 +219,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
   }, [accessToken, sourceId, onFinal]);
   useEffect(() => { void load(); }, [load]);
   const working = Boolean(run && (["breath_pending", "voice_pending", "words_pending", "cta_pending", "prep_pending", "clips_pending", "final_pending"].includes(run.stage) && run.status !== "blocked" || (job?.job && ["backlog", "active"].includes(job.job.status))
-    || (run.prepared?.redraw && run.prepared.redraw !== "failed")));
+    || (run.prepared?.redraw && run.prepared.redraw !== "failed") || run.aiPhotos?.state === "drawing"));
   // While a step waits on a person, another member may take it from their own account: this screen reads the run again every minute,
   // so a storyboard someone else confirmed does not stay here as 「확인 대기」 (2026-11-04: its button then failed with 「확인을 기다리는
   // 기획표가 없습니다」).
@@ -488,7 +493,13 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
           {board.summary ? <><strong>{board.summary.title}</strong><ul className="yt-list">{board.summary.points.map((p) => <li key={p}>{p}</li>)}</ul></> : <p>없음</p>}
           <p className="yt-note">{board.reasons.summary}</p></details></>}
         <details className="yt-details"><summary>사진 후보 {board.assets.filter((a) => a.kind !== "bgm").length}개</summary>
-          <ul className="yt-list">{board.assets.filter((a) => a.kind !== "bgm").map((a) => <li key={a.file}>{KIND[a.kind] ?? a.kind} · {a.file} · {a.source} · {a.license} — {a.use} <a href={a.url} target="_blank" rel="noreferrer">출처</a></li>)}</ul></details>
+          <ul className="yt-list">{board.assets.filter((a) => a.kind !== "bgm").map((a) => a.ai ? <li key={a.file}>AI 사진 · {a.file} · {a.desc} — {a.use}</li>
+            : <li key={a.file}>{KIND[a.kind] ?? a.kind} · {a.file} · {a.source} · {a.license} — {a.use} <a href={a.url} target="_blank" rel="noreferrer">출처</a></li>)}</ul></details>
+        {run.aiPhotos ? <div className={`yt-note${run.aiPhotos.state === "failed" ? " yt-warn" : ""}`} role="status">{run.aiPhotos.state === "drawing" && Date.now() - Date.parse(run.aiPhotos.at) < 5 * 60_000
+          ? `AI 사진 ${run.aiPhotos.files.length}장을 만들고 있어요(1분쯤). 다 되면 기획표가 저절로 이어져요.`
+          : <>AI 사진 {run.aiPhotos.files.length}장을 {run.aiPhotos.state === "drawing" ? "5분 넘게 만들지 못하고 있어요" : "만들지 못했어요"}: {run.aiPhotos.files.join(", ")} <button type="button" className="secondary-button" disabled={Boolean(busy)}
+            onClick={() => void cost.confirm({ model: MYIN_AI_PHOTO_MODEL, amount: run.aiPhotos!.files.length * AI_PHOTO_KRW, detail: `${run.aiPhotos!.files.length}장 · 1536×1024`, ok: "확인하고 만들기" })
+              .then((ok) => { if (ok) void act("ai_photos", () => post("/myin", "PATCH", { action: "ai_photos", runId: run.id })); })}>{busy === "ai_photos" ? "만드는 중…" : "AI 사진 다시 만들기"}</button></>}</div> : null}
         {run.renderer === "web" ? <WebShortSceneEdit runId={run.id} token={accessToken} storyboardAt={board.at} onSaved={() => void load()} onScene={(scene) => void showSheet(scene)} /> : null}
         <MyinOurImages key={run.id} runId={run.id} token={accessToken} open={Boolean(run.waitingPhotos?.length)} onSaved={() => void load()} onScene={(scene) => void showSheet(scene)} />
         {board.fuzzy.length ? <details className="yt-details"><summary>받아쓰기와 비슷한 구간으로만 찾은 문구 {board.fuzzy.length}개</summary>

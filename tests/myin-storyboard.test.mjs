@@ -293,3 +293,24 @@ test("풀링형: no subscribe line at all; 키풀링형 still needs exactly one"
   assert.match(jobs, /pulling: await pullingProject\(myin\.run\.sourceId\)/, "the card asks with the project's 기획안 형식");
   assert.match(jobs, /checkMyinStoryboardResult\(input\.result, myin\.words, catalogTypes, myin\.speech, pulling\)/, "and the check uses the same");
 });
+
+test("AI 사진: the storyboard may ask for up to 6; the OS draws them with GPT Image 2 and the storyboard goes on once they are in", async () => {
+  const { readFileSync } = await import("node:fs");
+  const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+  const { MYIN_AI_PHOTO_MODEL, MYIN_AI_PHOTOS_MAX } = await import("../lib/myin-storyboard.ts");
+  assert.equal(MYIN_AI_PHOTO_MODEL, "gpt-image-2");
+  assert.equal(MYIN_AI_PHOTOS_MAX, 6);
+  const job = read("lib/server/myin-storyboard-job.ts");
+  assert.match(job, /kind: z\.literal\("ai_photo"\)[\s\S]*?\.transform\(\(\{ file, prompt, desc, use \}\) => \(\{ kind: "situations" as const, file, url: "",[\s\S]*?ai: true as const, prompt, desc \}\)\)/);
+  assert.match(job, /assets\.filter\(\(a\) => "ai" in a\)\.length <= MYIN_AI_PHOTOS_MAX/);
+  assert.match(job, /실존 인물\(연구자 · 저자 등\)은 AI로 만들지 않고/);
+  const run = read("lib/server/myin-run.ts");
+  assert.match(run, /if \(missing\.length\) \{ after\(\(\) => drawMyinAiPhotos\(saved\.id\)/, "drawn after the answer, not inside it");
+  assert.match(run, /drawImageBytes\(\{ prompt: asset\.prompt!, files: \[\], size: "1536x1024", quality: "high", model: MYIN_AI_PHOTO_MODEL \}\)/);
+  assert.match(run, /!failed\.length && saved\.stage === "storyboard_review" && autoConfirms\(next\) \? confirmByItself\(service, saved\) : saved/);
+  assert.match(run, /throw new ApiError\(409, "MYIN_AI_PHOTOS_MISSING"/, "③ never starts without them");
+  assert.match(read("app/api/v1/content/youtube-automation/myin/route.ts"), /input\.action === "ai_photos" \? \{ run: await redrawMyinAiPhotos\(actor, input\.runId\) \}/);
+  const panel = read("components/myin-v13-panel.tsx");
+  assert.match(panel, /cost\.confirm\(\{ model: MYIN_AI_PHOTO_MODEL, amount: run\.aiPhotos!\.files\.length \* AI_PHOTO_KRW/, "the retry shows its cost");
+  assert.match(panel, /photos = MYIN_AI_PHOTOS_MAX \* AI_PHOTO_KRW/, "the start confirm counts them");
+});

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
-import { checkMyinVoice, confirmMyinClips, retryMyinGptStoryboard, requestMyinTakes, createMyinRun, latestMyinRun, myinVoiceCheck, myinVoiceFixPlan, myinVoiceFixSchema, myinVoiceOnRenderPc, requestMyinVoiceFix, myinDownloads, myinEarlierStyles, myinRecord, myinSubtitles, myinSubtitleChangeSchema, saveMyinSubtitles, myinOurImageUpload, myinOutputs, myinPhotos, myinPreviewSheets, myinSoundState, requestMyinRedraw, myinWordsReport, reopenMyinMaterials, reviewMyinStoryboard, saveMyinOurImage, saveMyinSound, separateMyinPhoto, setMyinDraftPlace, setMyinVoicePlace, setMyinSettings, setMyinScreenCheck, startMyinFinal, startMyinPrep } from "@/lib/server/myin-run";
+import { checkMyinVoice, confirmMyinClips, retryMyinGptStoryboard, requestMyinTakes, createMyinRun, latestMyinRun, myinVoiceCheck, myinVoiceFixPlan, myinVoiceFixSchema, myinVoiceOnRenderPc, requestMyinVoiceFix, myinDownloads, myinEarlierStyles, myinRecord, myinSubtitles, myinSubtitleChangeSchema, saveMyinSubtitles, myinOurImageUpload, myinOutputs, myinPhotos, myinPreviewSheets, myinSoundState, requestMyinRedraw, myinWordsReport, redrawMyinAiPhotos, reopenMyinMaterials, reviewMyinStoryboard, saveMyinOurImage, saveMyinSound, separateMyinPhoto, setMyinDraftPlace, setMyinVoicePlace, setMyinSettings, setMyinScreenCheck, startMyinFinal, startMyinPrep } from "@/lib/server/myin-run";
 import { findMyinPhotoCandidates, applyMyinPhotoCandidate } from "@/lib/server/myin-photo-candidates";
 import { readLocalRenderStatus } from "@/lib/server/youtube-render-pc";
 import { checkMyinScreens, myinScreenCheck } from "@/lib/server/myin-screen-check";
@@ -75,6 +75,7 @@ const patchSchema = z.discriminatedUnion("action", [
   // 음성도 내 컴퓨터에서 (로건 요청 11-16): the waiting first voice of a longform.
   z.object({ action: z.literal("voice_place"), runId: z.string().uuid(), place: z.enum(["pc", "local"]) }),
   z.object({ action: z.literal("prepare"), runId: z.string().uuid() }),
+  z.object({ action: z.literal("ai_photos"), runId: z.string().uuid() }),
   z.object({ action: z.literal("storyboard_gpt"), runId: z.string().uuid() }),
   // 점검 시트 장면 의견 › 반영 (직원 요청 11-12): one 수정안 into the storyboard; force after the person saw the scene had changed.
   z.object({ action: z.literal("scene_apply"), runId: z.string().uuid(), noteId: z.string().uuid(), force: z.boolean().default(false) }),
@@ -135,6 +136,7 @@ export async function PATCH(request: Request) {
       : input.action === "our_image_url" ? await myinOurImageUpload(actor, input.runId, input.file, input.type)
       : input.action === "our_image" ? { run: await saveMyinOurImage(actor, input.runId, input.file, input.path) }
       : input.action === "photo_scene" ? await separateMyinPhoto(actor, input.runId, input.file, input.scene)
+      : input.action === "ai_photos" ? { run: await redrawMyinAiPhotos(actor, input.runId) }
       : input.action === "photo_candidate" ? { run: await applyMyinPhotoCandidate(actor, input.runId, input.file, input.provider, input.id) }
       : { run: await startMyinPrep(actor, input.runId) };
     return NextResponse.json(result, { headers });
