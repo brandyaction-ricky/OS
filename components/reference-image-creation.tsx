@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRef, useState } from "react";
 import { apiRequest, ApiRequestError } from "@/lib/api-client";
 import { AdPlacementPicker, AdPlacementPreview } from "./ad-placement-preview";
+import { JobElapsed } from "./job-elapsed";
+import { AdReferencePhotos } from "./ad-reference-photos";
 import { SafeZoneOverlay } from "./image-design-editor";
 import type { AdAspect } from "@/lib/ad-production";
 import { WinnerArtwork } from "./image-approval-batch";
@@ -85,7 +87,8 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
   const warehouse = useImageReferenceCatalog(Boolean(localDirectionPlanner), step === 2 && !preview);
   const sameBrief = bundle && sameImageBrief(brief,bundle.state.brief);
   const options = sameBrief ? saved?.appealOptions : undefined;
-  const pendingCopy = bundle?.jobs.some(job=>job.currentInput!==false && (job.phase ?? "copy")==="copy" && imageJobPending(job));
+  const copyJob = bundle?.jobs.find(job=>job.currentInput!==false && (job.phase ?? "copy")==="copy" && imageJobPending(job));
+  const pendingCopy = !!copyJob;
   const local = (current:ImageProjectBundle,state:ImageCreativeState):ImageProjectBundle =>
     ({...current,state,project:{...current.project,version:current.project.version+1}});
   async function project() {
@@ -288,7 +291,8 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
     receive(await patch({action:"generate",request:approved,guided:true,tier},current));
   }
   const suggested = recommendImageFormats({...brief,facts:[brief.facts,...(saved?.appeals??[]).map(a=>a.meaning)].join(" ")},true,size).filter(r=>availableIds.includes(r.id)).slice(0,3);
-  const pendingAppeals = bundle?.jobs.some(j=>j.currentInput!==false && j.phase==="formats" && imageJobPending(j));
+  const appealJob = bundle?.jobs.find(j=>j.currentInput!==false && j.phase==="formats" && imageJobPending(j));
+  const pendingAppeals=!!appealJob;
   const requestAppeals = () => runWithProduct(async()=>{
     const current=await project();
     const next=await patch({action:"suggest-appeals",mode,size,brief,tier},current);
@@ -305,6 +309,8 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
     </label>)}
     <label className="secondary-button">이미지 올리기<input className="ic-sr" type="file" accept="image/png,image/jpeg" disabled={referenceBusy}
       onChange={e=>{upload(e.target.files?.[0] ?? null);e.target.value="";}}/></label>
+    {bundle && <AdReferencePhotos key={picked} bundle={bundle} photoGuide={chosenRef.photoGuide} busy={referenceBusy} run={run} receive={receive} select={path=>setAssetPaths([path])}/>}
+    {photo?.credit && <p>선택한 사진 출처 · <a href={photo.credit.url} target="_blank" rel="noreferrer">{photo.credit.source} · {photo.credit.license}</a></p>}
   </fieldset>;
   const referenceReady=!!chosenRef && (custom
     ? isReferenceLayout(referenceLayout) && (!needsDetail || !!detail) && (!referenceLayout.photo || referenceLayout.reproduction==="image-ai" || !!photo) && (!photo || photo.path!==referenceLayout.source.path)
@@ -331,7 +337,7 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
     {step===1 && <section className="panel panel-pad-lg ic-panel ic-guided-brief"><h2>구매 이유 고르기</h2><p>{brief.product}</p>
       {!demo && !options?.length && !approved && !saved?.appeals?.length && <div className="ic-row"><button type="button" className="secondary-button" disabled={busy || pendingAppeals} onClick={requestAppeals}>구매 이유 {mode==="standalone"?3:5}개 제안받기</button>
       <ImageTier value={tier} change={setTier}/><CostTag kind="paid" amount={tokenEstimate(model,4000,600)} what={model+" · 약 30초"}/></div>}
-      {pendingAppeals && <p role="status">후보를 준비하고 있어요. 완료되면 자동으로 표시해요.</p>}
+      {pendingAppeals && <p role="status">{appealJob?.status==="backlog" ? "구매 이유 제안 대기" : "구매 이유 작성 중"} · {appealJob?.requestedAt && <JobElapsed started={appealJob.requestedAt}/>} 다른 화면에 다녀와도 결과가 저장됩니다.</p>}
       {!!options?.length && <div className="ic-row">
         <button type="button" className="secondary-button" aria-pressed={!useSaved} disabled={busy} onClick={()=>setShowSaved(false)}>직접 작성</button>
         <button type="button" className="secondary-button" aria-pressed={useSaved} disabled={busy} onClick={()=>setShowSaved(true)}>저장된 소구점 보기</button>
@@ -498,7 +504,7 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
       appeals={saved.appeals!} draft={copyDraft} initial={copyDraft ?? (variants.length ? variants.map(v=>v.copy) : bundle.state.previousCopies?.at(-1) ?? [])} busy={busy} canSuggest={!preview && !batch?.review?.copy && (!demo || !!localDirectionPlanner)}
       sourceUrl={format==="reference_image" ? bundle.assets.find(a=>a.path===copyLayout?.source.path)?.url : undefined}
       hasBody={format!=="reference_image" || Boolean(copyLayout?.body)}
-      needsPhoto={!batch && format!=="reference_image" && !!IMAGE_FORMATS[format].assetRequired && !approved?.assetPaths?.length} pending={!!pendingCopy}
+      needsPhoto={!batch && format!=="reference_image" && !!IMAGE_FORMATS[format].assetRequired && !approved?.assetPaths?.length} pending={!!pendingCopy} job={copyJob}
       suggestCopy={suggestCopy} saveDraft={async copies=>{await saveDraft(copies);}} confirm={confirm} run={run} refresh={refresh}
       changeReference={batch?.review?.copy || pendingCopy ? undefined : async (copies) => {
         const current=await reopen(preview ? await saveDraft(copies) : bundle);
@@ -509,8 +515,8 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
   </>;
 }
 
-function ReferenceCopyEditor({aspects,tier,setTier,evidence,renderPreview,format,size,referenceName,sourceUrl,hasBody,appeals,draft,initial,busy,canSuggest,needsPhoto,pending,suggestCopy,saveDraft,confirm,run,refresh,changeReference,flowPreview,referenceImageUrl}:{
-  aspects?:AdAspect[];tier:"saving"|"precise";setTier:(v:"saving"|"precise")=>void; evidence:string;renderPreview:(words:AdCopy)=>React.ReactNode;format:ImageFormatId;referenceName?:string;sourceUrl?:string;hasBody:boolean;size:ImageFormatPlan["size"];appeals:Appeal[];draft?:AdCopy[];initial:AdCopy[];busy:boolean;canSuggest:boolean;needsPhoto:boolean;pending:boolean;
+function ReferenceCopyEditor({job,aspects,tier,setTier,evidence,renderPreview,format,size,referenceName,sourceUrl,hasBody,appeals,draft,initial,busy,canSuggest,needsPhoto,pending,suggestCopy,saveDraft,confirm,run,refresh,changeReference,flowPreview,referenceImageUrl}:{
+  job?:ImageProjectBundle["jobs"][number];aspects?:AdAspect[];tier:"saving"|"precise";setTier:(v:"saving"|"precise")=>void; evidence:string;renderPreview:(words:AdCopy)=>React.ReactNode;format:ImageFormatId;referenceName?:string;sourceUrl?:string;hasBody:boolean;size:ImageFormatPlan["size"];appeals:Appeal[];draft?:AdCopy[];initial:AdCopy[];busy:boolean;canSuggest:boolean;needsPhoto:boolean;pending:boolean;
   suggestCopy:()=>Promise<AdCopy[]|undefined>;saveDraft:(copies:AdCopy[])=>Promise<void>;confirm:(copies:AdCopy[])=>Promise<void>;run:Props["run"];refresh:()=>void;changeReference?:(copies:AdCopy[])=>Promise<void>;
   flowPreview?:boolean;referenceImageUrl?:string;
 }) {
@@ -536,7 +542,7 @@ function ReferenceCopyEditor({aspects,tier,setTier,evidence,renderPreview,format
       {/* eslint-disable-next-line @next/next/no-img-element -- chosen original, not a generated result */}
       {(flowPreview ? referenceImageUrl : sourceUrl) && <img className="ic-flow-copy-reference" src={flowPreview ? referenceImageUrl : sourceUrl} alt="선택한 원본 디자인"/>}
       {changeReference && <button className="secondary-button" type="button" disabled={busy} onClick={()=>void run(()=>changeReference(copies))}>{flowPreview ? "레퍼런스로 돌아가기" : "레퍼런스 변경"}</button>}</div>
-    {pending ? <div className="ic-row" role="status">AI가 초안을 준비하고 있어요. 완료되면 자동으로 표시됩니다.<button className="secondary-button" type="button" onClick={refresh}>상태 새로고침</button></div>
+    {pending ? <div className="ic-row" role="status">{job?.status==="backlog" ? "카피 생성 대기" : "AI가 초안 작성 중"} · {job?.requestedAt && <JobElapsed started={job.requestedAt}/>} 다른 화면에 다녀와도 결과가 저장됩니다.<button className="secondary-button" type="button" onClick={refresh}>상태 새로고침</button></div>
       : canSuggest && <div className="ic-row"><button className="secondary-button" type="button" disabled={busy || needsPhoto} onClick={()=>void run(async()=>{const values=await suggestCopy();
         if(values){setRows(values);setCta(values[0]?.cta ?? "");}})}>{needsPhoto?"공통 이미지를 먼저 선택해 주세요":initial.length ? "AI 카피 다시 받기" : "AI 카피 초안 받기"}</button><ImageTier value={tier} change={setTier}/><CostTag kind="paid" amount={tokenEstimate(GPT_TIERS[tier].model,6000,900)} what={GPT_TIERS[tier].model+" · 약 35초"}/></div>}
     {needsPhoto && <p>직접 쓰려면 레퍼런스 변경에서 원본 이미지를 올리세요.</p>}

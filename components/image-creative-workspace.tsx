@@ -24,12 +24,12 @@ import { changeDemoImageTrash, type ImageTrashProject } from "@/lib/image-creati
 import { ImageProjectTrash,ImageProjectTrashConfirm } from "./image-project-trash";
 import { ImageSavedSteps } from "./image-saved-steps";
 
-type Asset = ImageAsset & { url:string };
+type Asset = ImageAsset & { url:string; credit?:import("@/lib/myin-photo-sources").PhotoCredit };
 export type ImageProjectRow = {step?:number;released?:boolean;isTest?:boolean; id:string; title:string; version:number; archivedAt?:string|null; updatedAt?:string; experiment?: ReturnType<typeof imageExperimentSummary> };
 type Project = ImageProjectRow;
 export type ImageProjectBundle = {
   project: Project; state: ImageCreativeState; assets: Asset[];
-  jobs: { phase?: "formats" | "copy"; currentInput?: boolean; id: string; status: string; processing?:boolean; target?: RenderTarget; model?: string; executor?:string; failReason?: string }[];
+  jobs: { requestedAt?:string; phase?: "formats" | "copy"; currentInput?: boolean; id: string; status: string; processing?:boolean; target?: RenderTarget; model?: string; executor?:string; failReason?: string }[];
   renders?: MachineRender[]; rendered?: Record<string, string>; reviewable?: Record<string,string>; referenceRun?: ReferenceGenerationRun;
 };
 const jobLabels: Record<string, string> = { backlog: "AI 작업 대기", active: "AI 작업 중", done: "시안 준비 완료", blocked: "AI 작업 중단" };

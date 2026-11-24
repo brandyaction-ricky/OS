@@ -1,3 +1,4 @@
+import type { PhotoCredit } from "@/lib/myin-photo-sources";
 import { adDisposition } from "@/lib/ad-production";
 import { adSetupSchema, dispositionSchema, measurementSchema } from "@/lib/ad-production-schema";
 import { referenceUsesBlackWeight } from "@/lib/image-creative/reference-layout";
@@ -42,7 +43,7 @@ export interface ImageMacRun {
 type ImageUpload = { leaseHash: string; receiptHash: string; jobId?: string };
 export interface ImagePromptEditProposal { baseId: string; prompt: string; model: string; image: ImageAsset; sourceHash: string; at: string; sizeNote?: string;
   inputSha256?: string; inputKind?: "saved-preview" | "mac-output" | "owner-browser-preview" }
-export interface ImageMeta { renders?: ImageMacRun[]; space: "personal"; kind: typeof IMAGE_CREATIVE_KIND; state: ImageCreativeState; assets: (ImageAsset & { blank?: true; sha256?: string; upload?: ImageUpload })[]; appliedJobs: Record<string, string>;
+export interface ImageMeta { renders?: ImageMacRun[]; space: "personal"; kind: typeof IMAGE_CREATIVE_KIND; state: ImageCreativeState; assets: (ImageAsset & { credit?: PhotoCredit; blank?: true; sha256?: string; upload?: ImageUpload })[]; appliedJobs: Record<string, string>;
   lifecycleRevision?: string;
   referenceRun?: {id:string;variantId:string;inputHash:string;status:"active"|"done"|"failed";expiresAt:number;failure?:string};
   promptEditProposals?: ImagePromptEditProposal[];
@@ -182,7 +183,7 @@ export async function imageBundle(record: OsRecord) {
     if (!ownsImageAsset(record.id, asset.path)) throw new ApiError(409, "IMAGE_ASSET_INVALID", "등록된 이미지 경로를 확인해 주세요.");
     const { data, error } = await service.storage.from(MEDIA_BUCKET).createSignedUrl(asset.path, 3600);
     if (error || !data) throw new ApiError(503, "IMAGE_ASSET_UNAVAILABLE", "이미지 미리보기를 열지 못했어요. 다시 불러와 주세요.");
-    return { path: asset.path, w: asset.w, h: asset.h, url: data.signedUrl };
+    return { path: asset.path, w: asset.w, h: asset.h, ...(asset.credit && {credit:asset.credit}), url: data.signedUrl };
   }));
   const { data: jobs, error } = await service.from("os_records").select("id,status,metadata").eq("record_type", "ai_job").eq("parent_id", record.id)
     .eq("owner_id", record.owner_id).eq("metadata->>task", "image-creative").is("archived_at", null).order("created_at", { ascending: false }).limit(10);
@@ -691,7 +692,7 @@ async function validateImage(bytes: Uint8Array) {
     return { ...format, w: info.width, h: info.height, subjectBox: photoSubjectBox(data, info.width, info.height) };
   } catch { throw new ApiError(422, "IMAGE_FILE_INVALID", "파일을 이미지로 읽지 못했어요. 5MB 이하 PNG/JPEG를 다시 넣어 주세요."); }
 }
-export async function registerImageBytes(record: OsRecord, bytes: Uint8Array, fixedPath?: string, upload?: ImageUpload, options: {strictVersion?:boolean} = {}) {
+export async function registerImageBytes(record: OsRecord, bytes: Uint8Array, fixedPath?: string, upload?: ImageUpload, options: {strictVersion?:boolean;credit?:PhotoCredit} = {}) {
   const info = await validateImage(bytes), service = createServiceSupabase();
   const path = fixedPath ?? `image-creatives/${record.id}/${randomUUID()}.${info.ext}`;
   if (!ownsImageAsset(record.id, path) || !path.endsWith(`.${info.ext}`)) throw new ApiError(422, "IMAGE_ASSET_INVALID", "파일 종류와 경로가 달라요.");
@@ -706,7 +707,7 @@ export async function registerImageBytes(record: OsRecord, bytes: Uint8Array, fi
   for (let attempt = 0; ; attempt++) {
     const current = attempt ? await imageRecord(service, record.owner_id!, record.id) : record, meta = imageMeta(current);
     if (meta.assets.some(row => row.path === path)) return current;
-    try { return await saveImageMeta(service, current, { ...meta, assets: [...meta.assets, { path, w: info.w, h: info.h, ...(info.subjectBox ? {subjectBox:info.subjectBox} : {blank:true as const}), sha256: createHash("sha256").update(bytes).digest("hex"), ...(upload ? { upload } : {}) }], pendingAssets: meta.pendingAssets?.filter(row => row.path !== path) }); }
+    try { return await saveImageMeta(service, current, { ...meta, assets: [...meta.assets, { path, w: info.w, h: info.h, ...(options.credit && {credit:options.credit}), ...(info.subjectBox ? {subjectBox:info.subjectBox} : {blank:true as const}), sha256: createHash("sha256").update(bytes).digest("hex"), ...(upload ? { upload } : {}) }], pendingAssets: meta.pendingAssets?.filter(row => row.path !== path) }); }
     catch (error) { if (options.strictVersion || attempt || !(error instanceof ApiError && error.status === 409)) throw error; }
   }
 }
@@ -891,7 +892,9 @@ export async function exportImageCreative(record: OsRecord, input: { variantId?:
     files.push({ name: `${String(files.length + 1).padStart(2, "0")}-${variant.id}.png`, data });
   }
   if (!input.batchId) return { body: files[0].data, type: "image/png", name: files[0].name };
-  files.push({ name: "variants.json", data: new TextEncoder().encode(JSON.stringify({ brief: productionBrief(meta.state.brief), batch, variants, placements: variants.map(v => ({ variantId: v.id, ...resolvePlacement(v.size, v.design?.placement, v.design?.outputWidth) })) }, null, 2)) });
+  const credits = meta.assets.filter(asset => asset.credit && variants.some(v => v.asset?.path === asset.path || v.detailAsset?.path === asset.path))
+    .map(({path,credit}) => ({path, ...credit}));
+  files.push({ name: "variants.json", data: new TextEncoder().encode(JSON.stringify({ brief: productionBrief(meta.state.brief), batch, variants, ...(credits.length && {credits}), placements: variants.map(v => ({ variantId: v.id, ...resolvePlacement(v.size, v.design?.placement, v.design?.outputWidth) })) }, null, 2)) });
   return { body: new Uint8Array(storedZip(files)), type: "application/zip", name: `image-test-${input.batchId}.zip` };
 }
 

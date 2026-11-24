@@ -31,3 +31,5 @@ export function fromWikimedia(page: WikiPage): MyinPhotoCandidate | null {
     author: strip(meta.Artist?.value ?? "") || "작가 표기 확인 필요", authorPage: null, page: info.descriptionurl, license,
     check: !/^(cc0|public domain|pd\b|cc by \d|cc-by-\d|cc by$)/i.test(license) };
 }
+
+export type PhotoCredit = { source: string; license: string; url: string };

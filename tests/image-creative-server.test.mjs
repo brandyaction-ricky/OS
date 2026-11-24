@@ -1277,6 +1277,18 @@ test("prompt result upload never retries into a restored project; ordinary uploa
   reset();
 });
 
+test("a recommended photo keeps the provider credit with the actual saved file", async () => {
+  reset();
+  try {
+    const photo = await sharp({create:{width:30,height:40,channels:3,background:"#345678"}}).jpeg().toBuffer();
+    const credit = {source:"Unit test photographer",license:"CC0",url:"https://example.org/photo"};
+    modules["@/lib/supabase/server"].createServiceSupabase=()=>({...db(),storage:{from:()=>({upload:async()=>({error:null})})}});
+    const row=await server.registerImageBytes(stored,photo,undefined,undefined,{credit});
+    const saved=row.metadata.assets.at(-1);
+    assert.deepEqual({...saved.credit},credit);
+    assert.equal(saved.h,40);
+  } finally {reset();}
+});
 test("ad review and export use the same 1080-pixel placement PNGs for every selected size",async()=>{
   const input=await sharp({create:{width:240,height:300,channels:3,background:"navy"}}).png().toBuffer();
   for(const [aspect,height] of [["4x5",1350],["1x1",1080],["9x16",1920]]) {
