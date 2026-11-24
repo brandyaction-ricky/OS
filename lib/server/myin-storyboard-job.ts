@@ -113,7 +113,7 @@ ${input.pulling ? `- 이 영상은 풀링형(기획안에서 PD가 고른 형식
 
 ## OS가 검사하는 것 (걸리면 돌려받아 고칩니다)
 - 문구(장면 at, cue와 cue_로 시작하는 키, 제목 조각 ["텍스트", "등장 문구"]의 두 번째 값, cta[].after)는 아래 words의 철자 그대로 씁니다. 받아쓰기가 원고와 다른 철자여도 받아쓰기를 따릅니다. 장면 시작 문구는 앞 장면 시작 뒤 2,500자 안, 나머지 문구는 그 장면 시작 뒤 1,400자 안에 있어야 합니다(글자 수는 한글·영문·숫자만 셉니다).
-- 첫 장면은 opening, 끝은 outro → summary(at_time) → endscreen(at_time). end는 마지막 말이 끝난 뒤 여유를 둔 초입니다(낭독 ${input.durationSeconds.toFixed(1)}초 기준, 마지막 말보다 짧으면 OS가 마지막 말 + 1.5초로 늘립니다).
+- ${input.pulling ? "풀링형은 오프닝 없이 첫 대사부터 본론 장면으로 시작합니다(opening을 쓰지 않아도 됩니다)" : "첫 장면은 opening"}, 끝은 outro → summary(at_time) → endscreen(at_time). end는 마지막 말이 끝난 뒤 여유를 둔 초입니다(낭독 ${input.durationSeconds.toFixed(1)}초 기준, 마지막 말보다 짧으면 OS가 마지막 말 + 1.5초로 늘립니다).
 - ${input.pulling ? "풀링형이라 cta는 빈 목록 [](위 「쇼릴 · 구독 자리」)." : "구독 대사 cta는 1개(after, line, clicks, head) — 본론 시작 60초 뒤 · 영상 35% 뒤, 쇼릴과 다른 자리(위 「쇼릴 · 구독 자리」)."}
 - 장면 종류는 문서에 있는 것${input.catalog ? "과 아래 「도식 창고」 목록에 있는 것" : ""}만 씁니다: ${MYIN_SCENE_TYPES.join(", ")}. 새 비유 도식이 꼭 필요하면 쓰지 말고 suggestions에 적습니다(로건님 코드에 그리는 방법이 먼저 있어야 합니다).
 - 음악(music_cues의 file)은 「마이인 음악 창고」 목록에 있는 파일 이름만 씁니다. 새로 찾아 내려받지 않습니다. 비트의 분위기에 맞는 곡이 창고에 없으면 가장 가까운 곡을 쓰고 suggestions에 "창고에 추가할 곡"을 적습니다.

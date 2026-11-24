@@ -5,7 +5,7 @@ import { apiRequest } from "@/lib/api-client";
 import { Clock, Eye, Info, MessageSquare, Sparkles } from "lucide-react";
 import { myinCleanScript } from "@/lib/myin-script";
 import { projectName } from "@/lib/youtube-process/project";
-import { lengthEstimate, minSec, outlineMissing, paragraphTimes, quoteFromSelection, runtimeError, scriptChars, shotLine, shotList, SPEC_OPTIONS, specOption, type ShotKind, type YpOutline, type YpScriptNote } from "@/lib/youtube-process/stages";
+import { lengthEstimate, minSec, outlineMissing, paragraphTimes, quoteFromSelection, runtimeError, scriptChars, shotLine, shotList, SPEC_OPTIONS, specOption, ypFormat, type ShotKind, type YpOutline, type YpScriptNote } from "@/lib/youtube-process/stages";
 import { checkScriptBody } from "@/lib/youtube-script-check";
 import { KnowledgeRichEditor, type KnowledgeRichEditorMethods } from "./knowledge-rich-editor";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
@@ -140,9 +140,10 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
   const action = page.bundle ? stepAction(page, 2, project?.yp.stage === "outline" ? { kind: "button", label: "다음: 제작", reason: missing, busy: moving, onClick: () => void move() } : { kind: "status", status: "구성안 끝남" }) : null;
   const current = form?.versions.at(-1)?.v ?? 0;
   const viewing = viewV && viewV !== current ? form?.versions.find(item => item.v === viewV) ?? null : null;
-  const estimate = form ? lengthEstimate(viewing?.md ?? form.script, form.spec.runtimeMin, viewing ? null : voiceSec) : null;
+  const pulling = ypFormat(page.bundle?.stages.plan.data) === "pulling";
+  const estimate = form ? lengthEstimate(viewing?.md ?? form.script, form.spec.runtimeMin, viewing ? null : voiceSec, pulling) : null;
   // 로건 QA 10/30: a 최종 검토 note at 00:56 had nowhere to point in 4,609 letters — each spoken paragraph with its number and time.
-  const paragraphs = form ? paragraphTimes(myinCleanScript(viewing?.md ?? form.script).spoken.map(text => shotLine(text)?.before ?? text).filter(Boolean), viewing ? null : voiceSec) : [];
+  const paragraphs = form ? paragraphTimes(myinCleanScript(viewing?.md ?? form.script).spoken.map(text => shotLine(text)?.before ?? text).filter(Boolean), viewing ? null : voiceSec, pulling) : [];
   // 실사 촬영 콘티 (로건 QA 10/30): the [샷] · [B롤] · [인서트] lines of the 원고, under the paragraph they follow.
   const shots = form && project?.yp.topic.type === "live" ? shotList(viewing?.md ?? form.script) : [];
   const downloadShots = () => {

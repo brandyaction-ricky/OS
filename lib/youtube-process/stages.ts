@@ -333,6 +333,9 @@ export const PLAN_FIELD_KEY: Record<"titles" | "thumbs" | "format" | "opening" |
 
 // ── 구성안 (S4) ──
 export const CHARS_PER_MINUTE_V1 = 350;
+/** 풀링형 낭독 실측 (대표 2026-11-24, 3편): 공백 뺀 글자 × 0.125초 — 350자/분은 1분쯤 길게 나왔다. */
+export const PULLING_SEC_PER_CHAR = 0.125;
+const secPerChar = (pulling: boolean) => pulling ? PULLING_SEC_PER_CHAR : 60 / CHARS_PER_MINUTE_V1;
 /** Spoken letters (no spaces, headings, tables or images) — the 예상 길이 count (3차 결정 12). */
 export function scriptChars(markdown: string) {
   // The editor writes [ ] as \[ \] — the backslashes are not letters anyone says.
@@ -374,9 +377,9 @@ export const minSec = (seconds: number) => { const s = Math.round(seconds); retu
  * The 원고's length against the 러닝타임: by its letters, or by the made voice once there is one (`voiceSec`). 로건 QA 10/30: ±20%
  * called 13분 6초 「맞아요」 for 12분 and rounded a 9분 35초 gap to 10분 — now within 30초 (or 5%) passes and the gap is exact.
  */
-export function lengthEstimate(markdown: string, runtime: number | null, voiceSec?: number | null) {
+export function lengthEstimate(markdown: string, runtime: number | null, voiceSec?: number | null, pulling = false) {
   const chars = scriptChars(markdown);
-  const minutes = chars / CHARS_PER_MINUTE_V1;
+  const minutes = chars * secPerChar(pulling) / 60;
   const label = !chars ? "—" : minutes < 1 ? `약 ${Math.round(minutes * 60)}초` : `약 ${Math.floor(minutes)}분${Math.round((minutes % 1) * 60) >= 30 ? " 30초" : ""}`;
   if (!chars || !runtime || runtimeError(runtime)) return { chars, label, verdict: null as null | { ok: boolean; text: string } };
   const gap = (voiceSec ?? minutes * 60) - runtime * 60, what = voiceSec ? "실제 음성이 " : "";
@@ -384,9 +387,9 @@ export function lengthEstimate(markdown: string, runtime: number | null, voiceSe
     : { ok: false, text: `${what}정한 러닝타임(${runtime}분)보다 ${minSec(Math.abs(gap))} ${gap < 0 ? "짧아요" : "길어요"} · 내용이 필요하면 러닝타임을 고쳐요` } };
 }
 /** 원고 문단 번호 · 예상 시각 (로건 QA 10/30): each spoken paragraph's start, spread over the made voice's length when there is one. */
-export function paragraphTimes(spoken: string[], voiceSec?: number | null) {
+export function paragraphTimes(spoken: string[], voiceSec?: number | null, pulling = false) {
   const sizes = spoken.map(text => text.replace(/\s/g, "").length), total = sizes.reduce((sum, size) => sum + size, 0);
-  const length = voiceSec || total / CHARS_PER_MINUTE_V1 * 60;
+  const length = voiceSec || total * secPerChar(pulling);
   let before = 0;
   return spoken.map((text, index) => { const at = total ? before / total * length : 0; before += sizes[index]; return { n: index + 1, at, text }; });
 }

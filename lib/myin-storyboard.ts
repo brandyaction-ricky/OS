@@ -536,7 +536,8 @@ export function checkMyinStoryboard(value: unknown, words: [number, number, stri
   const story = parsed.data;
   const issues: string[] = [];
   const types = story.scenes.map((sc) => sc.type);
-  if (types[0] !== "opening") issues.push("첫 장면은 opening이어야 합니다.");
+  // 풀링형 (cta [] — reelCtaIssues holds it to that) starts with the body, no opening (매뉴얼 2026-11-24); the engine starts either way.
+  if (types[0] !== "opening" && story.cta.length) issues.push("첫 장면은 opening이어야 합니다.");
   for (const required of ["outro", "summary", "endscreen"]) if (!types.includes(required)) issues.push(`${required} 장면이 없습니다.`);
   const cues = myinCueMisses(story, words);
   issues.push(...cues.misses);
