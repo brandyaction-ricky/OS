@@ -8,7 +8,7 @@ import { ENDSCREEN_CARD_DEFAULT, type EndscreenCard } from "@/lib/youtube-proces
 import { channelMismatch } from "@/lib/youtube-process/channel-style";
 import { useUploadChannel } from "./youtube-channel-styles";
 import { projectName, stepHref } from "@/lib/youtube-process/project";
-import { DESC_TEMPLATE, descChecks, descWritten, diagnosisLink, finalPair, reviewOkAt, uploadFinal, linksMissing, pinnedDraft, publishAtProblem, shortLinkProblem, SLOTS, UTM_DESTS, UTM_OPTIONS, utmBase, utmCode, utmUrl, withLinks, type YpUpload } from "@/lib/youtube-process/stages";
+import { campaignFor, DESC_TEMPLATE, descChecks, descWritten, diagnosisLink, finalPair, reviewOkAt, uploadFinal, linksMissing, pinnedDraft, publishAtProblem, shortLinkProblem, SLOTS, UTM_DESTS, UTM_OPTIONS, utmBase, utmCode, utmUrl, withLinks, type YpUpload } from "@/lib/youtube-process/stages";
 import { errorMessage } from "./youtube-process-data";
 import { JobLine, SendDialog, useStaffJob, type SendTab } from "./youtube-process-ai";
 import { draftTag, isGptModel } from "@/lib/youtube-process/gpt-draft";
@@ -40,6 +40,16 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
   // 로건 피드백 10/26-9: an upload failure showed only at the top of the page, far from the button that was pressed.
   const [goError, setGoError] = useState("");
   const [shortBusy, setShortBusy] = useState(false);
+  // 링크 대장 (로건 요청 11-24): an upload writes its row by itself; this button writes one for an older upload (or after a failed write).
+  const [ledgerBusy, setLedgerBusy] = useState(false), [ledgerNote, setLedgerNote] = useState("");
+  const ledger = async () => {
+    if (!project || !page.accessToken) return;
+    setLedgerBusy(true); setLedgerNote("");
+    try {
+      const made = await apiRequest<{ saved: boolean }>(`/api/v1/content/youtube/projects/${project.id}/upload`, { method: "POST", token: page.accessToken, body: JSON.stringify({ action: "ledger" }) });
+      setLedgerNote(made.saved ? "대장에 남겼어요." : "이미 대장에 있어요.");
+    } catch (reason) { setLedgerNote(errorMessage(reason)); } finally { setLedgerBusy(false); }
+  };
   const [shortError, setShortError] = useState("");
   const [copied, setCopied] = useState("");
   const [myinSrt, setMyinSrt] = useState<string | null>(null);
@@ -163,7 +173,8 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
         {form.run?.privacy === "private" && !form.run.publishAt && form.privacy !== "private" ? <><b className="yp-warn-t">유튜브가 비공개로 올렸어요.</b> 스튜디오에서 공개 범위를 바꿔 주세요.<br /></> : null}
         {form.ai && form.run?.ai !== undefined && form.run.ai !== (form.ai === "yes") ? <><b className="yp-warn-t">유튜브의 AI 사용 표시가 고른 값과 달라요.</b> 스튜디오에서 「{form.ai === "yes" ? "예" : "아니요"}」로 바꿔 주세요.<br /></> : null}
         <Processing page={page} account={account} />
-        {form.run?.videoUrl ? <a className="yp-lnk" href={form.run.videoUrl} target="_blank" rel="noreferrer">유튜브에서 보기 <ExternalLink size={12} /></a> : null}</div></div> : <GateBanner page={page} gate="review" />}
+        {form.run?.videoUrl ? <a className="yp-lnk" href={form.run.videoUrl} target="_blank" rel="noreferrer">유튜브에서 보기 <ExternalLink size={12} /></a> : null}
+        {project.yp.topic.type !== "short" && !page.demo ? <> · <button type="button" className="yp-lnk" disabled={ledgerBusy} onClick={() => void ledger()}>{ledgerBusy ? "남기는 중…" : "링크 대장에 남기기"}</button>{ledgerNote ? ` ${ledgerNote}` : ""}</> : null}</div></div> : <GateBanner page={page} gate="review" />}
       <Subject page={page} />
       <div className="yp-wrap2"><div>
         <YpSection n={1} title="UTM 설정" need>
@@ -172,12 +183,12 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
             <div><label className="yp-lbl" style={{ marginTop: 0 }}>보낼 곳</label>
               <select className="yp-in" disabled={!editable} value={dest} aria-label="보낼 곳" onChange={event => {
                 const preset = UTM_DESTS.find(([name]) => name === event.target.value);
-                edit({ utm: { ...form.utm, dest: event.target.value, url: preset?.[1] ?? "", short: "" } }, true);
+                edit({ utm: { ...form.utm, dest: event.target.value, url: preset?.[1] ?? "", camp: campaignFor(preset?.[1] ?? "", form.utm.camp), short: "" } }, true);
               }}>{UTM_DESTS.map(([name]) => <option key={name} value={name}>{name}</option>)}</select>
               {dest === "직접 입력" ? <input className="yp-in" style={{ marginTop: 6 }} value={form.utm.url ?? ""} readOnly={!editable} placeholder="https://로 시작하는 주소" aria-label="보낼 곳 주소"
                 onChange={event => edit({ utm: { ...form.utm, url: event.target.value.trim(), short: "" } })} /> : null}</div>
             {(["cat", "camp"] as const).map(key => <div key={key}><label className="yp-lbl" style={{ marginTop: 0 }}>{{ cat: "영상 카테고리", camp: "캠페인" }[key]}</label>
-              <select className="yp-in" disabled={!editable} value={form.utm[key]} onChange={event => edit({ utm: { ...form.utm, [key]: event.target.value, ...(key === "camp" ? { short: "" } : {}) } }, true)} aria-label={key}>{UTM_OPTIONS[key].map(([value, text]) => <option key={value} value={value}>{text}</option>)}</select></div>)}
+              <select className="yp-in" disabled={!editable} value={form.utm[key]} onChange={event => edit({ utm: { ...form.utm, [key]: event.target.value, ...(key === "camp" ? { short: "" } : {}) } }, true)} aria-label={key}>{[...UTM_OPTIONS[key], ...(UTM_OPTIONS[key].some(([value]) => value === form.utm[key]) ? [] : [[form.utm[key], `${form.utm[key]} (예전 값)`] as const])].map(([value, text]) => <option key={value} value={value}>{text}</option>)}</select></div>)}
           </div>
           <label className="yp-lbl">UTM 주소</label><div className="yp-utm">{utmUrl(form.utm, utmCode(project.id))}</div>
           <label className="yp-lbl">단축 링크 <span className="yp-gq">마이인 단축 링크로 만들어요</span></label>

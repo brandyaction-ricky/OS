@@ -133,14 +133,18 @@ export function ContentPerformanceDashboard({ youtubeOnly = false }: { youtubeOn
     return Array.from({ length: spanDays(from, to) }, (_, index) => { const day = addDays(from, index); return { day, views: byDay.get(day) ?? null }; });
   }, [filtered, from, to, days, format, daysInScope]);
   const recentGap = to >= addDays(today, -1) && dailyViews.slice(-2).some((day) => day.views === null);
+  const sales = useVideoSales(from, tab === "summary" || tab === "videos" ? to : "");
+  // 영상별 구매 · 기여 매출 (로건 요청 11-24): the 매출 tab's own numbers (마이인, 결제 직전 유입), by YouTube video id; a video with none is 0.
+  const salesByVideo = useMemo(() => sales.sales ? new Map(sales.sales.videos.map((video) => [video.videoId, video.money.l])) : null, [sales.sales]);
   const groups = useMemo(() => {
-    const rows = groupMetricDimension(filtered, dimension).filter((group) => !find.trim() || group.title.toLowerCase().includes(find.trim().toLowerCase()));
+    const rows = groupMetricDimension(filtered, dimension).filter((group) => !find.trim() || group.title.toLowerCase().includes(find.trim().toLowerCase()))
+      .map((group) => dimension === "video" && salesByVideo && group.purchases === null && /^[A-Za-z0-9_-]{11}$/.test(group.key)
+        ? { ...group, purchases: salesByVideo.get(group.key)?.orders ?? 0, revenue: salesByVideo.get(group.key)?.net ?? 0 } : group);
     const value = (group: typeof rows[number]) => sort.key === "title" ? null : sort.key === "count" ? group.count : (group as unknown as Record<string, number | null>)[sort.key];
     return rows.sort((a, b) => sort.key === "title" ? (sort.desc ? -1 : 1) * a.title.localeCompare(b.title, "ko") : ((value(b) ?? -Infinity) - (value(a) ?? -Infinity)) * (sort.desc ? 1 : -1));
-  }, [filtered, dimension, find, sort]);
+  }, [filtered, dimension, find, sort, salesByVideo]);
   const topVideos = useMemo(() => groupMetricDimension(dayRows, "video").filter((group) => group.views !== null).sort((a, b) => (b.views ?? 0) - (a.views ?? 0)).slice(0, 5), [dayRows]);
   const compare = [weekA, weekB].map((start) => { const week = fixedWeek(start); const data = week ? within(weekRecords[start] ?? [], week.start, week.end) : []; return { week, count: data.length, totals: summarizeMetrics(data) }; });
-  const sales = useVideoSales(from, tab === "summary" ? to : "");
   // 필터 더 보기 closes when the next press lands outside it, like a menu.
   const moreFilters = useRef<HTMLDetailsElement>(null);
   useEffect(() => {
@@ -233,7 +237,7 @@ export function ContentPerformanceDashboard({ youtubeOnly = false }: { youtubeOn
               : <div className="empty-state">이 기간에 잰 영상이 없어요. 기간을 넓혀 보세요.</div>}</section>
         </div>
         <section className="panel perf-panel"><div className="card-head"><span className="card-title">콘텐츠 전환 단계</span><span className="section-meta">‘—’는 아직 안 잰 단계예요</span></div>
-          <div className="perf-flow">{([["노출", totals.impressions], ["조회", totals.views], ["클릭", totals.clicks], ["구매", totals.purchases]] as [string, number | null][]).map(([label, value]) => <div key={label}><span>{label}</span><b>{count(value)}</b></div>)}</div></section>
+          <div className="perf-flow">{([["노출", totals.impressions], ["조회", totals.views], ["클릭", totals.clicks], ["구매", totals.purchases ?? sales.sales?.totals.youtube.l.orders ?? null]] as [string, number | null][]).map(([label, value]) => <div key={label}><span>{label}</span><b>{count(value)}</b></div>)}</div></section>
       </> : null}
 
       {tab === "videos" ? <section className="panel perf-panel" aria-label="성과 비교">

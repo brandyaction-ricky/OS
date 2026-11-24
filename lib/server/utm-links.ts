@@ -173,3 +173,44 @@ export async function shortenUtmLink(id: string, actor: UtmActor) {
   if (error) throw new ApiError(503, "UTM_SHORT_SAVE_FAILED", "단축링크는 만들었지만 대장에 연결하지 못했어요. 다시 눌러 주세요.");
   return readUtmLink(id);
 }
+
+/**
+ * 업로드 링크를 링크 대장에 (로건 요청 2026-11-24): after a video goes up, the 진단 link the upload screen made is one ledger row —
+ * written as it really is (utm_content stays the OS code yp-…, 대표 11-24: the short link was made before the video had an id), with
+ * the video id in 사용처. A value the ledger has no choice for (the code, an older campaign) is added turned off, so it never shows in
+ * 링크관리's pickers. Once per video (request_id from project + video); the 링크 대장 document is rebuilt after.
+ */
+export async function ledgerUploadLink(input: { requestId: string; videoId: string; title: string; channelTitle: string; originUrl: string;
+  campaign: string; content: string; utmUrl: string; shortUrl: string; by: string }) {
+  const db = createServiceSupabase();
+  const { data: again } = await db.from("os_utm_links").select("id").eq("request_id", input.requestId).maybeSingle();
+  if (again) return { saved: false, id: again.id as string };
+  const parsed = parseOriginUrl(input.originUrl);
+  if ("error" in parsed) throw new ApiError(400, "UTM_ORIGIN_INVALID", parsed.error);
+  const { data: rows, error } = await db.from("os_utm_options").select(OPTION_COLUMNS);
+  if (error) throw new ApiError(503, "UTM_OPTIONS_UNAVAILABLE", "선택값을 불러오지 못했어요.");
+  const list = rows as UtmOption[];
+  const option = async (kind: UtmKind, code: string, label: string) => {
+    const found = list.find(row => row.kind === kind && row.code === code);
+    if (found) return found;
+    const { data, error: insertError } = await db.from("os_utm_options").insert({ kind, label: label.slice(0, 80), code, active: false, created_by: input.by }).select(OPTION_COLUMNS).single();
+    if (insertError) throw new ApiError(503, "UTM_OPTION_SAVE_FAILED", "선택값을 저장하지 못했어요.");
+    return data as UtmOption;
+  };
+  const source = await option("source", "youtube", "유튜브"), medium = await option("medium", "organic", "오가닉");
+  const campaign = await option("campaign", input.campaign, `${input.campaign} (업로드 화면)`);
+  const content = await option("content", input.content, `${input.title.slice(0, 60)} · ${input.videoId}`);
+  const params = Object.fromEntries(([["source", source], ["medium", medium], ["campaign", campaign], ["content", content]] as const)
+    .map(([kind, row]) => [kind, { code: row.code, label: row.label }])) as UtmLedgerRow["params"];
+  const host = parsed.url.hostname, brand = host.endsWith("brandyaction-edu.com") ? "브랜디액션 에듀" : host.endsWith("myinlab.co.kr") ? "마이인" : "브랜디액션";
+  const short = /^https:\/\/www\.myinlab\.co\.kr\/r\/([A-Za-z0-9_-]+)$/.exec(input.shortUrl.trim());
+  const { data: link, error: insertError } = await db.from("os_utm_links").insert({
+    request_id: input.requestId, brand, usage: `유튜브 ${input.channelTitle || "채널"} | ${input.title} | ${input.videoId}`.slice(0, 200), origin_url: parsed.url.href,
+    source_id: source.id, medium_id: medium.id, campaign_id: campaign.id, content_id: content.id, params, target: "", location: "설명란, 고정댓글",
+    etc: "OS 업로드 화면에서 만든 링크(자동 기록)", utm_url: input.utmUrl, ...(short ? { short_key: short[1], short_url: input.shortUrl.trim() } : {}), created_by: input.by,
+  }).select("id").single();
+  if (unique(insertError)) return { saved: false, id: "" };
+  if (insertError) throw new ApiError(503, "UTM_LINK_SAVE_FAILED", "링크를 대장에 저장하지 못했어요.");
+  await syncUtmLedger(input.by);
+  return { saved: true, id: link.id as string };
+}

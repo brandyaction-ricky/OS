@@ -252,9 +252,12 @@ export const UTM_DEFAULT_URL = UTM_DESTS[0][1];
 export const utmBase = (utm: Pick<YpUpload["utm"], "url">) => /^https:\/\/[^\s]+$/.test(utm.url?.trim() ?? "") ? utm.url!.trim() : UTM_DEFAULT_URL;
 /** utm_content: the project code, known before the upload, so the 단축 링크 can be made from the start. */
 export const utmCode = (projectId: string) => `yp-${projectId.slice(0, 8)}`;
+/** The campaign that goes with a 보낼 곳 preset (정밀 진단 → sales, 무료 진단 → leed); other places keep the one chosen. */
+export const campaignFor = (url: string, current: string) => url.endsWith("/services/n6") ? "sales" : url.endsWith("/services/free") ? "leed" : current;
 export const UTM_OPTIONS = {
   cat: [["키", "키"], ["풀링", "풀링"], ["키+풀링", "키+풀링"]],
-  camp: [["jindan_report", "jindan_report (기본)"], ["keycontent", "keycontent (키 콘텐츠)"], ["lecture", "lecture (강의)"], ["community", "community (커뮤니티)"]],
+  // 링크 대장의 캠페인 값 (로건 요청 2026-11-24): the same codes 링크관리 offers, so a video's row reads like every other one.
+  camp: [["sales", "정밀검사 (sales)"], ["leed", "무료검사 (leed)"], ["core", "핵심보고서 (core)"], ["free", "무료강의 (free)"]],
 } as const;
 
 export function emptyStage<K extends YpStageKind>(kind: K, projectKind: YpKind | null): YpStageData[K] {
@@ -263,7 +266,7 @@ export function emptyStage<K extends YpStageKind>(kind: K, projectKind: YpKind |
       opening: "", body: "", closing: "", note: "", extraRefs: [] },
     outline: { spec: { ...SPEC_DEFAULT[projectKind ?? "anim"] }, script: "", versions: [] },
     make: { editDue: "", status: "prep", statusAt: {}, log: [], finals: [], thumbs: {}, aTitle: "", aReason: "" },
-    upload: { utm: { cat: "키", dest: "진단", camp: "jindan_report", next: "", short: "" }, srt: null, desc: "", pinned: "", hiddenTags: [], descBy: null, privacy: "private", run: null },
+    upload: { utm: { cat: "키", dest: "진단", camp: "sales", next: "", short: "" }, srt: null, desc: "", pinned: "", hiddenTags: [], descBy: null, privacy: "private", run: null },
     column: { items: [] },
     shortTopics: { items: [] },
     shortScript: { query: "", refs: [], text: "", hooks: [], insight: "", formula: "", headCopy: "" },

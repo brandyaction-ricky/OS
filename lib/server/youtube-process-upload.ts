@@ -3,7 +3,7 @@ import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { myinCreditsBlock } from "@/lib/myin-storyboard";
 import { projectName } from "@/lib/youtube-process/project";
-import { descWritten, finalPair, publishAtProblem, reviewOkAt, uploadFinal, utmCode, utmUrl, withLinks, type YpUpload } from "@/lib/youtube-process/stages";
+import { descWritten, finalPair, publishAtProblem, reviewOkAt, uploadFinal, utmBase, utmCode, utmUrl, withLinks, type YpUpload } from "@/lib/youtube-process/stages";
 
 // utm_content (utmCode): the Data API cannot edit a video with the upload permission alone, so the link carries the project code from the start.
 export { utmCode };
@@ -13,7 +13,8 @@ import { authorizeYoutubeConnection, getYoutubeAccessToken, youtubeConnectionSta
 import { youtubeUploadPublication, youtubeUploadRecordId } from "./youtube-upload-result";
 import { conflict, getYoutubeProject } from "./youtube-process";
 import { confirmedClip } from "./youtube-process-short";
-import { MEDIA_BUCKET, readFinals, readStages, writeStage } from "./youtube-process-stages";
+import { MEDIA_BUCKET, readFinals, readStages, writeStage, ypUuid } from "./youtube-process-stages";
+import { ledgerUploadLink } from "./utm-links";
 import { queueStudioTask } from "./youtube-studio";
 
 // S7 [업로드] (지시서 10-2): the browser sends the last final straight to YouTube's resumable session; the OS checks the
@@ -151,7 +152,23 @@ export async function completeYoutubeUpload(actor: RequestActor, id: string, inp
   if (!short) await queueStudioTask(service, project.id, video.id, { id: channelId, title: (await youtubeConnectionStatus(ownerId, channelId)).channelTitle ?? "", ownerId }, actor.ownerId)
     .catch(reason => console.warn(`studio task skipped (${reason instanceof Error ? reason.message : "error"})`));
   await auditChannelAction(actor.id, ownerId, "youtube", "업로드 결과 확인");
+  // 링크 대장 (로건 요청 11-24): a failed ledger write never fails the upload; 「링크 대장에 남기기」 writes it later.
+  if (!short) await ledgerYoutubeUpload(actor, project.id).catch(reason => console.warn(`ledger skipped (${reason instanceof Error ? reason.message : "error"})`));
   return { videoId: video.id, videoUrl, thumbnail };
+}
+
+/** 링크 대장에 남기기: the uploaded video's 진단 link as one 링크 대장 row (by itself after the upload; the button for older uploads). */
+export async function ledgerYoutubeUpload(actor: RequestActor, id: string) {
+  const project = await getYoutubeProject(actor, id);
+  const upload = (await readStages(actor.supabase, project)).upload.data;
+  const videoId = upload.run?.status === "done" ? upload.run.videoId : null;
+  if (!videoId) throw new ApiError(409, "UPLOAD_NOT_DONE", "아직 유튜브에 올리지 않았어요.");
+  const { data: published } = await createServiceSupabase().from("os_records").select("title,metadata").eq("record_type", "content_publish").eq("parent_id", project.id)
+    .eq("metadata->>youtubeVideoId", videoId).limit(1).maybeSingle();
+  const meta = (published?.metadata ?? {}) as { channelId?: string; connectionOwnerId?: string };
+  const channelTitle = meta.channelId && meta.connectionOwnerId ? (await youtubeConnectionStatus(meta.connectionOwnerId, meta.channelId).catch(() => null))?.channelTitle ?? "" : "";
+  return ledgerUploadLink({ requestId: ypUuid(`yp-ledger:${project.id}:${videoId}`), videoId, title: String(published?.title ?? "") || projectName(project), channelTitle,
+    originUrl: utmBase(upload.utm), campaign: upload.utm.camp, content: utmCode(project.id), utmUrl: utmUrl(upload.utm, utmCode(project.id)), shortUrl: upload.utm.short, by: actor.id });
 }
 
 /** After the upload (로건 요청 10/30): how far YouTube has got processing the video, and the 공개 범위 it holds. */
