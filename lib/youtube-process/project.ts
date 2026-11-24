@@ -1,5 +1,6 @@
 // 유튜브 공정 v1 project rules shared by the API, the screens and the demo store (지시서 6-2 · 8-1).
 import { editableFields } from "./confirm.ts";
+import type { CardCategory, CardListSummary } from "../cardnews/categories.ts";
 export type YpStage = "topic" | "draft" | "outline" | "make" | "review" | "upload" | "shorts" | "done";
 export type YpKind = "live" | "anim" | "short" | "card";
 export type YpGate = "topic" | "draft" | "review" | "shorts";
@@ -17,6 +18,7 @@ export interface YpTopic { type: YpKind | null; target: string; note: string; re
 export interface YpMeta {
   v: 1; stage: YpStage; topic: YpTopic; gates: Record<YpGate, YpGateInfo>; contentUpdatedAt: string; multiFrom?: string;
   isTest?: boolean;
+  cardCategory?: CardCategory | null;
   stageEnteredAt?: string;
   cardPublication?: { status: "published" | "withheld"; at: string; urls: string[]; posts?: { episode: number; url: string }[]; reason?: string };
   /** 쇼츠 확정 by the PD (owner decision 2026-10-25): each confirmed clip's script as it was confirmed (clipSignature); a later change needs a new 확정. */
@@ -33,7 +35,7 @@ export interface YpMeta {
   recycle?: { projectId: string; title: string; runId: string; cuts: [number, number][] };
 }
 export interface YpShortsLogEntry { at: string; by: string; byName: string; kind: "confirm" | "comment"; text: string; count?: number }
-export interface YpProject { id: string; version: number; title: string; assigneeId: string | null; ownerId: string; updatedAt: string; yp: YpMeta }
+export interface YpProject { id: string; version: number; title: string; assigneeId: string | null; ownerId: string; updatedAt: string; yp: YpMeta; cardSummary?: CardListSummary }
 
 export const YP_FLOW = ["주제", "기획안", "구성안", "제작", "최종 검토", "업로드", "쇼츠 · 칼럼"] as const;
 export const YP_STAGE_INDEX: Record<YpStage, number> = { topic: 0, draft: 1, outline: 2, make: 3, review: 4, upload: 5, shorts: 6, done: 7 };

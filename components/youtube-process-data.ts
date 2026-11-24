@@ -15,6 +15,7 @@ import { markReviewed, setReviewers, type YpReviewer } from "@/lib/youtube-proce
 import { applyFeedback, cleanMarks, FEEDBACK_FILE_MAX, FEEDBACK_FILE_TYPES, FeedbackRuleError, type FeedbackAction, type FeedbackFile, type FeedbackMark, type FeedbackReply } from "@/lib/youtube-process/feedback";
 import { cutsFromScenes, scenesFromCuts, shortsAction, type YpShortAppeal, type YpShortBrief, type YpShortScene } from "@/lib/youtube-process/short";
 import { mondayFields } from "@/lib/cardnews/planning";
+import { cardListSummary, type CardCategory } from "@/lib/cardnews/categories";
 import { CardError, cardsMissing, finishedCardPublication, nextCards, type CardsPatch } from "@/lib/cardnews/cards";
 import { cardSignature, emptyCardDraft, type CardDraft, type CardPhoto } from "@/lib/cardnews/formats";
 import { CARD_DRAW_SIZE, type CardCharacterView, type CardDrawInput } from "@/lib/cardnews/draw";
@@ -28,7 +29,7 @@ const demoCta: { videos: CtaVideo[]; history: CtaChangeView[] } = { history: [],
   { id: "demoVid0003", title: "[예시] 숏폼 · 다른 링크", publishedAt: "2026-10-28T09:00:00Z", description: "전체 영상 보기 ▶ https://youtu.be/demo" },
 ] };
 export interface YpMember { id: string; name: string }
-export interface YpTopicInput { isTest?: boolean; title?: string; kind?: YpKind | null; target?: string; note?: string; refs?: YpRef[]; purpose?: "ad" | null; channel?: string | null; assigneeId?: string | null }
+export interface YpTopicInput { cardCategory?: CardCategory | null; isTest?: boolean; title?: string; kind?: YpKind | null; target?: string; note?: string; refs?: YpRef[]; purpose?: "ad" | null; channel?: string | null; assigneeId?: string | null }
 export interface YpStageView<K extends YpStageKind = YpStageKind> { id: string | null; version: number; data: YpStageData[K] }
 export type YpStagesView = { [K in YpStageKind]: YpStageView<K> };
 export interface YpFinalView { v: number; at: string; source: "myin" | "short" | "upload"; name: string; bytes: number; durationSeconds: number | null; runId?: string; path?: string; aspect?: "1:1" | "4:5" }
@@ -53,7 +54,7 @@ export interface YpScheduleItem { project: YpProject; makeVersion: number; editD
 export interface YpLegacyTopic { id: string; title: string; updatedAt: string; step: string; assigneeId: string | null }
 export type YpAssetKind = "plan_thumb" | "thumb" | "final" | "srt" | "column" | "card";
 export interface YpClient {
-  list(): Promise<YpProject[]>;
+  list(includeCardSummary?: boolean): Promise<YpProject[]>;
   /** 한눈에 보기: the videos, the open staff-AI jobs on them, and whether I confirm. */
   overview(): Promise<{ projects: YpProject[]; jobs: OvJob[]; canConfirm: boolean }>;
   /** 채택 on 한눈에 보기: an AI result is taken and leaves the list. */
@@ -109,7 +110,7 @@ export interface YpClient {
   /** 영상 복제 (owner decision 2026-10-28): the same step (제작 at most), voice and video made again. */
   copy(id: string): Promise<YpProject>;
   /** 내 영상 휴지통 (staff request 2026-10-26): trash · restore by the maker, PD or an admin; 영구 삭제 by an admin after 30 days. */
-  trashList(): Promise<(YpTrashed & { canManage: boolean })[]>;
+  trashList(includeCardSummary?: boolean): Promise<(YpTrashed & { canManage: boolean })[]>;
   trash(id: string, expectedVersion: number, reason: string): Promise<void>;
   restore(id: string): Promise<void>;
   purge(id: string, reason: string): Promise<void>;
@@ -157,7 +158,7 @@ function apiClient(token: string): YpClient {
   const shortVideoUrl = async (id: string, renderId: string, download = false) => (await apiRequest<{ url: string }>(`${base}/${id}/short?video=${renderId}${download ? "&download=1" : ""}`, { token })).url;
   return {
     demo: false,
-    list: async () => (await apiRequest<{ projects: YpProject[] }>(base, { token })).projects,
+    list: async include => (await apiRequest<{ projects: YpProject[] }>(include ? base + "?cardLibrary=1" : base, { token })).projects,
     overview: () => apiRequest("/api/v1/content/youtube/overview", { token }),
     adoptJob: async (jobId, action) => { await apiRequest("/api/v1/content/youtube/overview", { token, method: "POST", body: json({ jobId, action }) }); },
     get: async id => (await apiRequest<YpBundle>(`${base}/${id}`, { token })).project,
@@ -212,7 +213,7 @@ function apiClient(token: string): YpClient {
     ctaUndo: input => apiRequest("/api/v1/content/youtube/cta", { token, method: "POST", body: json({ action: "undo", ...input }) }),
     adopt: async id => (await apiRequest<{ project: YpProject }>("/api/v1/content/youtube/legacy", { token, method: "POST", body: json({ id }) })).project,
     copy: async id => (await apiRequest<{ project: YpProject }>(`${base}/${id}/copy`, { token, method: "POST", body: json({}) })).project,
-    trashList: async () => (await apiRequest<{ items: (YpTrashed & { canManage: boolean })[] }>(`${base}/trash`, { token })).items,
+    trashList: async include => (await apiRequest<{ items: (YpTrashed & { canManage: boolean })[] }>(`${base}/trash${include ? "?cardLibrary=1" : ""}`, { token })).items,
     trash: async (id, expectedVersion, reason) => { await apiRequest(`${base}/${id}/trash`, { token, method: "POST", body: json({ action: "trash", expectedVersion, reason }) }); },
     restore: async id => { await apiRequest(`${base}/${id}/trash`, { token, method: "POST", body: json({ action: "restore" }) }); },
     purge: async (id, reason) => { await apiRequest(`${base}/${id}/trash`, { token, method: "POST", body: json({ action: "purge", reason, confirm: true }) }); },
@@ -408,6 +409,8 @@ function demoClient(): YpClient {
     return project;
   };
   const stagesOf = (project: YpProject) => { if (!demoStages.has(project.id)) demoStages.set(project.id, demoFilledStages(project)); return demoStages.get(project.id)!; };
+  const withCardSummary = (project: YpProject, include?: boolean) => include && project.yp.topic.type === "card"
+    ? { ...project, cardSummary: cardListSummary(stagesOf(project).cards.data, project.yp.stage) } : project;
   const put = (next: YpProject) => { demoStore = demoProjects().map(row => row.id === next.id ? next : row); return structuredClone(next); };
   const bump = (project: YpProject, yp: YpProject["yp"] = project.yp) => put({ ...project, version: project.version + 1, updatedAt: new Date().toISOString(), yp });
   const add = (title: string, input: YpTopicInput, multiFrom?: string) => {
@@ -451,7 +454,7 @@ function demoClient(): YpClient {
   };
   return {
     demo: true,
-    list: async () => structuredClone(demoProjects()),
+    list: async include => structuredClone(demoProjects().map(project => withCardSummary(project, include))),
     // One AI job running on the first video in 제작, one stopped on a 기획안 and one result that arrived on a 구성안, so the screen shows every group.
     overview: async () => {
       const projects = structuredClone(demoProjects()), at = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
@@ -506,17 +509,19 @@ function demoClient(): YpClient {
       return structuredClone(demoCharacters);
     },
     removeCardCharacter: async characterId => { demoCharacters.splice(demoCharacters.findIndex(row => row.id === characterId) >>> 0, 1); return structuredClone(demoCharacters); },
-    update: async (id, expectedVersion, { assigneeId, isTest, ...fields }) => {
+    update: async (id, expectedVersion, { assigneeId, isTest, cardCategory, ...fields }) => {
       const project = find(id);
       checkVersion(project.version, expectedVersion);
       const content = Object.keys(fields).length > 0;
       if ((Object.keys(fields) as (keyof typeof TOPIC_FIELD_OF)[]).some(key => !topicFieldEditable(project, key))) throw demoError(409, "FIELD_LOCKED", "지금은 이 칸을 고칠 수 없어요.");
       const topic = project.yp.topic;
+      if (cardCategory !== undefined && (fields.kind === undefined ? topic.type : fields.kind) !== "card") throw demoError(400, "NOT_A_CARD", "카드뉴스의 카테고리만 바꿀 수 있어요.");
+      const meta = { ...project.yp, ...(isTest !== undefined ? { isTest } : {}), ...(cardCategory !== undefined ? { cardCategory } : {}) };
       return put({
         ...project, version: project.version + 1, updatedAt: new Date().toISOString(),
         title: fields.title ?? project.title, assigneeId: assigneeId !== undefined ? assigneeId : project.assigneeId,
-        yp: content ? { ...project.yp, ...(isTest !== undefined ? { isTest } : {}), contentUpdatedAt: new Date().toISOString(), topic: { type: fields.kind !== undefined ? fields.kind : topic.type, target: fields.target ?? topic.target, note: fields.note ?? topic.note, refs: fields.refs ?? topic.refs,
-          ...((fields.purpose !== undefined ? fields.purpose : topic.purpose) ? { purpose: (fields.purpose !== undefined ? fields.purpose : topic.purpose)! } : {}) } } : isTest !== undefined ? { ...project.yp, isTest } : project.yp,
+        yp: content ? { ...meta, contentUpdatedAt: new Date().toISOString(), topic: { type: fields.kind !== undefined ? fields.kind : topic.type, target: fields.target ?? topic.target, note: fields.note ?? topic.note, refs: fields.refs ?? topic.refs,
+          ...((fields.purpose !== undefined ? fields.purpose : topic.purpose) ? { purpose: (fields.purpose !== undefined ? fields.purpose : topic.purpose)! } : {}) } } : meta,
       });
     },
     topicGate: (id, action, expectedVersion, reply, to) => gate(id, "topic", action, expectedVersion, reply, to),
@@ -716,7 +721,7 @@ function demoClient(): YpClient {
     },
     adopt: async () => { throw demoError(409, "DEMO", "데모에는 이전 화면 영상이 없어요."); },
     copy: async () => { throw demoError(409, "DEMO", "데모에서는 영상을 복제하지 않아요."); },
-    trashList: async () => structuredClone(demoTrash.map(item => ({ ...item, canManage: true }))),
+    trashList: async include => structuredClone(demoTrash.map(item => ({ ...item, project: withCardSummary(item.project, include), canManage: true }))),
     trash: async (id, expectedVersion, reason) => {
       const project = find(id);
       checkVersion(project.version, expectedVersion);

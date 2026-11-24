@@ -6,6 +6,50 @@ test.beforeEach(async ({ page }) => {
 });
 const startUrl = "/content/projects?view=discover&platform=card";
 const editUrl = "/content/plan?project=demo-p13&view=draft";
+test("card library distinguishes format, editorial category and workflow on desktop and mobile", async ({ page }) => {
+  await page.goto("/content/projects?platform=card");
+  const categories = page.getByRole("group", { name: "카테고리", exact: true });
+  const row = page.locator(".yp-library-list .yp-mv").first();
+  const category = row.getByRole("combobox", { name: /카테고리 변경/ });
+  await expect(categories.getByRole("button", { name: /정보전달형.*1/ })).toBeVisible();
+  await expect(row.locator(".yp-library-format")).toHaveText(/정리형 · \d+장/);
+  await expect(row.getByRole("link", { name: /카드 만들기/ })).toBeVisible();
+  await category.selectOption("story");
+  await expect(categories.getByRole("button", { name: /스토리형.*1/ })).toBeVisible();
+  await categories.getByRole("button", { name: /정보전달형/ }).click();
+  await expect(page.getByRole("button", { name: "전체 카테고리 보기" })).toBeVisible();
+  await categories.getByRole("button", { name: /스토리형/ }).click();
+  await expect(page).toHaveURL(/category=story/);
+  await expect(category).toHaveValue("story");
+  await page.getByLabel("카드뉴스 검색").fill("검색 결과 없음");
+  await expect(categories.getByRole("button", { name: /스토리형.*0/ })).toBeVisible();
+  await page.getByLabel("카드뉴스 검색").fill("");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(row.locator(".yp-mv-t")).toBeVisible();
+  const overflow = await row.evaluate(el => el.scrollWidth > el.clientWidth + 1);
+  expect(overflow).toBe(false);
+  await category.selectOption("");
+  await expect(page.getByRole("button", { name: "전체 카테고리 보기" })).toBeVisible();
+  await page.getByRole("button", { name: "전체 카테고리 보기" }).click();
+  await expect(row.locator(".yp-library-badge")).toContainText("정보전달형");
+  await page.getByLabel("영상 플랫폼").selectOption("short");
+  await expect(categories).toHaveCount(0);
+  await expect(page.locator(".yp-pf-short").first()).toBeVisible();
+});
+test("the card category remains visible through trash and restore", async ({ page }) => {
+  await page.goto("/content/projects?platform=card");
+  const rows = page.locator(".yp-library-list .yp-mv");
+  await rows.first().getByRole("combobox", { name: /카테고리 변경/ }).selectOption("guide");
+  await expect(rows.first().getByRole("combobox")).toHaveValue("guide");
+  await rows.first().getByRole("button", { name: /삭제$/ }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "휴지통으로", exact: true }).click();
+  await page.getByRole("tab", { name: /휴지통 1/ }).click();
+  await page.getByRole("group", { name: "카테고리" }).getByRole("button", { name: /안내형.*1/ }).click();
+  await expect(rows.first().locator(".yp-library-badge")).toHaveText("안내형");
+  await rows.first().getByRole("button", { name: "복구" }).click();
+  await page.getByRole("tab", { name: /진행 중 1/ }).click();
+  await expect(rows.first().getByRole("combobox")).toHaveValue("guide");
+});
 async function editor(page: Page) { await page.goto(editUrl); await expect(page.getByRole("button", { name: "1장 보기", exact: true })).toBeVisible(); }
 
 test("card catalog shows its cover, completed tab and title search", async ({ page }) => {

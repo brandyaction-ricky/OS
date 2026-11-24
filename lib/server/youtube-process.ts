@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { finishedCardPublication } from "@/lib/cardnews/cards";
+import { cardListSummary, CATEGORY_IDS, type CardCategory } from "@/lib/cardnews/categories";
 import { stageData } from "@/lib/youtube-process/stages";
 import { overviewRows } from "@/lib/youtube-process/overview";
 import { ApiError } from "@/lib/http";
@@ -27,7 +28,7 @@ const topicFields = {
   assigneeId: z.string().uuid().nullable(),
 };
 export const projectCreateSchema = z.object(topicFields).partial().strict();
-export const projectPatchSchema = z.object({ ...topicFields, isTest: z.boolean(), expectedVersion: z.number().int().positive() }).partial().required({ expectedVersion: true }).strict();
+export const projectPatchSchema = z.object({ ...topicFields, isTest: z.boolean(), cardCategory: z.enum(CATEGORY_IDS as [CardCategory, ...CardCategory[]]).nullable(), expectedVersion: z.number().int().positive() }).partial().required({ expectedVersion: true }).strict();
 export const gateActionSchema = z.object({ action: z.enum(["confirm", "request", "cancel", "reopen"]), expectedVersion: z.number().int().positive(), reply: z.string().max(200).optional(), to: z.string().uuid().optional() }).strict();
 // note: the 대표 leaves a note on a step the PD confirmed (owner decision 2026-10-26); it changes nothing else.
 export const confirmActionSchema = z.object({ action: z.enum(["ok", "changes", "hold", "revert", "note"]), expectedVersion: z.number().int().positive(),
@@ -57,28 +58,34 @@ function asProject(row: Parameters<typeof projectFromRecord>[0] | null) {
 }
 
 /** Older completed cards stored the post only in their cards record. Read the evidence, retaining its original date. */
-export async function withLegacyCardEvidence(supabase: RequestActor["supabase"], projects: YpProject[]) {
-  const ids = projects.filter(project => project.yp.stage === "done" && project.yp.topic.type === "card" && !project.yp.cardPublication).map(project => project.id);
+export async function withLegacyCardEvidence(supabase: RequestActor["supabase"], projects: YpProject[], includeCardSummary = false) {
+  const cardsById = new Map(projects.filter(project => project.yp.topic.type === "card" && (includeCardSummary || (project.yp.stage === "done" && !project.yp.cardPublication))).map(project => [project.id, project]));
+  const ids = [...cardsById.keys()];
   if (!ids.length) return projects;
-  const saved = new Map<string, YpMeta["cardPublication"]>();
+  const enriched = new Map<string, YpProject>();
   for (let offset = 0; offset < ids.length; offset += 60) {
     const { data, error } = await supabase.from("os_records").select("parent_id,metadata").eq("record_type", "content_package").eq("metadata->>packageKind", "yp_cards")
-      .in("parent_id", ids.slice(offset, offset + 60)).is("archived_at", null);
+      .in("parent_id", ids.slice(offset, offset + 60)).is("archived_at", null).order("updated_at", { ascending: false });
     if (error) throw readFailed();
     for (const row of data ?? []) {
+      const project = cardsById.get(row.parent_id);
+      if (!project || enriched.has(project.id)) continue;
       const cards = stageData("cards", row.metadata?.yp, "card");
-      if (cards.exported?.url && !cards.exported.posts) saved.set(row.parent_id, finishedCardPublication(cards, cards.exported.at));
+      const legacy = project.yp.stage === "done" && !project.yp.cardPublication && cards.exported?.url && !cards.exported.posts
+        ? finishedCardPublication(cards, cards.exported.at) : undefined;
+      enriched.set(project.id, { ...project, ...(legacy ? { yp: { ...project.yp, cardPublication: legacy } } : {}),
+        ...(includeCardSummary ? { cardSummary: cardListSummary(cards, project.yp.stage) } : {}) });
     }
   }
-  return projects.map(project => saved.get(project.id) ? { ...project, yp: { ...project.yp, cardPublication: saved.get(project.id) } } : project);
+  return projects.map(project => enriched.get(project.id) ?? project);
 }
 
 // ponytail: up to 500 projects per read; page by contentUpdatedAt when the list outgrows it.
-export async function listYoutubeProjects(actor: RequestActor) {
+export async function listYoutubeProjects(actor: RequestActor, includeCardSummary = false) {
   const { data, error } = await actor.supabase.from("os_records").select(COLUMNS)
     .eq("record_type", "content_topic").eq("metadata->>workflow", "youtube_v1").is("archived_at", null).limit(500);
   if (error) throw readFailed();
-  return withLegacyCardEvidence(actor.supabase, (data ?? []).map(row => projectFromRecord(row)).filter((project): project is YpProject => Boolean(project)));
+  return withLegacyCardEvidence(actor.supabase, (data ?? []).map(row => projectFromRecord(row)).filter((project): project is YpProject => Boolean(project)), includeCardSummary);
 }
 
 export async function getYoutubeProject(actor: RequestActor, id: string) {
@@ -139,7 +146,11 @@ export async function createYoutubeProject(actor: RequestActor, input: z.infer<t
 export async function updateYoutubeProject(actor: RequestActor, id: string, input: z.infer<typeof projectPatchSchema>) {
   const project = await getYoutubeProject(actor, id);
   if (project.version !== input.expectedVersion) throw conflict();
-  const { expectedVersion, assigneeId, isTest, ...fields } = input;
+  const { expectedVersion, assigneeId, isTest, cardCategory, ...fields } = input;
+  if (cardCategory !== undefined) {
+    if ((fields.kind === undefined ? project.yp.topic.type : fields.kind) !== "card") throw new ApiError(400, "NOT_A_CARD", "카드뉴스의 카테고리만 바꿀 수 있어요.");
+    if (!mayTrash(project, actor.ownerId, actor.role === "admin")) throw new ApiError(403, "CARD_CATEGORY_DENIED", "만든 사람 · 담당 PD · 관리자만 카테고리를 바꿀 수 있어요.");
+  }
   if (isTest !== undefined && !mayTrash(project, actor.ownerId, actor.role === "admin")) throw new ApiError(403, "TEST_FLAG_DENIED", "만든 사람 · 담당 PD · 관리자만 테스트 콘텐츠 표시를 바꿀 수 있어요.");
   const keys = Object.keys(fields) as (keyof typeof TOPIC_FIELD_OF)[];
   // 4-1: anyone may change the PD; topic fields lock while a confirm waits or after it, and after 수정 요청 only the ticked ones open.
@@ -160,7 +171,10 @@ export async function updateYoutubeProject(actor: RequestActor, id: string, inpu
       ...(purpose ? { purpose } : {}), ...(channel ? { channel } : {}) },
     contentUpdatedAt: new Date().toISOString(),
   } : undefined;
-  return saveProject(actor, project, expectedVersion, { title: fields.title, assigneeId, yp: isTest === undefined ? yp : { ...(yp ?? project.yp), isTest } });
+  const meta = isTest === undefined && cardCategory === undefined ? yp : {
+    ...(yp ?? project.yp), ...(isTest !== undefined ? { isTest } : {}), ...(cardCategory !== undefined ? { cardCategory } : {}),
+  };
+  return saveProject(actor, project, expectedVersion, { title: fields.title, assigneeId, yp: meta });
 }
 
 const gateError = (error: unknown) => error instanceof GateError ? new ApiError(error.status, error.code, error.message) : error;

@@ -10,6 +10,26 @@ import { storedZip } from "../lib/cardnews/zip.ts";
 import { applyGateAction, canReopen } from "../lib/youtube-process/confirm.ts";
 import { flowOf, newProjectMeta } from "../lib/youtube-process/project.ts";
 import { emptyStage } from "../lib/youtube-process/stages.ts";
+import { cardListSummary, libraryCategory } from "../lib/cardnews/categories.ts";
+
+test("the library follows the chosen draft and keeps unselected candidates unclassified", () => {
+  const cards = emptyStage("cards", "card");
+  const guide = emptyCardDraft("steps", "guide", "PD", "t");
+  const comic = emptyCardDraft("webtoon", "toon", "PD", "t");
+  cards.drafts = [guide, comic];
+  const unselected = cardListSummary(cards, "draft");
+  assert.deepEqual(unselected, { format: null, slides: 0, candidates: 2 });
+  assert.equal(libraryCategory(null, unselected), "unassigned");
+  cards.picked = guide.id;
+  cards.confirmed = { draftId: comic.id, sig: "s", at: "t" };
+  const selected = cardListSummary(cards, "draft");
+  const confirmed = cardListSummary(cards, "upload");
+  assert.equal(libraryCategory(null, selected), "guide");
+  assert.equal(libraryCategory(null, confirmed), "webtoon");
+  assert.equal(confirmed.slides, comic.slides.length);
+  assert.equal(libraryCategory("story", selected), "story");
+  assert.equal(libraryCategory("story"), "story");
+});
 
 // 카드뉴스 (설계서 2026-10-30): formats, the cards record rules and the step flow.
 const filled = format => {

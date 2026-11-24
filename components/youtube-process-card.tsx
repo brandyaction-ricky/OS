@@ -450,7 +450,7 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
         {editable && <button type="button" className="yp-btn yp-sm" disabled={!undo} onClick={() => { if (undo) { edit(undo); setOver({}); setSlide(Math.min(current, undo.slides.length - 1)); setUndo(null); } }}>장 편집 되돌리기</button>}
         <span role="status" className="yp-hint">{busy ? "저장 중…" : dirty ? "변경 내용 저장 대기" : "저장됨"}</span>
       </div>
-      {editable && draft.format === "webtoon" ? <CardDrawBatch key={draft.id} page={page} projectId={project.id} draft={draft} onPlace={(index, photo) => placePhoto(photo, index)} onFile={(index, file) => putPhoto(file, index)} /> : null}
+      {editable && draft.format === "webtoon" ? <CardDrawBatch key={`draw-${draft.id}`} page={page} projectId={project.id} draft={draft} onPlace={(index, photo) => placePhoto(photo, index)} onFile={(index, file) => putPhoto(file, index)} /> : null}
       <div className="yp-card-edit">
         <div className="yp-card-list" aria-label="카드 순서">{draft.slides.map((row, index) => <div key={index} className="yp-card-item" draggable={editable && (slideSpec(draft.format, row.type)?.max ?? 0) > 1}
           onDragStart={event => event.dataTransfer.setData("application/x-card-slide", JSON.stringify({ id: draft.id, index }))}
