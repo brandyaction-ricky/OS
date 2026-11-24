@@ -151,8 +151,10 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
   const askStart = (text: string, takes: boolean, kept = "") => {
     if (recycled) return Promise.resolve(true);
     const voice = voiceEstimate(text, myinVoice), cta = voiceEstimate("가".repeat(600), myinVoice), photos = MYIN_AI_PHOTOS_MAX * AI_PHOTO_KRW;
-    return cost.confirm({ model: myinVoice, amount: voice.krw * (takes ? 4 : 1) + cta.krw + photos, upTo: true, ok: "확인하고 시작",
-      detail: `${kept}음성 ${voice.chars.toLocaleString("ko-KR")}자${takes ? "(문장마다 4번 만들어 골라요)" : ""} + 구독 대사 음성(300자까지) + 기획표가 고른 AI 사진(${MYIN_AI_PHOTOS_MAX}장까지, 장당 약 ${AI_PHOTO_KRW.toLocaleString("ko-KR")}원) · 지금 한 번 확인하면 「완성」까지 다시 묻지 않아요 · 켜 둔 GPT 화면 검사는 GPT 크레딧에서 따로 빠져요` });
+    // 쉼 점검 → 다시 낭독: up to 20 caught sentences (~1,600자), two takes each, twice.
+    const again = voiceEstimate("가".repeat(Math.min(text.length, 1_600) * 4), myinVoice);
+    return cost.confirm({ model: myinVoice, amount: voice.krw * (takes ? 4 : 1) + cta.krw + photos + again.krw, upTo: true, ok: "확인하고 시작",
+      detail: `${kept}음성 ${voice.chars.toLocaleString("ko-KR")}자${takes ? "(문장마다 4번 만들어 골라요)" : ""} + 구독 대사 음성(300자까지) + 기획표가 고른 AI 사진(${MYIN_AI_PHOTOS_MAX}장까지, 장당 약 ${AI_PHOTO_KRW.toLocaleString("ko-KR")}원) + 쉼 점검에 걸린 문장 다시 낭독(2번까지) · 지금 한 번 확인하면 「완성」까지 다시 묻지 않아요 · 켜 둔 GPT 화면 검사는 GPT 크레딧에서 따로 빠져요` });
   };
   const { accessToken } = useSession();
   const [run, setRun] = useState<MyinRun | null>(null);
