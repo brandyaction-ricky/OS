@@ -51,6 +51,7 @@ export async function startYoutubeUpload(actor: RequestActor, id: string, input:
   if (!final) throw new ApiError(409, "FINAL_REQUIRED", "올릴 최종본이 없어요.");
   if (input.finalAt && input.finalAt !== final.at) throw new ApiError(409, "FINAL_CHANGED", "올릴 영상이 바뀌었어요. 화면을 새로 불러온 뒤 다시 눌러 주세요.");
   if (!descWritten(upload.desc)) throw new ApiError(409, "DESCRIPTION_REQUIRED", "설명란을 채워 주세요.");
+  if (!upload.ai) throw new ApiError(409, "AI_DISCLOSURE_REQUIRED", "5. 공개 범위에서 AI 사용 공개를 「예」나 「아니요」로 골라 주세요.");
   const ownerId = input.connectionOwnerId ?? actor.id;
   const connectedChannel = (await authorizeYoutubeConnection(actor, ownerId, input.connectionChannelId)).channel_id;
   const connection = await youtubeConnectionStatus(ownerId, connectedChannel);
@@ -71,16 +72,19 @@ export async function startYoutubeUpload(actor: RequestActor, id: string, input:
   return { uploadUrl, channelId: connection.channelId, finalV: final.v };
 }
 
+/** AI 사용 공개 (직원 요청 11-19): 예 → true, 아니요 → false; not chosen (an older project) sends nothing, as before. */
+const aiLabel = (ai: YpUpload["ai"]) => ai ? { containsSyntheticMedia: ai === "yes" } : {};
+
 /** 공개 범위, or 예약 (로건 요청 10/30): YouTube takes a publish time only on a private video, and only one still ahead. */
-function uploadStatus(upload: Pick<YpUpload, "privacy" | "publishAt">) {
-  if (!upload.publishAt) return { privacyStatus: upload.privacy };
+function uploadStatus(upload: Pick<YpUpload, "privacy" | "publishAt" | "ai">) {
+  if (!upload.publishAt) return { privacyStatus: upload.privacy, ...aiLabel(upload.ai) };
   const problem = publishAtProblem(upload.publishAt);
   if (problem) throw new ApiError(409, "PUBLISH_AT_PAST", problem);
-  return { privacyStatus: "private", publishAt: upload.publishAt };
+  return { privacyStatus: "private", publishAt: upload.publishAt, ...aiLabel(upload.ai) };
 }
 
 /** YouTube's resumable session for one file; the browser sends the bytes straight to the returned address. */
-async function openUploadSession(ownerId: string, channelId: string, file: { fileSize: number; mimeType: string }, snippet: { title: string; description: string; tags: string[]; categoryId: string }, status: { privacyStatus: string; publishAt?: string }, origin: string) {
+async function openUploadSession(ownerId: string, channelId: string, file: { fileSize: number; mimeType: string }, snippet: { title: string; description: string; tags: string[]; categoryId: string }, status: { privacyStatus: string; publishAt?: string; containsSyntheticMedia?: boolean }, origin: string) {
   const accessToken = await getYoutubeAccessToken(ownerId, channelId);
   const google = await fetch(`https://www.googleapis.com/upload/youtube/v3/videos?${new URLSearchParams({ uploadType: "resumable", part: "snippet,status" })}`, {
     method: "POST", cache: "no-store",
@@ -97,7 +101,7 @@ async function openUploadSession(ownerId: string, channelId: string, file: { fil
 async function channelVideo(ownerId: string, channelId: string, videoId: string) {
   const accessToken = await getYoutubeAccessToken(ownerId, channelId);
   const response = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=id,snippet,status&id=${encodeURIComponent(videoId)}`, { headers: { authorization: `Bearer ${accessToken}` }, cache: "no-store" });
-  const body = await response.json().catch(() => ({})) as { items?: { id: string; snippet?: { title?: string; channelId?: string }; status?: { privacyStatus?: string; publishAt?: string } }[]; error?: { message?: string } };
+  const body = await response.json().catch(() => ({})) as { items?: { id: string; snippet?: { title?: string; channelId?: string }; status?: { privacyStatus?: string; publishAt?: string; containsSyntheticMedia?: boolean } }[]; error?: { message?: string } };
   if (!response.ok) throw new ApiError(502, "YOUTUBE_UPLOAD_VERIFY_FAILED", "업로드된 영상을 확인하지 못했습니다.", body.error?.message);
   const video = body.items?.[0];
   const connection = await youtubeConnectionStatus(ownerId, channelId);
@@ -128,7 +132,8 @@ export async function completeYoutubeUpload(actor: RequestActor, id: string, inp
   const short = project.yp.topic.type === "short";
   const videoUrl = short ? `https://www.youtube.com/shorts/${video.id}` : `https://www.youtube.com/watch?v=${video.id}`;
   const run = { at: new Date().toISOString(), by: actor.name, status: "done" as const, videoId: video.id, videoUrl, finalV: final?.v, ...(final ? { finalAt: final.at } : {}), thumbnail,
-    ...(video.status?.privacyStatus ? { privacy: video.status.privacyStatus } : {}), ...(video.status?.publishAt ? { publishAt: video.status.publishAt } : {}) };
+    ...(video.status?.privacyStatus ? { privacy: video.status.privacyStatus } : {}), ...(video.status?.publishAt ? { publishAt: video.status.publishAt } : {}),
+    ...(typeof video.status?.containsSyntheticMedia === "boolean" ? { ai: video.status.containsSyntheticMedia } : {}) };
   await writeStage(actor.supabase, actor.id, actor.team, project, "upload", stages.upload, { ...stages.upload.data, run }).catch(error => {
     throw error instanceof ApiError && error.code === conflict().code ? new ApiError(409, "UPLOAD_RECORD_CONFLICT", "영상은 올라갔지만 기록이 바뀌었어요. 같은 버튼을 다시 누르면 기록만 저장해요.") : error;
   });
@@ -191,7 +196,7 @@ export async function startClipUpload(actor: RequestActor, id: string, input: z.
   const connectedChannel = (await authorizeYoutubeConnection(actor, ownerId, input.connectionChannelId)).channel_id;
   const tags = (text.match(/#[^\s#]+/g) ?? []).map(tag => tag.slice(1)).slice(0, 30);
   // A Short goes up with the longform's 공개 범위; its 예약 time is the longform's, so a scheduled longform sends its Shorts private.
-  const uploadUrl = await openUploadSession(ownerId, connectedChannel, input, { title: clip.title.trim().slice(0, 100), description: clipDescription(text, longformUrl), tags, categoryId: "22" }, { privacyStatus: stages.upload.data.publishAt ? "private" : stages.upload.data.privacy }, origin);
+  const uploadUrl = await openUploadSession(ownerId, connectedChannel, input, { title: clip.title.trim().slice(0, 100), description: clipDescription(text, longformUrl), tags, categoryId: "22" }, { privacyStatus: stages.upload.data.publishAt ? "private" : stages.upload.data.privacy, ...aiLabel(stages.upload.data.ai) }, origin);
   await auditChannelAction(actor.id, ownerId, "youtube", "쇼츠 업로드 세션 생성");
   return { uploadUrl };
 }
