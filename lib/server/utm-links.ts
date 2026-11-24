@@ -203,7 +203,7 @@ export async function ledgerUploadLink(input: { requestId: string; videoId: stri
   const params = Object.fromEntries(([["source", source], ["medium", medium], ["campaign", campaign], ["content", content]] as const)
     .map(([kind, row]) => [kind, { code: row.code, label: row.label }])) as UtmLedgerRow["params"];
   const host = parsed.url.hostname, brand = host.endsWith("brandyaction-edu.com") ? "브랜디액션 에듀" : host.endsWith("myinlab.co.kr") ? "마이인" : "브랜디액션";
-  const short = /^https:\/\/www\.myinlab\.co\.kr\/r\/([A-Za-z0-9_-]+)$/.exec(input.shortUrl.trim());
+  const short = /^https:\/\/(?:www\.)?myinlab\.co\.kr\/r\/([A-Za-z0-9_-]+)$/.exec(input.shortUrl.trim());
   const { data: link, error: insertError } = await db.from("os_utm_links").insert({
     request_id: input.requestId, brand, usage: `유튜브 ${input.channelTitle || "채널"} | ${input.title} | ${input.videoId}`.slice(0, 200), origin_url: parsed.url.href,
     source_id: source.id, medium_id: medium.id, campaign_id: campaign.id, content_id: content.id, params, target: "", location: "설명란, 고정댓글",

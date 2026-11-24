@@ -14,6 +14,7 @@ test("업로드 링크 → 링크 대장: one row per video, as the link really 
   assert.match(ledger, /export async function ledgerUploadLink/);
   assert.match(ledger, /insert\(\{ kind, label: label\.slice\(0, 80\), code, active: false/, "missing values are added turned off");
   assert.match(ledger, /await syncUtmLedger\(input\.by\);/);
+  assert.ok(ledger.includes("/^https:\\/\\/(?:www\\.)?myinlab\\.co\\.kr\\/r\\/([A-Za-z0-9_-]+)$/"), "the upload screen saves short links without www");
   const upload = read("lib/server/youtube-process-upload.ts");
   assert.match(upload, /if \(!short\) await ledgerYoutubeUpload\(actor, project\.id\)\.catch\(/, "a failed ledger write never fails the upload");
   assert.match(upload, /requestId: ypUuid\(`yp-ledger:\$\{project\.id\}:\$\{videoId\}`\)/, "once per video");
