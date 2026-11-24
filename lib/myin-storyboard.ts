@@ -437,6 +437,24 @@ function photoFocusIssues(story: MyinStoryboard) {
 const ctaWordingIssues = (story: MyinStoryboard) => story.cta.flatMap((cta, k) => /눌러\s*두/.test(cta.line) ? [`[구독 ${k + 1}] 「눌러 두…」 대신 「눌러 주세요」로 써요`] : []);
 
 /**
+ * 쇼릴 · 구독 자리 (로건 2026-11-24): one subscribe request a video — the engine plays the deck reel right before it — at least 60 s into
+ * the body and past 35% of the voice. New storyboards only (the AI's), so an older one lent to an edited script still renders.
+ */
+export function ctaPlacementIssues(story: MyinStoryboard, words: [number, number, string][]) {
+  if (!words.length) return [];
+  const issues = story.cta.length > 1 ? [`[구독] 구독 요청은 영상당 한 곳이에요(쇼릴이 바로 앞에 함께 나와요) — cta ${story.cta.length}개를 1개로 줄여요`] : [];
+  const find = myinCueFinder(words);
+  const ends: number[] = [];
+  words.reduce((n, [, , word]) => { ends.push(n + myinNorm(word).length); return n + myinNorm(word).length; }, 0);
+  const timeAt = (at: number) => words[Math.max(0, ends.findIndex((end) => end > at))][0];
+  const body = story.scenes[0]?.type === "opening" && story.scenes.length > 1 ? timeAt(sceneStarts(story, find)[1]) : words[0][0];
+  const earliest = Math.max(body + 60, words[words.length - 1][1] * 0.35);
+  const hit = find(story.cta[0].after, 0, 400_000);
+  if (hit && timeAt(hit.at) < earliest) issues.push(`[구독] 구독 자리(${mmss(timeAt(hit.at))})가 너무 앞이에요 — ${mmss(earliest)} 뒤(본론 시작 60초 뒤 · 영상 35% 뒤), 앞 화제의 결론 문장이 끝난 곳으로 옮겨요(질문 뒤 답 직전은 안 돼요)`);
+  return issues;
+}
+
+/**
  * A stage (lib_stage_) at most twice a video, never twice in a row — but a 나열형 기준 판 brought back for its next item (덱 배치 기준 v2 §4:
  * the same board, its rooms re-added with the same ids) is that one board again, not another use of the stage.
  */
