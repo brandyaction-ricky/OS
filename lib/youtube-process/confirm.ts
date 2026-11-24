@@ -14,7 +14,7 @@ const nextStage = (gate: YpGate, yp: YpMeta): YpStage => gate === "draft" && yp.
 /** Fields the approver can tick in 수정 요청, per gate (S10-1). */
 export const GATE_FIELDS: Record<YpGate, Record<string, string>> = {
   topic: { "topic.title": "주제", "topic.type": "유형", "topic.target": "정밀 타겟", "topic.refs": "참고 영상", "topic.note": "전달 사항" },
-  draft: { "draft.tt": "제목 · 썸네일", "draft.opening": "오프닝", "draft.body": "본론", "draft.closing": "클로징 · 다음 행동", "draft.note": "전달 사항 · 참고 영상" },
+  draft: { "draft.tt": "제목 · 썸네일", "draft.format": "영상 형식", "draft.opening": "오프닝", "draft.body": "본론", "draft.closing": "클로징 · 다음 행동", "draft.note": "전달 사항 · 참고 영상" },
   review: { "make.final": "최종본", "make.thumbs": "최종 썸네일" },
   shorts: { "shorts.pick": "고른 쇼츠", "shorts.parts": "구간 · 첫 3초", "shorts.copy": "제목 · 설명" },
 };

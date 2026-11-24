@@ -102,7 +102,7 @@ const thumbSchema = z.object({ id: text(40), mode: z.enum(["img", "text"]), path
   pick: z.object({ candidate: z.string().uuid(), accent: text(20).optional(), diff: z.enum(["카피", "그림", "배치"]).optional() }).strict().optional() }).strict();
 export const stagePatchSchemas = {
   plan: z.object({ titles: z.array(z.object({ id: text(40), text: text(200) }).strict()).min(1).max(12), thumbs: z.array(thumbSchema).min(1).max(8),
-    opening: text(2000), body: text(6000), closing: text(2000), note: text(2000), extraRefs: z.array(refSchema).max(50), stats: z.array(statSchema).max(3), aiDraft: z.null() }).partial().strict(),
+    opening: text(2000), body: text(6000), closing: text(2000), note: text(2000), extraRefs: z.array(refSchema).max(50), stats: z.array(statSchema).max(3), format: z.enum(["keypulling", "pulling"]), aiDraft: z.null() }).partial().strict(),
   outline: z.object({ spec: z.object({ runtimeMin: z.number().int().min(1).max(120).nullable(), res: text(60), fps: text(60), ratio: text(60) }).strict(),
     script: text(120_000), saveVersion: z.literal(true), restore: z.number().int().positive(),
     // 구간 의견: write one, set one aside (or back), or put the AI's text for one into the 원고.

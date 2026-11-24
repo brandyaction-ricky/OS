@@ -19,7 +19,7 @@ export const myinStoryboardSchema = z.object({
   scenes: z.array(scene).min(5).max(200),
   music_cues: z.record(z.object({ file: z.string().min(1), start: z.number().nonnegative().optional() }).passthrough()).optional(),
   reel: z.object({ dur: z.number().positive().optional(), after: z.string().min(1).optional() }).passthrough().optional(),
-  cta: z.array(z.object({ after: z.string().min(1), line: z.string().min(1) }).passthrough()).min(1).max(3),
+  cta: z.array(z.object({ after: z.string().min(1), line: z.string().min(1) }).passthrough()).max(3),
 }).passthrough();
 export type MyinStoryboard = z.infer<typeof myinStoryboardSchema>;
 
@@ -443,17 +443,21 @@ const ctaWordingIssues = (story: MyinStoryboard) => story.cta.flatMap((cta, k) =
  * 쇼릴 · 구독 자리 (로건 2026-11-24 재요청 · 대표 OK, 91편 시청 지속률): the deck reel is a 「오늘 볼 ①②③」 map early in the body —
  * reel.after between 1:00 and 3:00 of the voice (no fitting spot = no reel), 3–4 s, at most 3 cards — and the one subscribe request stays
  * apart, 60 s into the body and past 35% of the voice. New storyboards only (the AI's), so an older one lent to an edited script still renders.
+ * A 풀링형 video (기획안 영상 형식, 풀링형 정본 §2) asks for nothing out loud: no subscribe line at all.
  */
-export function reelCtaIssues(story: MyinStoryboard, words: [number, number, string][]) {
+export function reelCtaIssues(story: MyinStoryboard, words: [number, number, string][], pulling = false) {
   if (!words.length) return [];
-  const issues = story.cta.length > 1 ? [`[구독] 구독 요청은 영상당 한 곳이에요 — cta ${story.cta.length}개를 1개로 줄여요`] : [];
+  const issues = pulling
+    ? story.cta.length ? [`[구독] 풀링형 영상은 말로 구독을 권하지 않아요 — cta를 빈 목록 []으로 둬요`] : []
+    : !story.cta.length ? ["[구독] 구독 대사 cta 1개가 필요해요(after, line, clicks, head)"]
+    : story.cta.length > 1 ? [`[구독] 구독 요청은 영상당 한 곳이에요 — cta ${story.cta.length}개를 1개로 줄여요`] : [];
   const find = myinCueFinder(words);
   const ends: number[] = [];
   words.reduce((n, [, , word]) => { ends.push(n + myinNorm(word).length); return n + myinNorm(word).length; }, 0);
   const timeAt = (at: number) => words[Math.max(0, ends.findIndex((end) => end > at))][0];
   const body = story.scenes[0]?.type === "opening" && story.scenes.length > 1 ? timeAt(sceneStarts(story, find)[1]) : words[0][0];
   const earliest = Math.max(body + 60, words[words.length - 1][1] * 0.35);
-  const cta = find(story.cta[0].after, 0, 400_000);
+  const cta = story.cta[0] ? find(story.cta[0].after, 0, 400_000) : null;
   const ctaAt = cta ? timeAt(cta.at) : null;
   if (ctaAt !== null && ctaAt < earliest) issues.push(`[구독] 구독 자리(${mmss(ctaAt)})가 너무 앞이에요 — ${mmss(earliest)} 뒤(본론 시작 60초 뒤 · 영상 35% 뒤), 앞 화제의 결론 문장이 끝난 곳으로 옮겨요(질문 뒤 답 직전은 안 돼요)`);
   const reel = story.reel as { after?: string; dur?: number; picks?: unknown[] } | undefined;

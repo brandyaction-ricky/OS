@@ -50,12 +50,19 @@ export function scriptInputKey(state: Pipeline) {
   return digest(["staff-script-v1", state.signatures[0], packaging ? [packaging.id, packaging.version] : null, state.writing.packageTitle, state.writing.packageCopy]);
 }
 
-async function canonRefs(supabase: Client["supabase"]) {
+/** 풀링형 정본 (원고 공정 정본 §10): found by its title so a new version (the title carries it) needs no change here. */
+async function pullingCanonRef(supabase: Client["supabase"]) {
+  const { data } = await supabase.from("os_documents").select("id,title").ilike("title", "풀링형 롱폼%").neq("status", "archived").order("updated_at", { ascending: false }).limit(1);
+  const doc = data?.[0];
+  return doc ? `- ${doc.title} (doc_id: ${doc.id}) — 이 영상이 풀링형이라 함께 엽니다.` : "- 풀링형 정본: 제목이 「풀링형 롱폼」으로 시작하는 문서를 search_knowledge로 찾아 엽니다.";
+}
+async function canonRefs(supabase: Client["supabase"], pulling = false) {
+  const extra = pulling ? `\n${await pullingCanonRef(supabase)}` : "";
   const ids = canonIds();
-  if (!ids.length) return `제목으로 찾습니다: ${CANON_TITLES}. 같은 이름의 [보관] 문서는 읽지 않습니다.`;
+  if (!ids.length) return `제목으로 찾습니다: ${CANON_TITLES}. 같은 이름의 [보관] 문서는 읽지 않습니다.${extra}`;
   const { data } = await supabase.from("os_documents").select("id,title").in("id", ids);
   const titles = new Map((data ?? []).map((doc) => [doc.id as string, doc.title as string]));
-  return `${ids.map((id) => `- ${titles.get(id) ?? "정본"} (doc_id: ${id})`).join("\n")}\n이 ID로 엽니다(제목 검색에는 같은 이름의 옛 문서가 함께 나옵니다).`;
+  return `${ids.map((id) => `- ${titles.get(id) ?? "정본"} (doc_id: ${id})`).join("\n")}${extra}\n이 ID로 엽니다(제목 검색에는 같은 이름의 옛 문서가 함께 나옵니다).`;
 }
 
 /** The job card: where the inputs are and what to submit. The canon itself is read by the AI, not pasted here. */
@@ -81,7 +88,7 @@ export async function scriptJobCard(supabase: Client["supabase"], state: Pipelin
 [원고 공정 정본]을 처음부터 끝까지 읽고 그 순서(단계 1 축 → 2 설계 → 3 초안 → 4 검수·재작성)대로 원고를 써서 §8-2 묶음으로 제출합니다. 별도 판정(축 채점, 관문 2~6)은 정본 §12-3대로 작성 맥락을 넘기지 않은 새 작업으로 합니다. 재검수는 반려된 관문과 고친 문단이 걸리는 관문만 돌리고, 판정 기준도 원고 검수 정본의 원칙(§0)과 그 관문의 절만 줍니다(관문 6이면 원고 말투 정본을 함께). 현재기준은 원고 공정 정본이 정한 범위만 읽습니다.
 
 ## 먼저 끝까지 열 문서
-${await canonRefs(supabase)}
+${await canonRefs(supabase, v1?.pulling)}
 하나라도 열지 못하면 쓰지 말고 fail로 끝냅니다(정본 §12-2).
 
 ## OS 인사이트 찾기 — 정본만 보고 쓰지 않습니다
@@ -96,7 +103,7 @@ ${JSON.stringify(inputs, null, 2)}
 - 제목은 잠겨 있습니다. 원고 첫 줄 "# ${title}"에 그대로 씁니다.
 - 목표 길이는 ${targetMinutes}분(공백 포함 약 ${targetMinutes * CHARS_PER_MINUTE}자)입니다. 길이는 반려 사유가 아닙니다. 시간을 맞추려고 좋은 내용을 빼거나 늘리지 않고, 목표와 15% 넘게 다르면 제출 정보에 실제 길이(분)를 적습니다.
 ${v1?.planNote ?? "- plan은 ① 기획 승인 기록(OS 기록, recordId·version) 원문 그대로라 get_document로 따로 열지 않습니다. 이 칸이 정본 §2의 '① 기획 승인본'입니다."}
-- 역할은 담당 직원이 보낼 때 고른 ${role}이고, 형식은 원고형입니다(자동 영상은 원고형만 만듭니다).
+- 역할은 담당 직원이 보낼 때 고른 ${role}이고, 형식은 ${v1?.pulling ? "풀링형입니다(위 「이 영상은 풀링형입니다」)" : "원고형입니다(자동 영상은 원고형 · 풀링형만 만듭니다)"}.
 - 중심 질문·우리 답은 ① 기획에 따로 칸이 없습니다. coreMessage가 비어 있으면 plan.adopted(제목·내러티브·썸네일 카피)와 summary에서 한 문장씩 세워 axis 맨 위에 "기획에서 세움"으로 적고 진행합니다. 이것만으로 fail하지 않습니다.
 - staffMaterials(② 자료 칸)와 staffAttachments(보낼 때 붙인 자료)는 담당 직원이 준 자료입니다. 있으면 그것부터 봅니다. 댓글 원문 6개 이상이 없고 직접 채집할 수도 없으면, 정본 §2대로 원고를 쓰지 않고 빈 입력을 적어 fail로 끝냅니다.
 

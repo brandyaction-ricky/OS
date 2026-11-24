@@ -127,3 +127,23 @@ test("정본 겹침 skips the owner's own two lines in 말투 정본 §11, which
   assert.doesNotMatch(issues("답은 이렇게 괜찮다고 넘긴 상황에 다 들어 있거든요. 이 영상을 다 보시면, 내가 원하는 게 뭔지 알고, 선택하는 데 도움을 받을 거예요."), /정본 겹침/);
   assert.match(checkScriptBody([`${paragraph("p")} 그래도 저는 이 연구가 좋습니다.`], null, null, `${canon} "그래도 저는 이 연구가 좋습니다"`).issues.join(), /정본 겹침/);
 });
+
+test("풀링형 scripts may have up to 10 sections (풀링형 정본 §2); 키풀링형 keeps 2~5", () => {
+  const text = manuscript("원리 하나", Array.from({ length: 8 }, (_, i) => [`장${i}`, 1]));
+  assert.match(checkManuscript(text, { title: "원리 하나", targetMinutes: 2 }).issues.join(" "), /섹션\(##\)이 8개입니다\. 2~5개여야/);
+  assert.doesNotMatch(checkManuscript(text, { title: "원리 하나", targetMinutes: 2, pulling: true }).issues.join(" "), /섹션\(##\)/);
+});
+
+test("기획안 영상 형식: the PD picks 키풀링형 or 풀링형 and the 원고 job reads the 풀링형 정본 with it", async () => {
+  const { readFileSync } = await import("node:fs");
+  const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+  assert.match(read("lib/server/youtube-process-stages.ts"), /format: z\.enum\(\["keypulling", "pulling"\]\)/);
+  assert.match(read("lib/youtube-process/stages.ts"), /titles: "draft\.tt", format: "draft\.format"/);
+  assert.match(read("components/youtube-process-draft.tsx"), /project\.yp\.topic\.type === "anim" \? <div className=\{`yp-field[\s\S]*?aria-label="영상 형식"/);
+  const ai = read("lib/server/youtube-process-ai.ts");
+  assert.match(ai, /format: pulling \? "풀링형" : "원고형"/);
+  assert.match(ai, /checkManuscript\(bundle\.manuscript, \{ title, targetMinutes: author\.targetMinutes, canon, pulling: ypFormat\(stages\.plan\.data\) === "pulling" \}\)/);
+  const job = read("lib/server/youtube-script-job.ts");
+  assert.match(job, /\.ilike\("title", "풀링형 롱폼%"\)\.neq\("status", "archived"\)/, "found by title, so its doc id is not in the code");
+  assert.match(job, /\$\{await canonRefs\(supabase, v1\?\.pulling\)\}/);
+});

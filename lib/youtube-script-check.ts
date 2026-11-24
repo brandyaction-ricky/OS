@@ -147,7 +147,8 @@ export function checkScriptBody(paragraphs: string[], targetMinutes: number | nu
   return { chars, issues, notes };
 }
 
-export function checkManuscript(text: string, options: { title: string; targetMinutes: number; canon?: string }): ManuscriptCheck {
+/** pulling = 풀링형 (풀링형 정본 §2: 소제목 8~10개) — sections up to 10 instead of 5; every other rule is the same. */
+export function checkManuscript(text: string, options: { title: string; targetMinutes: number; canon?: string; pulling?: boolean }): ManuscriptCheck {
   const lines = text.replace(/\r\n?/g, "\n").trim().split("\n");
   const issues: string[] = [];
   const heading = lines[0]?.match(/^#\s+(.+)$/);
@@ -179,7 +180,8 @@ export function checkManuscript(text: string, options: { title: string; targetMi
   }
   if (orphan) issues.push("첫 문단 앞에 \"## 섹션 제목\"이 있어야 합니다.");
   if (perSection.includes(0)) issues.push("문단이 없는 섹션이 있습니다.");
-  if (sections.length < 2 || sections.length > 5) issues.push(`섹션(##)이 ${sections.length}개입니다. 2~5개여야 합니다.`);
+  const most = options.pulling ? 10 : 5;
+  if (sections.length < 2 || sections.length > most) issues.push(`섹션(##)이 ${sections.length}개입니다. 2~${most}개여야 합니다.`);
   for (const name of sections) if (name.length > 8) issues.push(`섹션 제목 "${name}"이 ${name.length}자입니다(8자 이내).`);
   const body = checkScriptBody(paragraphs, options.targetMinutes, sourced, options.canon);
   const all = [...issues, ...body.issues];

@@ -34,9 +34,12 @@ export interface YpPick { title: string; thumb: YpThumb | null }
 /** One national figure the staff AI read from KOSIS for the 기획안 (owner decision 2026-11-01): the PD keeps or removes it,
  *  and the 원고 and the 설명란 [인용 및 출처] use it as written. */
 export interface YpStat { fact: string; value: string; unit: string; period: string; table: string; organization: string; sourceUrl: string }
+/** 롱폼 형식 (원고 공정 정본 §10, 대표 2026-11-24): 키풀링형 = 진단으로 잇는 설명형(기본), 풀링형 = 원리 하나를 쉽게 푸는 낭독형. */
+export type YpFormat = "keypulling" | "pulling";
+export const ypFormat = (plan: Pick<YpPlan, "format"> | null | undefined): YpFormat => plan?.format === "pulling" ? "pulling" : "keypulling";
 export interface YpPlan {
   titles: { id: string; text: string }[]; thumbs: YpThumb[];
-  opening: string; body: string; closing: string; note: string; extraRefs: YpRef[]; stats?: YpStat[];
+  opening: string; body: string; closing: string; note: string; extraRefs: YpRef[]; stats?: YpStat[]; format?: YpFormat;
   /** The staff AI's last draft: who made it, and (when the PD had already written) the draft waiting beside the fields. */
   ai?: { by: string; model: string; at: string; jobId: string; patterns?: YpPatterns };
   aiDraft?: Pick<YpPlan, "titles" | "thumbs" | "opening" | "body" | "closing" | "note" | "stats">;
@@ -321,8 +324,8 @@ export function confirmPlan(plan: YpPlan, at: string): NonNullable<YpPlan["confi
   return confirmed;
 }
 /** Plan fields → the keys the approver ticks in 수정 요청 (GATE_FIELDS.draft). */
-export const PLAN_FIELD_KEY: Record<"titles" | "thumbs" | "opening" | "body" | "closing" | "note" | "extraRefs" | "stats", string> = {
-  titles: "draft.tt", thumbs: "draft.tt", opening: "draft.opening", body: "draft.body", closing: "draft.closing", note: "draft.note", extraRefs: "draft.note", stats: "draft.note",
+export const PLAN_FIELD_KEY: Record<"titles" | "thumbs" | "format" | "opening" | "body" | "closing" | "note" | "extraRefs" | "stats", string> = {
+  titles: "draft.tt", format: "draft.format", thumbs: "draft.tt", opening: "draft.opening", body: "draft.body", closing: "draft.closing", note: "draft.note", extraRefs: "draft.note", stats: "draft.note",
 };
 
 // ── 구성안 (S4) ──
