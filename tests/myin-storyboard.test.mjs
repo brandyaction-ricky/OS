@@ -264,3 +264,13 @@ test("photo credits: ④-approved photos for a longform, every listed photo for 
   assert.deepEqual(myinPhotoCreditLines({ renderer: "web", storyboard: { assets } }).map((l) => l.split(" — ")[0]), ["a.jpg", "b.jpg"]);
   assert.deepEqual(myinPhotoCreditLines({ renderer: "web", storyboard: { assets }, ours: { "b.jpg": {} } }).map((l) => l.split(" — ")[0]), ["a.jpg"]);
 });
+
+test("쇼릴 · 구독 자리: one subscribe request, 60 s into the body and past 35% of the voice", async () => {
+  const { ctaPlacementIssues } = await import("../lib/myin-storyboard.ts");
+  // 200 words, one a second: the body starts at 2 s, the voice ends at 199.9 s → earliest 1:09 (35%), not 1:02 (body + 60).
+  const long = Array.from({ length: 200 }, (_, i) => [i, i + 0.9, `말${i}`]);
+  const board = (after, cta = [{ after, line: "구독 눌러 주세요" }]) => ({ end: 210, cta, scenes: [{ type: "opening", at: "말0" }, { type: "hero", at: "말2" }] });
+  assert.deepEqual(ctaPlacementIssues(board("말120"), long), []);
+  assert.match(ctaPlacementIssues(board("말65"), long)[0], /^\[구독\] 구독 자리\(1:05\)가 너무 앞이에요 — 1:09 뒤/);
+  assert.match(ctaPlacementIssues(board("말120", [{ after: "말120", line: "a" }, { after: "말150", line: "b" }]), long)[0], /한 곳이에요.*2개를 1개로/);
+});
