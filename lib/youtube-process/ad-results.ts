@@ -10,6 +10,15 @@ export interface AdResult {
   /** What this ad said, kept when the numbers were entered so the history reads without opening each video. */
   appeal: string; headCopy: string;
 }
+/** The export form resumes the most recently saved measured period, including edits to older periods. */
+export function latestAdMeasurement(rows: AdResult[]) {
+  let latest: AdResult | undefined;
+  for (const row of rows) {
+    if (row.measurement && (!latest || row.at >= latest.at)) latest = row;
+  }
+  return latest?.measurement;
+}
+
 export type AdNumbers = Pick<AdResult, "spend" | "impressions" | "clicks" | "plays3s" | "purchases" | "revenue">;
 
 /** 「₩1,234,000」 · 「1.2만」 · 「3,456」 as a number (null when there is no number in it). */

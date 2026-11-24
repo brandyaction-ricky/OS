@@ -1,3 +1,5 @@
+import { kstDay } from "./performance-period.ts";
+
 /** Manual Meta handoff. An OS approval or a downloaded file alone does not prove delivery. */
 export type AdDisposition = { kind: "published" | "withheld"; value: string };
 export interface AdRelease extends AdDisposition {
@@ -106,12 +108,12 @@ export interface AdMeasurement {
   completions: number;
   cohortConfirmed: boolean;
 }
-export function measurementIssue(row: AdMeasurement) {
+export function measurementIssue(row: AdMeasurement, now = new Date()) {
   const day = (s: string) =>
     /^\d{4}-\d{2}-\d{2}$/.test(s) &&
     Number.isFinite(Date.parse(s)) &&
     new Date(s).toISOString().slice(0, 10) === s;
-  if (!day(row.from) || !day(row.to) || row.from > row.to || Date.parse(row.to) > Date.now())
+  if (!day(row.from) || !day(row.to) || row.from > row.to || row.to > kstDay(now))
     return "집행 기간을 확인해 주세요.";
   if (Object.values(row).some((v) => typeof v === "number" && (!Number.isSafeInteger(v) || v < 0 || v > 1e12)))
     return "집계값은 0 이상의 정수로 입력해 주세요.";

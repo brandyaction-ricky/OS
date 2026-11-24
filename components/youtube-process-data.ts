@@ -60,7 +60,7 @@ export interface YpClient {
   adoptJob(jobId: string): Promise<void>;
   get(id: string): Promise<YpProject>;
   bundle(id: string): Promise<YpBundle>;
-  create(input: YpTopicInput & {adSetup?: import("@/lib/ad-production").AdSetup}): Promise<YpProject>;
+  create(input: YpTopicInput & {adSetup?: import("@/lib/ad-production").AdSetup; isTest?: boolean}): Promise<YpProject>;
   update(id: string, expectedVersion: number, patch: YpTopicInput): Promise<YpProject>;
   /** `to`: the approver a 컨펌 요청 goes to (2026-11-02). */
   topicGate(id: string, action: "confirm" | "request" | "cancel" | "reopen", expectedVersion: number, reply?: string, to?: string): Promise<{ project: YpProject; created: YpProject[] }>;
@@ -592,7 +592,7 @@ function demoClient(): YpClient {
         const decision = adDisposition(disposition);
         if (!decision || !["upload","done"].includes(project.yp.stage) || project.yp.adRelease) throw demoError(409,"AD_RELEASE_REQUIRED","최종 검토 후 광고 ID 또는 미집행 이유를 남겨 주세요.");
         const now = new Date().toISOString();
-        return bump(project,{...project.yp,stage:to,stageEnteredAt:now,adRelease:{...decision,at:now}});
+        return bump(project,{...project.yp,stage:to,contentUpdatedAt:now,adRelease:{...decision,at:now}});
       }
       const reason = to === "make" ? outlineMissing(stages.outline.data) : to === "review" ? ((demoFinals.get(id) ?? []).length ? thumbsMissing(stages.make.data) : "최종본을 올려주세요") : "";
       if (reason) throw demoError(409, "STAGE_NOT_READY", reason);

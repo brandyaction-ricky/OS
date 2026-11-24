@@ -1,6 +1,7 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
-import {adCopyIssues,AD_COPY_RULES,adDisposition,evaluateAd} from "../lib/ad-production.ts";
+import {adCopyIssues,AD_COPY_RULES,adDisposition,evaluateAd,measurementIssue} from "../lib/ad-production.ts";
+import {latestAdMeasurement} from "../lib/youtube-process/ad-results.ts";
 import {campaignTrackingUrl} from "../lib/ad-campaign.ts";
 test("six ad rules flag unverified claims and preserve checked facts",()=>{
   for (const [i,copy] of ["강점 12가지", "고민이 다 사라져요", "단 3일", "무료 진단 받기, 정밀 결과 구매하기", "결을 찾기", "당일 배송"].entries()) {
@@ -22,4 +23,24 @@ test("learning requires a mature attributed cohort and real net purchases",()=>{
   assert.deepEqual(evaluateAd(m,false),{hold:"",cpa:6000,roas:2.2});
   for(const patch of [{from:"2026-01-02"},{clicks:29},{impressions:999},{cohortConfirmed:false},{purchases:1}]) assert.ok(evaluateAd({...m,...patch},false).hold);
   assert.ok(evaluateAd(m,true).hold);
+});
+
+test("the first minute of a Korean day accepts today and still rejects tomorrow and invalid dates", () => {
+  const now = new Date("2026-11-24T15:00:10Z");
+  const row = { from: "2026-11-24", to: "2026-11-25", impressions: 0, clicks: 0, purchases: 0,
+    refundedOrders: 0, spend: 0, otherCosts: 0, revenue: 0, refunds: 0, starts: 0, completions: 0, cohortConfirmed: false };
+  assert.equal(measurementIssue(row, now), "");
+  assert.ok(measurementIssue({ ...row, to: "2026-11-26" }, now));
+  assert.ok(measurementIssue({ ...row, from: "2026-02-30" }, now));
+});
+
+test("reopening the export form restores the last edited measured period beside legacy entries", () => {
+  const revised = { from: "2026-01-01", to: "2026-01-07" };
+  const older = { from: "2026-01-08", to: "2026-01-14" };
+  assert.equal(latestAdMeasurement([
+    { at: "2026-01-19T01:00:00Z", measurement: revised },
+    { at: "2026-01-17T02:00:00Z", measurement: older },
+    { at: "2026-01-20T02:00:00Z" },
+  ]), revised);
+  assert.equal(latestAdMeasurement([]), undefined);
 });

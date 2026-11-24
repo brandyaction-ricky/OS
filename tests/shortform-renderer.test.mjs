@@ -28,6 +28,12 @@ test("real direct and reuse MP4s have vertical frames, audio, captions and exact
     assert.ok(Math.max(...pixel(360,50))>5,"Unused vertical space must contain the source background instead of black bars");
     assert.ok(pixel(360,400)[2]>80,"Foreground content must remain visible without being darkened");
     const source=path.join(dir,"source.mp4");copyFileSync(direct.file,source);
+    const verticalAd = await renderShortform({mode:"direct",dir,ad1080:true,scenes:[
+      {start:0,end:1,text:"세로 광고",imageFile:image,hasVoice:false},
+    ]});
+    const verticalProbe = probeShortform(verticalAd.file);
+    assert.equal(verticalProbe.video.width, 1080);
+    assert.equal(verticalProbe.video.height, 1920);
     const toneSource=path.join(dir,"tone-source.mp4");
     execFileSync("ffmpeg",["-v","error","-y","-i",source,"-f","lavfi","-i","sine=frequency=440:duration=2",
       "-map","0:v","-map","1:a","-c:v","copy","-c:a","aac","-t","2",toneSource]);

@@ -10,6 +10,7 @@ import {
   type AdMeasurement,
   type AdRelease,
 } from "@/lib/ad-production";
+import { kstDay } from "@/lib/performance-period";
 import { campaignTrackingUrl } from "@/lib/ad-campaign";
 
 type Props = {
@@ -174,7 +175,7 @@ function AdPerformance({
   isTest: boolean;
   save: (row: AdMeasurement) => Promise<void>;
 }) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = kstDay();
   const [row, setRow] = useState<AdMeasurement>(
     initial ?? {
       from: today,

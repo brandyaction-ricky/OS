@@ -403,7 +403,7 @@ export async function moveYoutubeStage(actor: RequestActor, id: string, input: z
     need(input.to === "done" && ["upload","done"].includes(project.yp.stage) && !project.yp.adRelease, "최종 검토를 마친 광고에서 집행을 기록해 주세요.");
     const decision = adDisposition(input.disposition);
     if (!decision) throw new ApiError(422,"AD_RELEASE_REQUIRED","광고 ID 또는 집행하지 않은 이유를 입력해 주세요.");
-    return saveProject(actor, project, input.expectedVersion, {yp:{...project.yp,stage:"done",stageEnteredAt:now,contentUpdatedAt:now,adRelease:{...decision,at:now}}});
+    return saveProject(actor, project, input.expectedVersion, {yp:{...project.yp,stage:"done",contentUpdatedAt:now,adRelease:{...decision,at:now}}});
   } else if (project.yp.topic.type === "short" || project.yp.topic.type === "card") {
     need(project.yp.stage === "upload" && input.to === "done", "최종 검토 컨펌 OK 뒤에 마칠 수 있어요.");
   } else {

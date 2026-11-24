@@ -1,6 +1,6 @@
 "use client";
 import { projectName } from "@/lib/youtube-process/project";
-import { campaignTrackingUrl } from "@/lib/ad-campaign";
+import { latestAdMeasurement } from "@/lib/youtube-process/ad-results";
 import { AdResultsSection } from "./youtube-process-ads";
 import { saveLatest } from "@/lib/save-latest";
 import { shortformDiagramSchema } from "@/lib/shortform-production";
@@ -342,7 +342,17 @@ export function ShortExportScreen({ header, page }: { header: ReactNode; page: Y
   const [view, setView] = useState<YpShortView | null>(null);
   const project = page.bundle?.project;
   const client = page.client, id = project?.id;
-  useEffect(() => { if (client && id) client.short(id).then(setView, () => undefined); }, [client, id]);
+  const [attempt, setAttempt] = useState(0);
+  const [loadError, setLoadError] = useState(false);
+  useEffect(() => {
+    if (!client || !id) return;
+    let active = true;
+    client.short(id).then(
+      next => { if (active) setView(next); },
+      () => { if (active) setLoadError(true); },
+    );
+    return () => { active = false; };
+  }, [client, id, attempt]);
   const { vertical: last, square, portrait } = latestFinals(page.bundle?.finals ?? []);
   const finish = async () => {
     if (!page.client || !project) return;
@@ -368,12 +378,15 @@ export function ShortExportScreen({ header, page }: { header: ReactNode; page: Y
       {isAd && view ? <AdDelivery path={project.yp.adSetup?.path} medium="video" headline={page.bundle.stages.shortScript.data.headCopy || projectName(project)}
         body={page.bundle.stages.upload.data.desc || page.bundle.stages.shortScript.data.text} cta={view.brief.goal} landing={view.brief.landingUrl}
         campaign={project.yp.adSetup?.campaign??project.id} aspects={project.yp.adSetup?.aspects??["9x16",...(square?["1x1" as const]:[]),...(portrait?["4x5" as const]:[])]}
-        isTest={!!project.yp.isTest} release={project.yp.adRelease} measurement={page.bundle.stages.upload.data.ads?.at(-1)?.measurement}
+        isTest={!!project.yp.isTest} release={project.yp.adRelease} measurement={latestAdMeasurement(page.bundle.stages.upload.data.ads ?? [])}
         save={async decision=>{if(!page.client)throw new Error("로그인이 필요해요.");await page.client.move(project.id,"done",project.version,decision);await page.reload();}}
         measure={async measurement=>{if(!page.client || !page.bundle)throw new Error("로그인이 필요해요.");const upload=page.bundle.stages.upload;
           const existing=upload.data.ads?.find(r=>r.from===measurement.from && r.to===measurement.to);
           await page.client.saveAdResult(project.id,upload.version,{entry:{id:existing?.id,from:measurement.from,to:measurement.to,spend:measurement.spend,impressions:measurement.impressions,clicks:measurement.clicks,purchases:measurement.purchases,revenue:measurement.revenue,plays3s:existing?.plays3s??0,note:existing?.note??"",measurement}});await page.reload();}}/>
-        : !isAd && <ShortYoutube page={page} last={last} />}
+        : isAd ? <section className="panel panel-pad-lg"><h2>집행 패키지</h2>
+          {loadError ? <><p role="alert">광고 정보를 불러오지 못했어요.</p>
+            <button className="secondary-button" onClick={() => { setLoadError(false); setAttempt(n => n + 1); }}>다시 불러오기</button></>
+            : <p role="status">광고 정보를 불러오는 중이에요.</p>}</section> : <ShortYoutube page={page} last={last} />}
       {/* Only what was written for it (the older scene editor's brief); a 숏폼 made from its 대본 has none to show. */}
       {view && (view.brief.purpose === "ad" || view.brief.goal || view.brief.landingUrl) ? <YpSection n={3} title="광고 · 릴스로 올릴 때 같이 쓸 것">
         <dl className="yp-kv">
