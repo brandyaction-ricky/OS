@@ -68,7 +68,7 @@ export function YoutubeScriptStaffAi({ sourceId, state, onChange }: { sourceId: 
         <label className="yt-actions">목표 길이 <input type="number" min={1} max={60} value={minutes} onChange={(event) => setMinutes(Number(event.target.value) || 10)} style={{ width: 72 }} /> 분 (공백 포함 약 {minutes * 600}자)</label>
         <label className="yt-actions">역할 <select value={role} onChange={(event) => setRole(event.target.value)}>{["유입형", "전환형", "판매형"].map((item) => <option key={item}>{item}</option>)}</select>
           <small>원고 공정 정본 §2의 역할입니다. 기획에서 따로 정하지 않았으면 유입형.</small></label>
-        <label>카드에 붙일 자료 (선택)<textarea rows={3} value={attachments} onChange={(event) => setAttachments(event.target.value)} placeholder="같은 고민을 다룬 영상 댓글 원문(좋아요 수 포함 6개 이상), 직접 고른 재료나 문서 이름 등" /></label>
+        <label>카드에 붙일 자료 (선택)<textarea rows={3} value={attachments} onChange={(event) => setAttachments(event.target.value)} placeholder="같은 고민을 다룬 영상 댓글 원문(좋아요 수 포함, 없어도 돼요), 직접 고른 재료나 문서 이름 등" /></label>
         <StaffDesign status={status} busy={busy === "send"} onSend={() => void act("send", { task: "script", targetMinutes: minutes, role, ...(attachments.trim() ? { attachments: attachments.trim() } : {}) }, "/ai-jobs")} />
       </>;
       // Once a staff script exists, a new job replaces it, so sending again sits behind one more click.
@@ -85,7 +85,7 @@ export function YoutubeScriptStaffAi({ sourceId, state, onChange }: { sourceId: 
     </div> : null}
     {ready ? <details className="yt-details"><summary>내 AI와 대화로 직접 쓴 원고 붙여 넣기</summary>
       <form onSubmit={(event) => { event.preventDefault(); void act("paste", { action: "submit", expectedVersion: source.version, targetMinutes: minutes, bundle: paste }).then((ok) => { if (ok) setPaste(EMPTY); }); }}>
-        {([["manuscript", "원고 (§8 형식: # 제목, 머리 블록, ## 섹션, 문단)", 12], ["materials", "자료 표 (찾아본 곳 · 쓴 재료와 출처 · 뺀 후보)", 4], ["axis", "축 (채택 축 · 축 채점 · 중심 인물)", 4], ["design", "설계표", 6], ["review", "검토 기록 (단계별 결과 · 틀렸을 만한 것 3개 · 재검토 이력)", 5]] as const).map(([key, label, rows]) =>
+        {([["manuscript", "원고 (§8 형식: # 제목, 머리 블록, ## 섹션, 문단)", 12], ["materials", "자료 표 (찾아본 곳 · 쓴 재료와 출처 · 뺀 후보)", 4], ["axis", "축 (채택 축 · 대안 축 · 채점 · 중심 인물)", 4], ["design", "설계표", 6], ["review", "검토 기록 (단계별 결과 · 틀렸을 만한 것 3개 · 재검토 이력)", 5]] as const).map(([key, label, rows]) =>
           <label key={key}>{label}<textarea rows={rows} value={paste[key]} onChange={(event) => setPaste((current) => ({ ...current, [key]: event.target.value }))} /></label>)}
         <label>정본 묶음 값 (선택)<input value={paste.canonBundle} onChange={(event) => setPaste((current) => ({ ...current, canonBundle: event.target.value }))} placeholder="예) v1.0 (2026-10-18)" /></label>
         <div className="yt-actions"><button type="submit" className="secondary-button" disabled={Boolean(busy) || !paste.manuscript.trim() || !paste.materials.trim() || !paste.axis.trim() || !paste.design.trim() || !paste.review.trim()}>{busy === "paste" ? "넣는 중…" : "원고 넣기"}</button>
