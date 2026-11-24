@@ -17,8 +17,10 @@ test("a pause-check memo finds its sentence the way voice_fix does (words around
 test("쉼 점검 → 다시 낭독: only a new voice, only when paid steps were approved, at most twice; the start confirm counts it", () => {
   const run = read("lib/server/myin-run.ts");
   assert.match(run, /const pauseFixes = stage === "words_ready" \? autoPauseFixes\(record, run, bundle\.data\) : \[\];/);
-  assert.match(run, /if \(!run\.paidOk \|\| run\.layout \|\| !voiceFixable\(record, run\) \|\| \(run\.pauseRounds \?\? 0\) >= MYIN_PAUSE_ROUNDS\) return \[\];/);
+  assert.match(run, /if \(!run\.paidOk \|\| run\.layout \|\| !voiceFixable\(record, run\) \|\| \(run\.pauseRounds \?\? 0\) >= MYIN_PAUSE_ROUNDS\s/);
   assert.match(run, /export const MYIN_PAUSE_ROUNDS = 2;/);
+  assert.match(run, /Date\.parse\(record\.created_at\) < Date\.parse\(MYIN_PAUSE_REVOICE_SINCE\)\) return \[\];/, "only runs cloned with the fixed pause check");
+  assert.match(run, /const MYIN_PAUSE_REVOICE_SINCE = "\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z";/);
   assert.match(run, /await save\(service, record, "backlog", "words_pending", again\);/, "back to the render PC, which redoes only those sentences");
   assert.match(read("components/myin-v13-panel.tsx"), /\+ 쉼 점검에 걸린 문장 다시 낭독\(2번까지\)/);
   assert.match(read("components/myin-voice-check.tsx"), /걸린 문장을 저절로 \{data\.pauseRounds\}번 다시 낭독했어요/);

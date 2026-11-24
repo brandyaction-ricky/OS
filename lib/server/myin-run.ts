@@ -1038,12 +1038,16 @@ export async function completeMyinWords(input: { runId: string; lease: string; v
 }
 
 export const MYIN_PAUSE_ROUNDS = 2;
+// A run keeps the engine it was cloned with: before this the render PC's pause check still caught «» quotes (Logan's fix went live on the
+// render PC then), and voicing those again would only spend Fish.
+const MYIN_PAUSE_REVOICE_SINCE = "2026-11-24T10:26:00Z";
 export const MYIN_PAUSE_FIX_NAME = "쉼 점검";
 const pauseRow = z.object({ p: z.number(), at: z.number(), kind: z.string(), gap: z.number(), text: z.string() });
 const mmssDot = (seconds: number) => `${Math.floor(seconds / 60)}:${(seconds % 60).toFixed(1).padStart(4, "0")}`;
 /** The pause check's places as voice-fix memos (time + the words around the pause, as voice_fix finds a sentence), one per sentence. */
 function autoPauseFixes(record: OsRecord, run: MyinRun, bundle: Record<string, unknown>) {
-  if (!run.paidOk || run.layout || !voiceFixable(record, run) || (run.pauseRounds ?? 0) >= MYIN_PAUSE_ROUNDS) return [];
+  if (!run.paidOk || run.layout || !voiceFixable(record, run) || (run.pauseRounds ?? 0) >= MYIN_PAUSE_ROUNDS
+    || Date.parse(record.created_at) < Date.parse(MYIN_PAUSE_REVOICE_SINCE)) return [];
   const pauses = z.array(pauseRow).safeParse(bundle.pauses);
   if (!pauses.success || !pauses.data.length) return [];
   const audit = z.array(auditRow).safeParse(bundle.audit);
