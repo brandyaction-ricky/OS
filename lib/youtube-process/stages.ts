@@ -3,6 +3,7 @@
 import type { YpReviewer } from "./reviewers";
 import type { YpKind, YpRef } from "./project";
 import type { ThumbSavedEdit } from "./thumb-edit.ts";
+import { THUMB_STYLES, thumbLayout } from "./thumb-style.ts";
 import type { AdResult } from "./ad-results";
 import type { CardDraft, CardFormatId } from "../cardnews/formats.ts";
 import { narrationFromMarkdown } from "../youtube-narration-document.ts";
@@ -28,7 +29,9 @@ export const slotOf = (index: number): YpSlot | "예비" => index < SLOTS.length
 
 /** pick: a 롱폼 애니메이션 썸네일 picked from the AI's candidates — which picture, the copy and its blue word set on it, and what A and B
  *  differ in (카피 · 그림 · 배치) — so 제작 can set it again. path is then the composite PNG. */
-export interface YpThumbPick { candidate: string; accent?: string; diff?: "카피" | "그림" | "배치" }
+export interface YpThumbPick { candidate: string; accent?: string; diff?: "카피" | "그림" | "배치"; frame?: "person"; flip?: boolean }
+/** The frame a picked thumbnail was made in, carried into 제작's 다듬기 (인물형 2026-11-24). */
+export const pickFrame = (pick?: YpThumbPick | null) => pick?.frame === "person" ? { frame: "person" as const, ...(pick.flip ? { flip: true } : {}) } : {};
 export interface YpThumb { id: string; mode: "img" | "text"; path?: string; screen?: string; copy?: string; pick?: YpThumbPick }
 export interface YpPick { title: string; thumb: YpThumb | null }
 /** One national figure the staff AI read from KOSIS for the 기획안 (owner decision 2026-11-01): the PD keeps or removes it,
@@ -309,7 +312,14 @@ export function draftMissing(plan: YpPlan, kind?: YpKind | null) {
   for (const [index, name] of [[0, "첫째"], [1, "둘째"]] as const) if (!plan.titles[index]?.text.trim()) return `${name} 줄 제목(${slotOf(index)})을 써 주세요`;
   // 롱폼 애니메이션 (썸네일 자동 제작 2026-11-09): the 기획안 confirm fixes the thumbnails themselves, so A and B are pictures —
   // picked from the candidates or put in by hand.
-  if (kind === "anim") { if (!plan.thumbs[0]?.path || !plan.thumbs[1]?.path || plan.thumbs[0].mode !== "img" || plan.thumbs[1].mode !== "img") return "썸네일 A · B 필요"; }
+  if (kind === "anim") for (const index of [0, 1] as const) {
+    const thumb = plan.thumbs[index];
+    if (thumb?.path && thumb.mode === "img") continue;
+    // 대표 2026-11-24 (풀링형 3편): the button only said 「썸네일 A · B 필요」 while the 기획안 copy was too long for the frame — say why.
+    const broken = thumb?.copy?.trim() ? thumbLayout({ text: thumb.copy }, THUMB_STYLES.anim).checks.filter(check => !check.ok) : [];
+    return broken.length ? `썸네일 ${slotOf(index)} 문구가 기본형 틀에 안 들어가요(${broken.map(check => check.text).join(" · ")}) — 줄을 나누거나 줄이거나, 인물형 틀로 골라요`
+      : `썸네일 ${slotOf(index)}를 후보에서 골라 넣어 주세요`;
+  }
   else for (const [index, name] of [[0, "첫 번째"], [1, "두 번째"]] as const) if (!thumbFilled(plan.thumbs[index])) return `${name} 썸네일 후보(${slotOf(index)})를 넣어 주세요`;
   if (!plan.opening.trim()) return "오프닝을 써 주세요";
   if (!plan.body.trim()) return "본론을 써 주세요";

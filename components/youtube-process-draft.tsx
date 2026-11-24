@@ -43,7 +43,7 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
   const job = useStaffJob(page, "plan", onJobDone);
   // 롱폼 애니메이션 썸네일 후보: its own job, sent from the picker with the image tool and how many.
   const thumbsJob = useStaffJob(page, "thumbs", useCallback(() => undefined, []));
-  const [thumbAsk, setThumbAsk] = useState<{ tool: ThumbTool; count: number } | null>(null);
+  const [thumbAsk, setThumbAsk] = useState<{ tool: ThumbTool; count: number; frame?: "person" } | null>(null);
 
   const project = page.bundle?.project;
   const fields = project ? editableFields(project, "draft") : [];
@@ -162,7 +162,7 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
             <ThumbPicker page={page} title={form.titles[0]?.text ?? ""} can={can("thumbs")} busyJob={thumbsJob.open}
               planCopies={form.thumbs.slice(0, 3).filter(t => t.copy?.trim()).map(t => ({ text: t.copy!, ...(t.pick?.accent ? { accent: t.pick.accent } : {}) }))}
               picked={Object.fromEntries(SLOTS.flatMap((slot, i) => form.thumbs[i]?.pick ? [[slot, form.thumbs[i].pick!.candidate]] : []))}
-              onPick={pickThumb} onMake={(tool, count) => setThumbAsk({ tool, count })} />
+              onPick={pickThumb} onMake={(tool, count, frame) => setThumbAsk({ tool, count, ...(frame ? { frame } : {}) })} />
             {form.thumbs[0]?.pick && form.thumbs[1]?.pick ? <label className="yp-lbl yp-tp-diff">A · B는 무엇이 다른가요
               <select className="yp-in yp-sel1" value={form.thumbs[1].pick.diff ?? ""} disabled={!can("thumbs")} onChange={event => edit({ thumbs: form.thumbs.map((row, i) => i === 1 && row.pick ? { ...row, pick: { ...row.pick, ...(event.target.value ? { diff: event.target.value as "카피" | "그림" | "배치" } : { diff: undefined }) } } : row) }, true)}>
                 <option value="">고르기</option><option>카피</option><option>그림</option><option>배치</option></select></label> : null}
