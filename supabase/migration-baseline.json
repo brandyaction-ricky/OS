@@ -1155,9 +1155,11 @@
       "purpose": "영상 성과 reads a narrow trigger-kept copy of the YouTube Analytics day rows, so a cold 30-day summary touches dozens of pages instead of ~1,600.",
       "requiresApproval": true,
       "developmentApprovedAt": null,
-      "productionApprovedAt": null,
-      "appliedEnvironments": [],
-      "notes": "Additive: new table os_content_metric_days (RLS: active members), helper os_metric_number, trigger function + 2 triggers on os_records (content_metric only), backfill of the live day rows, os_content_metric_summary reads the copy. Rolled-back check on production data: 30-day and previous-30-day summaries identical (56 days, 276 videos, rows equal); insert/update/archive/unarchive keep the copy in step; a non-number value becomes null instead of failing the write."
+      "productionApprovedAt": "2026-11-24",
+      "appliedEnvironments": [
+        "production"
+      ],
+      "notes": "Owner-approved and applied to production 2026-11-24, read back (table 12,950 rows, 2 triggers, summary reads the copy; 30-day views 157,319 unchanged). Additive: new table os_content_metric_days (RLS: active members), helper os_metric_number, trigger function + 2 triggers on os_records (content_metric only), backfill of the live day rows, os_content_metric_summary reads the copy. Rolled-back check on production data: 30-day and previous-30-day summaries identical (56 days, 276 videos, rows equal); insert/update/archive/unarchive keep the copy in step; a non-number value becomes null instead of failing the write."
     }
   ],
   "legacyMigrations": [
