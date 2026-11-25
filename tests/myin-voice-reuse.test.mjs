@@ -55,6 +55,6 @@ test("the OS names earlier voices of the same video and voice, and the cost asks
   assert.match(panel, /const reuse = run\?\.scriptChanged \? run\.voiceReuse : null;/);
   assert.match(panel, /바뀐 문단 \$\{reuse\.make\}개만 새로 만들어요/);
   const worker = read("tools/youtube-media-worker.mjs");
-  assert.match(worker, /reuseEarlierVoice\(work, job\.paragraphs\.map\(\(p\) => p\.text\), earlier\)/);
+  assert.match(worker, /reuseEarlierVoice\(work, job\.paragraphs\.map\(\(p\) => p\.text\), earlier, tempo\)/);
   assert.match(worker, /finally \{ for \(const name of readdirSync\(voiceDir\)\) if \(name\.endsWith\(REUSE_MARK\)\) rmSync/);
 });
