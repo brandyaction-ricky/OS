@@ -705,7 +705,13 @@ export function recycleVoice(job, voiceDir) {
   console.log(`myin voice recycled from ${job.recycle.from}: ${cuts.map(([a, b]) => `${a}–${b}`).join(", ")} s`);
 }
 
-const PULLING_TEMPO = "1.1", PULLING_PARA_GAP = "0.27";   // 0.3 s between paragraphs before the 1.1× (the sample the owner chose)
+const D_TEMPO = "1.1", D_PARA_GAP = "0.27";   // 낭독 D: 0.3 s between paragraphs before the 1.1× (the sample the owner chose)
+/** The CTA lines of a run are voiced at its narration's pace (stage_cta → the same make_paragraph). */
+const ctaAtVoicePace = (speaker, work) => {
+  const tempo = voiceTempoOf(path.join(work, "voice", "os_voice"));
+  if (tempo !== "1") speaker.env.VOICE_TEMPO = tempo;
+  return speaker;
+};
 
 export async function processMyinWords() {
   if (!myinPkg || (local && !localVoice())) return false;
@@ -720,11 +726,11 @@ export async function processMyinWords() {
     const voiceDir = path.join(work, "voice", voiceJob);
     mkdirSync(voiceDir, { recursive: true });
     const speaker = myinVoiceEnv(job);
-    // 풀링형 낭독 D (대표 2026-11-25, 풀링형 정본 v0.5): Fish 0.94 as always, then each paragraph sound 1.1× (pitch kept) and 0.3 s between
-    // paragraphs before that speed-up — the engine does it where it writes pNN_t.wav, so the words, subtitles, checks and re-voiced
-    // paragraphs all use the faster sound. A voice that already exists keeps the tempo it was made at.
-    const tempo = existsSync(path.join(voiceDir, "voice.wav")) ? voiceTempoOf(voiceDir) : job.pulling ? PULLING_TEMPO : "1";
-    if (tempo !== "1") Object.assign(speaker.env, { VOICE_TEMPO: tempo, VOICE_PARA_GAP: PULLING_PARA_GAP });
+    // 낭독 D (대표 2026-11-25: 풀링형, then every longform): Fish 0.94 as always, then each paragraph sound 1.1× (pitch kept) and 0.3 s
+    // between paragraphs before that speed-up — the engine does it where it writes pNN_t.wav, so the words, subtitles, checks and
+    // re-voiced paragraphs all use the faster sound. The OS says the run's pace; a voice that already exists keeps the pace it was made at.
+    const tempo = existsSync(path.join(voiceDir, "voice.wav")) ? voiceTempoOf(voiceDir) : job.voiceTempo === D_TEMPO || job.pulling ? D_TEMPO : "1";
+    if (tempo !== "1") Object.assign(speaker.env, { VOICE_TEMPO: tempo, VOICE_PARA_GAP: D_PARA_GAP });
     for (const paragraph of speaker.onPc || job.recycle ? [] : job.paragraphs) {
       const n = String(paragraph.index).padStart(2, "0");
       const raw = path.join(voiceDir, `p${n}_raw.wav`), pcm = path.join(voiceDir, `p${n}.wav`);
@@ -1021,7 +1027,7 @@ export async function processMyinPrep() {
     }
     // A render-PC voice run brings the lines without files: his stage_cta makes them like the narration (2026-10-29 로건).
     if (job.cta.some((line) => !line.url)) {
-      const speaker = myinVoiceEnv({ paragraphs: [], fishVoice: job.fishVoice }, env);
+      const speaker = ctaAtVoicePace(myinVoiceEnv({ paragraphs: [], fishVoice: job.fishVoice }, env), work);
       await runAsync(speaker.python, ["stage_cta.py", "os_myin"], { cwd: myinDir, env: speaker.env });
     }
     if (job.siteCapture) await runAsync(myinPython, ["capture_site.py"], { cwd: myinDir, env });
@@ -1184,10 +1190,10 @@ export async function processMyinCta() {
   const lease = { runId: job.runId, lease: job.lease };
   try {
     if (job.seed) await myinRebuild(job.runId, job.seed, job.layout);
-    const { videoDir, myinDir } = myinDirs(job.runId);
+    const { work, videoDir, myinDir } = myinDirs(job.runId);
     const env = layoutEnv(myinEnv(), job.layout);
     writeFileSync(path.join(videoDir, "myin_storyboard.json"), JSON.stringify(job.storyboard, null, 1));
-    const speaker = myinVoiceEnv({ paragraphs: [], fishVoice: job.fishVoice }, env);
+    const speaker = ctaAtVoicePace(myinVoiceEnv({ paragraphs: [], fishVoice: job.fishVoice }, env), work);
     await runAsync(speaker.python, ["stage_cta.py", "os_myin"], { cwd: myinDir, env: speaker.env });
     current.step = "upload";
     for (const line of job.lines) await upload(line.uploadUrl, path.join(videoDir, "cta", `cta_${String(line.index).padStart(2, "0")}.wav`), "audio/wav");

@@ -101,6 +101,8 @@ const runSchema = z.object({
   recycle: z.object({ from: z.string().uuid(), cuts: z.array(z.tuple([z.number().min(0), z.number().positive()])).min(1).max(8) }).strict().optional(),
   // 로건 사람 말투 음성 (2026-10-29): the render PC makes the voice itself, so the paragraphs never get OS files.
   voiceOn: z.literal("render_pc").optional(),
+  // 낭독 D (대표 2026-11-25): a longform voice made 1.1× with short paragraph gaps; runs from before keep their old pace.
+  voiceTempo: z.literal("1.1").optional(),
   voiceModel: z.literal(MYIN_VOICE_MODEL), voiceReferenceFingerprint: hex,
   // 채널 목소리 (다채널 2단계, 2026-11-07): the Fish voice of the video's channel, when its card names one; none = the OS's own voice.
   voiceReference: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).optional(),
@@ -544,13 +546,27 @@ export async function myinRunReplaced(runId: string, service: Service = createSe
  * 고친 문장만 다시 (2026-11-16): earlier runs of the video whose voice the render PC may borrow paragraphs from — made there,
  * finished (words), with the same voice — newest first. The PC that has one of their folders reuses each paragraph whose text is unchanged.
  */
-async function voiceDonors(service: Service, sourceId: string, like: Pick<MyinRun, "voiceReferenceFingerprint" | "voiceModel" | "layout">, before?: string) {
-  let query = service.from("os_records").select("id, metadata").eq("parent_id", sourceId).eq("record_type", "ai_job").eq("metadata->>kind", MYIN_RUN_KIND)
+// 낭독 D (대표 2026-11-25): every longform voice 1.1× with short paragraph gaps — 풀링형 from 09:46:17 KST that day (#680), every
+// longform from #681, which keeps the pace on the run (voiceTempo). The render PC never mixes paces (voice_tempo.txt), so an earlier
+// voice at another pace is not counted as kept in the cost or the wait either.
+const LONGFORM_TEMPO = "1.1" as const, PULLING_D_SINCE = "2026-11-25T00:46:17Z";
+const longformRun = (run: Pick<MyinRun, "layout" | "renderer" | "recycle">) => !run.layout && !run.renderer && !run.recycle;
+/** The pace a run's voice is made at: its own voiceTempo, else a 풀링형 run voiced after #680 went live, else the old pace. */
+async function runTempo(service: Service, run: MyinRun, createdAt: string, pulling?: boolean) {
+  if (run.voiceTempo) return run.voiceTempo;
+  if (!longformRun(run) || createdAt < PULLING_D_SINCE) return "1";
+  return (pulling ?? await pullingProject(run.sourceId, service).catch(() => false)) ? LONGFORM_TEMPO : "1";
+}
+async function voiceDonors(service: Service, sourceId: string, like: Pick<MyinRun, "voiceReferenceFingerprint" | "voiceModel" | "layout">, tempo: string, before?: string) {
+  let query = service.from("os_records").select("id, metadata, created_at").eq("parent_id", sourceId).eq("record_type", "ai_job").eq("metadata->>kind", MYIN_RUN_KIND)
     .is("archived_at", null);
   if (before) query = query.lt("created_at", before);
   const { data } = await query.order("created_at", { ascending: false }).limit(10);
-  return ((data ?? []) as { id: string; metadata: MyinRun }[]).filter(({ metadata: m }) => m.voiceOn && m.words && m.voiceModel === like.voiceModel
-    && m.voiceReferenceFingerprint === like.voiceReferenceFingerprint && (m.layout ?? null) === (like.layout ?? null)).slice(0, 3);
+  const pulling = await pullingProject(sourceId, service).catch(() => false);
+  const same = ((data ?? []) as { id: string; metadata: MyinRun; created_at: string }[]).filter(({ metadata: m }) => m.voiceOn && m.words && m.voiceModel === like.voiceModel
+    && m.voiceReferenceFingerprint === like.voiceReferenceFingerprint && (m.layout ?? null) === (like.layout ?? null));
+  const paces = await Promise.all(same.map((d) => runTempo(service, d.metadata, d.created_at, pulling)));
+  return same.filter((_, i) => paces[i] === tempo).slice(0, 3);
 }
 // 대기 순서 (로건 요청 94ba5545, 2026-11-17): the render PC makes one voice at a time and a new video's takes an hour, so a voice that
 // waits says what the PC is on and how many voices are ahead. Minutes as the panel's: 1.4 a paragraph made (two at a time, 11-13), the
@@ -565,7 +581,7 @@ async function stageMinutes(service: Service, record: OsRecord, run: MyinRun) {
   if (record.stage === "final_pending") return Math.ceil((run.words?.durationSeconds ?? 780) / 60 * 5);
   if (record.stage !== "words_pending") return RENDER_STAGE_MIN[record.stage ?? ""] ?? 5;
   if (run.voiceFixes?.length) return VOICE_FIXED_MIN;
-  const [donor] = run.layout ? [] : await voiceDonors(service, run.sourceId, run, record.created_at);
+  const [donor] = run.layout ? [] : await voiceDonors(service, run.sourceId, run, await runTempo(service, run, record.created_at), record.created_at);
   const kept = new Set(donor?.metadata.paragraphs.map((p) => p.textHash) ?? []);
   return Math.ceil(VOICE_FIXED_MIN + VOICE_PARAGRAPH_MIN * run.paragraphs.filter((p) => !kept.has(p.textHash)).length);
 }
@@ -591,7 +607,7 @@ async function voiceQueue(service: Service, record: OsRecord) {
 /** Before 「바뀐 원고로 다시 만들기」: the paragraphs the newest earlier voice does not have, which are the ones Fish is paid for. */
 async function voiceReuse(service: Service, sourceId: string, run: MyinRun) {
   if (!run.voiceOn || run.layout) return null;
-  const [donor] = await voiceDonors(service, sourceId, run);
+  const [donor] = await voiceDonors(service, sourceId, run, LONGFORM_TEMPO);   // the new run is a longform: it is voiced at 낭독 D
   if (!donor) return null;
   const kept = new Set(donor.metadata.paragraphs.map((p) => p.textHash));
   const { spoken } = await currentInput(service, sourceId);
@@ -686,6 +702,7 @@ export async function createMyinRun(actor: RequestActor, sourceId: string, style
   const id = voiceRunId(runKey);
   const run: MyinRun = { kind: MYIN_RUN_KIND, runKey, sourceId, inputKey: input.inputKey, script: input.script, scriptMarkdownHash: markdownHash,
     voiceModel: MYIN_VOICE_MODEL, voiceReferenceFingerprint: fingerprint, ...(channelVoice ? { voiceReference: channelVoice } : {}), attempts: 0, ...(input.layout ? { layout: input.layout } : {}), ...(input.renderer ? { renderer: input.renderer } : {}), ...(onPc ? { voiceOn: "render_pc" as const } : {}),
+    ...(longformRun({ layout: input.layout, renderer: input.renderer, recycle: recycled?.recycle }) ? { voiceTempo: LONGFORM_TEMPO } : {}),
     ...(picked ? { style: pinStyle(picked) } : {}), ...(recycled ? { recycle: recycled.recycle, pc: recycled.pc } : {}),
     ...(settings ? { settings: { ...settings, by: actor.ownerId, name: actor.name, at: new Date().toISOString() } } : {}),
     ...(await voiceHere(actor, settings?.voice, input.layout) ? { localVoice: { by: actor.ownerId, name: actor.name, at: new Date().toISOString() } } : {}),
@@ -886,11 +903,11 @@ export async function claimMyinWords(service: Service = createServiceSupabase(),
     // 음성 사전 (phase ④): the render PC voices with what the OS keeps; until the OS has one, his package's files stand.
     const dictionary = await readVoiceDictionary(service).catch(() => null);
     // 고친 문장만 다시: a fresh voice names the earlier runs whose unchanged paragraphs its render PC may reuse.
-    const earlier = run.voiceOn && !run.words && !run.voiceFixes?.length ? (await voiceDonors(service, run.sourceId, run, record.created_at).catch(() => [])).map((d) => d.id) : [];
-    // 풀링형 낭독 D (대표 2026-11-25): the render PC speeds a fresh 풀링형 voice up 1.1× with short paragraph gaps; a longform only.
-    const pulling = !run.layout && !run.renderer && !run.recycle && await pullingProject(run.sourceId, service).catch(() => false);
+    // 낭독 D: the render PC speeds a fresh longform voice up 1.1× with short paragraph gaps (an older worker reads it as 「pulling」).
+    const tempo = await runTempo(service, run, record.created_at);
+    const earlier = run.voiceOn && !run.words && !run.voiceFixes?.length ? (await voiceDonors(service, run.sourceId, run, tempo, record.created_at).catch(() => [])).map((d) => d.id) : [];
     return { runId: record.id, lease: lease.token, ...voice, bundleUploadUrl: upload.signedUrl, ...(voiceUploadUrls.length === MYIN_VOICE_PARTS ? { voiceUploadUrls } : {}),
-      ...(earlier.length ? { earlier } : {}), ...(run.recycle ? { recycle: run.recycle } : {}), ...(pulling ? { pulling: true } : {}),
+      ...(earlier.length ? { earlier } : {}), ...(run.recycle ? { recycle: run.recycle } : {}), ...(tempo !== "1" ? { voiceTempo: tempo, pulling: true } : {}),
       ...(preview ? { previewUploadUrl: preview.signedUrl } : {}), ...(run.layout ? { layout: run.layout } : {}), ...(run.renderer ? { renderer: run.renderer } : {}),
       ...(dictionary?.exists ? { dictionary: dictionaryFiles(dictionary.dictionary) } : {}),
       ...(run.voiceFixes?.length ? { fixes: run.voiceFixes.map(({ memo, say, read, video, take, pause }) => ({ memo, ...(say ? { say } : {}), ...(read ? { read } : {}), ...(video ? { video } : {}),

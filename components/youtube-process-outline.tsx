@@ -273,7 +273,7 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
         <YpSection n={2} title="원고" need extra={editable && !viewing ? <span className="yp-sec-acts">
           <button type="button" className={`yp-btn yp-sm${noteOn ? " yp-on" : ""}`} aria-pressed={noteOn} title="원고에서 글을 드래그해 그 구간에 의견을 남겨요 (U · 끝내기 Esc)" onClick={() => { setNoteMode(on => !on); setPick(null); setPeek(null); setPickError(null); }}><MessageSquare size={14} aria-hidden="true" /> {noteOn ? "의견 모드 끝내기" : "의견 모드 (U)"}</button>
           <button type="button" className="yp-btn yp-sm yp-pri" onClick={() => setSend(true)}><Sparkles size={14} /> {form.ai ? "내 AI로 다시 쓰기" : "내 AI로 원고 쓰기"}</button></span> : null}>
-          <div className="yp-est"><span className="yp-tag yp-acc"><Clock size={12} aria-hidden="true" /> 예상 길이 {estimate?.label}</span><span className="yp-muted" style={{ fontSize: 12 }} title="공백 · 제목 줄 · 사진 · 표를 빼고 분당 350자로 셈">원고 {estimate?.chars.toLocaleString()}자</span>
+          <div className="yp-est"><span className="yp-tag yp-acc"><Clock size={12} aria-hidden="true" /> 예상 길이 {estimate?.label}</span><span className="yp-muted" style={{ fontSize: 12 }} title={pulling ? "공백 · 제목 줄 · 사진 · 표를 빼고 한 글자 0.148초로 셈" : "공백 · 제목 줄 · 사진 · 표를 빼고 분당 390자로 셈"}>원고 {estimate?.chars.toLocaleString()}자</span>
             {voiceSec ? <span className="yp-tag" title="영상 만드는 컴퓨터가 만든 음성의 실제 길이">실제 음성 {Math.floor(voiceSec / 60)}분 {Math.round(voiceSec % 60)}초</span> : null}
             {estimate?.verdict ? <span className={estimate.verdict.ok ? "yp-ok" : "yp-bad"}>{estimate.verdict.ok ? "✓" : "⚠"} {estimate.verdict.text}</span> : null}</div>
           {aiOpen ? <JobLine job={job} onRetry={() => setSend(true)} /> : null}
@@ -324,7 +324,7 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
               : <p className="yp-hint" style={{ margin: "0 10px 10px" }}>원고 줄 맨 앞에 [샷] · [B롤] · [인서트]를 쓰면 여기에 문단 번호와 함께 모여요. 그 줄은 대사 · 길이 계산에서 빠져요.</p>}</details> : null}
           {paragraphs.length ? <details className="yp-card" style={{ marginTop: 8 }}><summary style={{ padding: "8px 10px", cursor: "pointer", fontSize: 13 }}>문단 번호 · {voiceSec && !viewing ? "음성 기준" : "예상"} 시각 ({paragraphs.length}문단)</summary>
             <ol className="yp-paras">{paragraphs.map(row => <li key={row.n}><b>{row.n}</b><time>{String(Math.floor(row.at / 60)).padStart(2, "0")}:{String(Math.floor(row.at % 60)).padStart(2, "0")}</time><span>{row.text}</span></li>)}</ol>
-            <p className="yp-hint" style={{ margin: "0 10px 10px" }}>{voiceSec && !viewing ? `만든 음성 ${minSec(voiceSec)}을 글자 수로 나눈 시각이에요.` : pulling ? "공백 빼고 한 글자 0.148초로 센 시각이에요." : "분당 350자로 센 시각이에요."} 최종 영상은 오프닝 · 쉼이 더해져 조금 늦어요.</p></details> : null}
+            <p className="yp-hint" style={{ margin: "0 10px 10px" }}>{voiceSec && !viewing ? `만든 음성 ${minSec(voiceSec)}을 글자 수로 나눈 시각이에요.` : pulling ? "공백 빼고 한 글자 0.148초로 센 시각이에요." : "분당 390자로 센 시각이에요."} 최종 영상은 오프닝 · 쉼이 더해져 조금 늦어요.</p></details> : null}
           {checked.length && editable && !viewing ? <details className="yp-note yp-warn" role="status" style={{ display: "block" }}><summary style={{ cursor: "pointer" }}>원고 형식 검사에서 걸린 곳 {checked.length}건 — 고쳐야 제작·음성으로 넘어가요</summary>
             <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 13 }}>{checked.map(issue => <li key={issue}>{issue}</li>)}</ul></details> : null}
           {!viewing ? <ScriptReview2 page={page} outline={form} editable={editable} dirty={dirty} /> : null}

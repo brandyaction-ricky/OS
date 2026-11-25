@@ -342,7 +342,7 @@ export const PLAN_FIELD_KEY: Record<"titles" | "thumbs" | "format" | "opening" |
 };
 
 // ── 구성안 (S4) ──
-export const CHARS_PER_MINUTE_V1 = 350;
+export const CHARS_PER_MINUTE_V1 = 390;   // 공백 뺀 350자 = 1분이던 것을 낭독 D(1.1배 · 짧은 문단 사이, 대표 2026-11-25)로
 /** 풀링형 낭독 D (대표 2026-11-25, 풀링형 정본 v0.5): 공백 뺀 글자 × 0.148초. Fish 0.94배 그대로 낭독한 실측은 0.165초
  *  (원리 1편 3,254자 538초 · 2편 3,077자 508초 · 3편 리메이크 4,343자 713초); D는 문단 사이 0.3초 + 1.1배라 3편이 636초. */
 export const PULLING_SEC_PER_CHAR = 0.148;

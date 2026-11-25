@@ -18,18 +18,18 @@ test("풀링형 (cta []) may start without an opening; 키풀링형 still needs 
   assert.match(read("lib/server/myin-storyboard-job.ts"), /풀링형은 오프닝 없이 첫 대사부터/);
 });
 
-test("풀링형 예상 길이 = 공백 뺀 글자 × 0.148초(낭독 D: 0.165초 실측 ÷ 1.1배 · 짧은 문단 사이); 키풀링형 stays 350자/분", () => {
+test("풀링형 예상 길이 = 공백 뺀 글자 × 0.148초(낭독 D: 0.165초 실측 ÷ 1.1배 · 짧은 문단 사이); 키풀링형 · 원고형 390자/분", () => {
   assert.equal(lengthEstimate("가".repeat(4343), null, null, true).label, "약 10분 30초");   // 3편 4,343자 → 643초; D로 만든 실제 음성 633초
-  assert.equal(lengthEstimate("가".repeat(3696), null, null).label, "약 10분 30초");   // 3696 / 350 = 10.56분
+  assert.equal(lengthEstimate("가".repeat(3696), null, null).label, "약 9분");   // 3696 / 390 = 9.48분(화면은 30초 단위로 내림)
   assert.equal(Math.round(paragraphTimes(["가".repeat(80), "나".repeat(80)], null, true)[1].at * 10) / 10, 11.8);
   assert.equal(PULLING_CHARS_PER_MINUTE, 405);   // 9분 → 3,645자 (공백 제외, 정본 3,500~3,650)
 });
 
-test("풀링형 목표 글자 수 · 길이 메모는 공백 제외 405자/분; 원고형은 공백 포함 490자/분 그대로", () => {
+test("풀링형 목표 글자 수 · 길이 메모는 공백 제외 405자/분; 원고형은 공백 포함 545자/분(둘 다 낭독 D)", () => {
   const para = "가 나 ".repeat(40);   // 160자, 공백 제외 80자
   const paragraphs = Array.from({ length: 41 }, () => para);   // 공백 제외 3,280자 = 9분 3,645자의 -10%
   assert.deepEqual(checkScriptBody(paragraphs, 9, null, "", true).notes.filter(n => n.includes("목표")), []);
-  assert.match(checkScriptBody(paragraphs, 9).notes.join(" "), /목표 9분\(4410자\)/);   // 같은 원고를 원고형으로 세면 공백 포함 6,560자 — 4,410자와 15% 넘게 차이
+  assert.match(checkScriptBody(paragraphs, 9).notes.join(" "), /목표 9분\(4905자\)/);   // 같은 원고를 원고형으로 세면 공백 포함 6,560자 — 4,905자와 15% 넘게 차이
   assert.match(checkScriptBody(paragraphs.slice(0, 20), 9, null, "", true).notes.join(" "), /공백 제외 1600자.*공백 제외 3645자/);
   assert.match(read("lib/server/youtube-process-ai.ts"), /targetChars: card\.targetMinutes \* \(pulling \? PULLING_CHARS_PER_MINUTE : CHARS_PER_MINUTE\)/);
 });

@@ -21,13 +21,16 @@ test("음성 점검: audit beside read check → pause check; voice_fix joins vo
   assert.match(check, /\[round\(w\.start, 3\), round\(w\.end, 3\), w\.word\.strip\(\)\]/);   // pause_check_myin.py's own format
 });
 
-test("풀링형 낭독 D: the OS marks a 풀링형 longform voice; the render PC passes 1.1× and 0.27 s gaps, keeps an existing voice's tempo, reuses only same-tempo voices", async () => {
+test("낭독 D: every new longform run keeps voiceTempo 1.1; the render PC passes 1.1× and 0.27 s gaps, keeps an existing voice's pace, reuses only same-pace voices, voices CTA lines at the run's pace", async () => {
   const run = readFileSync(new URL("../lib/server/myin-run.ts", import.meta.url), "utf8");
-  assert.match(run, /const pulling = !run\.layout && !run\.renderer && !run\.recycle && await pullingProject\(run\.sourceId, service\)/);
-  assert.match(run, /\.\.\.\(pulling \? \{ pulling: true \} : \{\}\)/);
-  assert.match(worker, /const PULLING_TEMPO = "1\.1", PULLING_PARA_GAP = "0\.27"/);
-  assert.match(worker, /existsSync\(path\.join\(voiceDir, "voice\.wav"\)\) \? voiceTempoOf\(voiceDir\) : job\.pulling \? PULLING_TEMPO : "1"/);
-  assert.match(worker, /Object\.assign\(speaker\.env, \{ VOICE_TEMPO: tempo, VOICE_PARA_GAP: PULLING_PARA_GAP \}\)/);
+  assert.match(run, /voiceTempo: z\.literal\("1\.1"\)\.optional\(\)/);
+  assert.match(run, /longformRun\(\{ layout: input\.layout, renderer: input\.renderer, recycle: recycled\?\.recycle \}\) \? \{ voiceTempo: LONGFORM_TEMPO \}/);
+  assert.match(run, /\.\.\.\(tempo !== "1" \? \{ voiceTempo: tempo, pulling: true \} : \{\}\)/);
+  assert.match(run, /return same\.filter\(\(_, i\) => paces\[i\] === tempo\)/);
+  assert.match(run, /await voiceDonors\(service, sourceId, run, LONGFORM_TEMPO\)/);
+  assert.match(worker, /job\.voiceTempo === D_TEMPO \|\| job\.pulling \? D_TEMPO : "1"/);
+  assert.match(worker, /Object\.assign\(speaker\.env, \{ VOICE_TEMPO: tempo, VOICE_PARA_GAP: D_PARA_GAP \}\)/);
+  assert.equal(worker.match(/ctaAtVoicePace\(myinVoiceEnv\(/g)?.length, 2);
   const { mkdtempSync, mkdirSync, writeFileSync } = await import("node:fs");
   const { tmpdir } = await import("node:os");
   const path = await import("node:path");
