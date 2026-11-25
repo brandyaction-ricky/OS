@@ -1,4 +1,5 @@
 "use client";
+import { CountUp } from "@/components/count-up";
 
 import { PageTitle } from "./page-title";
 
@@ -129,10 +130,10 @@ export function AdPerformanceWorkspace() {
       </section>
 
       <section className="metric-grid compact-metrics">
-        <article className="metric-card"><div className="metric-top"><span>광고비</span><CircleDollarSign size={16} /></div><div className="metric-value growth-money">{money(summary?.spend)}</div><small>Meta + Google</small></article>
-        <article className="metric-card"><div className="metric-top"><span>전환 매출</span><TrendingUp size={16} /></div><div className="metric-value growth-money">{money(summary?.attributedRevenue)}</div><small>광고 플랫폼 귀속 기준</small></article>
-        <article className="metric-card"><div className="metric-top"><span>ROAS</span><BarChart3 size={16} /></div><div className="metric-value">{ratio(summary?.roas)}</div><small>전환 매출 ÷ 광고비</small></article>
-        <article className="metric-card"><div className="metric-top"><span>CPA</span><Target size={16} /></div><div className="metric-value growth-money">{money(summary?.cpa)}</div><small>전환 {formatNumber(summary?.conversions)}건</small></article>
+        <article className="metric-card"><div className="metric-top"><span>광고비</span><CircleDollarSign size={16} /></div><div className="metric-value growth-money"><CountUp>{money(summary?.spend)}</CountUp></div><small>Meta + Google</small></article>
+        <article className="metric-card"><div className="metric-top"><span>전환 매출</span><TrendingUp size={16} /></div><div className="metric-value growth-money"><CountUp>{money(summary?.attributedRevenue)}</CountUp></div><small>광고 플랫폼 귀속 기준</small></article>
+        <article className="metric-card"><div className="metric-top"><span>ROAS</span><BarChart3 size={16} /></div><div className="metric-value"><CountUp>{ratio(summary?.roas)}</CountUp></div><small>전환 매출 ÷ 광고비</small></article>
+        <article className="metric-card"><div className="metric-top"><span>CPA</span><Target size={16} /></div><div className="metric-value growth-money"><CountUp>{money(summary?.cpa)}</CountUp></div><small>전환 {formatNumber(summary?.conversions)}건</small></article>
       </section>
 
       <section className="ad-layout">

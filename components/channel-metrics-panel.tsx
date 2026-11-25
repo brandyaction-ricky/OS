@@ -1,4 +1,6 @@
 "use client";
+import { CountUp } from "@/components/count-up";
+import { NumberLoading } from "@/components/workspace-load-state";
 import { useState } from "react";
 import { METRIC_LABELS, YOUTUBE_ANALYTICS_METRICS, compareMetricSamples, sampleSummary, metricSamples, measuredValue, type Snapshot } from "@/lib/channel-metrics";
 import type { OsRecord } from "@/lib/record-types";
@@ -31,10 +33,10 @@ export function ChannelMetricsPanel({ records, loading, youtubeOnly = false, fro
       <div className="segmented" role="group" aria-label="경과일">{DAYS.map(([value, label]) => <button type="button" key={value} aria-pressed={snapshot === value} onClick={() => setSnapshot(value)}>{label}</button>)}</div>
       <label className="perf-field">지표<select value={metric} onChange={(event) => setMetric(event.target.value)}>{metricChoices.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
     </div>
-    {loading ? <div className="perf-metrics" role="status" aria-label="성과 불러오는 중">{kinds.map((kind) => <div className="metric" key={kind}><span className="skeleton perf-skeleton" /></div>)}</div> : <>
+    {loading ? <div className="perf-metrics" role="status" aria-label="성과 불러오는 중">{kinds.map((kind) => <div className="metric" key={kind}><p className="metric-value"><NumberLoading /></p></div>)}</div> : <>
       <div className="perf-metrics">{kinds.map((kind) => { const stats = sampleSummary(values(kind)); return <div className="metric" key={kind}>
         <div className="metric-label">{NAMES[kind]} · {DAYS.find(([value]) => value === snapshot)![1]} {METRIC_LABELS[metric]} (가운데 값)</div>
-        <p className="metric-value">{number(stats.median)}</p>
+        <p className="metric-value"><CountUp>{number(stats.median)}</CountUp></p>
         <div className="metric-note">{stats.n ? `영상 ${stats.n}개 · 범위 ${number(stats.min)}~${number(stats.max)}${stats.n < 5 ? " · 5개가 안 돼 비교 보류" : ""}` : "이 기간에 올린 영상의 기록이 없어요"}</div></div>; })}</div>
       {!youtubeOnly && platform === "all" ? <p className="section-meta">{compareMetricSamples(values("instagram"), values("threads"))} · 플랫폼별 집계 정의 차이를 고려해야 합니다.</p> : null}
       <div className="perf-table-wrap"><table className="data-table" aria-label="경과일별 성과 비교"><thead><tr><th>구분</th>{DAYS.map(([value, label]) => <th key={value} className="perf-num">{label}</th>)}</tr></thead>
