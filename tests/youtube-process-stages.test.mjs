@@ -180,14 +180,14 @@ test("the bare description layout is not a description; any real line is", async
   assert.equal(descWritten("#강점 #성격"), true);
 });
 
-// 로건 다시 요청 10/30: one 「(기본)」 in the 프레임 list; an older 「30fps (기본)」 shows as 「30fps」; a new 애니 opens at 60fps.
+// 로건 다시 요청 10/30: one 「(기본)」 in the 프레임 list. 대표 2026-11-25: 애니 is 30fps again — an older 「60fps (기본)」 shows as 「60fps」.
 test("spec values saved under an older label show as today's option", () => {
-  assert.equal(specOption("anim", "fps", "30fps (기본)"), "30fps");
-  assert.equal(specOption("anim", "fps", "60fps (기본)"), "60fps (기본)");
+  assert.equal(specOption("anim", "fps", "30fps (기본)"), "30fps (기본)");
+  assert.equal(specOption("anim", "fps", "60fps (기본)"), "60fps");
   assert.equal(specOption("anim", "res", "4K (선명 · 기본)"), "4K (선명)");
   assert.equal(specOption("live", "fps", "60fps"), "60fps");
   assert.equal(specOption("anim", "fps", "12fps"), "12fps");
-  assert.equal(stageData("outline", undefined, "anim").spec.fps, "60fps (기본)");
+  assert.equal(stageData("outline", undefined, "anim").spec.fps, "30fps (기본)");
 });
 
 // 로건 QA 10/30: looking at the 「이미지」 tab of a written card must not empty it.

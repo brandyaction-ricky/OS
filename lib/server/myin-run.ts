@@ -578,7 +578,7 @@ const RENDER_STAGE_MIN: Record<string, number> = { breath_pending: 5, cta_pendin
 
 /** About how many minutes the render PC spends on a run's step now; a voice counts only the paragraphs it has to make. */
 async function stageMinutes(service: Service, record: OsRecord, run: MyinRun) {
-  if (record.stage === "final_pending") return Math.ceil((run.words?.durationSeconds ?? 780) / 60 * 5);
+  if (record.stage === "final_pending") return Math.ceil((run.words?.durationSeconds ?? 780) / 60 * 2.5);   // 30 fps (대표 2026-11-25): about 2.5 minutes a video minute
   if (record.stage !== "words_pending") return RENDER_STAGE_MIN[record.stage ?? ""] ?? 5;
   if (run.voiceFixes?.length) return VOICE_FIXED_MIN;
   const [donor] = run.layout ? [] : await voiceDonors(service, run.sourceId, run, await runTempo(service, run, record.created_at), record.created_at);
