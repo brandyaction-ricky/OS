@@ -163,3 +163,13 @@ test("원고 작업 지시문 follows 원고 공정 정본 v2.9: one axis + one 
   assert.match(job, /\$\{pulling \? "" : `\n## 재료 — 쓸 것만 찾습니다/);
   assert.match(job, /공백 제외 약 \$\{targetMinutes \* PULLING_CHARS_PER_MINUTE\}자/);
 });
+
+test("낭독 규칙: a number ending in 2 with a particle, and 「네」 with a particle, are found in the 원고; units, decimals and 「네,」 are not", () => {
+  const body = (s) => checkScriptBody([`${s} ${"가".repeat(90)}`], null).issues.join("\n");
+  assert.match(body("이 둘 중 2에서 고르면"), /「2에서」 — 숫자 2 뒤에 조사/);
+  assert.match(body("12를 먼저 봐요"), /「12를」/);
+  assert.doesNotMatch(body("2단 2가지 2분의 1 1.2를 2, 그리고"), /숫자 2 뒤에 조사/);
+  assert.match(body("네나 아니요로 답해요"), /「네나」 — 「네」에 조사/);
+  assert.match(body("「네와 아니요」만 있어요"), /「네와」/);
+  assert.doesNotMatch(body("네, 아니면 아니요로 네모 네번째"), /「네」에 조사/);
+});
