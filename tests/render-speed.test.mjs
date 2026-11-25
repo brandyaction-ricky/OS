@@ -6,7 +6,7 @@ const worker = readFileSync(new URL("../tools/youtube-media-worker.mjs", import.
 
 test("전체 영상: drawing processes come from MYIN_RENDER_PROCS (default 4) and the unused burn-in encode is skipped", () => {
   assert.match(worker, /Math\.floor\(Number\(process\.env\.MYIN_RENDER_PROCS\)\) \|\| 4/);
-  assert.equal(worker.match(/"render", renderProcs\(\)\], \{ cwd: myinDir, env: \{ \.\.\.drawEnv, OUTNAME: "final_myin_v1_raw\.mp4", MYIN_VIDEO_ONLY: "1" \} \}/g)?.length, 2);
+  assert.equal(worker.match(/"render", renderProcs\(\)\], \{ cwd: myinDir, env: \{ \.\.\.drawEnv, OUTNAME: "final_myin_v1_raw\.mp4", MYIN_VIDEO_ONLY: "1"/g)?.length, 2);
   assert.doesNotMatch(worker, /"render", "4"/);
   for (const step of ["claimed", "drawn", "mixed", "uploaded"]) assert.match(worker, new RegExp(`stamp\\("${step}", job\\.runId\\)`));
 });
@@ -41,4 +41,18 @@ test("낭독 D: every new longform run keeps voiceTempo 1.1; the render PC passe
   assert.equal(voiceDonor([old, fast], "1.1"), fast);
   assert.equal(voiceDonor([fast, old], "1"), old);
   assert.equal(voiceDonor([old], "1.1"), undefined);
+});
+
+test("나눠 그리기: MYIN_HELPERS lists host:procs; the worker hands pieces out before its own render and then fills only what is missing", async () => {
+  const { parseHelpers, pieceFile } = await import("../tools/myin-split.mjs");
+  assert.deepEqual(parseHelpers("Basic@100.1.2.3:6, render-mbp1 ,local:2"), [{ host: "Basic@100.1.2.3", procs: 6 }, { host: "render-mbp1", procs: 4 }, { host: "local", procs: 2 }]);
+  assert.deepEqual(parseHelpers(""), []);
+  assert.equal(pieceFile("/w/chunks", 7), "/w/chunks/c07.mp4");
+  assert.equal(pieceFile("/w/chunks", 104), "/w/chunks/c104.mp4");   // the engine's f"c{i:02d}.mp4"
+  assert.match(worker, /splitPieces\(\{ runId: job\.runId, work, myinDir, env: drawEnv, python: myinPython, procs: Number\(renderProcs\(\)\), helpers: parseHelpers\(process\.env\.MYIN_HELPERS\) \}\)/);
+  assert.match(worker, /\.\.\.\(split\.used \? \{ MYIN_REUSE_PIECES: "1" \} : \{\}\)/);
+  assert.match(worker, /"myin_help_pieces\.sh"\), helper\)/);
+  const script = readFileSync(new URL("../tools/myin_help_pieces.sh", import.meta.url), "utf8");
+  assert.match(script, /render_myin\.py os_myin pieces \$procs <&3 &/);
+  assert.match(script, /own work started: stop helping/);
 });

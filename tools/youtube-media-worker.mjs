@@ -23,6 +23,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { adRuntimeDigest, processAdRender } from "./image-ad-renderer.mjs";
 import { shortformDiagramCapabilities } from "./shortform-diagrams.mjs";
 import { checkShortformRuntime,renderShortform } from "./shortform-renderer.mjs";
+import { parseHelpers, splitPieces } from "./myin-split.mjs";
 
 const osUrl = (process.env.OS_URL ?? "").replace(/\/$/, "");
 const local = process.argv.includes("--local");
@@ -1364,7 +1365,11 @@ export async function processMyinFinal() {
       execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-i", path.join(videoDir, "myin_video_final_myin_v1_raw.mp4"), "-i", path.join(work, "voice", "os_voice", "voice.wav"),
         "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-af", "pan=stereo|c0=c0|c1=c0,loudnorm=I=-14:TP=-1.5:LRA=11", "-ar", "48000", "-c:a", "aac", "-b:a", "192k", ...(end > 0 ? ["-t", String(end)] : []), video], { env });
     } else {
-      await runAsync(myinPython, ["render_myin.py", "os_myin", "render", renderProcs()], { cwd: myinDir, env: { ...drawEnv, OUTNAME: "final_myin_v1_raw.mp4", MYIN_VIDEO_ONLY: "1" } });
+      // 나눠 그리기: idle render PCs on the office network draw pieces too; the render below then only fills what is missing.
+      const split = local ? { used: false } : await splitPieces({ runId: job.runId, work, myinDir, env: drawEnv, python: myinPython, procs: Number(renderProcs()), helpers: parseHelpers(process.env.MYIN_HELPERS) })
+        .catch((error) => { console.error(`split skipped: ${error.message}`); return { used: false }; });
+      if (split.used) console.log(`${new Date().toISOString()} myin final split: ${job.runId} ${split.done}/${split.pieces} pieces in ${split.seconds} s · ${Object.entries(split.by).map(([k, v]) => `${k} ${v}`).join(" · ")}`);
+      await runAsync(myinPython, ["render_myin.py", "os_myin", "render", renderProcs()], { cwd: myinDir, env: { ...drawEnv, OUTNAME: "final_myin_v1_raw.mp4", MYIN_VIDEO_ONLY: "1", ...(split.used ? { MYIN_REUSE_PIECES: "1" } : {}) } });
       stamp("drawn", job.runId);
       await runAsync(myinPython, ["render_myin.py", "os_myin", "remix", "../../voice/os_myin/myin_video_final_myin_v1_raw.mp4", "final_myin_v1.mp4"], { cwd: myinDir, env: drawEnv });
       stamp("mixed", job.runId);
@@ -1505,6 +1510,9 @@ else if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).h
   const shortsOnly=process.argv.includes("--shorts-only");
   if (!shortsOnly&&!existsSync(path.join(mindmapDir, "tools", "mindmap_pipeline", "stage_render.py"))) throw new Error("MINDMAP_DIR must point at Logan's unzipped mind-map package");
   console.log(`render PC name: ${pcName}`);
+  // 나눠 그리기: the other render PCs call this PC's helper script over SSH; each release keeps its own copy current.
+  try { const helper = path.join(os.homedir(), "render", "myin_help_pieces.sh"); copyFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "myin_help_pieces.sh"), helper); execFileSync("chmod", ["755", helper]); }
+  catch (error) { console.error(`split helper not installed: ${error.message}`); }
   await heartbeat(); // knows whether this PC's engine is held before it claims anything
   setInterval(() => void heartbeat(), 60_000).unref();
   void reportDiagramCatalog();
