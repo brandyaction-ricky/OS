@@ -1,4 +1,6 @@
 "use client";
+import { CountUp } from "@/components/count-up";
+import { NumberLoading } from "@/components/workspace-load-state";
 
 import "./content-performance.css";
 import Link from "next/link";
@@ -182,7 +184,7 @@ export function ContentPerformanceDashboard({ youtubeOnly = false }: { youtubeOn
 
   const compareText = prev.days === 1 ? "전날보다" : `직전 ${prev.days}일보다`;
   const card = (label: string, value: string, change: ReturnType<typeof changeLabel>, note?: string) => <div className="metric" key={label}>
-    <div className="metric-label">{label}</div><p className="metric-value">{value}</p>
+    <div className="metric-label">{label}</div><p className="metric-value"><CountUp>{value}</CountUp></p>
     <div className="metric-note">{change ? <><b className="perf-change" data-tone={change.tone}>{change.text}</b> {compareText}</> : note ?? `${compareText} 비교할 기록 없음`}</div></div>;
   const sortHead = (key: string, label: string, numeric = true) => <th key={key} className={numeric ? "perf-num" : undefined} aria-sort={sort.key === key ? (sort.desc ? "descending" : "ascending") : undefined}>
     <button type="button" className="perf-sort" onClick={() => setSort((current) => ({ key, desc: current.key === key ? !current.desc : key !== "title" }))}>{label}{sort.key === key ? (sort.desc ? " ↓" : " ↑") : ""}</button></th>;
@@ -222,7 +224,7 @@ export function ContentPerformanceDashboard({ youtubeOnly = false }: { youtubeOn
     <div className={loading && filtered.length ? "perf-body is-loading" : "perf-body"} aria-busy={loading}>
       {tab === "summary" ? <>
         <section className="perf-metrics" aria-label="기간 합계">
-          {loading && !filtered.length ? METRICS.slice(0, 5).map((item) => <div className="metric" key={item.key}><div className="metric-label">{item.label}</div><span className="skeleton perf-skeleton" /></div>) : <>
+          {loading && !filtered.length ? METRICS.slice(0, 5).map((item) => <div className="metric" key={item.key}><div className="metric-label">{item.label}</div><p className="metric-value"><NumberLoading /></p></div>) : <>
             {card("조회수", count(totals.views), changeLabel(totals.views, previousTotals.views))}
             {card("시청 지속률", totals.retention === null ? "—" : `${totals.retention.toFixed(1)}%`, changeLabel(totals.retention, previousTotals.retention, true))}
             {card("구독자 순증", totals.subscribers === null ? "—" : `${totals.subscribers > 0 ? "+" : ""}${totals.subscribers.toLocaleString("ko-KR")}`, changeLabel(totals.subscribers, previousTotals.subscribers))}

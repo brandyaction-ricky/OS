@@ -1,4 +1,5 @@
 "use client";
+import { CountUp } from "@/components/count-up";
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api-client";
 import { spanDays } from "@/lib/performance-period";
@@ -41,7 +42,7 @@ export function VideoSalesPanel({ from, to }: { from: string; to: string }) {
     {sales?.stale ? <div className="os-callout" data-tone="warn" role="status"><div className="os-callout-body">지금 값을 못 불러와 마지막으로 받은 값을 보여 줘요 · {sales.stale.reason}</div></div> : null}
     {t ? <div className="perf-metrics">
       {([["유튜브 순매출 · 구매 전 유입", t.youtube.l], ["영상에 연결", t.video.l], ["프로필·기타", t.nonVideo.l], ["미매핑·충돌", { orders: t.unmapped.l.orders + t.conflict.l.orders, net: t.unmapped.l.net + t.conflict.l.net }], ["유튜브 순매출 · 최초 유입", t.youtube.f]] as [string, Money][]).map(([label, m]) =>
-        <div className="metric" key={label}><div className="metric-label">{label}</div><p className="metric-value is-sm">{won(m.net)}</p><div className="metric-note">{m.orders.toLocaleString("ko-KR")}건</div></div>)}
+        <div className="metric" key={label}><div className="metric-label">{label}</div><p className="metric-value is-sm"><CountUp>{won(m.net)}</CountUp></p><div className="metric-note">{m.orders.toLocaleString("ko-KR")}건</div></div>)}
     </div> : null}
     {sales?.videos.length ? <div className="perf-table-wrap"><table className="data-table"><thead><tr><th>영상</th><th className="perf-num">구매 전 유입</th><th className="perf-num">비중</th><th className="perf-num">최초 유입</th><th>연결 코드</th></tr></thead><tbody>
       {sales.videos.map((video) => <tr key={video.videoId}><td><a className="cell-title" href={`https://www.youtube.com/watch?v=${video.videoId}`} target="_blank" rel="noreferrer">{video.title}</a>{video.channelTitle ? <small> · {video.channelTitle}</small> : null}</td>

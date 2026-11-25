@@ -1,4 +1,5 @@
 "use client";
+import { CountUp } from "@/components/count-up";
 
 import { PageTitle } from "./page-title";
 
@@ -209,10 +210,10 @@ export function RevenueWorkspace() {
       <WorkspaceLoadState loading={loading} error={loadError} retry={load}>
       <p className="field-hint">선택 기간 매출 {selected.length}건 기준{!selected.length ? " · 주문 연결 대기" : ""}</p>
       <section className="metric-grid compact-metrics">
-        <div className="metric-card"><div className="metric-top"><span>순매출</span><CircleDollarSign size={16} /></div><div className="metric-value growth-money">{money(measuredSum(selected.map(revenueNet)))}</div></div>
-        <div className="metric-card"><div className="metric-top"><span>총매출</span><BarChart3 size={16} /></div><div className="metric-value growth-money">{money(measuredSum(selected.map(item => item.metadata.gross ?? item.amount)))}</div></div>
-        <div className="metric-card"><div className="metric-top"><span>취소·환불</span><CircleAlert size={16} /></div><div className="metric-value growth-money">{money(measuredSum(selected.map(item => item.metadata.cancel != null && item.metadata.refund != null ? Number(item.metadata.cancel) + Number(item.metadata.refund) : null)))}</div></div>
-        <div className="metric-card"><div className="metric-top"><span>주문 / 구매자</span><Target size={16} /></div><div className="metric-value">{formatNumber(measuredSum(selected.map(item => item.metadata.orders)))} / {formatNumber(measuredSum(selected.map(item => item.metadata.buyers)))}</div>{totals.net > 0 && totals.orders === 0 ? <p className="metric-caption warning" role="status">주문 수 확인 필요 · 매출 집계는 유지됩니다.</p> : null}</div>
+        <div className="metric-card"><div className="metric-top"><span>순매출</span><CircleDollarSign size={16} /></div><div className="metric-value growth-money"><CountUp>{money(measuredSum(selected.map(revenueNet)))}</CountUp></div></div>
+        <div className="metric-card"><div className="metric-top"><span>총매출</span><BarChart3 size={16} /></div><div className="metric-value growth-money"><CountUp>{money(measuredSum(selected.map(item => item.metadata.gross ?? item.amount)))}</CountUp></div></div>
+        <div className="metric-card"><div className="metric-top"><span>취소·환불</span><CircleAlert size={16} /></div><div className="metric-value growth-money"><CountUp>{money(measuredSum(selected.map(item => item.metadata.cancel != null && item.metadata.refund != null ? Number(item.metadata.cancel) + Number(item.metadata.refund) : null)))}</CountUp></div></div>
+        <div className="metric-card"><div className="metric-top"><span>주문 / 구매자</span><Target size={16} /></div><div className="metric-value"><CountUp>{formatNumber(measuredSum(selected.map(item => item.metadata.orders)))}</CountUp> / <CountUp>{formatNumber(measuredSum(selected.map(item => item.metadata.buyers)))}</CountUp></div>{totals.net > 0 && totals.orders === 0 ? <p className="metric-caption warning" role="status">주문 수 확인 필요 · 매출 집계는 유지됩니다.</p> : null}</div>
       </section>
       <section className="performance-analysis-grid">
         <article className="panel"><div className="panel-header"><div><h2>일별 매출 추이</h2><p>선택 기간 순매출 · 만원</p></div></div><div className="daily-revenue-chart">{daily.map(([date, amount]) => <div key={date}><time>{date.slice(5)}</time><span><i style={{ width: `${Math.max((amount / maximumDaily) * 100, 2)}%` }} /></span><strong>{money(amount)}</strong></div>)}{!daily.length ? <p className="small-empty">표시할 일별 매출이 없습니다.</p> : null}</div></article>
