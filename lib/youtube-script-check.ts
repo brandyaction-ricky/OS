@@ -84,6 +84,11 @@ export function overlapWith(source: string) {
 // 원고 공정 정본 §8 (정본 묶음 v2.0, 2026-10-26): 공백 포함 490자 = 1분, measured on the v13 voice (6,669자 → 13분 40초).
 // 낭독 D (대표 2026-11-25: every longform 1.1× with short paragraph gaps, as 풀링형 364 → 405): 공백 포함 545자 = 1분. 숏폼 keeps 490.
 export const CHARS_PER_MINUTE = 545;
+const PARTICLE = "(?:에서|에게|에|를|을|보다|와|과|으로|로|의|는|은|도|만|까지|부터|처럼|이랑|랑|하고|가|이)";
+/** A number ending in 2 with a particle right after it (「2에서」 「12를」), not a unit (「2단」 「2가지」) or a decimal part (「1.2」 stays as it is read). */
+export const TWO_PARTICLE = new RegExp(`(?<![0-9.,])[0-9]*2${PARTICLE}(?=$|[\\s,.!?」"')…])`, "g");
+/** 대답 「네」 with a particle (「네나」 「네와」 「네라고」) or 너 as 「네가」: the voice reads it 「니」. */
+export const NE_PARTICLE = new RegExp(`(?<=^|[\\s"「'(“])네(?:가|게|나|와|로|를|도|만|라고|랑|하고)(?=$|[\\s,.!?」"')…])`, "g");
 // 풀링형 낭독 D (대표 2026-11-25, 풀링형 정본 v0.5 §2): Fish 0.94 → 문단 사이 0.3초 → 1.1배. 공백 뺀 글자 0.148초 → 1분 405자, 9분 ≈ 3,645자.
 export const PULLING_CHARS_PER_MINUTE = 405;
 
@@ -109,6 +114,9 @@ export function checkScriptBody(paragraphs: string[], targetMinutes: number | nu
     if (paragraph.includes("\n")) issues.push(`${n}번 문단 안에 줄바꿈이 있습니다.`);
     if (paragraph.length < 80 || paragraph.length > 300) issues.push(`${n}번 문단 ${paragraph.length}자 — 80~300자여야 합니다.`);
     for (const [kind, words] of BANNED) for (const word of words) if (bannedAt(paragraph, word)) issues.push(`${n}번 문단 ${kind} "${word}"`);
+    // 낭독 규칙 (대표 2026-11-25, 가족 영상 낭독 규칙 6판): 숫자 2에 조사가 붙으면 「이에서」처럼, 대답 「네」에 조사가 붙으면 「니」로 읽힌다.
+    for (const m of paragraph.matchAll(TWO_PARTICLE)) issues.push(`${n}번 문단 「${m[0].trim()}」 — 숫자 2 뒤에 조사를 붙이면 「이」로 읽혀요. 「2단」「2분의 1」처럼 단위를 붙이거나 말을 바꿔요.`);
+    for (const m of paragraph.matchAll(NE_PARTICLE)) issues.push(`${n}번 문단 「${m[0].trim()}」 — 「네」에 조사를 붙이면 「니」로 읽혀요. 대답이면 「네, 아니면 아니요로」처럼 쉼표로 떼고, 상대를 가리키면 「너」를 써요.`);
     const concept = paragraph.match(CONCEPT_NAME);
     if (concept) issues.push(`${n}번 문단 작업어 "${concept[0]}" — '축'·'결'을 개념 이름으로 쓰지 않습니다.`);
     const links = CHAIN.filter((link) => link.test(paragraph)).length;
