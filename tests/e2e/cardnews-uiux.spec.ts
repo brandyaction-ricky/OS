@@ -545,9 +545,10 @@ test("mobile export offers the next task and does not mark a failed download as 
   await exportCard(page);
   await page.setViewportSize({ width: 390, height: 844 });
   const top = page.locator(".yp-fl-act");
-  await top.getByRole("button", { name: "이미지 내려받기", exact: true }).click();
-  await expect(page.getByText(/연습 화면에서는 이미지를 만들지 않아요/).first()).toBeVisible();
-  await expect(top.getByRole("button", { name: "이미지 내려받기", exact: true })).toBeEnabled();
+  await page.reload();
+  await expect(page.getByText(/연습 화면에서는 카드 미리보기만 제공합니다/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "이미지 묶음 내려받기" })).toBeDisabled();
+  await expect(top.getByRole("button", { name: "이미지 내려받기", exact: true })).toHaveCount(0);
   await page.getByText("남은 화 게시 안 함", { exact: true }).click();
   await page.getByLabel("게시 안 함 이유").fill("검토중");
   await expect(page.getByRole("button", { name: "이유 저장" })).toBeDisabled();

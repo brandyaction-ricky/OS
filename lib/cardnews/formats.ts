@@ -142,7 +142,7 @@ const josa = (word: string, batchim: string, open: string) => {
 };
 // Owner rules carried into every format: the 진단 is paid (발행 키트 정본 · 2026-10-26), and '여러분' is not our voice (말투 정본).
 const BANNED: [RegExp, string][] = [[/무료\s*(진단|검사)/, "진단은 유료예요 — ‘무료 진단’이라고 쓰지 않아요"], [/여러분/, "‘여러분’은 쓰지 않아요 (말투 정본)"]];
-const editorialTerms = /원본|제공된|가상\s*장면|원고|정본/;
+const editorialTerms = /원본|제공된|가상\s*장면|원고|(?<![가-힣])정본/;
 export function firstCardLine(format: CardFormatId, slide: CardSlide) {
   return slideSpec(format, slide.type)?.fields.filter(field => !CARD_DRAW_FIELDS.includes(field.key))
     .map(field => plainCardText(slide.fields[field.key] ?? "").trim()).find(Boolean) || "작성 전";

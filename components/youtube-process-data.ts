@@ -402,7 +402,29 @@ const demoError = (status: number, code: string, message: string) => new ApiRequ
 const gateApply = (...args: Parameters<typeof applyGateAction>) => {
   try { return applyGateAction(...args); } catch (error) { throw error instanceof GateError ? demoError(error.status, error.code, error.message) : error; }
 };
+// Keep each practice tab independent while allowing a reload anywhere in the card flow.
+const cardSessionKey = "bos-demo-cards-v1";
+let cardSessionLoaded = false;
+function restoreCardSession() {
+  if (typeof window === "undefined" || cardSessionLoaded) return;
+  cardSessionLoaded = true;
+  const raw = window.sessionStorage.getItem(cardSessionKey);
+  if (!raw) return;
+  const saved = JSON.parse(raw) as { projects: YpProject[]; stages: [string, YpStagesView][]; trash: YpTrashed[] };
+  demoStore = [...saved.projects, ...demoProjects().filter(p => p.yp.topic.type !== "card")];
+  demoTrash.push(...saved.trash);
+  for (const [id, stages] of saved.stages) demoStages.set(id, stages);
+}
+function saveCardSession(project: YpProject) {
+  if (project.yp.topic.type !== "card" || typeof window === "undefined") return;
+  const projects = demoProjects().filter(p => p.yp.topic.type === "card");
+  const trash = demoTrash.filter(item => item.project.yp.topic.type === "card");
+  const ids = new Set([...projects, ...trash.map(item => item.project)].map(p => p.id));
+  const stages = [...demoStages].filter(([id]) => ids.has(id));
+  window.sessionStorage.setItem(cardSessionKey, JSON.stringify({ projects, stages, trash }));
+}
 function demoClient(): YpClient {
+  restoreCardSession();
   const find = (id: string) => {
     const project = demoProjects().find(row => row.id === id);
     if (!project) throw demoError(404, "YOUTUBE_PROJECT_NOT_FOUND", "프로젝트를 찾지 못했습니다.");
@@ -411,7 +433,7 @@ function demoClient(): YpClient {
   const stagesOf = (project: YpProject) => { if (!demoStages.has(project.id)) demoStages.set(project.id, demoFilledStages(project)); return demoStages.get(project.id)!; };
   const withCardSummary = (project: YpProject, include?: boolean) => include && project.yp.topic.type === "card"
     ? { ...project, cardSummary: cardListSummary(stagesOf(project).cards.data, project.yp.stage) } : project;
-  const put = (next: YpProject) => { demoStore = demoProjects().map(row => row.id === next.id ? next : row); return structuredClone(next); };
+  const put = (next: YpProject) => { demoStore = demoProjects().map(row => row.id === next.id ? next : row); saveCardSession(next); return structuredClone(next); };
   const bump = (project: YpProject, yp: YpProject["yp"] = project.yp) => put({ ...project, version: project.version + 1, updatedAt: new Date().toISOString(), yp });
   const add = (title: string, input: YpTopicInput, multiFrom?: string) => {
     const now = new Date().toISOString();
@@ -485,6 +507,7 @@ function demoClient(): YpClient {
       const made = add(title, { kind: "card", target: input.from === "none" ? input.target : "원본과 같아요", note: input.from === "none" ? input.note ?? "" : "" });
       const project = put({ ...made, yp: { ...gateApply(made, "topic", "confirm", { actor: DEMO_ME, now }), ...(from ? { cardFrom: { kind: from.yp.topic.type === "short" ? "short" as const : "longform" as const, id: from.id, title: from.title } } : input.from === "threads" ? { cardFrom: { kind: "threads" as const, id: input.itemId, title } } : {}) } });
       demoStages.set(project.id, { ...stagesOf(project), cards: { id: null, version: 0, data: { ...emptyStage("cards", "card"), focus: input.from === "none" ? "" : input.focus ?? "", recommend: initialCardRecommendation(project.yp.cardFrom?.kind ?? "none"), source: { kind: from ? (from.yp.topic.type === "short" ? "short" : "longform") : input.from === "threads" ? "threads" : "none", title, text: from ? "[예시] 원고" : "", at: now } } } });
+      saveCardSession(project);
       return structuredClone(project);
     },
     cardSources: async () => [...projectCardSources(demoProjects()), { id: "demo-approved-thread", from: "threads", kind: "threads", title: "[예시] 스레드 글", updatedAt: daysAgo(0) }],
@@ -580,6 +603,7 @@ function demoClient(): YpClient {
       }
       const stage = { id: current.id ?? `demo-${kind}-${id}`, version: current.version + 1, data } as YpStageView<typeof kind>;
       demoStages.set(id, { ...stages, [kind]: stage });
+      saveCardSession(project);
       return structuredClone({ stage, project });
     },
     // The demo has no MYIN site: it records what MYIN would answer, with the production address shape.
@@ -727,12 +751,14 @@ function demoClient(): YpClient {
       checkVersion(project.version, expectedVersion);
       demoStore = demoProjects().filter(row => row.id !== id);
       demoTrash.unshift({ project, trash: { at: new Date().toISOString(), by: DEMO_ME, name: "리키", reason, stage: project.yp.stage } });
+      saveCardSession(project);
     },
     restore: async id => {
       const item = demoTrash.find(row => row.project.id === id);
       if (!item) throw demoError(404, "NOT_IN_TRASH", "휴지통에 없는 영상이에요.");
       demoTrash = demoTrash.filter(row => row !== item);
       demoStore = [item.project, ...demoProjects()];
+      saveCardSession(item.project);
     },
     purge: async id => {
       const item = demoTrash.find(row => row.project.id === id);
@@ -740,6 +766,7 @@ function demoClient(): YpClient {
       const left = trashDaysLeft(item.trash.at);
       if (left > 0) throw demoError(409, "PURGE_TOO_EARLY", `휴지통에 넣은 지 30일이 지나야 영구 삭제할 수 있어요. ${left}일 남았어요.`);
       demoTrash = demoTrash.filter(row => row !== item);
+      saveCardSession(item.project);
     },
     short: async id => structuredClone(demoShort(find(id))),
     saveShort: async (id, expectedVersion, patch) => {

@@ -657,7 +657,7 @@ export function CardExportScreen({ page, header }: { page: YpPage; header: React
     : !evidence.postedAt ? { label: "인스타그램에 올렸어요", selector: "[data-card-posted]" }
     : { label: "게시 주소 입력", selector: "[data-card-url]" };
   return <YpFrame page={page} view={5} action={action} todo={todo}
-    mobileAction={project.yp.stage === "upload" && !ready ? { kind: "button", label: nextTask.label, busy: Boolean(busy), onClick: () => {
+    mobileAction={project.yp.stage === "upload" && !ready && !(page.demo && remainingZip) ? { kind: "button", label: nextTask.label, busy: Boolean(busy), onClick: () => {
       const target = document.querySelector<HTMLElement>(nextTask.selector);
       if (target instanceof HTMLInputElement) { target.focus(); target.scrollIntoView({ block: "center" }); } else target?.click();
     } } : undefined} header={header} title="내보내기" sub="이미지를 내려받아 인스타그램에 올리고, 올린 주소를 남긴 뒤 끝내요.">
@@ -669,12 +669,13 @@ export function CardExportScreen({ page, header }: { page: YpPage; header: React
       {project.yp.stage === "done" && !publication && <button type="button" className="yp-btn yp-pri" disabled={!ready || Boolean(busy)} onClick={() => void finish()}>게시 기록 확정</button>}
       {!publication && <p className="yp-hint" role="status">{cards.data.exported?.downloadedEpisodes?.length ? `내보냄 · ${cards.data.exported.downloadedEpisodes.length}/${progress.episodes}화` : "승인 · 내보내기 준비"}</p>}
       <YpSection n={1} title="이미지 · 캡션" gq={draft ? `${draft.slides.length}장 · 1080 × 1350` : ""}>
+        {page.demo && <p className="yp-hint">연습 화면에서는 카드 미리보기만 제공합니다. PNG 다운로드는 로그인한 작업 공간에서 이용할 수 있어요.</p>}
         {draft ? <CardPhotos.Provider value={photos}><div className="yp-card-strip">{draft.slides.map((_, index) => <CardPreview key={index} draft={draft} index={index} width={120} />)}</div></CardPhotos.Provider> : null}
         <div className="yp-row-btns" style={{ marginTop: 10 }}>
           {(draft && toonUploads(draft).length > 1 ? toonUploads(draft) : [null]).map((post, at) => {
             // 웹툰형 goes up one 화 per post, so each 화 is its own ZIP (대표 2026-11-04).
             const name = post && draft ? draft.slides[post.from].fields.episode?.trim() || `${at + 1}화` : "", key = post ? `zip${at + 1}` : "zip";
-            return <button key={key} data-card-zip={at + 1} type="button" className={at ? "yp-btn" : "yp-btn yp-pri"} disabled={!draft || Boolean(busy)} onClick={() => void run(key, async () => {
+            return <button key={key} data-card-zip={at + 1} type="button" className={at ? "yp-btn" : "yp-btn yp-pri"} disabled={page.demo || !draft || Boolean(busy)} onClick={() => void run(key, async () => {
               saveBlob(await page.client!.cardsFile(project.id, post ? { zip: true, upload: at + 1 } : { zip: true }), `카드뉴스-${projectName(project).slice(0, 30)}${post ? `-${name}` : ""}.zip`);
               if (!publication && !cards.data.exported?.downloadedEpisodes?.includes(at + 1)) await persistEvidence({ downloaded: true, episode: at + 1 });
             })}>
