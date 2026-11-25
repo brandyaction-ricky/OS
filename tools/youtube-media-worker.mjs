@@ -643,9 +643,13 @@ export function styleStoryboard(videoDir, myinDir, style, file = "myin_storyboar
  * paragraphs with it again. Returns how many paragraphs were taken.
  */
 export const REUSE_MARK = "_이전음성.txt";
-export function reuseEarlierVoice(work, texts, donorWorks) {
+/** The tempo a voice folder was made at (풀링형 낭독 D writes voice_tempo.txt; older voices are 1). */
+export const voiceTempoOf = (voiceDir) => { try { return readFileSync(path.join(voiceDir, "voice_tempo.txt"), "utf8").trim() || "1"; } catch { return "1"; } };
+/** The earlier run whose voice a fresh voice may reuse: same tempo, so a sped-up voice never takes a paragraph at the old pace. */
+export const voiceDonor = (donorWorks, tempo = "1") => donorWorks.find((dir) => existsSync(path.join(dir, "voice", "os_voice", "speech.txt")) && voiceTempoOf(path.join(dir, "voice", "os_voice")) === tempo);
+export function reuseEarlierVoice(work, texts, donorWorks, tempo = "1") {
   const voiceDir = path.join(work, "voice", "os_voice");
-  const donor = donorWorks.find((dir) => existsSync(path.join(dir, "voice", "os_voice", "speech.txt")));
+  const donor = voiceDonor(donorWorks, tempo);
   if (!donor) return 0;
   const from = path.join(donor, "voice", "os_voice");
   const json = (file) => { try { return JSON.parse(readFileSync(file, "utf8")); } catch { return {}; } };
@@ -701,6 +705,8 @@ export function recycleVoice(job, voiceDir) {
   console.log(`myin voice recycled from ${job.recycle.from}: ${cuts.map(([a, b]) => `${a}–${b}`).join(", ")} s`);
 }
 
+const PULLING_TEMPO = "1.1", PULLING_PARA_GAP = "0.27";   // 0.3 s between paragraphs before the 1.1× (the sample the owner chose)
+
 export async function processMyinWords() {
   if (!myinPkg || (local && !localVoice())) return false;
   const job = await call({ action: "myin_claim", ...(local ? { engine: engine() } : { ...shortClaim, ...pcField }) });
@@ -714,6 +720,11 @@ export async function processMyinWords() {
     const voiceDir = path.join(work, "voice", voiceJob);
     mkdirSync(voiceDir, { recursive: true });
     const speaker = myinVoiceEnv(job);
+    // 풀링형 낭독 D (대표 2026-11-25, 풀링형 정본 v0.5): Fish 0.94 as always, then each paragraph sound 1.1× (pitch kept) and 0.3 s between
+    // paragraphs before that speed-up — the engine does it where it writes pNN_t.wav, so the words, subtitles, checks and re-voiced
+    // paragraphs all use the faster sound. A voice that already exists keeps the tempo it was made at.
+    const tempo = existsSync(path.join(voiceDir, "voice.wav")) ? voiceTempoOf(voiceDir) : job.pulling ? PULLING_TEMPO : "1";
+    if (tempo !== "1") Object.assign(speaker.env, { VOICE_TEMPO: tempo, VOICE_PARA_GAP: PULLING_PARA_GAP });
     for (const paragraph of speaker.onPc || job.recycle ? [] : job.paragraphs) {
       const n = String(paragraph.index).padStart(2, "0");
       const raw = path.join(voiceDir, `p${n}_raw.wav`), pcm = path.join(voiceDir, `p${n}.wav`);
@@ -767,13 +778,14 @@ export async function processMyinWords() {
       if (!hasVoice) throw Object.assign(new Error("the voice to fix is gone from this render PC"), { code: "MYIN_VOICE_FIX_NO_VOICE" });
     } else {
       const earlier = (Array.isArray(job.earlier) ? job.earlier : []).filter((id) => /^[0-9a-f-]{36}$/.test(id)).map((id) => path.join(myinWork, id));
-      const reused = earlier.length && !existsSync(path.join(voiceDir, "voice.wav")) ? reuseEarlierVoice(work, job.paragraphs.map((p) => p.text), earlier) : 0;
+      const reused = earlier.length && !existsSync(path.join(voiceDir, "voice.wav")) ? reuseEarlierVoice(work, job.paragraphs.map((p) => p.text), earlier, tempo) : 0;
       if (reused) console.log(`myin voice: ${reused}/${job.paragraphs.length} paragraphs kept from an earlier voice of this video`);
-      const donor = reused ? earlier.find((dir) => existsSync(path.join(dir, "voice", "os_voice", "speech.txt"))) : null;   // as reuseEarlierVoice picks it
+      const donor = reused ? voiceDonor(earlier, tempo) : null;   // as reuseEarlierVoice picks it
       if (donor) await runOut(myinPython, [wordsScript, "snap", path.join(donor, "voice", "os_voice"), path.join(donor, "voice", "os_myin"), before]);
       current.step = "narration";
       try { await runAsync(speaker.python, ["stage_voice.py", script, voiceJob], { cwd: path.join(work, "tools", "mindmap_pipeline"), env }); }
       finally { for (const name of readdirSync(voiceDir)) if (name.endsWith(REUSE_MARK)) rmSync(path.join(voiceDir, name), { force: true }); }
+      if (tempo !== "1") writeFileSync(path.join(voiceDir, "voice_tempo.txt"), tempo);
     }
     // 들어 볼 문장 (his voice_audit): every sentence scored for breaks and long runs, worst first; stage 1 lists the ones worth a listen.
     // It runs beside the read check and the pause check (2026-11-25: 12 of the first pass's 17 minutes were these three one after another).

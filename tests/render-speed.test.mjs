@@ -20,3 +20,22 @@ test("음성 점검: audit beside read check → pause check; voice_fix joins vo
   assert.match(check, /pause_check_cache\.json/);
   assert.match(check, /\[round\(w\.start, 3\), round\(w\.end, 3\), w\.word\.strip\(\)\]/);   // pause_check_myin.py's own format
 });
+
+test("풀링형 낭독 D: the OS marks a 풀링형 longform voice; the render PC passes 1.1× and 0.27 s gaps, keeps an existing voice's tempo, reuses only same-tempo voices", async () => {
+  const run = readFileSync(new URL("../lib/server/myin-run.ts", import.meta.url), "utf8");
+  assert.match(run, /const pulling = !run\.layout && !run\.renderer && !run\.recycle && await pullingProject\(run\.sourceId, service\)/);
+  assert.match(run, /\.\.\.\(pulling \? \{ pulling: true \} : \{\}\)/);
+  assert.match(worker, /const PULLING_TEMPO = "1\.1", PULLING_PARA_GAP = "0\.27"/);
+  assert.match(worker, /existsSync\(path\.join\(voiceDir, "voice\.wav"\)\) \? voiceTempoOf\(voiceDir\) : job\.pulling \? PULLING_TEMPO : "1"/);
+  assert.match(worker, /Object\.assign\(speaker\.env, \{ VOICE_TEMPO: tempo, VOICE_PARA_GAP: PULLING_PARA_GAP \}\)/);
+  const { mkdtempSync, mkdirSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const path = await import("node:path");
+  const { voiceDonor } = await import("../tools/youtube-media-worker.mjs");
+  const root = mkdtempSync(path.join(tmpdir(), "tempo-"));
+  const donor = (name, tempo) => { const dir = path.join(root, name, "voice", "os_voice"); mkdirSync(dir, { recursive: true }); writeFileSync(path.join(dir, "speech.txt"), "x"); if (tempo) writeFileSync(path.join(dir, "voice_tempo.txt"), tempo); return path.join(root, name); };
+  const old = donor("old"), fast = donor("fast", "1.1");
+  assert.equal(voiceDonor([old, fast], "1.1"), fast);
+  assert.equal(voiceDonor([fast, old], "1"), old);
+  assert.equal(voiceDonor([old], "1.1"), undefined);
+});

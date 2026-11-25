@@ -15,7 +15,7 @@ import { assertScriptInputs, saveScriptBundle, scriptBundleSchema, scriptInputKe
 import { checkScenePlan, SCENE_PLAN_JSON_SCHEMA, scenePlanPrompt, youtubeSceneRuleRefs } from "./youtube-scenes";
 import { checkPronunciation, pronunciationPrompt, PRONUNCIATION_JSON_SCHEMA } from "./youtube-voice-worker";
 import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
-import { columnMaterials, myinRecyclePhotos, myinRunWithWords, saveMyinStoryboard, storyboardJson } from "./myin-run";
+import { columnMaterials, myinRecyclePhotos, myinRunWithWords, pullingProject, saveMyinStoryboard, storyboardJson } from "./myin-run";
 import { myinPhotoForQuery } from "./myin-photo-candidates";
 import { checkMyinStoryboardResult, checkShortStoryboardResult, checkWebShortResult, MYIN_CARD_DOCS, MYIN_CARD_REFERENCE_DOCS, myinStoryboardCard, myinStoryboardInputKey, SHORT_CARD_DOCS, shortStoryboardCard, WEB_SHORT_CARD_DOCS, webShortCard, recyclePhotoIssues, type RecyclePhoto } from "./myin-storyboard-job";
 import { myinCleanScript } from "@/lib/myin-script";
@@ -25,7 +25,7 @@ import { diagramCatalogTypes } from "@/lib/diagram-catalog";
 import { readDiagramCatalog } from "./diagram-catalog";
 import { assertKitInputs, kitInputKey, kitJobCard, saveStaffKit } from "./youtube-kit-job";
 import { assertV1ColumnInputs, assertV1PlanInputs, assertV1RetitleInputs, assertV1ShortsInputs, displayName, isYoutubeV1, saveV1Column, saveV1Plan, saveV1Retitle, saveV1Shorts, v1ColumnCard, v1ColumnInputKey, v1PlanCard, v1PlanInputKey, v1RetitleCard, v1RetitleInputKey, v1ShortsCard, v1ShortsInputKey, v1ShortsSource, v1Stages, v1Title } from "./youtube-process-ai";
-import { SLOTS, STAGE_RECORD, ypFormat } from "@/lib/youtube-process/stages";
+import { SLOTS } from "@/lib/youtube-process/stages";
 import { packagingPick } from "@/lib/youtube-process/discover";
 import { projectName, topicKeywords } from "@/lib/youtube-process/project";
 // A staff AI's result that does not fit its shape is answered in Korean (로건 QA 10/30: six English refusals in a row).
@@ -145,13 +145,6 @@ export const staffJobWorkerSchema = z.discriminatedUnion("action", [
 ]);
 
 const service = () => createServiceSupabase();
-/** 기획안 영상 형식 of the project a 롱폼 run belongs to: a 풀링형 video gets no subscribe line in its 기획표. */
-async function pullingProject(sourceId: string) {
-  const plan = STAGE_RECORD.plan;
-  const { data } = await service().from("os_records").select("metadata").eq("parent_id", sourceId).eq("record_type", plan.recordType)
-    .eq(`metadata->>${plan.key}`, plan.value).is("archived_at", null).order("created_at", { ascending: false }).limit(1);
-  return ypFormat((data?.[0]?.metadata as { yp?: { format?: "keypulling" | "pulling" } } | undefined)?.yp) === "pulling";
-}
 const dbError = () => new ApiError(503, "STAFF_AI_JOB_UNAVAILABLE", "AI 작업을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.");
 const meta = (job: OsRecord) => jobMetaSchema.parse(job.metadata) as JobMeta;
 /** A 틈새 job carries the videos it was asked to group, frozen when it was requested. */

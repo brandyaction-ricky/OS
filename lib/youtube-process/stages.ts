@@ -343,9 +343,9 @@ export const PLAN_FIELD_KEY: Record<"titles" | "thumbs" | "format" | "opening" |
 
 // ── 구성안 (S4) ──
 export const CHARS_PER_MINUTE_V1 = 350;
-/** 풀링형 낭독 실측: 공백 뺀 글자 × 0.165초(2026-11-25 — 원리 1편 3,254자 538초 · 2편 3,077자 508초 · 3편 리메이크 4,343자 11분 55초).
- *  11-24에 정본을 따라 넣은 0.125초는 잘못된 값이었다. */
-export const PULLING_SEC_PER_CHAR = 0.165;
+/** 풀링형 낭독 D (대표 2026-11-25, 풀링형 정본 v0.5): 공백 뺀 글자 × 0.148초. Fish 0.94배 그대로 낭독한 실측은 0.165초
+ *  (원리 1편 3,254자 538초 · 2편 3,077자 508초 · 3편 리메이크 4,343자 713초); D는 문단 사이 0.3초 + 1.1배라 3편이 636초. */
+export const PULLING_SEC_PER_CHAR = 0.148;
 const secPerChar = (pulling: boolean) => pulling ? PULLING_SEC_PER_CHAR : 60 / CHARS_PER_MINUTE_V1;
 /** Spoken letters (no spaces, headings, tables or images) — the 예상 길이 count (3차 결정 12). */
 export function scriptChars(markdown: string) {

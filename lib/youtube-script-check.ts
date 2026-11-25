@@ -83,8 +83,8 @@ export function overlapWith(source: string) {
 }
 // 원고 공정 정본 §8 (정본 묶음 v2.0, 2026-10-26): 공백 포함 490자 = 1분, measured on the v13 voice (6,669자 → 13분 40초).
 export const CHARS_PER_MINUTE = 490;
-// 풀링형 (대표 2026-11-25): measured 0.165 s a letter without spaces (1편 3,254자 538초) → 364자/분, 9분 ≈ 3,270자.
-export const PULLING_CHARS_PER_MINUTE = 364;
+// 풀링형 낭독 D (대표 2026-11-25, 풀링형 정본 v0.5 §2): Fish 0.94 → 문단 사이 0.3초 → 1.1배. 공백 뺀 글자 0.148초 → 1분 405자, 9분 ≈ 3,645자.
+export const PULLING_CHARS_PER_MINUTE = 405;
 
 /**
  * Body rules that also apply when a staff member edits the narration text directly (no headings left to check).

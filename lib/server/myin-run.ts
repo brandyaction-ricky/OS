@@ -27,6 +27,7 @@ import { drawImageBytes } from "./card-draw";
 import { digestVoiceValue, voiceRunId, YOUTUBE_VOICE_BUCKET, YOUTUBE_VOICE_TIMING_BUCKET } from "./youtube-voice-run";
 import { readVoiceDictionary, reportVoiceDictionary } from "./youtube-voice-dictionary";
 import { dictionaryFiles, type VoiceDictionaryFiles } from "@/lib/youtube-process/voice-dictionary";
+import { STAGE_RECORD, ypFormat } from "@/lib/youtube-process/stages";
 
 // 마이인 v13 (owner decision 2026-10-19: the default format; design https://claude.ai/artifact/NCJ5qjYNeBYgfwjCnm1JgQ).
 // One run per approved script. Stage 1: the render PC picks each paragraph's breath commas with Logan's model (breath_pending, 로건
@@ -858,6 +859,14 @@ async function voiceHere(actor: { ownerId: string }, choice: "pc" | "local" | un
 }
 
 /** A render PC takes every voice no member's computer was given (`owner` absent); a member's computer (`owner`) takes only its own. */
+/** 기획안 영상 형식 of the project a 롱폼 run belongs to: a 풀링형 video gets no subscribe line in its 기획표 and is voiced faster (낭독 D). */
+export async function pullingProject(sourceId: string, service: Service = createServiceSupabase()) {
+  const plan = STAGE_RECORD.plan;
+  const { data } = await service.from("os_records").select("metadata").eq("parent_id", sourceId).eq("record_type", plan.recordType)
+    .eq(`metadata->>${plan.key}`, plan.value).is("archived_at", null).order("created_at", { ascending: false }).limit(1);
+  return ypFormat((data?.[0]?.metadata as { yp?: { format?: "keypulling" | "pulling" } } | undefined)?.yp) === "pulling";
+}
+
 export async function claimMyinWords(service: Service = createServiceSupabase(), short = false, pc?: string, owner?: string) {
   const claimed = await claim(service, "words_pending", wordsLeaseMs, (run) => fits(short)(run) && voiceFilter(owner)(run), undefined, undefined, owner ? undefined : { name: pc });
   if (!claimed) return { idle: true as const };
@@ -878,8 +887,10 @@ export async function claimMyinWords(service: Service = createServiceSupabase(),
     const dictionary = await readVoiceDictionary(service).catch(() => null);
     // 고친 문장만 다시: a fresh voice names the earlier runs whose unchanged paragraphs its render PC may reuse.
     const earlier = run.voiceOn && !run.words && !run.voiceFixes?.length ? (await voiceDonors(service, run.sourceId, run, record.created_at).catch(() => [])).map((d) => d.id) : [];
+    // 풀링형 낭독 D (대표 2026-11-25): the render PC speeds a fresh 풀링형 voice up 1.1× with short paragraph gaps; a longform only.
+    const pulling = !run.layout && !run.renderer && !run.recycle && await pullingProject(run.sourceId, service).catch(() => false);
     return { runId: record.id, lease: lease.token, ...voice, bundleUploadUrl: upload.signedUrl, ...(voiceUploadUrls.length === MYIN_VOICE_PARTS ? { voiceUploadUrls } : {}),
-      ...(earlier.length ? { earlier } : {}), ...(run.recycle ? { recycle: run.recycle } : {}),
+      ...(earlier.length ? { earlier } : {}), ...(run.recycle ? { recycle: run.recycle } : {}), ...(pulling ? { pulling: true } : {}),
       ...(preview ? { previewUploadUrl: preview.signedUrl } : {}), ...(run.layout ? { layout: run.layout } : {}), ...(run.renderer ? { renderer: run.renderer } : {}),
       ...(dictionary?.exists ? { dictionary: dictionaryFiles(dictionary.dictionary) } : {}),
       ...(run.voiceFixes?.length ? { fixes: run.voiceFixes.map(({ memo, say, read, video, take, pause }) => ({ memo, ...(say ? { say } : {}), ...(read ? { read } : {}), ...(video ? { video } : {}),
