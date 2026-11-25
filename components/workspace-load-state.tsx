@@ -17,5 +17,5 @@ export function WorkspaceLoadState({ loading, error, retry, children }: { loadin
 export function NumberLoading({ digits = 4 }: { digits?: number }) {
   return <span className="number-loading" role="status"><span className="sr-only">숫자를 불러오는 중</span>
     {Array.from({ length: digits }, (_, i) => <span key={i} className="number-loading-digit" aria-hidden="true">
-      <span style={{ animationDelay: `${-i * 0.37}s`, animationDuration: `${0.9 + i * 0.23}s` }}>0<br />1<br />2<br />3<br />4<br />5<br />6<br />7<br />8<br />9<br />0</span></span>)}</span>;
+      <span>0<br />1<br />2<br />3<br />4<br />5<br />6<br />7<br />8<br />9<br />0</span></span>)}</span>;
 }

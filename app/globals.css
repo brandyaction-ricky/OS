@@ -1053,11 +1053,18 @@ select option { background:var(--panel-2); color:var(--text); }
 .knowledge-code-block textarea:focus { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 8px; }
 
 }
-
+@layer os.legacy {
 /* 성과 숫자 (2026-11-25, components/count-up.tsx): figures run up when they arrive; grey rolling digits while they load. */
-.count-up { font-variant-numeric: tabular-nums; }
-.number-loading { display: inline-flex; gap: 1px; height: 1.15em; line-height: 1.15em; overflow: hidden; vertical-align: bottom; color: var(--muted); opacity: .5; font-variant-numeric: tabular-nums; }
-.number-loading-digit { display: inline-block; height: 1.15em; overflow: hidden; }
-.number-loading-digit > span { display: block; animation: number-roll 1s steps(10) infinite; }
-@keyframes number-roll { to { transform: translateY(-11.5em); } }
-@media (prefers-reduced-motion: reduce) { .number-loading-digit > span { animation: none; } }
+  .count-up { font-variant-numeric: tabular-nums; }
+  .number-loading { display: inline-flex; gap: 1px; height: 1.15em; line-height: 1.15em; overflow: hidden; vertical-align: bottom; color: var(--muted); opacity: .5; font-variant-numeric: tabular-nums; }
+  .number-loading-digit { display: inline-block; height: 1.15em; overflow: hidden; }
+  .number-loading-digit > span { display: block; animation: number-roll 1s steps(10) infinite; }
+  @keyframes number-roll { to { transform: translateY(-11.5em); } }
+  /* Each digit flicks at its own pace (the first child is the screen-reader text). */
+  .number-loading-digit:nth-child(3) > span { animation-duration: 1.13s; animation-delay: -.37s; }
+  .number-loading-digit:nth-child(4) > span { animation-duration: 1.36s; animation-delay: -.74s; }
+  .number-loading-digit:nth-child(5) > span { animation-duration: 1.59s; animation-delay: -1.11s; }
+  .number-loading-digit:nth-child(6) > span { animation-duration: 1.05s; animation-delay: -.5s; }
+  .number-loading-digit:nth-child(7) > span { animation-duration: 1.27s; animation-delay: -.9s; }
+  @media (prefers-reduced-motion: reduce) { .number-loading-digit > span { animation: none; } }
+}
