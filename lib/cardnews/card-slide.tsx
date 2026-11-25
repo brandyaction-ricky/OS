@@ -14,7 +14,7 @@ const PAD = 96, VISUAL = 864;   // 텍스트 좌우 안전 여백 80~96px · 도
 /** Font size, weight, line height and lines of each field (디자인 정본 §3–4): the PNG and the preview cut at the same place. */
 export const CARD_FIELD_STYLE: Record<string, { size: number; weight: number; leading: number; lines: number }> = {
   "cover.head": { size: 68, weight: 600, leading: 1.3, lines: 3 }, "cover.sub": { size: 30, weight: 400, leading: 1.5, lines: 2 },
-  "item.title": { size: 52, weight: 600, leading: 1.3, lines: 2 }, "item.body": { size: 30, weight: 400, leading: 1.55, lines: 4 },
+  "item.before": { size: 38, weight: 500, leading: 1.4, lines: 3 }, "item.title": { size: 52, weight: 600, leading: 1.3, lines: 2 }, "item.body": { size: 30, weight: 400, leading: 1.55, lines: 4 },
   "summary.line": { size: 52, weight: 600, leading: 1.3, lines: 3 },
   "pair.myth": { size: 36, weight: 500, leading: 1.4, lines: 2 }, "pair.fact": { size: 36, weight: 500, leading: 1.4, lines: 3 }, "pair.basis": { size: 26, weight: 400, leading: 1.5, lines: 2 },
   "line.text": { size: 52, weight: 600, leading: 1.35, lines: 4 }, "line.note": { size: 26, weight: 400, leading: 1.5, lines: 2 },
@@ -98,6 +98,12 @@ function Body({ draft, slide, index, theme, src }: { draft: CardDraft; slide: Ca
   const column: CSSProperties = { display: "flex", flexDirection: "column", flex: 1, justifyContent: "center" };
   const visual: CSSProperties = { display: "flex", flexDirection: "column", alignSelf: "center", width: VISUAL };
   const box = (background: string): CSSProperties => ({ display: "flex", flexDirection: "column", background, borderRadius: 24, padding: "36px 40px" });
+  if (draft.format === "list" && slide.type === "item" && slide.fields.before?.trim()) {
+    return <div style={column}>{f("title", title)}
+      <div style={{ ...box(theme.soft), marginTop: 48 }}><Label color={theme.sub}>바꾸기 전</Label>{f("before", ink)}</div>
+      <Arrow color={theme.blue} />
+      <div style={box(theme.blue)}><Label color={theme.white}>바꾼 뒤</Label>{f("body", blue)}</div>{photo(250)}</div>;
+  }
   if (slide.layout === "spotlight" && ["item", "step", "part"].includes(slide.type)) {
     return <div style={column}><Count n={countOf(draft, index)} color={theme.blue} />
       <div style={{ ...box(theme.blue), marginTop: 32 }}>{f("title", blue)}</div>
@@ -120,7 +126,8 @@ function Body({ draft, slide, index, theme, src }: { draft: CardDraft; slide: Ca
       {f("basis", sub, { marginTop: 48 })}</div></div>;
     // 병렬 항목: the one line first, then the body titles side by side in weight; only 단계 are joined by arrows (they are an order).
     case "summary": {
-      const titles = bodyTitles(draft, ["item", "compare", "step"]), steps = draft.format === "steps";
+      const worksheet = draft.format === "list" ? slide.fields.worksheet?.trim() : "";
+      const titles = worksheet ? worksheet.split(/\n+/).filter(Boolean) : bodyTitles(draft, ["item", "compare", "step"]), steps = draft.format === "steps";
       return <div style={column}>
         <Label color={theme.blue}>{draft.format === "webtoon" ? "오늘의 한 줄" : "정리"}</Label>{f("line", title)}
         {titles.length ? <div style={{ ...visual, marginTop: 56 }}>{titles.map((text, at) => <div key={at} style={{ display: "flex", flexDirection: "column" }}>

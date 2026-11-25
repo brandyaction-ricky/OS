@@ -23,7 +23,7 @@ const summary: CardSlideSpec = { type: "summary", label: "정리", min: 1, max: 
 
 export const CARD_FORMATS: Record<CardFormatId, CardFormat> = {
   list: { id: "list", name: "정리형", when: "방법 · 신호 · 이유를 나열할 때 (롱폼 원고에 잘 맞아요)", slides: [cover,
-    { type: "item", label: "항목", min: 3, max: 7, photo: true, fields: [{ key: "title", label: "소제목", max: 16 }, { key: "body", label: "설명", max: 60 }] }, summary, end] },
+    { type: "item", label: "항목", min: 3, max: 7, photo: true, fields: [{ key: "title", label: "소제목", max: 16 }, { key: "body", label: "설명", max: 60 }, { key: "before", label: "바꾸기 전 문장", max: 38, optional: true }] }, { ...summary, fields: [...summary.fields, { key: "worksheet", label: "메모 양식 (한 줄에 한 항목)", max: 48, optional: true }] }, end] },
   myth: { id: "myth", name: "오해와 진실형", when: "흔한 생각을 뒤집을 때 (저장 · 공유가 잘 돼요)", slides: [cover,
     { type: "pair", label: "오해와 진실", min: 3, max: 5, fields: [{ key: "myth", label: "흔한 생각", max: 28 }, { key: "fact", label: "실제", max: 50 }, { key: "basis", label: "근거", max: 40, optional: true }] }, summary, end] },
   quote: { id: "quote", name: "한 문장형", when: "통찰을 한 줄씩 (스레드 글 · 숏폼 대본에 잘 맞아요)", slides: [cover,

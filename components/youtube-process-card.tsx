@@ -322,7 +322,7 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
   const sampleProject = page.demo && project.id === "demo-p13";
   const openPlan = () => {
     setBrief(cards.brief || [project.title, project.yp.topic.target && `독자 · ${project.yp.topic.target}`,
-      cards.focus || project.yp.topic.note, planningOutline(chosen)].filter(Boolean).join("\n"));
+      cards.focus || project.yp.topic.note, chosen.includes("list") && "읽고 나서 독자가 할 일과 저장할 양식을 적어 주세요.", planningOutline(chosen)].filter(Boolean).join("\n"));
     setPlanning(true);
   };
   const rewrite = async () => {
@@ -386,6 +386,7 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
           <p>{CARD_FORMATS[sampleFormat].when}</p>
           {Object.entries(sample.slides[1].fields).map(([key,value]) => <p key={key}><small>{slideSpec(sampleFormat, sample.slides[1].type)?.fields.find(field => field.key === key)?.label}</small> {value}</p>)}
         </div></section>
+      {chosen.includes("list") && <a className="yp-btn" href="/card-information/compare.html" target="_blank" rel="noreferrer">정보전달형 기존·개선 6장 비교 ↗</a>}
       {cards.recommend?.why ? <p className="yp-hint">추천 이유: {cards.recommend.why}</p> : null}
       <div className="yp-row-btns">
         <button type="button" className="yp-btn yp-pri" disabled={!chosen.length || job.open} onClick={openPlan}>{cards.recommend?.formats.length === 2 && chosen.length === 2 && chosen.every(id => cards.recommend?.formats.includes(id)) ? "추천 2개로 초안 뽑기" : `AI로 초안 뽑기 (${chosen.length}개)`}</button>
@@ -445,6 +446,7 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
       </div>
       <div className="yp-card-tools" aria-label="카드 장 관리">
         {editable && (!page.demo || (sampleProject && draft.format === "steps" && draft.slides.length === 6)) && <button type="button" className="yp-btn yp-sm" disabled={rewriting || dirty || busy} onClick={() => void rewrite()}>{rewriting ? "다시 만드는 중…" : `${current + 1}장만 다시 만들기`}</button>}
+        {editable && draft.format === "list" && draft.slides[current].type === "item" && !draft.slides[current].fields.before && <button type="button" className="yp-btn yp-sm" onClick={() => structure({ ...draft, slides: draft.slides.map((row, i) => i === current ? { ...row, layout: row.layout === "spotlight" ? undefined : "spotlight" } : row) }, current)}>배치만 바꾸기</button>}
         <b>카드 {draft.slides.length} / {cardMaxSlides(draft.format)}장{toonUploads(draft).length > 1 ? ` · ${toonUploads(draft).length}화` : ""}</b>
         {editable && CARD_FORMATS[draft.format].slides.filter(item => item.max > item.min).map(item => <button key={item.type} type="button" className="yp-btn yp-sm" disabled={addCardSlide(draft, item.type) === draft} onClick={() => structure(addCardSlide(draft, item.type), current)}><Plus size={13} />{item.type === "toon" ? "다음 화 나누기" : `${item.label} 카드 추가`}</button>)}
         {editable && <button type="button" className="yp-btn yp-sm" disabled={!undo} onClick={() => { if (undo) { edit(undo); setOver({}); setSlide(Math.min(current, undo.slides.length - 1)); setUndo(null); } }}>장 편집 되돌리기</button>}

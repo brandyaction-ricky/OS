@@ -69,9 +69,10 @@ export const TOON_STORY = `\n\n## 웹툰형 — 이야기로 씁니다
 export function cardFormatSpec(formats: CardFormatId[]) {
   return formats.map(id => {
     const format = CARD_FORMATS[id];
+    const editorial = id === "list" ? "같은 독자가 겪는 한 장면에서 시작합니다. 항목마다 새 정보를 주세요. 바꿔 쓸 예시는 before에 원문, body에 수정문을 넣고, 독자가 가져갈 정리 장에는 worksheet에 짧은 빈칸 양식을 줄바꿈해 넣으세요. 마무리에는 바로 할 행동을 씁니다. " : "";
     const slides = format.slides.map(spec => `- ${spec.type} · ${spec.label}: ${spec.min === spec.max ? `${spec.min}장` : `${spec.min}~${spec.max}장`} — `
       + spec.fields.map(field => `${field.key}(${field.label}, ${field.max}자까지${field.optional ? ", 선택" : ""})`).join(", ") + (NOTES[spec.type] ? ` · ${NOTES[spec.type]}` : ""));
-    return `### ${format.name} (format: "${id}") — ${format.when}\n${slides.join("\n")}\n- 전체 ${cardMaxSlides(id)}장까지${id === "webtoon" ? ` · 한 화(웹툰 표지부터 다음 표지 앞까지) ${TOON_UPLOAD_MAX}장까지` : ""}`;
+    return `### ${format.name} (format: "${id}") — ${format.when}\n${editorial}\n${slides.join("\n")}\n- 전체 ${cardMaxSlides(id)}장까지${id === "webtoon" ? ` · 한 화(웹툰 표지부터 다음 표지 앞까지) ${TOON_UPLOAD_MAX}장까지` : ""}`;
   }).join("\n\n");
 }
 
