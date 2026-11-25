@@ -1,6 +1,6 @@
 // 숏폼 대본 정본 (03_Content/숏폼, owner direction 2026-10-28: "가장 중요한 게 주제 선정과 스크립트 확정"): §3 길이 · §5 첫 문장 ·
 // §6 말투 · §10 기계 검사 on a 숏폼 대본. The OS counts these when the staff AI submits and while the PD edits; its count wins.
-import { CHARS_PER_MINUTE, overlapWith } from "../youtube-script-check.ts";
+import { overlapWith } from "../youtube-script-check.ts";
 import { editableFields } from "./confirm.ts";
 import { compactCount } from "./discover.ts";
 import { topicEditable, type YpProject } from "./project.ts";
@@ -10,7 +10,9 @@ import type { YpShortScene } from "./short.ts";
 export const SHORT_SCRIPT = { min: 250, max: 370, max60: 490, first: 25, line: 24, hard: 30, longLines: 3, head: 20 } as const;
 /** 숏폼 목소리는 1.25배 빠르다(대표 2026-10-29, 대본 분량은 그대로) — 렌더 PC 숏폼 패키지 short_style.json의 voice_tempo와 같은 값. */
 export const SHORT_VOICE_TEMPO = 1.25;
-export const shortSeconds = (chars: number) => Math.round(chars / (CHARS_PER_MINUTE * SHORT_VOICE_TEMPO) * 60);
+// 숏폼 voice: the v13 pace (공백 포함 490자 = 1분) × its own 1.25 — not the longform's 낭독 D.
+const SHORT_CHARS_PER_MINUTE = 490;
+export const shortSeconds = (chars: number) => Math.round(chars / (SHORT_CHARS_PER_MINUTE * SHORT_VOICE_TEMPO) * 60);
 const MARK = /^\s*\[(관계|사람)\]\s*/;
 /** One line = one sentence = one screen (§6 형식); a leading [관계] or [사람] is the screen hint (§7), not spoken. */
 export function scriptLines(text: string) {

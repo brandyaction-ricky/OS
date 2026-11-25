@@ -82,7 +82,8 @@ export function overlapWith(source: string) {
   return (line: string) => canonOverlap(line, windows);
 }
 // 원고 공정 정본 §8 (정본 묶음 v2.0, 2026-10-26): 공백 포함 490자 = 1분, measured on the v13 voice (6,669자 → 13분 40초).
-export const CHARS_PER_MINUTE = 490;
+// 낭독 D (대표 2026-11-25: every longform 1.1× with short paragraph gaps, as 풀링형 364 → 405): 공백 포함 545자 = 1분. 숏폼 keeps 490.
+export const CHARS_PER_MINUTE = 545;
 // 풀링형 낭독 D (대표 2026-11-25, 풀링형 정본 v0.5 §2): Fish 0.94 → 문단 사이 0.3초 → 1.1배. 공백 뺀 글자 0.148초 → 1분 405자, 9분 ≈ 3,645자.
 export const PULLING_CHARS_PER_MINUTE = 405;
 
