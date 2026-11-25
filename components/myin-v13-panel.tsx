@@ -63,11 +63,13 @@ const PHASE: Record<string, string> = { breath_pending: "영상 만드는 컴퓨
 // Preview clips scale with the storyboard: one per metaphor scene plus the opening, about 1.5 minutes each (2026-10-26: 31 clips, 45 minutes).
 // ponytail: estimates, no per-scene progress — that needs the render PC to report it.
 // words: +4 min since 로건 호흡·타이밍 (2026-10-27) re-times the gaps between sentences with a transcription.
-// final: about 8 minutes per minute of video at 60 fps (2026-10-28: 52 minutes for 13 minutes at 30 fps; 60 fps from 2026-10-29).
+// final: 30 fps again from 2026-11-25 (owner; 60 fps took 4.7 minutes a video minute on the Mac mini — 3편 43 minutes for 9 minutes),
+// half the frames, about 2.5 minutes a video minute.
+const FINAL_MIN_PER_MIN = 2.5;
 const TYPICAL_MIN: Record<string, number> = { words_pending: 10, prep_pending: 5 };
 const finalWhere = (run: MyinRun) => run.localFinish ? `${run.localFinish.name}님 컴퓨터에서 만들어요 · 영상 만드는 컴퓨터로는 ${finalMinutes(run)}분쯤 걸려요 · 끝날 때까지 켜 두세요`
   : `영상 만드는 컴퓨터에서 ${finalMinutes(run)}분쯤 걸려요`;
-const finalMinutes = (run: MyinRun) => Math.ceil((run.words?.durationSeconds ?? 780) / 60 * 5);   // 60fps, 5-second pieces: a 13-minute video ≈ 1 hour on the Mac mini (2026-10-29 test)
+const finalMinutes = (run: MyinRun) => Math.ceil((run.words?.durationSeconds ?? 780) / 60 * FINAL_MIN_PER_MIN);
 // ponytail: a 숏폼's minutes are guesses from the A1 pilot (40 s, one draft of the whole short); measure after the first ones.
 const SHORT_MIN: Record<string, number> = { words_pending: 6, prep_pending: 3, clips_pending: 5, final_pending: 8 };
 // 롱폼 음성은 문단마다 한 번에 만든다(대표 2026-11-25, 맥미니 pkg-staging-20261125-guide): 3편 42문단 음성 약 3분 + 들어 볼 문장 ·
@@ -341,7 +343,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
   // 장면 그림 → 「완성」: the paid steps approved at the start ask nothing more (로건 11-13); a video started before that asks as it did.
   const finishDraft = async (target: MyinRun) => {
     if (!target.paidOk) {
-      if (!window.confirm(`지금 기획표로 완성해요. ${maker(target)}가 사진을 확정하고 구독 대사 음성을 만든 뒤 1080p 60fps 전체 영상까지 이어서 만들어요. 시작할까요?`)) return;
+      if (!window.confirm(`지금 기획표로 완성해요. ${maker(target)}가 사진을 확정하고 구독 대사 음성을 만든 뒤 1080p 30fps 전체 영상까지 이어서 만들어요. 시작할까요?`)) return;
       if (target.storyboard && !await askVoice(target.storyboard.cta.map((c) => c.line).join("\n"), "이미 만든 문장은 다시 들지 않아요", Boolean(target.voiceOnPc))) return;
     }
     await act("clips", () => post("/editor", "POST", { action: "save", projectId: sourceId }));
@@ -604,7 +606,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
         <div className="yt-run"><div className="yt-run-head">
           <span><strong>다 확인했으면 전체 영상을 만들어요</strong><br /><small>{finalWhere(run)} · 저장하지 않은 사운드 변경은 들어가지 않아요</small></span>
           <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => {
-            if (!window.confirm(`지금 사진과 사운드로 1080p 60fps 전체 영상을 만들어요. ${finalWhere(run)}. 저장하지 않은 사운드 변경은 들어가지 않아요. 만들까요?`)) return;
+            if (!window.confirm(`지금 사진과 사운드로 1080p 30fps 전체 영상을 만들어요. ${finalWhere(run)}. 저장하지 않은 사운드 변경은 들어가지 않아요. 만들까요?`)) return;
             void act("final", () => post("/myin", "PATCH", { action: "final", runId: run.id }));
           }}>{busy === "final" ? "시작하는 중…" : "전체 영상 만들기"}</button></div></div>
       </> : null}
