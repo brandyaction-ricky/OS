@@ -12,6 +12,7 @@ import { TaxInvoicePanel } from "./tax-invoice-panel";
 import { VatReference, VatReferenceDemo } from "./vat-reference";
 import { CompanyDocuments } from "./company-documents";
 import { ProfitLoss } from "./profit-loss";
+import { FinanceTilesLoading } from "./tiles-loading";
 import "./finance.css";
 
 /** A persistent, client-only adapter for the handoff's seven finance views. */
@@ -106,7 +107,7 @@ export function FinanceWorkspace() {
           </button>
         </div>
       ) : null}
-      {fetching?<p role="status">재무 내역을 불러오고 있습니다…</p>:null}
+      {fetching?<FinanceTilesLoading label="재무 내역을 불러오고 있습니다…" />:null}
       <div
         ref={host}
         className="finance-workspace"

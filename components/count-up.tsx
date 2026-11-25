@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { countText, parseNumbers as parse } from "@/lib/count-text";
+import { countText, ease, parseNumbers as parse, RUN_MS } from "@/lib/count-text.mjs";
 
 
 /**
@@ -22,8 +22,8 @@ export function CountUp({ children }: { children: ReactNode }) {
     let frame = 0, start = 0;
     const step = (now: number) => {
       start ||= now;
-      const t = Math.min(1, (now - start) / 700);
-      setShown(countText(text, from, 1 - (1 - t) ** 3));
+      const t = Math.min(1, (now - start) / RUN_MS);
+      setShown(t < 1 ? countText(text, from, ease(t)) : text);
       if (t < 1) frame = requestAnimationFrame(step);
     };
     frame = requestAnimationFrame(step);
