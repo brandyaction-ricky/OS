@@ -4,7 +4,7 @@
 // The look is the MYIN 카드뉴스 디자인 정본 (2026-11-02): white body cards, a blue cover and ending, Pretendard 400 · 500 · 600 at its
 // sizes for 1080 × 1350, 96px text margins, photos and diagrams within 80% of the width, and the explanation right under what it explains.
 import type { CSSProperties, ReactNode } from "react";
-import { characterAsset, CARD_MARK, CARD_SIZE, cardPage, plainCardText, toonAim, toonBattery, type CardDraft, type CardPhoto, type CardSlide } from "./formats.ts";
+import { GUIDE_CAST, slideSpec, characterAsset, CARD_MARK, CARD_SIZE, cardPage, plainCardText, toonAim, toonBattery, type CardDraft, type CardPhoto, type CardSlide } from "./formats.ts";
 
 /** 디자인 정본 §2. Blue cards carry white text and gold only for the marked phrase; gold never sits on a light card. */
 export const CARD_THEME = { paper: "#FFFFFF", soft: "#EFEFF1", blue: "#212CB0", gold: "#EED467", title: "#151D2C", ink: "#1E1D1D", sub: "#43474C", white: "#FFFFFF" };
@@ -300,6 +300,22 @@ function ToonSlide({ draft, slide, index, theme, src }: { draft: CardDraft; slid
 /** Card `index` of `draft` at 1080 × 1350; `photos` maps a photo's path to an address the drawing can load (a signed URL, or a data URL in the PNG). */
 export function CardSlideView({ draft, index, photos, characterSrc, theme = CARD_THEME }: { draft: CardDraft; index: number; photos?: Record<string, string>; characterSrc?: string; theme?: Theme }) {
   const slide = draft.slides[index];
+  if (slide?.scene?.action && draft.format !== "webtoon" && draft.format !== "steps") {
+    const plan = slide.scene;
+    const spec = slideSpec(draft.format, slide.type);
+    const keys = spec?.fields.map(field => field.key).filter(key => key !== "worksheet" && slide.fields[key]?.trim()) ?? [];
+    const worksheet = slide.fields.worksheet?.trim();
+    const art = slide.photo && photos?.[slide.photo.path];
+    const guide = GUIDE_CAST.find(name => name === plan.character);
+    const src = art || characterSrc || (guide && "/myin-2d/" + guide + ".png");
+    return <div style={{ display: "flex", flexDirection: "column", width: W, height: H, padding: "70px 84px", background: "#191919", color: "#fff", fontFamily: "Pretendard" }}>
+      <span style={{ alignSelf: "flex-end", fontSize: 24 }}>{cardPage(draft,index)}</span>
+      {keys.map((key, n) => <div data-card-field={key} key={key} style={{ display: "flex", marginTop: n ? 16 : 0, fontWeight: n ? 400 : 600, fontSize: n ? 32 : 64, color: n ? "#fff" : "#93F46C", lineHeight: 1.35, whiteSpace: "pre-wrap", wordBreak: "keep-all" }}>{plainCardText(slide.fields[key])}</div>)}
+      <div style={{ display: "flex", flexDirection: "column", marginTop: "auto", background: "#FFFCF5", color: "#26362D", borderRadius: 24, padding: worksheet ? 34 : 0, overflow: "hidden" }}>
+        {src && <img alt={plan.character} src={src} width={worksheet ? 145 : 912} height={worksheet ? 90 : 495} style={{ alignSelf: worksheet ? "flex-end" : "center", objectFit: art && !worksheet ? "cover" : "contain" }} />}
+        {worksheet?.split(/\n+/).map((line,i) => <div key={i} style={{ display: "flex", fontSize: 29, paddingTop: 16, paddingBottom: 64, borderBottom: "2px solid #A8B6AE" }}>{line}</div>)}
+      </div></div>;
+  }
   const scene = draft.format === "list" && slide?.scene?.kind === "character" && ["cover", "item", "end"].includes(slide.type) ? slide.scene : undefined;
   const asset = scene && characterAsset(scene.character);
   const editorial = draft.format === "list" && slide?.scene;

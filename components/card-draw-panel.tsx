@@ -24,7 +24,7 @@ export async function referenceSheet(urls: string[]) {
 /** `children`: the photo buttons the 「AI로 그리기」 button sits beside. `brief`: a 웹툰 card's own 장면 and 나오는 사람. `onFile`: puts a pasted or
  * dropped picture on the card (true once it is there). `label`: the card, as 「22장」. */
 export function CardDrawPanel({ page, projectId, photo, onPhoto, onFile, label, brief, defaultStyle = "simple", children }: { page: YpPage; projectId: string; photo?: CardPhoto;
-  onPhoto: (photo: CardPhoto) => void; onFile: (file: File) => Promise<boolean>; label: string; brief?: { scene: string; cast: string }; defaultStyle?: CardDrawStyle; children: ReactNode }) {
+  onPhoto: (photo: CardPhoto) => void; onFile: (file: File) => Promise<boolean>; label: string; brief?: { scene: string; cast: string; guideCharacter?: string }; defaultStyle?: CardDrawStyle; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [scene, setScene] = useState("");
   const [style, setStyle] = useState<CardDrawStyle>(defaultStyle);
@@ -99,13 +99,13 @@ export function CardDrawPanel({ page, projectId, photo, onPhoto, onFile, label, 
   const run = async (what: string, work: () => Promise<void>) => { setBusy(what); try { await work(); } catch (reason) { page.fail(reason); } finally { setBusy(""); } };
   const draw = () => run("draw", async () => {
     if (!await cost.confirm({ model, amount, detail: `그림 1장${refs.length ? ` · 캐릭터 그림 ${refs.length}장 참고` : ""}`, note: "GPT 크레딧(매달 500달러)에서 나가요. 그림은 설명용이에요 — 실제 기록처럼 쓰지 않아요.", ok: "그리기" })) return;
-    onPhoto(await client.cardDraw(projectId, { scene: scene.trim(), style, quality, refs }));
+    onPhoto(await client.cardDraw(projectId, { scene: scene.trim(), style, quality, refs, guideCharacter: brief?.guideCharacter }));
   });
   const picked = refs.map(id => characters?.find(row => row.id === id)).filter((row): row is CardCharacterView => Boolean(row));
   const step = (key: string) => setDone(current => current.includes(key) ? current : [...current, key]);
   // Some browsers keep the clipboard closed (the app's own browser pane): the sheet is saved as a file and the words shown to copy by hand.
   const copySheet = () => run("sheet", async () => {
-    const blob = await referenceSheet(picked.map(row => row.url));
+    const blob = await referenceSheet([...(brief?.guideCharacter ? ["/myin-2d/" + brief.guideCharacter + ".png"] : []), ...picked.map(row => row.url)]);
     try { await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]); setHint(""); }
     catch {
       const link = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: "참고그림.png" });
@@ -115,7 +115,7 @@ export function CardDrawPanel({ page, projectId, photo, onPhoto, onFile, label, 
     step("sheet");
   });
   const copyPrompt = () => run("prompt", async () => {
-    const text = myGptDrawPrompt(scene, style, picked.map(row => row.name));
+    const text = brief?.guideCharacter ? `첨부한 마이인 2D ${brief.guideCharacter}의 비율, 얼굴, 선과 고유색을 그대로 따르세요. 가로 장면, 글자 없이. ${scene}` : myGptDrawPrompt(scene, style, picked.map(row => row.name));
     try { await navigator.clipboard.writeText(text); setPromptText(""); } catch { setPromptText(text); }
     setCopiedFor(label); step("prompt");
   });
@@ -170,8 +170,8 @@ export function CardDrawPanel({ page, projectId, photo, onPhoto, onFile, label, 
       <button type="button" className="yp-btn yp-sm" disabled={busy === "draw"} onClick={() => setOpen(false)}>닫기</button></div>
     {dragging ? <div className="yp-card-drop" aria-hidden="true"><span>여기에 놓으면 {label}에 들어가요</span></div> : null}
     {mine ? <ol className="yp-card-mygpt" aria-label="내 GPT로 그리기">
-      <li className={done.includes("sheet") ? "yp-on" : ""}><b>1</b><button type="button" className="yp-btn yp-sm" disabled={!picked.length || Boolean(busy)} onClick={() => void copySheet()}>{busy === "sheet" ? "만드는 중…" : "참고 그림 복사"}</button>
-        <span className="yp-hint">{picked.length ? <><a href="https://chatgpt.com/" target="_blank" rel="noreferrer">ChatGPT</a> 새 대화창에 붙여 넣어요 (⌘V)</> : "고른 캐릭터 그림이 없어요 — 2번부터 해요"}</span></li>
+      <li className={done.includes("sheet") ? "yp-on" : ""}><b>1</b><button type="button" className="yp-btn yp-sm" disabled={(!picked.length && !brief?.guideCharacter) || Boolean(busy)} onClick={() => void copySheet()}>{busy === "sheet" ? "만드는 중…" : "참고 그림 복사"}</button>
+        <span className="yp-hint">{picked.length || brief?.guideCharacter ? <><a href="https://chatgpt.com/" target="_blank" rel="noreferrer">ChatGPT</a> 새 대화창에 붙여 넣어요 (⌘V)</> : "고른 캐릭터 그림이 없어요 — 2번부터 해요"}</span></li>
       <li className={done.includes("prompt") ? "yp-on" : ""}><b>2</b><button type="button" className="yp-btn yp-sm" disabled={Boolean(busy)} onClick={() => void copyPrompt()}>그림 설명 복사</button>
         <span className="yp-hint">이어서 붙여 넣고 보내요. 다 그려질 때까지 1~2분 기다려요</span></li>
       <li className={done.includes("paste") ? "yp-on" : ""}><b>3</b><button type="button" className="yp-btn yp-sm" disabled={Boolean(busy)} onClick={() => void pasteBack()}>그린 그림 붙여 넣기</button>

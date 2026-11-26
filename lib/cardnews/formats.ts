@@ -104,12 +104,17 @@ export const MYIN_CAST = {
   "탐색이": "이해",
   "파악이": "이해"
 } as const;
+export const GUIDE_CAST = ["탐색이", "전달이", "까닭이", "만남이", "성찰이", "약속이"] as const;
+export const MYIN_SCENE_CANON = `마이인 정보전달형 · 2D 장면 기준
+주제와 독자가 정해지면 장마다 무엇을 새로 알게 되는지 정하고, 실제로 보일 행동과 소품을 먼저 고릅니다. 그 행동을 표현할 인물을 선택합니다. 탐색이는 관찰·탐색, 전달이는 설명·공유, 까닭이는 원인·차이 확인, 만남이는 다른 사람과 시도, 성찰이는 되짚기·기록, 약속이는 다음 행동·약속에 어울립니다. 순서나 등장 횟수를 고정하지 않습니다.
+여섯 장 정리형의 기본 흐름은 독자의 질문 → 두 행동 비교 → 구체적인 한 동작 → 다른 상황에서 시험 → 독자가 직접 쓸 세 줄 → 오늘 할 행동입니다. 다른 하위 포맷은 그 포맷의 장 구조를 따릅니다. 주제를 바꾸면 장소·상대·소품·시선·손동작을 새로 기획합니다. 연속 동작을 비교할 때만 같은 인물과 장소를 의도적으로 이어 씁니다.
+1080×1350. 검정 바탕, 연두색 제목, 흰 본문과 하단 장면. 그림에는 글자를 그리지 않고 문구는 별도로 조판합니다. 그림은 가이드 원화의 눈, 머리와 몸 비율, 윤곽선, 고유 색과 소품을 유지한 평면 2D입니다. 기록 장은 작은 인물을 제목 옆에 두고 손으로 쓸 공간 세 줄을 남깁니다.`;
 export type MyinCharacter = keyof typeof MYIN_CAST;
 export const characterSceneSchema = z.object({
   kind: z.enum(["character", "comparison", "worksheet"]),
   character: z.enum(Object.keys(MYIN_CAST) as [MyinCharacter, ...MyinCharacter[]]).default("탐색이"),
   side: z.enum(["left", "right"]).default("right"), size: z.enum(["small", "large"]).default("large"),
-  dark: z.boolean().optional(), reason: z.string().max(120).optional(),
+  action: z.string().trim().min(2).max(320).optional(), dark: z.boolean().optional(), reason: z.string().max(120).optional(),
 });
 export interface CharacterScene {
   kind: "character" | "comparison" | "worksheet";
@@ -118,6 +123,7 @@ export interface CharacterScene {
   size: "small" | "large";
   dark?: boolean;
   reason?: string;
+  action?: string;
 }
 export function characterAsset(name: string) {
   return Object.hasOwn(MYIN_CAST, name) ? `/myin-card-cast/${name}.png` : undefined;
@@ -229,7 +235,7 @@ export function cardProblems(draft: Pick<CardDraft, "format" | "slides" | "capti
   draft.slides.forEach((slide, index) => {
     const spec = slideSpec(draft.format, slide.type);
     if (!spec) { blocking.push(`${index + 1}장은 이 포맷에 없는 카드예요`); return; }
-    if (slide.photo && !spec.photo) blocking.push(`${index + 1}장 ${spec.label}에는 사진을 넣지 않아요 — 도식이 그 자리예요`);
+    if (slide.photo && !spec.photo && !slide.scene?.action) blocking.push(`${index + 1}장 ${spec.label}에는 사진을 넣지 않아요 — 도식이 그 자리예요`);
     // An AI draft arrives without pictures, so a missing one is pointed out here and only 카드 확정 waits for it (cardsMissing).
     if (draft.format === "webtoon" && spec.photo && !slide.photo) warnings.push(`${index + 1}장 그림이 아직 없어요 — 「AI로 그리기」로 그려요`);
     for (const field of spec.fields) {

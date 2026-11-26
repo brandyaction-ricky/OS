@@ -97,3 +97,16 @@ test("AI submissions reject a repeated body card", () => {
   draft.slides[2] = structuredClone(draft.slides[1]);
   assert.throws(() => job.checkCardResult({ recommend: { formats: [], why: "" }, drafts: [draft] }, ["quote"]), /원고가 앞 장과 같아요/);
 });
+
+test("information scenes retain their cast and reject copied or missing actions", () => {
+  const draft = quote();
+  draft.slides.forEach((slide, i) => {
+    slide.scene = { kind: "character", character: formats.GUIDE_CAST[i], action: "행동 예시 " + i };
+  });
+  const result = { recommend: { formats: [], why: "" }, drafts: [draft] };
+  assert.equal(job.checkCardResult(result, ["quote"]).drafts[0].slides[2].scene.character, formats.GUIDE_CAST[2]);
+  draft.slides[3].scene.action = draft.slides[2].scene.action;
+  assert.throws(() => job.checkCardResult(result, ["quote"]), /그림 설명이 앞 장과 같습니다/);
+  delete draft.slides[3].scene;
+  assert.throws(() => job.checkCardResult(result, ["quote"]), /관찰 가능한 행동/);
+});

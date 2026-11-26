@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>영수증 사진 찾기 · 마이인 카드뉴스</title>
+<style>*{box-sizing:border-box}body{max-width:1200px;margin:auto;padding:4vw;background:#efeeea;color:#18191b;font:16px/1.6 system-ui}h1{line-height:1.15}main{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,265px),1fr));gap:24px}figure{margin:0}img{width:100%;display:block;aspect-ratio:4/5;background:#181818}figcaption{padding-top:8px}</style>
+<h1>그 영수증, 어디 찍어 뒀지?</h1><p>정보전달형 6장 · 별도로 생성한 AI 장면과 예시 원고를 DEV 카드 출력기로 렌더링합니다. 장을 누르면 원본 크기로 볼 수 있어요.</p><main></main>
+<script>
+const captions=['까닭이 · 흩어진 영수증 찾기','탐색이 · 두 가지 탐색 경로','전달이 · 전달 전에 확대하기','만남이 · 점심 결제로 시험하기','성찰이 · 찾을 단서 기록하기','약속이 · 다음 결제 때 바로 정리하기'];
+for(const [index,label] of captions.entries()){
+  const fig=document.createElement('figure'),link=document.createElement('a'),img=document.createElement('img'),caption=document.createElement('figcaption');
+  link.href=img.src='/myin-information/receipt/'+(index+1);img.alt=label;caption.textContent=(index+1)+'장 · '+label;link.append(img);fig.append(link,caption);document.querySelector('main').append(fig);
+}
+</script></html>

@@ -11,7 +11,7 @@ import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { CardSlideView } from "@/lib/cardnews/card-slide";
 import { CardError, cardsMissing, nextCards, pickedDraft } from "@/lib/cardnews/cards";
-import { characterSceneSchema, characterAsset, cardLetters, slideSpec, CAPTION_MAX, CARD_FORMAT_IDS, CARD_SIZE, CARD_SLIDE_TYPES, cardSignature, plainCardText, TOON_MAX_SLIDES, toonUploads, type CardDraft } from "@/lib/cardnews/formats";
+import { GUIDE_CAST, characterSceneSchema, characterAsset, cardLetters, slideSpec, CAPTION_MAX, CARD_FORMAT_IDS, CARD_SIZE, CARD_SLIDE_TYPES, cardSignature, plainCardText, TOON_MAX_SLIDES, toonUploads, type CardDraft } from "@/lib/cardnews/formats";
 import { storedZip } from "@/lib/cardnews/zip";
 import { initialCardRecommendation, isCardTestTitle, projectCardSources, visibleThreadSource, type CardSourceChoice } from "@/lib/cardnews/sources";
 import { applyGateAction, quietHours } from "@/lib/youtube-process/confirm";
@@ -236,7 +236,8 @@ export async function cardPng(draft: CardDraft, index: number) {
   const file = photo ? (await createServiceSupabase().storage.from(MEDIA_BUCKET).download(photo.path)).data : null;
   const photos = photo && file ? { [photo.path]: `data:${photo.path.endsWith(".png") ? "image/png" : "image/jpeg"};base64,${Buffer.from(await file.arrayBuffer()).toString("base64")}` } : undefined;
   const scene = draft.slides[index]?.scene;
-  const asset = scene?.kind === "character" && characterAsset(scene.character);
+  const guide = scene?.action && GUIDE_CAST.find(name => name === scene.character);
+  const asset = guide ? "/myin-2d/" + guide + ".png" : scene?.kind === "character" && characterAsset(scene.character);
   const characterSrc = asset ? "data:image/png;base64," + (await readFile(join(process.cwd(), "public", asset))).toString("base64") : undefined;
   const response = new ImageResponse(createElement(CardSlideView, { draft, index, photos, characterSrc }), { ...CARD_SIZE, fonts: await loadFonts() });
   return new Uint8Array(await response.arrayBuffer());

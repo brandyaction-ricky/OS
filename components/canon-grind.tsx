@@ -6,7 +6,7 @@ import { isCardTestProject } from "@/lib/cardnews/sources";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { apiRequest } from "@/lib/api-client";
-import { CARD_FORMAT_IDS, CARD_FORMATS, type CardFormatId } from "@/lib/cardnews/formats";
+import { MYIN_SCENE_CANON, CARD_FORMAT_IDS, CARD_FORMATS, type CardFormatId } from "@/lib/cardnews/formats";
 import { experimentPrompt, type GrindPrompts, BENCH_MAX, CARD_GRADES, fixList, GRADUATION, graduatedTwice, GRIND_KINDS, mergedGrades, resultKey, runSummary, scriptBundles, scriptFixes, scriptGraduated,
   type ScriptVerdict, type Bench, type BenchResult, type BenchRun, type CardCriterion, type CardDraftPart, type CardGrade, type ColumnDraft, type GrindKind, type ShortDraft, type ThreadsDraft } from "@/lib/canon-grind/grind";
 import { tokenEstimate } from "@/lib/cost";
@@ -190,6 +190,9 @@ export function CanonGrindScreen({ kind }: { kind: GrindKind }) {
       <span className={graduatedTwice(view.runs, kind) ? "yp-tag yp-ok" : "yp-tag"}>{graduatedTwice(view.runs, kind) ? "졸업 기준 충족 · 다음 정본 승인 요청" : `졸업: 두 번 연속 초안 ${GRADUATION.passRate * 100}% 이상이 모든 기준 ‘중’ 이상 · ‘상’ ${GRADUATION.tops}개 이상 · 자동 검사 지적 0`}</span>
     </div></section>
 
+    {kind === "card" && <details className="yp-card yp-card-b"><summary>정보전달형 디자인 기준 · 마이인 2D</summary>
+      {MYIN_SCENE_CANON.split("\n").slice(1).map(text => <p key={text}>{text}</p>)}
+    </details>}
     {view.canon && view.runs[0] && view.runs[0].canon !== view.canon.version ? <p className="yp-warn">마지막 시험 {view.runs[0].canon} · 현재 {view.canon.version}. 아래에서 같은 원본을 다시 뽑아 비교하세요.</p> : null}
     <YpSection n={1} title="시험 묶음" gq={`${view.bench.items.length}/${BENCH_MAX} · 정본이 바뀌어도 늘 같은 원본으로 뽑아요`}>
       {view.bench.items.length ? <ul className="yp-hist">{view.bench.items.map(item => <li key={item.id} style={{ alignItems: "center", gap: 10 }}>

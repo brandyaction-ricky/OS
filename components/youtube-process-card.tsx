@@ -12,7 +12,7 @@ import { CardSlideView } from "@/lib/cardnews/card-slide";
 import { formatSample } from "@/lib/cardnews/format-sample";
 import { mondayFields, planningOutline } from "@/lib/cardnews/planning";
 import { cardPublicationProgress, cardsMissing, instagramPostId } from "@/lib/cardnews/cards";
-import { MYIN_CAST, type CharacterScene, type MyinCharacter, addCardSlide, CARD_FORMAT_IDS, CARD_FORMATS, CARD_SIZE, firstCardLine, cardLetters, cardMaxSlides, cardProblems, moveCardSlide, parseCardHashtags, removeCardSlide, slideSpec, TOON_AIM, toonBattery, toonUploads, type CardDraft, type CardFormatId, type CardPhoto } from "@/lib/cardnews/formats";
+import { GUIDE_CAST, MYIN_CAST, type CharacterScene, type MyinCharacter, addCardSlide, CARD_FORMAT_IDS, CARD_FORMATS, CARD_SIZE, firstCardLine, cardLetters, cardMaxSlides, cardProblems, moveCardSlide, parseCardHashtags, removeCardSlide, slideSpec, TOON_AIM, toonBattery, toonUploads, type CardDraft, type CardFormatId, type CardPhoto } from "@/lib/cardnews/formats";
 import { isCardTestProject, type CardSourceChoice } from "@/lib/cardnews/sources";
 import { apiRequest } from "@/lib/api-client";
 import { modelName } from "@/lib/cost";
@@ -496,12 +496,12 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
             return <Fragment key={field.key}><label className="yp-field"><span className="yp-fld-h"><b>{field.label}</b>{field.optional ? <span className="yp-opt">선택</span> : null}
               <span className={n > field.max ? "yp-card-n yp-bad" : "yp-card-n"}>{n}/{field.max}</span>{over[current]?.includes(field.key) ? <span className="yp-tag yp-bad">넘침</span> : null}</span>
               <textarea className="yp-in" rows={field.max > 30 ? 3 : 2} value={value} aria-label={field.label} disabled={!editable} onCompositionStart={() => setComposing(true)} onCompositionEnd={() => setComposing(false)} onChange={event => set(event.target.value)} /></label>{aimRow}</Fragment>; })}
-          {spec?.photo && editable ? <div className="yp-field"><span className="yp-fld-h"><b>사진</b><span className="yp-opt">선택</span></span>
+          {(spec?.photo || scene?.action) && editable ? <div className="yp-field"><span className="yp-fld-h"><b>사진</b><span className="yp-opt">선택</span></span>
             <p className="yp-hint">실제 사진 · 자료를 넣거나 AI로 그려요. AI 그림은 설명용이라 실제 기록처럼 쓰지 않아요 (디자인 정본 §8).</p>
-            <CardDrawPanel key={draft.id} page={page} projectId={project.id} photo={draft.slides[current].photo} onPhoto={photo => placePhoto(photo, current)}
+            <CardDrawPanel key={draft.id + ":" + current} page={page} projectId={project.id} photo={draft.slides[current].photo} onPhoto={photo => placePhoto(photo, current)}
               onFile={file => putPhoto(file, current)} label={`${current + 1}장`}
               defaultStyle={draft.format === "webtoon" ? "webtoon" : "simple"}
-              brief={draft.format === "webtoon" ? { scene: draft.slides[current].fields.scene ?? "", cast: draft.slides[current].fields.cast ?? "" } : undefined}>
+              brief={draft.format === "webtoon" ? { scene: draft.slides[current].fields.scene ?? "", cast: draft.slides[current].fields.cast ?? "" } : scene?.action ? { scene: scene.action, cast: "", guideCharacter: GUIDE_CAST.find(name => name === scene.character) } : undefined}>
               <label className="yp-btn yp-sm"><ImagePlus size={13} aria-hidden="true" />{photoBusy ? "올리는 중…" : draft.slides[current].photo ? "사진 바꾸기" : "사진 넣기"}
                 <input type="file" accept="image/jpeg,image/png,image/webp" aria-label="사진 파일" hidden disabled={photoBusy} onChange={event => { const at = current; void putPhoto(event.target.files?.[0], at); event.target.value = ""; }} /></label>
               {draft.slides[current].photo ? <button type="button" className="yp-btn yp-sm" disabled={photoBusy} onClick={() => dropPhoto(current)}>사진 빼기</button> : null}
