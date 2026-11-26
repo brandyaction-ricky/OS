@@ -15,7 +15,7 @@ function resolveFills(fills: YpColumnItem["fills"], images: Record<string, strin
   const out: Record<string, ColumnFill> = {};
   for (const [slot, fill] of Object.entries(fills)) { const src = fill.url ?? (fill.path ? images[fill.path] : ""); if (src) out[slot] = { src }; }
   if (!out.video && videoUrl) out.video = { src: videoUrl };
-  if (!out.hero && heroPath && images[heroPath]) out.hero = { src: images[heroPath] };
+  if (!out.hero && heroPath && images[heroPath]) out.hero = { src: images[heroPath], caption: "" };
   return out;
 }
 const dataUri = (blob: Blob) => new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsDataURL(blob); });

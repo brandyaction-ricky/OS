@@ -355,7 +355,7 @@ export async function columnToMyin(actor: RequestActor, id: string, input: z.inf
         const bytes = await getSharp(undefined)(Buffer.from(await data.arrayBuffer()), { limitInputPixels: 60_000_000 })
           .resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer();
         images.push({ key: "img-hero", mime: "image/jpeg", base64: bytes.toString("base64") });
-        fills.hero = { src: "myin-image:img-hero" };
+        fills.hero = { src: "myin-image:img-hero", alt: check.meta.title, caption: "" };
       }
     }
     // The video place shows the longform on YouTube unless the PD put another link there (as on the export).
