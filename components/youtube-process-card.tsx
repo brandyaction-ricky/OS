@@ -484,7 +484,7 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
               <option value="">기본 레이아웃</option>{Object.entries(MYIN_CAST).map(([name, group]) => <option key={name} value={name}>{group} · {name}</option>)}</select></label>
             {scene?.kind === "character" && <><label>위치 <select value={scene.side} onChange={event => setScene({ ...scene, side: event.target.value as CharacterScene["side"] })}><option value="left">왼쪽</option><option value="right">오른쪽</option></select></label>
             <label>크기 <select value={scene.size} onChange={event => setScene({ ...scene, size: event.target.value as CharacterScene["size"] })}><option value="large">크게</option><option value="small">작게</option></select></label>
-            <label><input type="checkbox" checked={!!scene.dark} onChange={event => setScene({ ...scene, dark: event.target.checked })} /> 어두운 배경</label>{scene.reason && <small>{scene.reason}</small>}</>}
+            <label><input type="checkbox" checked={scene.dark !== false} onChange={event => setScene({ ...scene, dark: event.target.checked })} /> 어두운 배경</label>{scene.reason && <small>{scene.reason}</small>}</>}
           </fieldset>}
           {spec?.fields.map(field => { const value = draft.slides[current].fields[field.key] ?? ""; const n = cardLetters(value);
             const set = (text: string) => edit({ ...draft, slides: draft.slides.map((row, index) => index === current ? { ...row, fields: { ...row.fields, [field.key]: text } } : row) });

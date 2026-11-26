@@ -302,18 +302,37 @@ export function CardSlideView({ draft, index, photos, characterSrc, theme = CARD
   const slide = draft.slides[index];
   const scene = draft.format === "list" && slide?.scene?.kind === "character" && ["cover", "item", "end"].includes(slide.type) ? slide.scene : undefined;
   const asset = scene && characterAsset(scene.character);
-  const onBlue = ON_BLUE.has(slide?.type ?? "") || Boolean(scene?.dark);
+  const editorial = draft.format === "list" && slide?.scene;
+  if (editorial) {
+    const dark = editorial.dark !== false;
+    const ink = dark ? "#F7F7F5" : theme.title;
+    const accent = dark ? "#88EF59" : theme.blue;
+    const headline = slide.type === "cover" ? "head" : slide.type === "item" ? "title" : "line";
+    const body = slide.type === "cover" ? "sub" : slide.type === "end" ? "action" : "body";
+    const comparison = editorial.kind === "comparison" && slide.fields.before;
+    const worksheet = editorial.kind === "worksheet" && slide.fields.worksheet;
+    if ((scene && asset) || comparison || worksheet) return <div style={{ display: "flex", position: "relative", flexDirection: "column", width: W, height: H, padding: "86px 92px", background: dark ? "#181818" : "#F6F6F3", fontFamily: "Pretendard", overflow: "hidden" }}>
+      <div style={{ display: "flex", position: "absolute", top: 32, right: 36, borderRadius: 50, background: dark ? "#303030" : "#E6E6E2", color: ink, padding: "8px 20px", fontSize: 27 }}>{cardPage(draft,index)}</div>
+      <Field slide={slide} name={headline} tone={{ color: accent, accent }} style={{ fontSize: 76, lineHeight: 1.18, maxHeight: 280, fontWeight: 600, maxWidth: 840 }} />
+      {!comparison && !worksheet && <div style={{ display: "flex", flexDirection: "column", marginTop: 40, gap: 12 }}>
+        {["before", body].map(name => <Field key={name} slide={slide} name={name} tone={{ color: ink, accent }} style={{ fontSize: 38, lineHeight: 1.48, maxHeight: 240 }} />)}
+      </div>}
+      {scene && asset && <div style={{ display: "flex", position: "absolute", bottom: 0, ...(scene.side === "left" ? { left: 0 } : { right: 0 }), width: 860, height: 665, alignItems: "flex-end", justifyContent: scene.side === "left" ? "flex-start" : "flex-end" }}>
+        <div style={{ display: "flex", position: "absolute", width: 555, height: 555, top: 55, left: scene.side === "right" ? 10 : 220, borderRadius: "50%", background: "#64B6F5" }} />
+        {/* eslint-disable-next-line @next/next/no-img-element -- also rendered by next/og */}
+        <img alt={scene.character} src={characterSrc || asset} width={scene.size === "small" ? 460 : 660} height={scene.size === "small" ? 460 : 660} />
+      </div>}
+      {(comparison || worksheet) && <div style={{ display: "flex", flexDirection: "column", marginTop: "auto", background: "#FAFAF7", borderRadius: 26, padding: 52, gap: 42 }}>
+        {(comparison ? [["처음 떠오른 말", slide.fields.before], ["다시 적은 행동", slide.fields.body]] : slide.fields.worksheet.split("\n").filter(Boolean).map((line,i) => [String(i+1).padStart(2,"0"),line])).map(([label,value]) => <div key={label} style={{ display: "flex", flexDirection: "column", gap: 15, borderBottom: "2px solid #D7D8D5", paddingBottom: 28 }}><span style={{ color: theme.blue, fontSize: 28 }}>{label}</span><span style={{ color: theme.title, fontSize: 42, lineHeight: 1.35 }}>{plainCardText(value)}</span></div>)}
+      </div>}
+    </div>;
+  }
+  const onBlue = ON_BLUE.has(slide?.type ?? "");
   if (slide?.type === "toon" || slide?.type === "panel") return <div style={{ display: "flex", position: "relative", overflow: "hidden", width: W, height: H, background: theme.soft, fontFamily: "Pretendard" }}>
     <ToonSlide draft={draft} slide={slide} index={index} theme={theme} src={slide.photo ? photos?.[slide.photo.path] : undefined} /></div>;
   return <div style={{ display: "flex", flexDirection: "column", position: "relative", boxSizing: "border-box", width: CARD_SIZE.width, height: CARD_SIZE.height, padding: `128px ${PAD}px 160px`,
-    background: scene?.dark ? "#191B24" : onBlue ? theme.blue : slide?.type === "summary" ? theme.soft : theme.paper, color: theme.ink, fontFamily: "Pretendard" }}>
-    {scene && asset ? <div style={{ display: "flex", flexDirection: "column", height: "100%", gap: 28 }}>
-      {(slide.type === "cover" ? ["head", "sub"] : slide.type === "end" ? ["line", "action"] : ["title", "before", "body"]).map(name =>
-        <Field key={name} slide={slide} name={name} tone={{ color: onBlue ? theme.white : theme.title, accent: onBlue ? theme.gold : theme.blue }} />)}
-      <div style={{ display: "flex", marginTop: "auto", padding: 30, background: theme.white, border: "3px solid #DBDDED", borderRadius: 32, justifyContent: scene.side === "left" ? "flex-start" : "flex-end", alignItems: "center" }}>
-        {/* eslint-disable-next-line @next/next/no-img-element -- shared with PNG renderer */}
-        <img alt={scene.character} src={characterSrc || asset} width={scene.size === "small" ? 330 : 460} height={scene.size === "small" ? 330 : 460} />
-      </div></div> : slide ? <Body draft={draft} slide={slide} index={index} theme={theme} src={slide.photo ? photos?.[slide.photo.path] : undefined} /> : null}
+    background: onBlue ? theme.blue : slide?.type === "summary" ? theme.soft : theme.paper, color: theme.ink, fontFamily: "Pretendard" }}>
+    {slide ? <Body draft={draft} slide={slide} index={index} theme={theme} src={slide.photo ? photos?.[slide.photo.path] : undefined} /> : null}
     <div style={{ display: "flex", position: "absolute", left: PAD, right: PAD, bottom: 64, justifyContent: "space-between", alignItems: "center", fontSize: 16, color: onBlue ? theme.white : theme.sub }}>
       <Logo color={onBlue ? theme.white : theme.title} height={28} /><span>{cardPage(draft, index)}</span></div>
   </div>;
