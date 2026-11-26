@@ -147,6 +147,6 @@ test("an empty hero place takes final thumbnail A, on the screen and on MYIN (wh
   assert.match(send, /images\.push\(\{ key: "img-hero", mime: "image\/jpeg"/);
   assert.ok(send.indexOf('key: "img-hero"') < send.indexOf('coverKey: "img-hero"'), "the thumbnail is in images before the cover is chosen");
   const screen = await readFile("components/youtube-process-column.tsx", "utf8");
-  assert.match(screen, /if \(!out\.hero && heroPath && images\[heroPath\]\) out\.hero = \{ src: images\[heroPath\] \};/);
+  assert.match(screen, /if \(!out\.hero && heroPath && images\[heroPath\]\) out\.hero = \{ src: images\[heroPath\], caption: "" \};/);
   assert.match(screen, /const heroPath = fills\.hero \? "" : thumbPath;/);
 });

@@ -117,3 +117,12 @@ test("a column's fingerprint changes with its HTML or its places, not with the o
   assert.notEqual(columnSignature(item), columnSignature({ ...item, html: item.html.replace("본문 1", "본문 하나") }));
   assert.notEqual(columnSignature(item), columnSignature({ ...item, fills: { hero: { path: "b.png" } } }));
 });
+
+test("a filled place shows its description without the [place] label, and a caption-less fill (the thumbnail in the hero) shows none", () => {
+  const page = renderColumn(column(), { hero: { src: "https://cdn.example.com/thumb.jpg", caption: "" }, 1: { src: "https://cdn.example.com/one.jpg" } });
+  const hero = page.match(/<figure class="filled hero"[\s\S]*?<\/figure>/)[0];
+  assert.doesNotMatch(hero, /<figcaption>/);
+  const one = page.match(/<figure class="filled" data-slot="1"[\s\S]*?<\/figure>/)[0];
+  assert.match(one, /<figcaption>/);
+  assert.doesNotMatch(one, /<figcaption>\s*\[/);
+});
