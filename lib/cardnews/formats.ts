@@ -1,3 +1,4 @@
+import { z } from "zod";
 // 카드뉴스 포맷 목록 (설계서 2026-10-30 §2): what each format is made of — slide kinds, how many, and the letters each field may
 // hold. The screens, the AI job and the server check all read this one list; the 카드뉴스 정본 says how to write, not these numbers.
 // Limits count letters with spaces; they start from the font size and the 888px text width and are tuned while the 정본 is ground.
@@ -71,7 +72,57 @@ export const isCardFormat = (value: unknown): value is CardFormatId => typeof va
 
 /** A photo kept in the project's files (youtube/<project>/card/…), with its size so the card keeps its ratio. */
 export interface CardPhoto { path: string; w: number; h: number }
-export interface CardSlide { layout?: "spotlight"; type: CardSlideType; fields: Record<string, string>; photo?: CardPhoto }
+export const MYIN_CAST = {
+  "인연이": "관계",
+  "마음이": "관계",
+  "만남이": "관계",
+  "맞춤이": "관계",
+  "원만이": "관계",
+  "짝꿍이": "관계",
+  "친밀이": "관계",
+  "구현이": "성취",
+  "끝장이": "성취",
+  "추월이": "성취",
+  "향상이": "성취",
+  "만약이": "실행",
+  "방향이": "실행",
+  "약속이": "실행",
+  "자율이": "실행",
+  "효율이": "실행",
+  "인정이": "영향",
+  "주목이": "영향",
+  "해결이": "영향",
+  "육성이": "영향",
+  "전달이": "영향",
+  "성찰이": "의미",
+  "소신이": "의미",
+  "연결이": "의미",
+  "원칙이": "의미",
+  "까닭이": "이해",
+  "수집이": "이해",
+  "응용이": "이해",
+  "탐색이": "이해",
+  "파악이": "이해"
+} as const;
+export type MyinCharacter = keyof typeof MYIN_CAST;
+export const characterSceneSchema = z.object({
+  kind: z.enum(["character", "comparison", "worksheet"]),
+  character: z.enum(Object.keys(MYIN_CAST) as [MyinCharacter, ...MyinCharacter[]]).default("탐색이"),
+  side: z.enum(["left", "right"]).default("right"), size: z.enum(["small", "large"]).default("large"),
+  dark: z.boolean().optional(), reason: z.string().max(120).optional(),
+});
+export interface CharacterScene {
+  kind: "character" | "comparison" | "worksheet";
+  character: MyinCharacter;
+  side: "left" | "right";
+  size: "small" | "large";
+  dark?: boolean;
+  reason?: string;
+}
+export function characterAsset(name: string) {
+  return Object.hasOwn(MYIN_CAST, name) ? `/myin-card-cast/${name}.png` : undefined;
+}
+export interface CardSlide { scene?: CharacterScene; layout?: "spotlight"; type: CardSlideType; fields: Record<string, string>; photo?: CardPhoto }
 import type { CanonTrace } from "../youtube-process/canon-trace";
 export interface CardDraft {
   id: string; format: CardFormatId; slides: CardSlide[]; caption: string; hashtags: string[]; at: string; by: string;

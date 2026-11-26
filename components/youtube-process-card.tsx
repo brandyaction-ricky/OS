@@ -12,7 +12,7 @@ import { CardSlideView } from "@/lib/cardnews/card-slide";
 import { formatSample } from "@/lib/cardnews/format-sample";
 import { mondayFields, planningOutline } from "@/lib/cardnews/planning";
 import { cardPublicationProgress, cardsMissing, instagramPostId } from "@/lib/cardnews/cards";
-import { addCardSlide, CARD_FORMAT_IDS, CARD_FORMATS, CARD_SIZE, firstCardLine, cardLetters, cardMaxSlides, cardProblems, moveCardSlide, parseCardHashtags, removeCardSlide, slideSpec, TOON_AIM, toonBattery, toonUploads, type CardDraft, type CardFormatId, type CardPhoto } from "@/lib/cardnews/formats";
+import { MYIN_CAST, type CharacterScene, type MyinCharacter, addCardSlide, CARD_FORMAT_IDS, CARD_FORMATS, CARD_SIZE, firstCardLine, cardLetters, cardMaxSlides, cardProblems, moveCardSlide, parseCardHashtags, removeCardSlide, slideSpec, TOON_AIM, toonBattery, toonUploads, type CardDraft, type CardFormatId, type CardPhoto } from "@/lib/cardnews/formats";
 import { isCardTestProject, type CardSourceChoice } from "@/lib/cardnews/sources";
 import { apiRequest } from "@/lib/api-client";
 import { modelName } from "@/lib/cost";
@@ -305,6 +305,11 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
   }, [dirty, draft, composing, persistDraft]);
   const edit = (next: CardDraft) => { editRev.current += 1; draftRef.current = next; setDraft(next); setDirty(true); };
   const structure = (next: CardDraft, selected: number) => { if (!draft || next === draft) return; setUndo(draft); edit(next); setOver({}); setSlide(selected); };
+  const setScene = (scene?: CharacterScene) => {
+    if (draft) structure({ ...draft, slides: draft.slides.map((row, index) => index === current ? { ...row, scene } : row) }, current);
+  };
+
+
   if (!page.bundle || !project || !cards) return <YpFrame page={page} view={1} action={null} header={header} title="카드 만들기" sub="" />;
 
   const overList = Object.entries(over).filter(([index, fields]) => fields.length && Number(index) < (draft?.slides.length ?? 0))
@@ -317,6 +322,7 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
     action.extra = <>{action.notice}{action.extra}</>;
   }
   const current = draft?.slides[slide] ? slide : 0;
+  const scene = draft?.slides[current]?.scene;
   const spec = draft ? slideSpec(draft.format, draft.slides[current].type) : null;
   const addBlank = async () => { for (const format of chosen) if (!(await save({ add: format }))) return; };
   const sampleProject = page.demo && project.id === "demo-p13";
@@ -395,6 +401,7 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
       {sampleProject && !planning && <button type="button" className="yp-btn" onClick={() => { setChosen(["steps"]); setBrief("월요일마다 무거운 직장인 · 일요일 밤의 걱정을 월요일 첫 행동으로 옮긴다.\n" + planningOutline(["steps"])); setPlanning(true); }}>같은 주제로 개선 예시 비교</button>}</div>
       {planning && <section className="yp-card-b" aria-label="생성 전 기획안">
         <h3>생성 전 기획안 확인</h3><p>{planningOutline(chosen)}</p>
+        {chosen.includes("list") && <button type="button" className="yp-btn" disabled={brief.includes("캐릭터 해설형")} onClick={() => setBrief(value => (value + "\n캐릭터 해설형으로 기획해요. 표지에 주제와 어울리는 마이인 캐릭터를 고르고, 본문에는 행동 비교와 기록 양식을 넣어요.").trim())}>마이인 캐릭터 해설형 적용</button>}
         <label>독자 · 핵심 메시지 · 장별 전개<textarea value={brief} maxLength={1800} rows={5} onChange={event => setBrief(event.target.value)} /></label>
         <div className="yp-row-btns"><button className="yp-btn" onClick={() => setPlanning(false)}>취소</button>
         <button className="yp-btn yp-pri" disabled={!brief.trim() || !chosen.length || busy || dirty || job.open} onClick={async () => {
@@ -472,6 +479,13 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
         <div className="yp-card-fields">
           <h3>{current + 1}장 · {spec?.label}</h3>
           {editable ? <p className="yp-hint">가장 먼저 읽힐 구절 하나를 *별표*로 감싸면 파란색으로 보여요 (표지 · 마무리는 노란색).</p> : null}
+          {editable && draft.format === "list" && ["cover", "item", "end"].includes(draft.slides[current].type) && <fieldset className="yp-field"><legend>장면 디자인</legend>
+            <label>캐릭터 <select value={scene?.kind === "character" ? scene.character : ""} onChange={event => setScene(event.target.value ? { side: "right", size: "large", ...scene, kind: "character", character: event.target.value as MyinCharacter } : undefined)}>
+              <option value="">기본 레이아웃</option>{Object.entries(MYIN_CAST).map(([name, group]) => <option key={name} value={name}>{group} · {name}</option>)}</select></label>
+            {scene?.kind === "character" && <><label>위치 <select value={scene.side} onChange={event => setScene({ ...scene, side: event.target.value as CharacterScene["side"] })}><option value="left">왼쪽</option><option value="right">오른쪽</option></select></label>
+            <label>크기 <select value={scene.size} onChange={event => setScene({ ...scene, size: event.target.value as CharacterScene["size"] })}><option value="large">크게</option><option value="small">작게</option></select></label>
+            <label><input type="checkbox" checked={!!scene.dark} onChange={event => setScene({ ...scene, dark: event.target.checked })} /> 어두운 배경</label>{scene.reason && <small>{scene.reason}</small>}</>}
+          </fieldset>}
           {spec?.fields.map(field => { const value = draft.slides[current].fields[field.key] ?? ""; const n = cardLetters(value);
             const set = (text: string) => edit({ ...draft, slides: draft.slides.map((row, index) => index === current ? { ...row, fields: { ...row.fields, [field.key]: text } } : row) });
             const tail = draft.format === "webtoon" && editable && draft.slides[current].photo && value.trim() && field.key in TOON_AIM && (field.key !== "sfx" || toonBattery(value) !== null) ? field.key as keyof typeof TOON_AIM : null;

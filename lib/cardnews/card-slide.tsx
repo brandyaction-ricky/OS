@@ -4,7 +4,7 @@
 // The look is the MYIN 카드뉴스 디자인 정본 (2026-11-02): white body cards, a blue cover and ending, Pretendard 400 · 500 · 600 at its
 // sizes for 1080 × 1350, 96px text margins, photos and diagrams within 80% of the width, and the explanation right under what it explains.
 import type { CSSProperties, ReactNode } from "react";
-import { CARD_MARK, CARD_SIZE, cardPage, plainCardText, toonAim, toonBattery, type CardDraft, type CardPhoto, type CardSlide } from "./formats.ts";
+import { characterAsset, CARD_MARK, CARD_SIZE, cardPage, plainCardText, toonAim, toonBattery, type CardDraft, type CardPhoto, type CardSlide } from "./formats.ts";
 
 /** 디자인 정본 §2. Blue cards carry white text and gold only for the marked phrase; gold never sits on a light card. */
 export const CARD_THEME = { paper: "#FFFFFF", soft: "#EFEFF1", blue: "#212CB0", gold: "#EED467", title: "#151D2C", ink: "#1E1D1D", sub: "#43474C", white: "#FFFFFF" };
@@ -298,14 +298,22 @@ function ToonSlide({ draft, slide, index, theme, src }: { draft: CardDraft; slid
 }
 
 /** Card `index` of `draft` at 1080 × 1350; `photos` maps a photo's path to an address the drawing can load (a signed URL, or a data URL in the PNG). */
-export function CardSlideView({ draft, index, photos, theme = CARD_THEME }: { draft: CardDraft; index: number; photos?: Record<string, string>; theme?: Theme }) {
+export function CardSlideView({ draft, index, photos, characterSrc, theme = CARD_THEME }: { draft: CardDraft; index: number; photos?: Record<string, string>; characterSrc?: string; theme?: Theme }) {
   const slide = draft.slides[index];
-  const onBlue = ON_BLUE.has(slide?.type ?? "");
+  const scene = draft.format === "list" && slide?.scene?.kind === "character" && ["cover", "item", "end"].includes(slide.type) ? slide.scene : undefined;
+  const asset = scene && characterAsset(scene.character);
+  const onBlue = ON_BLUE.has(slide?.type ?? "") || Boolean(scene?.dark);
   if (slide?.type === "toon" || slide?.type === "panel") return <div style={{ display: "flex", position: "relative", overflow: "hidden", width: W, height: H, background: theme.soft, fontFamily: "Pretendard" }}>
     <ToonSlide draft={draft} slide={slide} index={index} theme={theme} src={slide.photo ? photos?.[slide.photo.path] : undefined} /></div>;
   return <div style={{ display: "flex", flexDirection: "column", position: "relative", boxSizing: "border-box", width: CARD_SIZE.width, height: CARD_SIZE.height, padding: `128px ${PAD}px 160px`,
-    background: onBlue ? theme.blue : slide?.type === "summary" ? theme.soft : theme.paper, color: theme.ink, fontFamily: "Pretendard" }}>
-    {slide ? <Body draft={draft} slide={slide} index={index} theme={theme} src={slide.photo ? photos?.[slide.photo.path] : undefined} /> : null}
+    background: scene?.dark ? "#191B24" : onBlue ? theme.blue : slide?.type === "summary" ? theme.soft : theme.paper, color: theme.ink, fontFamily: "Pretendard" }}>
+    {scene && asset ? <div style={{ display: "flex", flexDirection: "column", height: "100%", gap: 28 }}>
+      {(slide.type === "cover" ? ["head", "sub"] : slide.type === "end" ? ["line", "action"] : ["title", "before", "body"]).map(name =>
+        <Field key={name} slide={slide} name={name} tone={{ color: onBlue ? theme.white : theme.title, accent: onBlue ? theme.gold : theme.blue }} />)}
+      <div style={{ display: "flex", marginTop: "auto", padding: 30, background: theme.white, border: "3px solid #DBDDED", borderRadius: 32, justifyContent: scene.side === "left" ? "flex-start" : "flex-end", alignItems: "center" }}>
+        {/* eslint-disable-next-line @next/next/no-img-element -- shared with PNG renderer */}
+        <img alt={scene.character} src={characterSrc || asset} width={scene.size === "small" ? 330 : 460} height={scene.size === "small" ? 330 : 460} />
+      </div></div> : slide ? <Body draft={draft} slide={slide} index={index} theme={theme} src={slide.photo ? photos?.[slide.photo.path] : undefined} /> : null}
     <div style={{ display: "flex", position: "absolute", left: PAD, right: PAD, bottom: 64, justifyContent: "space-between", alignItems: "center", fontSize: 16, color: onBlue ? theme.white : theme.sub }}>
       <Logo color={onBlue ? theme.white : theme.title} height={28} /><span>{cardPage(draft, index)}</span></div>
   </div>;

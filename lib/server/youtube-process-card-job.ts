@@ -4,7 +4,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
-import { CAPTION_MAX, CARD_FORMATS, CARD_FORMAT_IDS, cardMaxSlides, cardProblems, TOON_MAX_SLIDES, TOON_UPLOAD_MAX, cardSignature, type CardDraft, type CardFormatId, type CardSlide } from "@/lib/cardnews/formats";
+import { MYIN_CAST, characterSceneSchema, CAPTION_MAX, CARD_FORMATS, CARD_FORMAT_IDS, cardMaxSlides, cardProblems, TOON_MAX_SLIDES, TOON_UPLOAD_MAX, cardSignature, type CardDraft, type CardFormatId, type CardSlide } from "@/lib/cardnews/formats";
 import { editableFields } from "@/lib/youtube-process/confirm";
 import { projectFromRecord, type YpProject } from "@/lib/youtube-process/project";
 import type { YpCards } from "@/lib/youtube-process/stages";
@@ -75,7 +75,7 @@ const MYIN_INFORMATION_COPY = `독자의 마음속 1인칭 질문으로 시작�
 export function cardFormatSpec(formats: CardFormatId[]) {
   return formats.map(id => {
     const format = CARD_FORMATS[id];
-    const editorial = id === "list" ? "같은 독자가 겪는 한 장면에서 시작합니다. 항목마다 새 정보를 주세요. 바꿔 쓸 예시는 before에 원문, body에 수정문을 넣고, 독자가 가져갈 정리 장에는 worksheet에 짧은 빈칸 양식을 줄바꿈해 넣으세요. 마무리에는 바로 할 행동을 씁니다. " : "";
+    const editorial = id === "list" ? `캐릭터 해설형을 요청하면 표지 또는 항목에 scene={kind:"character",character:"탐색이",side:"right",size:"large",reason:"쌍안경으로 관찰할 행동을 찾는다"}와 같이 장면에 맞는 정본 원본을 지정합니다. 선택 가능한 이름과 계열은 ${JSON.stringify(MYIN_CAST)}. 이름만으로 강점을 진단하지 마세요. 두 행동 비교는 item의 before와 body에 각각 한 장면을 쓰고 scene.kind="comparison", 저장용 장은 summary의 worksheet에 항목을 줄바꿈하고 scene.kind="worksheet"를 씁니다. 도식·양식이 중심인 장은 캐릭터를 그리지 않습니다. 같은 독자가 겪는 한 장면에서 시작합니다. 항목마다 새 정보를 주세요. 바꿔 쓸 예시는 before에 원문, body에 수정문을 넣고, 독자가 가져갈 정리 장에는 worksheet에 짧은 빈칸 양식을 줄바꿈해 넣으세요. 마무리에는 바로 할 행동을 씁니다. ` : "";
     const informationCopy = id === "steps" || id === "webtoon" ? "" : MYIN_INFORMATION_COPY;
     const slides = format.slides.map(spec => `- ${spec.type} · ${spec.label}: ${spec.min === spec.max ? `${spec.min}장` : `${spec.min}~${spec.max}장`} — `
       + spec.fields.map(field => `${field.key}(${field.label}, ${field.max}자까지${field.optional ? ", 선택" : ""})`).join(", ") + (NOTES[spec.type] ? ` · ${NOTES[spec.type]}` : ""));
@@ -130,7 +130,7 @@ result = { "recommend": { "formats": [이 원본에 가장 맞는 포맷 id 최�
 
 const resultSchema = z.object({
   recommend: z.object({ formats: z.array(z.string()).max(6), why: z.string().max(400) }),
-  drafts: z.array(z.object({ format: z.string(), slides: z.array(z.object({ type: z.string(), layout: z.literal("spotlight").optional(), fields: z.record(z.string()) })).max(TOON_MAX_SLIDES),
+  drafts: z.array(z.object({ format: z.string(), slides: z.array(z.object({ type: z.string(), scene: characterSceneSchema.optional(), layout: z.literal("spotlight").optional(), fields: z.record(z.string()) })).max(TOON_MAX_SLIDES),
     caption: z.string().max(CAPTION_MAX + 400), hashtags: z.array(z.string().max(60)).max(30) })).min(1).max(3),
 });
 export type CardResult = { recommend: { formats: CardFormatId[]; why: string }; drafts: Pick<CardDraft, "format" | "slides" | "caption" | "hashtags">[] };
@@ -147,7 +147,7 @@ export function checkCardResult(value: unknown, formats: CardFormatId[]): CardRe
     const slides = draft.slides.map((slide, index) => {
       const spec = CARD_FORMATS[format].slides.find(row => row.type === slide.type);
       if (spec) for (const key of Object.keys(slide.fields)) if (!spec.fields.some(field => field.key === key)) issues.push(`${CARD_FORMATS[format].name} ${index + 1}장에 없는 칸 "${key}"이 있어요`);
-      return { type: slide.type, ...(slide.layout && ["item", "step", "part"].includes(slide.type) ? { layout: slide.layout } : {}), fields: Object.fromEntries(Object.entries(slide.fields).map(([key, text]) => [key, text.trim()])) } as CardSlide;
+      return { type: slide.type, ...(format === "list" && slide.scene ? { scene: slide.scene } : {}), ...(slide.layout && ["item", "step", "part"].includes(slide.type) ? { layout: slide.layout } : {}), fields: Object.fromEntries(Object.entries(slide.fields).map(([key, text]) => [key, text.trim()])) } as CardSlide;
     });
     const seen = new Set<string>();
     for (const [index, slide] of slides.entries()) {

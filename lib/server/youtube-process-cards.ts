@@ -11,7 +11,7 @@ import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { CardSlideView } from "@/lib/cardnews/card-slide";
 import { CardError, cardsMissing, nextCards, pickedDraft } from "@/lib/cardnews/cards";
-import { cardLetters, slideSpec, CAPTION_MAX, CARD_FORMAT_IDS, CARD_SIZE, CARD_SLIDE_TYPES, cardSignature, plainCardText, TOON_MAX_SLIDES, toonUploads, type CardDraft } from "@/lib/cardnews/formats";
+import { characterSceneSchema, characterAsset, cardLetters, slideSpec, CAPTION_MAX, CARD_FORMAT_IDS, CARD_SIZE, CARD_SLIDE_TYPES, cardSignature, plainCardText, TOON_MAX_SLIDES, toonUploads, type CardDraft } from "@/lib/cardnews/formats";
 import { storedZip } from "@/lib/cardnews/zip";
 import { initialCardRecommendation, isCardTestTitle, projectCardSources, visibleThreadSource, type CardSourceChoice } from "@/lib/cardnews/sources";
 import { applyGateAction, quietHours } from "@/lib/youtube-process/confirm";
@@ -121,7 +121,7 @@ export async function createCardProject(actor: RequestActor, input: z.infer<type
 const fieldText = z.string().max(400);
 const draftSchema = z.object({
   id: z.string().min(1).max(40), format: z.enum(CARD_FORMAT_IDS as [CardDraft["format"], ...CardDraft["format"][]]),
-  slides: z.array(z.object({ type: z.enum(CARD_SLIDE_TYPES), layout: z.literal("spotlight").optional(), fields: z.record(fieldText),
+  slides: z.array(z.object({ type: z.enum(CARD_SLIDE_TYPES), scene: characterSceneSchema.optional(), layout: z.literal("spotlight").optional(), fields: z.record(fieldText),
     photo: z.object({ path: z.string().max(200), w: z.number().int().min(1).max(20_000), h: z.number().int().min(1).max(20_000) }).strict().optional() }).strict()).min(1).max(TOON_MAX_SLIDES),
   caption: z.string().max(CAPTION_MAX + 400), hashtags: z.array(z.string().trim().min(1).max(60)).max(30),
 }).strict();
@@ -235,7 +235,10 @@ export async function cardPng(draft: CardDraft, index: number) {
   const photo = draft.slides[index]?.photo;
   const file = photo ? (await createServiceSupabase().storage.from(MEDIA_BUCKET).download(photo.path)).data : null;
   const photos = photo && file ? { [photo.path]: `data:${photo.path.endsWith(".png") ? "image/png" : "image/jpeg"};base64,${Buffer.from(await file.arrayBuffer()).toString("base64")}` } : undefined;
-  const response = new ImageResponse(createElement(CardSlideView, { draft, index, photos }), { ...CARD_SIZE, fonts: await loadFonts() });
+  const scene = draft.slides[index]?.scene;
+  const asset = scene?.kind === "character" && characterAsset(scene.character);
+  const characterSrc = asset ? "data:image/png;base64," + (await readFile(join(process.cwd(), "public", asset))).toString("base64") : undefined;
+  const response = new ImageResponse(createElement(CardSlideView, { draft, index, photos, characterSrc }), { ...CARD_SIZE, fonts: await loadFonts() });
   return new Uint8Array(await response.arrayBuffer());
 }
 /** One card as PNG, or the cards of the draft (or of one 웹툰 화, upload = 1, 2 …) as a ZIP; the confirmed draft unless another is named. */
