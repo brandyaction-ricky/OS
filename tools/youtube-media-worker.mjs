@@ -1237,7 +1237,7 @@ export async function processMyinTakes() {
     const work = path.join(myinWork, job.runId), out = path.join(work, "voice", "takes-out");
     if (!existsSync(path.join(work, "voice", "os_voice", "voice.wav"))) throw Object.assign(new Error("no voice of this run on this PC"), { code: "MYIN_TAKES_NO_VOICE" });
     rmSync(out, { recursive: true, force: true });
-    const speaker = myinVoiceEnv({ paragraphs: [] });
+    const speaker = myinVoiceEnv({ paragraphs: [], fishVoice: job.fishVoice });   // the voice comes with the job: this PC has no FISH_VOICE_ID of its own
     const result = await runOut(speaker.python, [voiceEditScript, "os_voice", "takes", String(job.p), job.text, out], { cwd: path.join(work, "tools", "mindmap_pipeline"), env: speaker.env });
     if (!result.ok) throw Object.assign(new Error(fixReport(result.out) || "takes failed"), { code: /테이크 바꾸기/.test(result.out) ? "MYIN_TAKES_UNAVAILABLE" : "MYIN_TAKES_FAILED" });
     const listed = JSON.parse(readFileSync(path.join(out, "takes.json"), "utf8")).takes;

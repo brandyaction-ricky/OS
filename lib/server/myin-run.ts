@@ -1463,6 +1463,8 @@ export const myinVoiceFixSchema = z.object({ memo: z.string().trim().min(1).max(
   read: z.string().trim().max(100).regex(/^[^=]+=[^=]+$/, "「원래말=읽는소리」로 써 주세요").optional(),
   // 최종 검토 음성 피드백: the memo's time is the video's; the render PC turns it into the voice's with the time map his render left.
   video: z.literal(true).optional(),
+  // 2026-11-26: the paragraph of the 음성 확인 row the memo came from; the plan places it inside that paragraph, then drops it.
+  p: z.number().int().min(0).max(999).optional(),
   // 요청 2번 (2026-11-17): another take of the sentence the voice already made, or more pause around it — the render PC, no Fish.
   take: takeFix.optional(), pause: pauseFix.optional() }).strict();
 // The render PC's package with his voice_fix and voice_audit went live 2026-10-30 15:46 KST; a run keeps the engine it was cloned with,
@@ -1474,7 +1476,7 @@ const voiceFixable = (record: Pick<OsRecord, "created_at">, run: MyinRun) => Boo
 async function voiceSentences(service: Service, run: MyinRun) {
   const { data } = run.words ? await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).download(run.words.path) : { data: null };
   const rows = z.array(auditRow).safeParse(data ? (JSON.parse(await data.text()) as { audit?: unknown }).audit : undefined);
-  return rows.success ? rows.data.map((row) => ({ at: row.시각, text: row.문장 })) : [];
+  return rows.success ? rows.data.map((row) => ({ at: row.시각, text: row.문장, p: row.문단 })) : [];
 }
 
 /** The stages the 음성 확인 panel may fix a sentence at, and where the video goes back to once the words are made again (none = stage 1). */
@@ -1543,7 +1545,8 @@ export async function claimMyinTakes(service: Service = createServiceSupabase(),
     const takes = asked.attempts >= 3 ? { ...asked, state: "failed" as const, code: asked.code ?? "MYIN_TAKES_FAILED" }
       : { ...asked, state: "listing" as const, attempts: asked.attempts + 1, token, expiresAt: new Date(Date.now() + TAKES_LEASE_MS).toISOString() };
     const saved = await save(service, candidate, candidate.status ?? "done", candidate.stage ?? "", { ...run, takes }).catch(() => null);
-    if (saved && takes.state === "listing") return { runId: candidate.id, lease: token, p: takes.p, text: takes.text };
+    // 테이크 고르기 (4편 11-26: 「테이크를 꺼내지 못했어요」): the render PC keeps no Fish voice of its own, so the run's voice comes with the job.
+    if (saved && takes.state === "listing") return { runId: candidate.id, lease: token, p: takes.p, text: takes.text, fishVoice: fishVoice(run) };
   }
   return { idle: true as const };
 }

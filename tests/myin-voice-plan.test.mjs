@@ -43,3 +43,13 @@ test("the server sends the merged fixes and refuses a conflict; the screens show
   assert.match(check, /askCost\(planText\(plan\), plan\.fixes\.length\)/, "the cost is from the sentences found, not a guess per memo");
   assert.match(await readFile(new URL("../components/youtube-process-voice-feedback.tsx", import.meta.url), "utf8"), /askVoicePlan\(token, run\.id, fixes\)/);
 });
+
+test("a row's memo stays in its paragraph and carries the sentence, so the render PC finds the same one (2026-11-26)", () => {
+  const rows = [{ at: 0, p: 0, text: "첫 문단 첫 문장이에요." }, { at: 3, p: 0, text: "다 보여 드릴게요, 차근차근." }, { at: 6.1, p: 1, text: "다음 문단이 시작돼요." }];
+  // 「‖ 보여 ‖」 has 2 Hangul (too few for the words) and its time 00:06 falls on paragraph 1 — bound to paragraph 0 it lands on 문장 2.
+  const plan = planVoiceFix([{ memo: "00:06 음이탈(1.90초): 다 ‖ 보여 ‖ 드릴게요", p: 0 }], rows);
+  assert.deepEqual(plan.targets.map((t) => t.index), [1]);
+  assert.equal(plan.fixes[0].memo, "00:03.0 다 보여 드릴게요, 차근차근. (음이탈)");
+  assert.equal("p" in plan.fixes[0], false, "the paragraph is not sent to the render PC");
+  assert.deepEqual(planVoiceFix([{ memo: "00:06 끊김" }], rows).targets.map((t) => t.index), [2], "a typed memo is placed by time as before");
+});
