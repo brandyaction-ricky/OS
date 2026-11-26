@@ -4,7 +4,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
-import { CAPTION_MAX, CARD_FORMATS, CARD_FORMAT_IDS, cardMaxSlides, cardProblems, TOON_MAX_SLIDES, TOON_UPLOAD_MAX, cardSignature, type CardDraft, type CardFormatId, type CardSlide } from "@/lib/cardnews/formats";
+import { GUIDE_CAST, MYIN_SCENE_CANON, characterSceneSchema, CAPTION_MAX, CARD_FORMATS, CARD_FORMAT_IDS, cardMaxSlides, cardProblems, TOON_MAX_SLIDES, TOON_UPLOAD_MAX, cardSignature, type CardDraft, type CardFormatId, type CardSlide } from "@/lib/cardnews/formats";
 import { editableFields } from "@/lib/youtube-process/confirm";
 import { projectFromRecord, type YpProject } from "@/lib/youtube-process/project";
 import type { YpCards } from "@/lib/youtube-process/stages";
@@ -65,13 +65,21 @@ export const TOON_STORY = `\n\n## 웹툰형 — 이야기로 씁니다
 - 웹툰 클리셰를 적극적으로 씁니다. 사건 한가운데서 여는 콜드 오픈(회상은 한 번만), 꼬마(SD) 개그 컷 · 하얗게 굳기 · 영혼 빠져나가기, 땀방울 · 속도선, 「빼꼼」 등장, 진지한 장면을 깨는 낙서, 오해와 엇갈림, 화 끝 반전 한 컷, 3화 끝 다음 주인공을 살짝 보여 주는 쿠키 컷. 한 화에 두세 개씩.
 - 처음 보는 사람 눈으로 다시 읽습니다. 다 쓴 뒤 장마다 「이 장과 앞 장만 본 사람이 무슨 일인지 바로 아는가」를 묻고 고칩니다. 그림에서 잘 안 보이는 것을 해설로 말하지 않기, 왜 나오는지 모를 장면을 늘어놓지 않기(인물은 소개하는 장에서), 회상 안의 회상과 뜻이 둘로 읽히는 말 피하기, 보여 준 적 없는 설정을 갑자기 쓰지 않기(낙서 이름은 주인공이 그 자리에서 지어 줌), 프롤로그 · 앞 화와 이어지게(이미 만난 낙서를 처음 보듯 놀라지 않기).`;
 
+// 정보전달형의 원고 기준. 카드별 필드는 각 하위 포맷의 규격을 따른다.
+const MYIN_INFORMATION_COPY = `독자의 마음속 1인칭 질문으로 시작하고, 개념을 설명하기 전에 누가 언제 무엇을 했는지 한 장면을 보여 주세요.
+실제 고객의 말이나 결과는 원본에 있을 때만 인용하세요. 설명용 장면은 ‘~라고 해보죠’처럼 가정임을 드러내세요.
+강점을 다룰 때는 한 번 즐거웠다는 이유로 성향이나 적합 직업을 단정하지 마세요. 보인 행동, 그 행동이 상대에게 준 도움, 다른 상황에서 다시 해볼 작은 실험을 구분하세요.
+각 장을 읽은 독자가 새로 알아낼 수 있는 것을 점검하세요. 마지막에는 오늘 할 행동 하나를 남기고, 저장용 양식은 독자가 자기 경험으로 채울 수 있게 쓰세요.`;
+
 /** Each requested format's slides and fields, written from CARD_FORMATS (the numbers live only there). */
 export function cardFormatSpec(formats: CardFormatId[]) {
   return formats.map(id => {
     const format = CARD_FORMATS[id];
+    const editorial = id === "webtoon" || id === "steps" ? "" : MYIN_SCENE_CANON + `\n각 장에 scene을 제출합니다. character는 ${GUIDE_CAST.join(" · ")} 중 선택, reason은 배역 이유, action은 해당 주제의 장소·손동작·시선·소품을 포함한 독립된 그림 설명입니다. kind는 일반 장면 character, 전후 대비 comparison, 기록 양식 worksheet입니다. 정리형 기록 장의 fields.worksheet는 짧은 질문 3개를 줄바꿈해 넣으세요. 예시에 나오는 회의·시계·달력은 입력과 관련 있을 때만 씁니다.`;
+    const informationCopy = id === "steps" || id === "webtoon" ? "" : MYIN_INFORMATION_COPY;
     const slides = format.slides.map(spec => `- ${spec.type} · ${spec.label}: ${spec.min === spec.max ? `${spec.min}장` : `${spec.min}~${spec.max}장`} — `
       + spec.fields.map(field => `${field.key}(${field.label}, ${field.max}자까지${field.optional ? ", 선택" : ""})`).join(", ") + (NOTES[spec.type] ? ` · ${NOTES[spec.type]}` : ""));
-    return `### ${format.name} (format: "${id}") — ${format.when}\n${slides.join("\n")}\n- 전체 ${cardMaxSlides(id)}장까지${id === "webtoon" ? ` · 한 화(웹툰 표지부터 다음 표지 앞까지) ${TOON_UPLOAD_MAX}장까지` : ""}`;
+    return `### ${format.name} (format: "${id}") — ${format.when}\n${editorial}\n${informationCopy}\n${slides.join("\n")}\n- 전체 ${cardMaxSlides(id)}장까지${id === "webtoon" ? ` · 한 화(웹툰 표지부터 다음 표지 앞까지) ${TOON_UPLOAD_MAX}장까지` : ""}`;
   }).join("\n\n");
 }
 
@@ -122,7 +130,7 @@ result = { "recommend": { "formats": [이 원본에 가장 맞는 포맷 id 최�
 
 const resultSchema = z.object({
   recommend: z.object({ formats: z.array(z.string()).max(6), why: z.string().max(400) }),
-  drafts: z.array(z.object({ format: z.string(), slides: z.array(z.object({ type: z.string(), layout: z.literal("spotlight").optional(), fields: z.record(z.string()) })).max(TOON_MAX_SLIDES),
+  drafts: z.array(z.object({ format: z.string(), slides: z.array(z.object({ type: z.string(), scene: characterSceneSchema.optional(), layout: z.literal("spotlight").optional(), fields: z.record(z.string()) })).max(TOON_MAX_SLIDES),
     caption: z.string().max(CAPTION_MAX + 400), hashtags: z.array(z.string().max(60)).max(30) })).min(1).max(3),
 });
 export type CardResult = { recommend: { formats: CardFormatId[]; why: string }; drafts: Pick<CardDraft, "format" | "slides" | "caption" | "hashtags">[] };
@@ -139,8 +147,19 @@ export function checkCardResult(value: unknown, formats: CardFormatId[]): CardRe
     const slides = draft.slides.map((slide, index) => {
       const spec = CARD_FORMATS[format].slides.find(row => row.type === slide.type);
       if (spec) for (const key of Object.keys(slide.fields)) if (!spec.fields.some(field => field.key === key)) issues.push(`${CARD_FORMATS[format].name} ${index + 1}장에 없는 칸 "${key}"이 있어요`);
-      return { type: slide.type, ...(slide.layout && ["item", "step", "part"].includes(slide.type) ? { layout: slide.layout } : {}), fields: Object.fromEntries(Object.entries(slide.fields).map(([key, text]) => [key, text.trim()])) } as CardSlide;
+      return { type: slide.type, ...(format !== "webtoon" && format !== "steps" && slide.scene ? { scene: slide.scene } : {}), ...(slide.layout && ["item", "step", "part"].includes(slide.type) ? { layout: slide.layout } : {}), fields: Object.fromEntries(Object.entries(slide.fields).map(([key, text]) => [key, text.trim()])) } as CardSlide;
     });
+    if (slides.some(slide => slide.scene?.action)) {
+      const actions = new Set<string>();
+      for (const [index, slide] of slides.entries()) {
+        const plan = slide.scene;
+        const action = plan?.action?.replace(/\s+/g, "") || "";
+        if (!action || !GUIDE_CAST.some(character => character === plan?.character))
+          issues.push(`${index + 1}장에 2D 가이드의 배역과 관찰 가능한 행동을 지정해 주세요`);
+        else if (actions.has(action)) issues.push(`${index + 1}장의 그림 설명이 앞 장과 같습니다. 이 장의 행동을 구체화하세요`);
+        actions.add(action);
+      }
+    }
     const seen = new Set<string>();
     for (const [index, slide] of slides.entries()) {
       if (!["item", "pair", "line", "compare", "step", "part"].includes(slide.type)) continue;
