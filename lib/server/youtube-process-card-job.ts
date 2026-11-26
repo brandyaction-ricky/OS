@@ -65,14 +65,21 @@ export const TOON_STORY = `\n\n## 웹툰형 — 이야기로 씁니다
 - 웹툰 클리셰를 적극적으로 씁니다. 사건 한가운데서 여는 콜드 오픈(회상은 한 번만), 꼬마(SD) 개그 컷 · 하얗게 굳기 · 영혼 빠져나가기, 땀방울 · 속도선, 「빼꼼」 등장, 진지한 장면을 깨는 낙서, 오해와 엇갈림, 화 끝 반전 한 컷, 3화 끝 다음 주인공을 살짝 보여 주는 쿠키 컷. 한 화에 두세 개씩.
 - 처음 보는 사람 눈으로 다시 읽습니다. 다 쓴 뒤 장마다 「이 장과 앞 장만 본 사람이 무슨 일인지 바로 아는가」를 묻고 고칩니다. 그림에서 잘 안 보이는 것을 해설로 말하지 않기, 왜 나오는지 모를 장면을 늘어놓지 않기(인물은 소개하는 장에서), 회상 안의 회상과 뜻이 둘로 읽히는 말 피하기, 보여 준 적 없는 설정을 갑자기 쓰지 않기(낙서 이름은 주인공이 그 자리에서 지어 줌), 프롤로그 · 앞 화와 이어지게(이미 만난 낙서를 처음 보듯 놀라지 않기).`;
 
+// 정보전달형의 원고 기준. 카드별 필드는 각 하위 포맷의 규격을 따른다.
+const MYIN_INFORMATION_COPY = `독자의 마음속 1인칭 질문으로 시작하고, 개념을 설명하기 전에 누가 언제 무엇을 했는지 한 장면을 보여 주세요.
+실제 고객의 말이나 결과는 원본에 있을 때만 인용하세요. 설명용 장면은 ‘~라고 해보죠’처럼 가정임을 드러내세요.
+강점을 다룰 때는 한 번 즐거웠다는 이유로 성향이나 적합 직업을 단정하지 마세요. 보인 행동, 그 행동이 상대에게 준 도움, 다른 상황에서 다시 해볼 작은 실험을 구분하세요.
+각 장을 읽은 독자가 새로 알아낼 수 있는 것을 점검하세요. 마지막에는 오늘 할 행동 하나를 남기고, 저장용 양식은 독자가 자기 경험으로 채울 수 있게 쓰세요.`;
+
 /** Each requested format's slides and fields, written from CARD_FORMATS (the numbers live only there). */
 export function cardFormatSpec(formats: CardFormatId[]) {
   return formats.map(id => {
     const format = CARD_FORMATS[id];
     const editorial = id === "list" ? "같은 독자가 겪는 한 장면에서 시작합니다. 항목마다 새 정보를 주세요. 바꿔 쓸 예시는 before에 원문, body에 수정문을 넣고, 독자가 가져갈 정리 장에는 worksheet에 짧은 빈칸 양식을 줄바꿈해 넣으세요. 마무리에는 바로 할 행동을 씁니다. " : "";
+    const informationCopy = id === "steps" || id === "webtoon" ? "" : MYIN_INFORMATION_COPY;
     const slides = format.slides.map(spec => `- ${spec.type} · ${spec.label}: ${spec.min === spec.max ? `${spec.min}장` : `${spec.min}~${spec.max}장`} — `
       + spec.fields.map(field => `${field.key}(${field.label}, ${field.max}자까지${field.optional ? ", 선택" : ""})`).join(", ") + (NOTES[spec.type] ? ` · ${NOTES[spec.type]}` : ""));
-    return `### ${format.name} (format: "${id}") — ${format.when}\n${editorial}\n${slides.join("\n")}\n- 전체 ${cardMaxSlides(id)}장까지${id === "webtoon" ? ` · 한 화(웹툰 표지부터 다음 표지 앞까지) ${TOON_UPLOAD_MAX}장까지` : ""}`;
+    return `### ${format.name} (format: "${id}") — ${format.when}\n${editorial}\n${informationCopy}\n${slides.join("\n")}\n- 전체 ${cardMaxSlides(id)}장까지${id === "webtoon" ? ` · 한 화(웹툰 표지부터 다음 표지 앞까지) ${TOON_UPLOAD_MAX}장까지` : ""}`;
   }).join("\n\n");
 }
 
