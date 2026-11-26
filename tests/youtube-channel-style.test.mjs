@@ -119,7 +119,7 @@ test("every voice the OS asks Fish for or hands the render PC is the run's chann
   assert.equal(run.match(/FISH_VOICE_REFERENCE_ID/g)?.length, 1, "the OS's own voice is read in one place, runVoice");
   assert.match(run, /export const runVoice = \(run\?: \{ voiceReference\?: string \}\) => run\?\.voiceReference \|\| process\.env\.FISH_VOICE_REFERENCE_ID/);
   assert.equal(run.match(/fishVoice\(\)/g), null, "no job gets the default voice by mistake");
-  assert.equal(run.match(/fishVoice\(run\)/g)?.length, 3, "words, 구독 대사 and prep jobs");
+  assert.equal(run.match(/fishVoice\(run\)/g)?.length, 4, "words, 구독 대사, prep and takes jobs");
   assert.match(run, /\.\.\.\(channelVoice \? \{ voiceReference: channelVoice \} : \{\}\)/, "only a channel voice is written on the run");
   assert.ok(run.indexOf("await assertOneChannel(") < run.indexOf('record_type: "ai_job", title: `${input.state.source.title}'), "checked before the run is made");
   assert.match(say, /fishVoice: fishVoice\(meta\)/, "sentence takes speak with the run's voice");
