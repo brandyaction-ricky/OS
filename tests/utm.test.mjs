@@ -84,15 +84,20 @@ test("UTM tables are server-only and every route checks the staff session", asyn
   assert.match(readFileSync("lib/server/utm-links.ts", "utf8"), /if \(!actor\.isAdmin\) throw new ApiError\(403, "ADMIN_REQUIRED"/);
 });
 
-test("고치기 changes only a link's notes on the same row, and a stale edit is refused", async () => {
+test("고치기 keeps the row and its short link (moved to the new address first), and 지우기 turns the short link off; stale ones are refused", async () => {
   const { readFileSync } = await import("node:fs");
   const src = readFileSync("lib/server/utm-links.ts", "utf8");
   const edit = src.slice(src.indexOf("export const utmLinkUpdateSchema"), src.indexOf("/** Rebuilds the company"));
-  assert.match(edit, /usage: z\.string\(\)\.trim\(\)\.min\(1\)\.max\(200\), target: memo\(200\), location: memo\(200\), etc: memo\(500\), expectedUpdatedAt: [^}]*\}\)\.strict\(\)/);
-  // The addresses, UTM values, short link (and so its clicks) and the row id are never written here.
-  assert.doesNotMatch(edit, /origin_url|utm_url|short_url|short_key|params|request_id|insert\(/);
+  assert.match(edit, /usage: z\.string\(\)\.trim\(\)\.min\(1\)\.max\(200\), target: memo\(200\), location: memo\(200\), etc: memo\(500\), expectedUpdatedAt: /);
+  // The row id, request id and short link itself are never rewritten; a new UTM address moves the short link before the row is saved.
+  assert.doesNotMatch(edit, /short_url:|short_key:|request_id|insert\(/);
+  assert.match(edit, /if \(moved\) await changeShort\(current, \{ url: full\.utm_url \}\);\n\s+const \{ data, error \} = await createServiceSupabase\(\)\.from\("os_utm_links"\)\.update/);
+  assert.match(edit, /brand !== current\.brand && current\.short_url\) throw new ApiError\(409, "UTM_BRAND_LOCKED"/);
   assert.match(edit, /\.eq\("id", id\)\.eq\("updated_at", expectedUpdatedAt\)/);
   assert.match(edit, /409, "UTM_LINK_CHANGED"/);
+  // Only the maker or an admin deletes, and the short link is off before the row goes.
+  assert.match(edit, /!actor\.isAdmin && link\.created_by !== actor\.id\) throw new ApiError\(403/);
+  assert.match(edit, /await changeShort\(link, \{ active: false \}\);\n\s+const \{ data, error \} = await createServiceSupabase\(\)\.from\("os_utm_links"\)\.delete\(\)/);
   // A row edited while the document is being rebuilt stays pending for the next rebuild.
   assert.match(src, /\.neq\("ledger_status", "saved"\)\.lte\("updated_at", startedAt\)/);
 });

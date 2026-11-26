@@ -10,8 +10,9 @@ const PRIVATE = { headers: { "cache-control": "private, no-store" } };
 /** The company link ledger: every staff member sees all links. */
 export async function GET(request: Request) {
   try {
-    await utmActor(request);
-    return NextResponse.json({ items: await listUtmLinks() }, PRIVATE);
+    const actor = await utmActor(request);
+    // `me` lets the ledger show 지우기 only on the person's own links (or every link for an admin).
+    return NextResponse.json({ items: await listUtmLinks(), me: { id: actor.id, isAdmin: actor.isAdmin } }, PRIVATE);
   } catch (error) { return apiErrorResponse(error); }
 }
 

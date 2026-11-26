@@ -9,11 +9,13 @@ import { draftTag } from "@/lib/youtube-process/gpt-draft";
 import { md, YpSection, type YpPage } from "./youtube-process-frame";
 
 const slotName = (slot: string) => slot === "hero" ? "대표 이미지" : slot === "video" ? "영상" : `이미지 ${slot}`;
-/** What each place shows: an address as it is, an uploaded image through `images` (signed link or data: URI), and the uploaded video by default. */
-function resolveFills(fills: YpColumnItem["fills"], images: Record<string, string>, videoUrl: string) {
+/** What each place shows: an address as it is, an uploaded image through `images` (signed link or data: URI), the uploaded video
+ *  and final thumbnail A in the hero place by default (대표 요청 11-26, as MYIN gets it). */
+function resolveFills(fills: YpColumnItem["fills"], images: Record<string, string>, videoUrl: string, heroPath: string) {
   const out: Record<string, ColumnFill> = {};
   for (const [slot, fill] of Object.entries(fills)) { const src = fill.url ?? (fill.path ? images[fill.path] : ""); if (src) out[slot] = { src }; }
   if (!out.video && videoUrl) out.video = { src: videoUrl };
+  if (!out.hero && heroPath && images[heroPath]) out.hero = { src: images[heroPath] };
   return out;
 }
 const dataUri = (blob: Blob) => new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsDataURL(blob); });
@@ -26,6 +28,7 @@ export function YoutubeColumnPanel({ page }: { page: YpPage }) {
   const column = bundle.stages.column;
   const items = column.data.items;
   const videoUrl = bundle.stages.upload.data.run?.videoUrl ?? "";
+  const heroPath = bundle.stages.make.data.thumbs?.A?.path ?? "";
   const [send, setSend] = useState<false | SendTab>(false);
   const [busy, setBusy] = useState("");
   const [pick, setPick] = useState<string | null>(null);
@@ -63,15 +66,16 @@ export function YoutubeColumnPanel({ page }: { page: YpPage }) {
           <button type="button" className="yp-btn yp-sm yp-pri" disabled={busy === "paste" || !pasting.trim()} onClick={() => void addPasted()}>새 칼럼으로 넣기</button></div>
       </div> : null}
     </YpSection>
-    {current ? <ColumnItemView key={current.id} page={page} item={current} index={items.indexOf(current)} videoUrl={videoUrl} busy={busy} save={save} /> : null}
+    {current ? <ColumnItemView key={current.id} page={page} item={current} index={items.indexOf(current)} videoUrl={videoUrl} heroPath={heroPath} busy={busy} save={save} /> : null}
     <SendDialog page={page} task="column" open={Boolean(send)} initialTab={send || undefined} onClose={() => setSend(false)} job={job} />
   </>;
 }
 
 /** One column: its check, image places, preview and export. */
-function ColumnItemView({ page, item, index, videoUrl, busy, save }: { page: YpPage; item: YpColumnItem; index: number; videoUrl: string; busy: string; save: Save }) {
+function ColumnItemView({ page, item, index, videoUrl, heroPath: thumbPath, busy, save }: { page: YpPage; item: YpColumnItem; index: number; videoUrl: string; heroPath: string; busy: string; save: Save }) {
   const projectId = page.bundle!.project.id;
   const { html, fills, ai } = item;
+  const heroPath = fills.hero ? "" : thumbPath;
   const [editing, setEditing] = useState<string | null>(null);
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [signed, setSigned] = useState<Record<string, string>>({});
@@ -80,7 +84,7 @@ function ColumnItemView({ page, item, index, videoUrl, busy, save }: { page: YpP
   const [shorts, setShorts] = useState<ColumnShort[]>([]);
   const check = useMemo(() => checkColumnHtml(html), [html]);
   const slots = useMemo(() => columnSlots(html), [html]);
-  const preview = useMemo(() => renderColumn(html, resolveFills(fills, signed, videoUrl), shorts), [html, fills, signed, videoUrl, shorts]);
+  const preview = useMemo(() => renderColumn(html, resolveFills(fills, signed, videoUrl, heroPath), shorts), [html, fills, signed, videoUrl, heroPath, shorts]);
   useEffect(() => {
     let active = true;
     page.client?.clips(projectId).then(rows => { if (active) setShorts(columnShorts([...rows].sort((a, b) => a.created_at.localeCompare(b.created_at)))); }, () => undefined);
@@ -89,13 +93,13 @@ function ColumnItemView({ page, item, index, videoUrl, busy, save }: { page: YpP
   const patch = (body: Record<string, unknown>, label: string) => save({ item: item.id, ...body }, label);
 
   useEffect(() => {
-    const paths = Object.values(fills).map(fill => fill.path).filter((path): path is string => Boolean(path && !signed[path]));
+    const paths = [...Object.values(fills).map(fill => fill.path), heroPath].filter((path): path is string => Boolean(path && !signed[path]));
     if (!paths.length || !page.client) return;
     let active = true;
     Promise.all(paths.map(async path => [path, await page.client!.assetUrl(projectId, path)] as const))
       .then(rows => { if (active) setSigned(current => ({ ...current, ...Object.fromEntries(rows) })); }, () => undefined);
     return () => { active = false; };
-  }, [fills, signed, page.client, projectId]);
+  }, [fills, heroPath, signed, page.client, projectId]);
 
   const upload = async (slot: string, file: File) => {
     if (!page.client) return;
@@ -108,8 +112,8 @@ function ColumnItemView({ page, item, index, videoUrl, busy, save }: { page: YpP
   // The exported page carries the uploaded images inside it (data: URIs), so the one file opens anywhere.
   const exportHtml = async () => {
     const images: Record<string, string> = {};
-    for (const fill of Object.values(fills)) if (fill.path) images[fill.path] = await dataUri(await (await fetch(signed[fill.path] ?? await page.client!.assetUrl(projectId, fill.path))).blob());
-    return renderColumn(html, resolveFills(fills, images, videoUrl), shorts);
+    for (const path of [...Object.values(fills).map(fill => fill.path), heroPath]) if (path) images[path] = await dataUri(await (await fetch(signed[path] ?? await page.client!.assetUrl(projectId, path))).blob());
+    return renderColumn(html, resolveFills(fills, images, videoUrl, heroPath), shorts);
   };
   const copy = async () => {
     try { await navigator.clipboard.writeText(await exportHtml()); setCopied(true); window.setTimeout(() => setCopied(false), 1500); } catch (reason) { page.fail(reason); }
@@ -147,12 +151,13 @@ function ColumnItemView({ page, item, index, videoUrl, busy, save }: { page: YpP
     <YpSection n={3} title="이미지 · 영상 자리" gq="롱폼 사진은 자동으로 들어가요 · 빈 자리만 지시 문장으로 만들어 올려요">
       {slots.length ? <ul className="yp-hist">{slots.map(info => {
         const fill = fills[info.slot];
-        const shown = fill?.url ?? (fill?.path ? signed[fill.path] : "");
+        const thumbHero = info.slot === "hero" && !fill && Boolean(heroPath);
+        const shown = fill?.url ?? (fill?.path ? signed[fill.path] : thumbHero ? signed[heroPath] : "");
         const video = info.kind === "video";
         return <li key={info.slot} style={{ alignItems: "flex-start", flexWrap: "wrap" }}>
           <span style={{ flex: "1 1 280px", minWidth: 0 }}><b>{slotName(info.slot)}</b> <span className="yp-muted">{info.caption}</span><br />
             {video ? <span className="yp-muted" style={{ fontSize: 12 }}>{fill?.url ? `넣은 영상: ${fill.url}` : videoUrl ? `올린 영상이 들어가요: ${videoUrl}` : "유튜브에 올린 뒤 영상이 자동으로 들어가요. 다른 영상은 주소를 넣어요."}</span>
-              : <span className="yp-muted" style={{ fontSize: 12, wordBreak: "break-word" }}>{info.from ? `롱폼 사진: ${info.from}` : info.prompt}</span>}
+              : <span className="yp-muted" style={{ fontSize: 12, wordBreak: "break-word" }}>{thumbHero ? "롱폼 최종 썸네일 A가 들어가요. 다른 이미지는 올리거나 주소를 넣어요." : info.from ? `롱폼 사진: ${info.from}` : info.prompt}</span>}
             {shown && !video ? <><br /><img src={shown} alt="" style={{ maxWidth: 220, maxHeight: 124, borderRadius: 8, marginTop: 6, objectFit: "cover" }} /></> : null}</span>
           <span className="yp-row-btns" style={{ flexWrap: "wrap" }}>
             {video ? null : <>
