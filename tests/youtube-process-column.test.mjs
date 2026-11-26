@@ -139,3 +139,14 @@ test("shorts scripts keep their parts, stop at 60 seconds and come as many as as
   assert.deepEqual(plain(rows[0].metadata.segments), [{ start: 10, end: 40 }]);
   assert.equal(rows[0].metadata.desc, "");
 });
+
+test("an empty hero place takes final thumbnail A, on the screen and on MYIN (where it is also the cover)", async () => {
+  const server = await readFile("lib/server/youtube-process-stages.ts", "utf8");
+  const send = server.slice(server.indexOf("export async function columnToMyin"), server.indexOf("export function assertColumnOpen"));
+  assert.match(send, /const thumb = stages\.make\.data\.thumbs\?\.A;\n\s+if \(!fills\.hero && thumb\?\.path\)/);
+  assert.match(send, /images\.push\(\{ key: "img-hero", mime: "image\/jpeg"/);
+  assert.ok(send.indexOf('key: "img-hero"') < send.indexOf('coverKey: "img-hero"'), "the thumbnail is in images before the cover is chosen");
+  const screen = await readFile("components/youtube-process-column.tsx", "utf8");
+  assert.match(screen, /if \(!out\.hero && heroPath && images\[heroPath\]\) out\.hero = \{ src: images\[heroPath\] \};/);
+  assert.match(screen, /const heroPath = fills\.hero \? "" : thumbPath;/);
+});

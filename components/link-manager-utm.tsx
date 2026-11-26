@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Copy, Link2, Plus } from "lucide-react";
+import { Copy, Link2, Pencil, Plus, Trash2 } from "lucide-react";
 import { apiRequest } from "@/lib/api-client";
 import { UTM_BRANDS, UTM_KINDS, UTM_KIND_LABEL, buildUtmUrl, normalizeUtmCode, parseOriginUrl, utmCodeRule, utmConflicts, utmOptionClash, validUtmCode, type UtmKind } from "@/lib/utm";
 import { useSession } from "./session-provider";
@@ -9,7 +9,7 @@ import { errorMessage } from "./youtube-process-data";
 type Option = { id: string; kind: UtmKind; label: string; code: string; active: boolean };
 type Param = { code: string; label: string } | null;
 type Link = { id: string; brand: string; usage: string; origin_url: string; source_id: string; medium_id: string; campaign_id: string; content_id: string | null;
-  params: Record<string, Param>; target: string; location: string; etc: string; utm_url: string; short_url: string | null; ledger_status: "pending" | "saved" | "failed"; created_at: string; updated_at: string; creator?: string };
+  params: Record<string, Param>; target: string; location: string; etc: string; utm_url: string; short_url: string | null; ledger_status: "pending" | "saved" | "failed"; created_by: string; created_at: string; updated_at: string; creator?: string };
 type Saved = { link: Link; ledgerSaved: boolean };
 type Form = { brand: string; origin: string; usage: string; target: string; location: string; etc: string; picks: Partial<Record<UtmKind, string>> };
 
@@ -17,6 +17,8 @@ const EMPTY: Form = { brand: "", origin: "", usage: "", target: "", location: ""
 const brandLabel = (brand: string) => UTM_BRANDS.find(row => row.brand === brand)?.label ?? brand;
 const optionText = (option: Option) => `${option.label} · ${option.code}`;
 const newRequestId = () => crypto.randomUUID();
+const formOf = (link: Link): Form => ({ brand: link.brand, origin: link.origin_url, usage: link.usage, target: link.target, location: link.location, etc: link.etc,
+  picks: { source: link.source_id, medium: link.medium_id, campaign: link.campaign_id, ...(link.content_id ? { content: link.content_id } : {}) } });
 
 /** Copies and says what really happened (기능요청서 §3: success or failure as it is). */
 function useCopy() {
@@ -30,9 +32,10 @@ function useCopy() {
 }
 
 /** One UTM key: search the shared choices by name or code (native datalist), or add a new one right here. */
-function OptionField({ kind, required, options, value, onChange, onAdded }: { kind: UtmKind; required: boolean; options: Option[]; value?: string; onChange: (id?: string) => void; onAdded: (option: Option) => void }) {
+function OptionField({ kind, required, options, value, keep = [], onChange, onAdded }: { kind: UtmKind; required: boolean; options: Option[]; value?: string; keep?: string[]; onChange: (id?: string) => void; onAdded: (option: Option) => void }) {
   const { accessToken } = useSession();
-  const active = options.filter(option => option.kind === kind && option.active);
+  // While fixing a link, its own choices stay pickable even if turned off since (an upload-made link's code is one).
+  const active = options.filter(option => option.kind === kind && (option.active || keep.includes(option.id)));
   const chosen = active.find(option => option.id === value);
   const [text, setText] = useState(chosen ? optionText(chosen) : "");
   const [adding, setAdding] = useState(false);
@@ -98,7 +101,8 @@ function ResultCard({ saved, onChange }: { saved: Saved; onChange: (saved: Saved
   </div></div>;
 }
 
-export function UtmLinkBuilder({ options, setOptions, prefill, onSaved }: { options: Option[]; setOptions: (next: Option[]) => void; prefill: Form | null; onSaved: () => void }) {
+export function UtmLinkBuilder({ options, setOptions, prefill, editing, onCancelEdit, onSaved }: { options: Option[]; setOptions: (next: Option[]) => void; prefill: Form | null;
+  editing: Link | null; onCancelEdit: () => void; onSaved: () => void }) {
   const { accessToken, demo } = useSession();
   const [form, setForm] = useState<Form>(EMPTY);
   const [requestId, setRequestId] = useState(newRequestId);
@@ -108,7 +112,10 @@ export function UtmLinkBuilder({ options, setOptions, prefill, onSaved }: { opti
   const [saved, setSaved] = useState<Saved | null>(null);
   // Remounts the choice fields after a save or a 복제, so their search text follows the form.
   const [generation, setGeneration] = useState(0);
+  const [fixed, setFixed] = useState("");
   useEffect(() => { if (prefill) { setForm(prefill); setSaved(null); setRequestId(newRequestId()); setGeneration(value => value + 1); } }, [prefill]);
+  useEffect(() => { if (editing) { setForm(formOf(editing)); setSaved(null); setFixed(""); setConfirm(false); setError(""); setGeneration(value => value + 1); } }, [editing]);
+  const keep = editing ? [editing.source_id, editing.medium_id, editing.campaign_id, editing.content_id].filter((id): id is string => Boolean(id)) : [];
   const set = (patch: Partial<Form>) => { setForm(current => ({ ...current, ...patch })); setConfirm(false); };
   const codeOf = (kind: UtmKind) => options.find(option => option.id === form.picks[kind])?.code ?? null;
   const parsed = form.origin.trim() ? parseOriginUrl(form.origin) : null;
@@ -117,24 +124,39 @@ export function UtmLinkBuilder({ options, setOptions, prefill, onSaved }: { opti
   const preview = ready && parsed && "url" in parsed ? buildUtmUrl(parsed.url, codes) : "";
   const conflicts = ready && parsed && "url" in parsed ? utmConflicts(parsed.url, codes) : [];
   const missing = [!form.brand && "브랜드", !(parsed && "url" in parsed) && "원본 URL", !form.usage.trim() && "링크 사용처", !codeOf("source") && "유입 출처", !codeOf("medium") && "마케팅 방식", !codeOf("campaign") && "캠페인명"].filter(Boolean);
+  const reset = () => { setForm(EMPTY); setConfirm(false); setRequestId(newRequestId()); setGeneration(value => value + 1); };
   const save = async () => {
     if (!accessToken || missing.length || (conflicts.length && !confirm)) return;
     setBusy(true); setError("");
+    if (editing) {
+      try {
+        const result = await apiRequest<Saved>(`/api/v1/utm/links/${editing.id}`, { method: "PATCH", token: accessToken, body: JSON.stringify({
+          brand: form.brand, usage: form.usage.trim(), originUrl: form.origin.trim(), sourceId: form.picks.source, mediumId: form.picks.medium, campaignId: form.picks.campaign,
+          contentId: form.picks.content ?? null, target: form.target.trim(), location: form.location.trim(), etc: form.etc.trim(), confirmOverwrite: confirm, expectedUpdatedAt: editing.updated_at }) });
+        setFixed(result.ledgerSaved ? "고쳤어요. 회사 문서(링크 대장)에도 적었어요." : "고쳤어요. 회사 문서(링크 대장)에는 아직 못 적었어요. 목록의 '회사 문서 보관 다시 시도'를 눌러 주세요.");
+        reset(); onCancelEdit(); onSaved();
+      } catch (reason) { setError(errorMessage(reason)); } finally { setBusy(false); }
+      return;
+    }
     try {
       const result = await apiRequest<Saved>("/api/v1/utm/links", { method: "POST", token: accessToken, body: JSON.stringify({
         requestId, brand: form.brand, usage: form.usage.trim(), originUrl: form.origin.trim(), sourceId: form.picks.source, mediumId: form.picks.medium, campaignId: form.picks.campaign,
         contentId: form.picks.content ?? null, target: form.target.trim(), location: form.location.trim(), etc: form.etc.trim(), confirmOverwrite: confirm }) });
-      setSaved(result); setForm(EMPTY); setConfirm(false); setRequestId(newRequestId()); setGeneration(value => value + 1); onSaved();
+      setSaved(result); reset(); onSaved();
     } catch (reason) { setError(errorMessage(reason)); } finally { setBusy(false); }
   };
   const added = (option: Option) => setOptions([...options, option]);
+  const moved = Boolean(editing?.short_url && preview && preview !== editing.utm_url);
   return <form className="yp-card yp-confirm-form" onSubmit={event => { event.preventDefault(); void save(); }}>
-    <label><span>브랜드 <span className="yp-hint">필수</span></span><select className="yp-in" value={form.brand} onChange={event => set({ brand: event.target.value })} aria-label="브랜드">
+    {editing ? <div className="yp-note yp-warn" role="status"><div><b>링크 고치는 중</b> · {editing.usage} <button type="button" className="yp-btn yp-sm" disabled={busy} onClick={() => { reset(); onCancelEdit(); }}>고치기 취소</button>
+      <br /><span className="yp-hint">링크 ID와 {editing.short_url ? `단축링크(${editing.short_url})` : "기록"}는 그대로예요.{editing.short_url ? " 주소나 UTM 값을 바꾸면 단축링크가 새 주소로 가요. 이미 붙인 단축링크도 고친 주소로 열려요." : ""}</span></div></div> : null}
+    {fixed && !editing ? <div className="yp-note yp-ok" role="status"><div>{fixed}</div></div> : null}
+    <label><span>브랜드 <span className="yp-hint">필수{editing?.short_url ? " · 단축링크가 있어 바꿀 수 없어요" : ""}</span></span><select className="yp-in" value={form.brand} disabled={Boolean(editing?.short_url)} onChange={event => set({ brand: event.target.value })} aria-label="브랜드">
       <option value="">고르세요</option>{UTM_BRANDS.map(row => <option key={row.brand} value={row.brand}>{row.label}</option>)}</select></label>
     <label><span>원본 URL <span className="yp-hint">필수 · UTM을 붙일 실제 목적지. 주소에 개인정보·비밀번호를 넣지 마세요.</span></span>
       <input className="yp-in" type="url" value={form.origin} maxLength={2000} onChange={event => set({ origin: event.target.value })} placeholder="https://www.myinlab.co.kr/…" aria-label="원본 URL" />
       {parsed && "error" in parsed ? <span className="yp-errline">{parsed.error}</span> : null}</label>
-    {UTM_KINDS.map(kind => <OptionField key={`${kind}-${generation}`} kind={kind} required={kind !== "content"} options={options} value={form.picks[kind]} onChange={id => set({ picks: { ...form.picks, [kind]: id } })} onAdded={added} />)}
+    {UTM_KINDS.map(kind => <OptionField key={`${kind}-${generation}`} kind={kind} required={kind !== "content"} options={options} value={form.picks[kind]} keep={keep} onChange={id => set({ picks: { ...form.picks, [kind]: id } })} onAdded={added} />)}
     <label><span>링크 사용처 <span className="yp-hint">필수 · 사람이 읽는 설명 (URL에는 안 붙어요)</span></span>
       <input className="yp-in" value={form.usage} maxLength={200} onChange={event => set({ usage: event.target.value })} placeholder="예: 10월 28일 유튜브 영상 고정댓글" aria-label="링크 사용처" /></label>
     <details><summary className="yp-hint">관리 메모 더 쓰기 (선택 · URL에는 안 붙어요)</summary><div style={{ display: "grid", gap: 8, marginTop: 8 }}>
@@ -142,71 +164,47 @@ export function UtmLinkBuilder({ options, setOptions, prefill, onSaved }: { opti
       <label>location · 게재 위치<input className="yp-in" value={form.location} maxLength={200} onChange={event => set({ location: event.target.value })} placeholder="예: 설명란, 프로필, 고정댓글" aria-label="location 게재 위치" /></label>
       <label>etc · 기타<input className="yp-in" value={form.etc} maxLength={500} onChange={event => set({ etc: event.target.value })} aria-label="etc 기타" /></label>
     </div></details>
-    <div className="yp-note yp-gray"><div><b>미리보기</b><br /><span style={{ wordBreak: "break-all" }}>{preview || "브랜드·원본 URL·필수 선택값 3개를 넣으면 완성 주소가 보여요."}</span></div></div>
+    <div className="yp-note yp-gray"><div><b>미리보기</b><br /><span style={{ wordBreak: "break-all" }}>{preview || "브랜드·원본 URL·필수 선택값 3개를 넣으면 완성 주소가 보여요."}</span>
+      {moved ? <><br /><span className="yp-hint">저장하면 단축링크 {editing!.short_url}가 이 주소로 바뀌어요.</span></> : null}</div></div>
     {conflicts.length ? <div className="yp-note yp-warn" role="alert"><div>원본 주소에 이미 UTM 값이 있어요. 저장하면 아래처럼 바뀝니다.
       <ul style={{ margin: "6px 0" }}>{conflicts.map(row => <li key={row.key}>{row.key}: {row.before} → {row.after ?? "(지움)"}</li>)}</ul>
       <label style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={confirm} onChange={event => setConfirm(event.target.checked)} /> 이대로 바꿉니다</label></div></div> : null}
-    <div><button type="submit" className="yp-btn yp-pri" disabled={busy || demo || missing.length > 0 || (conflicts.length > 0 && !confirm)}>{busy ? "저장하는 중…" : "UTM 링크 만들기"}</button>
+    <div><button type="submit" className="yp-btn yp-pri" disabled={busy || demo || missing.length > 0 || (conflicts.length > 0 && !confirm)}>{busy ? "저장하는 중…" : editing ? "고친 내용 저장" : "UTM 링크 만들기"}</button>
       {demo ? <span className="yp-hint"> 데모에서는 만들지 않아요.</span> : missing.length ? <span className="yp-hint"> 아직 비어 있어요: {missing.join(" · ")}</span> : null}</div>
     {error ? <div className="yp-errline" role="alert">{error}</div> : null}
     {saved ? <ResultCard saved={saved} onChange={next => { setSaved(next); onSaved(); }} /> : null}
   </form>;
 }
 
-/** 사용처·메모 고치기: only the notes change; the addresses, UTM values and short link stay the same link. */
-function LedgerEdit({ link, onDone }: { link: Link; onDone: (saved: boolean) => void }) {
+function LedgerRow({ link, editing, canDelete, onChange, onEdit, onDuplicate }: { link: Link; editing: boolean; canDelete: boolean; onChange: () => void; onEdit: (link: Link) => void; onDuplicate: (link: Link) => void }) {
   const { accessToken, demo } = useSession();
-  const [notes, setNotes] = useState({ usage: link.usage, target: link.target, location: link.location, etc: link.etc });
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const set = (patch: Partial<typeof notes>) => setNotes(current => ({ ...current, ...patch }));
-  const save = async () => {
-    setBusy(true); setError("");
-    try {
-      const result = await apiRequest<Saved>(`/api/v1/utm/links/${link.id}`, { method: "PATCH", token: accessToken, body: JSON.stringify({
-        usage: notes.usage.trim(), target: notes.target.trim(), location: notes.location.trim(), etc: notes.etc.trim(), expectedUpdatedAt: link.updated_at }) });
-      if (!result.ledgerSaved) { setError("고친 내용은 저장했지만 회사 문서(링크 대장)에는 아직 못 적었어요. 목록의 '회사 문서 보관 다시 시도'를 눌러 주세요."); setBusy(false); return; }
-      onDone(true);
-    } catch (reason) { setError(errorMessage(reason)); setBusy(false); }
-  };
-  return <form className="yp-stack10" onSubmit={event => { event.preventDefault(); void save(); }}>
-    <label>링크 사용처<input className="yp-in" value={notes.usage} maxLength={200} onChange={event => set({ usage: event.target.value })} aria-label="링크 사용처 고치기" /></label>
-    <label>target · 대상 고객<input className="yp-in" value={notes.target} maxLength={200} onChange={event => set({ target: event.target.value })} aria-label="target 대상 고객 고치기" /></label>
-    <label>location · 게재 위치<input className="yp-in" value={notes.location} maxLength={200} onChange={event => set({ location: event.target.value })} aria-label="location 게재 위치 고치기" /></label>
-    <label>etc · 기타<input className="yp-in" value={notes.etc} maxLength={500} onChange={event => set({ etc: event.target.value })} aria-label="etc 기타 고치기" /></label>
-    <span className="yp-hint">주소·UTM 값·단축링크는 그대로예요. 이미 붙인 링크도 계속 같은 곳으로 가요.</span>
-    <span className="yp-row-btns">
-      <button type="submit" className="yp-btn yp-sm yp-pri" disabled={busy || demo || !notes.usage.trim()}>{busy ? "저장하는 중…" : "고친 내용 저장"}</button>
-      <button type="button" className="yp-btn yp-sm" disabled={busy} onClick={() => onDone(false)}>취소</button>
-    </span>
-    {error ? <span className="yp-errline" role="alert">{error}</span> : null}
-  </form>;
-}
-
-function LedgerRow({ link, onChange, onDuplicate }: { link: Link; onChange: () => void; onDuplicate: (link: Link) => void }) {
-  const { accessToken } = useSession();
   const { note, copy } = useCopy();
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
-  const [editing, setEditing] = useState(false);
   const run = async (what: "short" | "ledger") => {
     setBusy(what); setError("");
     try { await apiRequest(`/api/v1/utm/links/${link.id}/${what}`, { method: "POST", token: accessToken }); onChange(); }
     catch (reason) { setError(errorMessage(reason)); } finally { setBusy(""); }
+  };
+  const remove = async () => {
+    if (!window.confirm(`이 링크를 지울까요?\n${link.usage}${link.short_url ? `\n단축링크 ${link.short_url}도 더는 열리지 않아요.` : ""}\n지우기 전 내용은 회사 문서 「링크 대장」의 버전 기록에 남아요.`)) return;
+    setBusy("delete"); setError("");
+    try { await apiRequest(`/api/v1/utm/links/${link.id}`, { method: "DELETE", token: accessToken, body: JSON.stringify({ expectedUpdatedAt: link.updated_at }) }); onChange(); }
+    catch (reason) { setError(errorMessage(reason)); setBusy(""); }
   };
   const param = (kind: string) => link.params[kind] ? `${link.params[kind]!.label}(${link.params[kind]!.code})` : null;
   return <li style={{ display: "grid", gap: 4, alignItems: "start" }}>
     <span><b>{link.usage}</b> · {brandLabel(link.brand)} · <span className="yp-hint">{link.created_at.slice(0, 10)} · {link.creator}</span></span>
     <span className="yp-hint">{UTM_KINDS.map(param).filter(Boolean).join(" / ")}{[link.target, link.location, link.etc].some(Boolean) ? ` · 메모: ${[link.target, link.location, link.etc].filter(Boolean).join(" · ")}` : ""}</span>
     <span className="yp-hint" style={{ wordBreak: "break-all" }}>{link.utm_url}</span>
-    {editing ? <LedgerEdit link={link} onDone={saved => { setEditing(false); if (saved) onChange(); }} /> : null}
     <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
       <button type="button" className="yp-btn yp-sm" onClick={() => void copy(link.utm_url, "UTM 링크")}><Copy size={12} aria-hidden="true" /> UTM 링크 복사</button>
       {link.short_url ? <button type="button" className="yp-btn yp-sm" onClick={() => void copy(link.short_url!, "단축링크")}><Copy size={12} aria-hidden="true" /> {link.short_url}</button>
         : <button type="button" className="yp-btn yp-sm" disabled={busy === "short"} onClick={() => void run("short")}><Link2 size={12} aria-hidden="true" /> {busy === "short" ? "만드는 중…" : "단축링크 만들기"}</button>}
-      {!editing ? <button type="button" className="yp-btn yp-sm" onClick={() => setEditing(true)}>사용처·메모 고치기</button> : null}
+      <button type="button" className="yp-btn yp-sm" disabled={editing || demo} onClick={() => onEdit(link)}><Pencil size={12} aria-hidden="true" /> {editing ? "위에서 고치는 중" : "고치기"}</button>
       <button type="button" className="yp-btn yp-sm" onClick={() => onDuplicate(link)}>복제하여 새 링크 만들기</button>
       {link.ledger_status !== "saved" ? <button type="button" className="yp-btn yp-sm" disabled={busy === "ledger"} onClick={() => void run("ledger")}>회사 문서 보관 다시 시도</button> : null}
+      {canDelete ? <button type="button" className="yp-btn yp-sm" disabled={busy === "delete" || editing || demo} onClick={() => void remove()}><Trash2 size={12} aria-hidden="true" /> {busy === "delete" ? "지우는 중…" : "지우기"}</button> : null}
     </span>
     {note ? <span className="yp-hint">{note}</span> : null}
     {error ? <span className="yp-errline" role="alert">{error}</span> : null}
@@ -242,6 +240,8 @@ export function UtmLinkSection() {
   const [query, setQuery] = useState("");
   const [brand, setBrand] = useState("");
   const [prefill, setPrefill] = useState<Form | null>(null);
+  const [editing, setEditing] = useState<Link | null>(null);
+  const [me, setMe] = useState<{ id: string; isAdmin: boolean } | null>(null);
   const loadOptions = useCallback(async () => {
     if (demo || !accessToken) return;
     try { const result = await apiRequest<{ items: Option[]; canManage: boolean }>("/api/v1/utm/options", { token: accessToken }); setOptions(result.items); setCanManage(result.canManage); }
@@ -249,20 +249,17 @@ export function UtmLinkSection() {
   }, [accessToken, demo]);
   const loadLinks = useCallback(async () => {
     if (demo || !accessToken) { setLinks([]); return; }
-    try { setLinks((await apiRequest<{ items: Link[] }>("/api/v1/utm/links", { token: accessToken })).items); }
+    try { const result = await apiRequest<{ items: Link[]; me: { id: string; isAdmin: boolean } }>("/api/v1/utm/links", { token: accessToken }); setLinks(result.items); setMe(result.me); }
     catch (reason) { setLinks([]); setError(errorMessage(reason)); }
   }, [accessToken, demo]);
   useEffect(() => { void loadOptions(); void loadLinks(); }, [loadOptions, loadLinks]);
   const shown = useMemo(() => (links ?? []).filter(link => (!brand || link.brand === brand) && (!query.trim() || [link.usage, brandLabel(link.brand), ...Object.values(link.params).flatMap(param => param ? [param.code, param.label] : [])]
     .some(text => text.toLowerCase().includes(query.trim().toLowerCase())))), [links, brand, query]);
-  const duplicate = (link: Link) => {
-    setPrefill({ brand: link.brand, origin: link.origin_url, usage: link.usage, target: link.target, location: link.location, etc: link.etc,
-      picks: { source: link.source_id, medium: link.medium_id, campaign: link.campaign_id, ...(link.content_id ? { content: link.content_id } : {}) } });
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
+  const duplicate = (link: Link) => { setEditing(null); setPrefill(formOf(link)); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  const edit = (link: Link) => { setEditing(link); window.scrollTo({ top: 0, behavior: "smooth" }); };
   return <>
     {error ? <div className="yp-errline" role="alert">{error}</div> : null}
-    <UtmLinkBuilder options={options} setOptions={setOptions} prefill={prefill} onSaved={() => void loadLinks()} />
+    <UtmLinkBuilder options={options} setOptions={setOptions} prefill={prefill} editing={editing} onCancelEdit={() => setEditing(null)} onSaved={() => void loadLinks()} />
     {canManage ? <OptionManager options={options} onChange={() => void loadOptions()} /> : null}
     <section className="yp-card" style={{ marginTop: 12 }}><div className="yp-card-h">링크 대장 <span className="yp-hint" style={{ margin: 0 }}>회사 공용 · 회사 문서 「링크 대장」에도 같이 적혀요</span></div><div className="yp-card-b">
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -270,7 +267,8 @@ export function UtmLinkSection() {
         <select className="yp-in" style={{ flex: "0 0 140px" }} value={brand} onChange={event => setBrand(event.target.value)} aria-label="브랜드로 거르기"><option value="">모든 브랜드</option>{UTM_BRANDS.map(row => <option key={row.brand} value={row.brand}>{row.label}</option>)}</select>
       </div>
       {links === null ? <p className="yp-hint" role="status">불러오는 중이에요…</p> : !shown.length ? <p className="yp-hint">{links.length ? "조건에 맞는 링크가 없어요." : "아직 만든 UTM 링크가 없어요."}</p>
-        : <ul className="yp-open-list">{shown.map(link => <LedgerRow key={link.id} link={link} onChange={() => void loadLinks()} onDuplicate={duplicate} />)}</ul>}
+        : <ul className="yp-open-list">{shown.map(link => <LedgerRow key={link.id} link={link} editing={editing?.id === link.id} canDelete={Boolean(me && (me.isAdmin || me.id === link.created_by))}
+          onChange={() => void loadLinks()} onEdit={edit} onDuplicate={duplicate} />)}</ul>}
     </div></section>
   </>;
 }

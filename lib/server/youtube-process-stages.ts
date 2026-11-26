@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { getSharp } from "next/dist/server/image-optimizer";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
@@ -344,6 +345,18 @@ export async function columnToMyin(actor: RequestActor, id: string, input: z.inf
       const key = `img-${slot}`.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 64);
       images.push({ key, mime, base64: Buffer.from(await data.arrayBuffer()).toString("base64") });
       fills[slot] = { src: `myin-image:${key}` };
+    }
+    // 대표 이미지 = 롱폼 썸네일 (대표 요청 11-26): an empty hero place takes final thumbnail A (the one set on YouTube), as a JPEG at
+    // most 1600 px so it stays under MYIN's limit; it also becomes the column's cover. A thumbnail that cannot be read leaves it empty.
+    const thumb = stages.make.data.thumbs?.A;
+    if (!fills.hero && thumb?.path) {
+      const { data } = await createServiceSupabase().storage.from(MEDIA_BUCKET).download(thumb.path);
+      if (data) {
+        const bytes = await getSharp(undefined)(Buffer.from(await data.arrayBuffer()), { limitInputPixels: 60_000_000 })
+          .resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer();
+        images.push({ key: "img-hero", mime: "image/jpeg", base64: bytes.toString("base64") });
+        fills.hero = { src: "myin-image:img-hero" };
+      }
     }
     // The video place shows the longform on YouTube unless the PD put another link there (as on the export).
     const videoUrl = stages.upload.data.run?.videoUrl;
