@@ -830,6 +830,8 @@ export async function processMyinWords() {
       const file = path.join(voiceDir, "pauses.json");
       rmSync(file, { force: true });
       if (!(await runOut(myinPython, [pauseScript, voiceDir, file], { cwd: timing })).ok) return null;
+      // 음이탈 · 높아진 채 이어짐 (한 문장 고치기 ③, 대표 귀로 맞춘 기준): added to the same list, so those paragraphs are voiced again too.
+      if (process.env.MYIN_CRACK_CHECK !== "off") await runOut(myinPython, [crackScript, voiceDir, file]);
       try { return JSON.parse(readFileSync(file, "utf8")); } catch { return null; }
     };
     current.step = "voice check";
@@ -1235,6 +1237,7 @@ print("TIMES " + json.dumps([[s["t0"], s["t1"]] for s in M.resolve(st, w)]))`;
 const voiceEditScript = path.join(path.dirname(fileURLToPath(import.meta.url)), "myin_voice_edit.py");
 const wordsScript = path.join(path.dirname(fileURLToPath(import.meta.url)), "myin_words.py");
 const readCheckScript = path.join(path.dirname(fileURLToPath(import.meta.url)), "myin_read_check.py");
+const crackScript = path.join(path.dirname(fileURLToPath(import.meta.url)), "myin_crack_check.py");
 
 /** 테이크 고르기: one sentence's takes from a voice this PC made, up to the OS to listen to (nothing paid). */
 export async function processMyinTakes() {

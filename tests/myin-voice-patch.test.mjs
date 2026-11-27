@@ -24,3 +24,12 @@ test("a fix asked on the finished video goes to the render PC as a sound-only fi
   assert.match(worker, /patch = Boolean\(job\.patch\) && defer && !fixes\.some\(\(fix\) => fix\.pause\)/);
   assert.match(worker, /if \(patch\) patch = await fitParagraphSounds\(speaker, voiceDir, env\);\n.*\n      if \(deferred \|\| patch\) await runAsync/);
 });
+
+// 한 문장 고치기 ③: the held-high crack check (calibrated by ear) adds to the pause check's list, which the OS voices again by itself.
+test("the crack check runs after the pause check on the same list, with the owner-calibrated thresholds", () => {
+  const worker = readFileSync(new URL("../tools/youtube-media-worker.mjs", import.meta.url), "utf8");
+  assert.match(worker, /\[pauseScript, voiceDir, file\][^\n]*\n.*\n      if \(process\.env\.MYIN_CRACK_CHECK !== "off"\) await runOut\(myinPython, \[crackScript, voiceDir, file\]\);/);
+  const check = readFileSync(new URL("../tools/myin_crack_check.py", import.meta.url), "utf8");
+  assert.match(check, /^HIGH, RUN, PEAK_LO, PEAK_HI, AGREE = 1\.9, 8, 2\.1, 2\.6, 0\.8$/m);
+  assert.match(check, /"kind": "음이탈"/);
+});
