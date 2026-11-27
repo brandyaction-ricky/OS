@@ -633,6 +633,11 @@ function demoClient(): YpClient {
       const project = find(id);
       checkVersion(project.version, expectedVersion);
       const stages = stagesOf(project);
+      if (project.yp.topic.type === "card" && to === "done") {
+        const evidence = finishedCardPublication(stages.cards.data, new Date().toISOString());
+        if (!["upload", "done"].includes(project.yp.stage) || project.yp.cardPublication || !evidence) throw demoError(409, "STAGE_NOT_READY", "게시 주소 또는 게시 안 함 이유를 저장해 주세요.");
+        return bump(project, { ...project.yp, stage: to, stageEnteredAt: new Date().toISOString(), cardPublication: evidence });
+      }
       const reason = to === "make" ? outlineMissing(stages.outline.data) : to === "review" ? ((demoFinals.get(id) ?? []).length ? thumbsMissing(stages.make.data) : "최종본을 올려주세요") : "";
       if (reason) throw demoError(409, "STAGE_NOT_READY", reason);
       return bump(project, { ...project.yp, stage: to });
