@@ -27,10 +27,9 @@ test("일반 프로젝트가 업로드 사진과 브랜드로 창고 디자인�
     return c.toDataURL("image/png").split(",")[1];
   });
   await page.locator('input[type="file"]').setInputFiles({name:"cup.png",mimeType:"image/png",buffer:Buffer.from(illustration,"base64")});
-  const catalog=page.getByRole("region",{name:"포맷 창고"});const group=page.getByRole("group",{name:"창고 디자인 · 피드 4:5"});
-  await catalog.getByLabel("찾을 포맷").fill("M01");
-  await catalog.getByText("속마음 말풍선",{exact:true}).click();
-  await catalog.getByRole("button",{name:"이 작업에 사용"}).click();
+  const catalog=page.getByRole("region",{name:"광고 디자인 고르기"});const group=page.getByRole("group",{name:"창고 디자인 · 피드 4:5"});
+  await catalog.getByLabel("디자인 검색").fill("M01");
+  await catalog.getByRole("button",{name:"속마음 말풍선 선택",exact:true}).click();
   for (const box of (await group.getByRole("checkbox").all()).slice(1)) await box.check();
   await approveFormat(page);
   const make=page.getByRole("region",{name:"창고 디자인 제작"});

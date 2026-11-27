@@ -72,6 +72,7 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
   const [showConnect, setShowConnect] = useState(false);
   const local = useLocalRender(accessToken, Boolean(bundle && !demo && target === "local"));
   const [title,setTitle] = useState(""); const [brief,setBrief] = useState(emptyImageCreative().brief);
+  const [projectToOpen, setProjectToOpen] = useState("");
   const [mode,setMode] = useState<Mode>("initial"); const [count,setCount] = useState(5); const [formatIds,setFormatIds] = useState<ImageFormatId[]>([]);
   const [copyFields,setCopyFields] = useState<Array<"headline"|"body"|"cta">>(["headline"]);
   const [result,setResult] = useState(""); const [message,setMessage] = useState(""); const [error,setError] = useState(""); const [busy,setBusy] = useState(false);
@@ -120,13 +121,19 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
     });
     return ()=>controller.abort();
   },[demo,accessToken]); // eslint-disable-line react-hooks/exhaustive-deps
-  const toggleFormat = (id: ImageFormatId) => {
-    if (isWarehouseFormat(id)) setSize("portrait");
+  function selectToolFormats(ids: ImageFormatId[]) {
+    if (ids.some(isWarehouseFormat)) setSize("portrait");
     if (mode !== "standalone" && mode !== "initial") setMode("initial");
-    const ids = formatIds.includes(id) ? formatIds.filter(item => item !== id) : [...formatIds,id];
     setFormatIds(ids);
     if (ids.length && ids.every(isWarehouseFormat)) { setFixFormatInputs(ids.length > 1); setCount(ids.length); }
-  };
+    if (!ids.length) { setFixFormatInputs(false); setCount(5); }
+  }
+  const toggleFormat = (id: ImageFormatId) => selectToolFormats(formatIds.includes(id) ? formatIds.filter(item => item !== id) : [...formatIds,id]);
+  function focusToolField(id: string) {
+    const element = document.getElementById(id);
+    element?.focus({preventScroll:true});
+    element?.scrollIntoView({block:"center"});
+  }
   const applyBundle=(next:ImageProjectBundle,expectedVersion?:number)=>{
     if(demo) {
       const previous=loadDemo().find(row=>row.project.id===next.project.id);
@@ -135,6 +142,7 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
     }
     if (next.project.id !== bundle?.project.id) {
       rememberProject(next.project.id);
+      setProjectToOpen(next.project.id);
       setTarget("render-pc"); setShowConnect(false); setFormatIds([]); setMode("initial"); setSize("portrait"); setCount(5); setResult("");
       setEditingId(""); setShowSafeZone(next.state.variants.some(v=>v.size==="story") || Boolean(next.state.adSetup?.aspects.includes("9x16"))); setManual(blankCopy); setFixFormatInputs(false); setCopyFields(["headline"]); setAssetPaths([]); previewBlobs.current.clear();
       const pending = next.state.formatApproval?.request;
@@ -202,7 +210,7 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
       const url=new URL(window.location.href);url.searchParams.set("view","tests");
       window.history.replaceState(window.history.state,"",url);
     }
-    setBundle(null); setBrief(emptyImageCreative().brief); setAssetPaths([]); setFormatIds([]);
+    setBundle(null); setProjectToOpen(""); setBrief(emptyImageCreative().brief); setAssetPaths([]); setFormatIds([]);
     setWizardEpoch(n => n + 1); setMessage(""); setError("");
   }
   async function createProject(name: string, input: ImageCreativeState["brief"], experiment?: true) {
@@ -218,8 +226,11 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
   const create = () => void run(async () => {
     const name = title.trim();
     if (!name) throw new Error("작업 이름을 입력해 주세요.");
+    const chosenFormats = bundle ? [] : formatIds;
     await createProject(name, bundle ? emptyImageCreative().brief : brief);
+    if (chosenFormats.length) selectToolFormats(chosenFormats);
     setTitle("");
+    if (showTools) focusToolField(chosenFormats.length ? "image-brief-title" : "image-library-title");
   });
   const open=(id:string)=>void run(async()=>{if(demo){const found=loadDemo().find(x=>x.project.id===id && !x.project.archivedAt);if(!found)throw new Error("작업을 찾을 수 없어요. 휴지통에서 복구할 수 있습니다.");applyBundle(found);return;}applyBundle(await apiRequest<ImageProjectBundle>(`/api/v1/content/image-creatives/${encodeURIComponent(id)}`,{token:accessToken}));});
   useEffect(() => {
@@ -554,11 +565,14 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
     const file = await storedExport(id,kind,aspect);
     const anchor = document.createElement("a"); anchor.href=file.url; anchor.download=file.name; anchor.rel="noopener noreferrer"; anchor.click();
   });
-  function startFormatComparison() {
-    if (!bundle) { setError("먼저 작업 이름을 입력해 새 작업을 만들어 주세요."); return; }
-    setMode("initial"); setSize("portrait"); setFormatIds([...WAREHOUSE_FORMAT_IDS]); setCount(WAREHOUSE_FORMAT_IDS.length);
-    setFixFormatInputs(true); setMessage("비교할 다섯 포맷을 선택했습니다. 사진 한 장을 선택한 뒤 포맷을 승인해 주세요.");
-    document.getElementById("image-format-start")?.scrollIntoView({block:"start"});
+  function continueWithFormats() {
+    if (busy || !formatIds.length) return;
+    if (!bundle) {
+      setMessage(`디자인 ${formatIds.length}개를 골랐어요. 새 작업 이름을 입력하면 선택한 디자인으로 시작합니다.`);
+      focusToolField("ic-new-project-name");
+      return;
+    }
+    focusToolField("image-brief-title");
   }
   const copyPrompt=()=>void run(async()=>{if(!approved || !prompt)throw new Error("먼저 현재 조건의 포맷을 승인해 주세요.");const extra=`\n선택 크기: ${size}\n사용 가능한 업로드 이미지: ${JSON.stringify(bundle?.assets.map(({path,w,h})=>({path,w,h})) || [])}\n선택한 이미지 경로: ${(["appeal","copy"].includes(mode) ? selected?.asset?.path : assetPaths.join(", ")) || "없음"}`;await navigator.clipboard.writeText(prompt+extra);setMessage("요청문을 복사했어요. 구독 중인 AI에 전달한 뒤 JSON을 가져와 주세요.");});
   const machinePicker = (
@@ -605,26 +619,30 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
     </>}
     {showTools && <>
     <section className="panel panel-pad-lg ic-panel ic-project-selector" aria-labelledby="ic-project-title">
-      <div className="ic-section-heading"><div><h2 id="ic-project-title">작업 선택</h2><p className="ic-muted">기존 작업을 이어서 편집하거나 새로운 광고 작업을 시작하세요.</p></div><span className="ic-status-badge">작업 도구</span></div>
-      <div className="ic-project-options">
-        <div className="ic-project-option"><h3>이어서 작업하기</h3>
-          <label className="ic-field">기존 작업<select className="field" aria-label="기존 작업" disabled={busy || !listReady} value={bundle?.project.id||""} onChange={e=>{if(e.target.value)open(e.target.value);}}><option value="">작업을 선택하세요</option>{projects.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select></label>
-          <p className="ic-field-hint">{!listReady ? "저장된 작업을 불러오고 있어요." : projects.length ? "작업을 선택하면 저장한 내용이 열립니다." : "아직 저장된 작업이 없어요. 새 작업을 만들어 시작하세요."}</p>
-        </div>
-        <form className="ic-project-option ic-project-new" onSubmit={event=>{event.preventDefault();create();}}><h3>새 광고 시작하기</h3>
-          <div className="ic-project-create"><label className="ic-field">새 작업 이름<input className="field" required disabled={busy} value={title} onChange={e=>setTitle(e.target.value)} placeholder="예: 무료 진단 첫 소재" /></label><button type="submit" className="primary-button" disabled={busy || !title.trim()}>새 작업 만들기</button></div>
-          <p className="ic-field-hint">찾기 쉬운 이름을 정한 뒤 광고 내용을 입력하세요.</p>
+      <div className="ic-section-heading"><div><h2 id="ic-project-title">작업 선택</h2><p className="ic-muted">이어서 할 작업을 열거나, 새 작업에 광고를 모아보세요.</p></div><span className="ic-status-badge">작업 도구</span></div>
+      <div className="ic-project-table">
+        <form className="ic-project-table-row" onSubmit={event=>{event.preventDefault();if(projectToOpen)open(projectToOpen);}}>
+          <label className="ic-project-row-label" htmlFor="ic-existing-project">기존 작업<span aria-hidden="true">저장한 광고 이어하기</span></label>
+          <div className="ic-project-row-input"><select id="ic-existing-project" className="field" aria-label="기존 작업" disabled={busy || !listReady || !projects.length} value={projectToOpen} onChange={e=>setProjectToOpen(e.target.value)} aria-describedby="ic-existing-project-hint"><option value="">{listReady && !projects.length ? "저장된 작업이 없습니다" : "작업을 선택하세요"}</option>{projects.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select>
+            <p id="ic-existing-project-hint" className="ic-field-hint">{!listReady ? "저장된 작업을 불러오고 있어요." : projects.length ? "작업을 고른 뒤 ‘작업 열기’를 눌러주세요." : "아래에서 이름을 입력해 새 작업을 시작하세요."}</p></div>
+          <button type="submit" className="secondary-button" disabled={busy || !projectToOpen || !listReady}>작업 열기</button>
+        </form>
+        <form className="ic-project-table-row" onSubmit={event=>{event.preventDefault();create();}}>
+          <label className="ic-project-row-label" htmlFor="ic-new-project-name">새 작업 이름<span aria-hidden="true">새로운 광고 시작하기</span></label>
+          <div className="ic-project-row-input"><input id="ic-new-project-name" className="field" aria-label="새 작업 이름" required disabled={busy} value={title} onChange={e=>setTitle(e.target.value)} placeholder="예: 11월 첫 수업 모집 광고" aria-describedby="ic-new-project-hint"/>
+            <p id="ic-new-project-hint" className="ic-field-hint">{!bundle && formatIds.length ? `아래에서 선택한 디자인 ${formatIds.length}개로 시작합니다.` : "상품이나 캠페인 이름을 적으면 나중에 찾기 쉬워요."}</p></div>
+          <button type="submit" className="primary-button" disabled={busy || !title.trim()}>새 작업 만들기</button>
         </form>
       </div>
+      {bundle && <p className="ic-active-project" role="status">현재 작업 <strong>{bundle.project.title}</strong></p>}
     </section>
-    <ImageFormatLibrary selected={formatIds} onSelect={bundle ? toggleFormat : undefined} local={localDirectionPlanner} />
-    <div id="image-format-compare" className="ic-actions"><button className="secondary-button" onClick={startFormatComparison}>포맷만 비교하기</button></div>
+    <ImageFormatLibrary selected={formatIds} onSelect={toggleFormat} onSelectionChange={selectToolFormats} onContinue={continueWithFormats} hasProject={!!bundle} disabled={busy} local={localDirectionPlanner} />
     {saved?.formatTests?.length ? <details className="ic-details"><summary>이전에 저장한 포맷 비교</summary>
       {saved.formatTests.map((item,index)=><section key={item.id}><h3>{index+1}번째 비교 · {item.copy.headline}</h3>
         <p>{item.copy.brand} · {item.appeal} · {item.copy.support} · {item.copy.cta}</p>
         {item.followup && <p>{IMAGE_FORMATS[item.followup.formatId].name} · {modes.find(m=>m.id===item.followup?.mode)?.title}</p>}
       </section>)}</details> : null}
-    <section className="panel panel-pad-lg ic-panel"><h2>1. 무엇을 만들까요?</h2><p className="ic-muted">{saved?.variants.length ? "시안이 만들어진 작업의 조건은 보존됩니다. 조건을 바꾸려면 새 작업을 만드세요." : "추천과 작업 요청에 쓸 내용을 입력해 주세요."}</p><div className="ic-grid">{fields.map(([name,label,placeholder])=><label className="ic-field" key={name}>{label}{name==="facts"?<textarea className="field is-prose" rows={3} disabled={Boolean(saved?.variants.length)} value={brief[name] ?? ""} placeholder={placeholder} onChange={e=>setBrief({...brief,[name]:e.target.value})}/>:<input className="field" disabled={Boolean(saved?.variants.length) && (name !== "brand" || Boolean(saved?.brief.brand?.trim()))} value={brief[name] ?? ""} placeholder={placeholder} onChange={e=>setBrief({...brief,[name]:e.target.value,...(["product","brand","audience","offer"].includes(name) ? {productSource:undefined} : {})})}/>}</label>)}</div><div className="ic-row ic-actions"><button className="secondary-button" disabled={!bundle||busy} onClick={saveBrief}>입력 저장</button></div></section>
+    <section className="panel panel-pad-lg ic-panel" aria-labelledby="image-brief-title"><h2 id="image-brief-title" tabIndex={-1}>1. 무엇을 만들까요?</h2><p className="ic-muted">{saved?.variants.length ? "시안이 만들어진 작업의 조건은 보존됩니다. 조건을 바꾸려면 새 작업을 만드세요." : "선택한 디자인에 담을 상품과 고객 정보를 입력하고 저장하세요. 다음으로 사진과 문구를 준비합니다."}</p><div className="ic-grid">{fields.map(([name,label,placeholder])=><label className="ic-field" key={name}>{label}{name==="facts"?<textarea className="field is-prose" rows={3} disabled={Boolean(saved?.variants.length)} value={brief[name] ?? ""} placeholder={placeholder} onChange={e=>setBrief({...brief,[name]:e.target.value})}/>:<input className="field" disabled={Boolean(saved?.variants.length) && (name !== "brand" || Boolean(saved?.brief.brand?.trim()))} value={brief[name] ?? ""} placeholder={placeholder} onChange={e=>setBrief({...brief,[name]:e.target.value,...(["product","brand","audience","offer"].includes(name) ? {productSource:undefined} : {})})}/>}</label>)}</div><div className="ic-row ic-actions"><button className="secondary-button" disabled={!bundle||busy} onClick={saveBrief}>입력 저장</button></div></section>
     {bundle&&<>
       <section id="image-format-start" className="panel panel-pad-lg ic-panel"><h2>2. 제작 방식</h2><div className="ic-modes">{modes.map(m=><div className="ic-mode" key={m.id}><button type="button" className="secondary-button" aria-pressed={mode===m.id} onClick={()=>{setMode(m.id);if(m.id==="image")setAssetPaths([]);}}>{m.title}</button><p className="ic-mode-hint">{m.hint}</p></div>)}</div>{!["initial","standalone"].includes(mode)&&<p className="os-callout" data-tone="info">{selected?`기준 시안: ${selected.copy.headline || selected.id}`:"아래 결과에서 기준 시안을 먼저 선택하세요."} 승리 여부는 직접 확인하고 선택합니다.</p>}</section>
       {["initial","standalone"].includes(mode)&&<section className="panel panel-pad-lg ic-panel"><h2>3. 포맷 고르기</h2><p className="ic-muted">입력 내용에 맞춘 구조 추천이에요. 광고 성과를 예측한 결과는 아닙니다.</p><fieldset className="ic-checks"><legend>창고 디자인 · 피드 4:5</legend>
