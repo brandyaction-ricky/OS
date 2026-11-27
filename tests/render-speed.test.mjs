@@ -15,7 +15,7 @@ test("음성 점검: audit beside read check → pause check; voice_fix joins vo
   assert.match(worker, /Promise\.all\(\[voiceAudit\(\), readCheck\(\)\.then\(async \(found\) => \[found, await pauseCheck\(\)\]\)\]\)/);
   assert.match(worker, /includes\("--assemble"\)/);
   assert.match(worker, /VOICE_FIX_DEFER: "1"/);
-  assert.match(worker, /if \(deferred\) await runAsync\(speaker\.python, \["voice_fix\.py", voiceJob, "--assemble"\]/);
+  assert.match(worker, /if \(deferred \|\| patch\) await runAsync\(speaker\.python, \["voice_fix\.py", voiceJob, "--assemble"\]/);
   const check = readFileSync(new URL("../tools/myin_read_check.py", import.meta.url), "utf8");
   assert.match(check, /pause_check_cache\.json/);
   assert.match(check, /\[round\(w\.start, 3\), round\(w\.end, 3\), w\.word\.strip\(\)\]/);   // pause_check_myin.py's own format

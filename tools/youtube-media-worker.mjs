@@ -747,6 +747,7 @@ export async function processMyinWords() {
     const fixes = Array.isArray(job.fixes) ? job.fixes : [];
     const timing = path.join(work, "tools", "voice_timing");
     const fixed = [];
+    let patch = false;
     const hasVoice = existsSync(path.join(voiceDir, "voice.wav")), hasTool = existsSync(path.join(timing, "voice_fix.py"));
     if (job.dictionary && existsSync(timing)) writeVoiceDictionaries(timing, job.dictionary);
     // 바뀐 문단만 다시 듣기 (요청 3번의 5): what the voice before this one was heard as, per paragraph sound — the words and the voice
@@ -761,6 +762,10 @@ export async function processMyinWords() {
       await runOut(myinPython, [wordsScript, "snap", voiceDir, out, before]);
       const defer = readFileSync(path.join(timing, "voice_fix.py"), "utf8").includes("--assemble");   // packages from 2026-11-25 on
       let deferred = false;
+      // 한 문장 고치기 ② (대표 2026-11-26): a fix asked on the finished video keeps every time — the paragraphs voiced again are fitted to
+      // the sound they replace — so only the sound is mixed again over the picture already drawn. A pause edit moves times by design.
+      patch = Boolean(job.patch) && defer && !fixes.some((fix) => fix.pause) && existsSync(path.join(out, PATCH_RAW));
+      if (patch) keepParagraphSounds(voiceDir);
       for (const fix of fixes) {
         // 테이크 바꾸기 · 앞뒤 쉼 (요청 2번, 2026-11-17): our script with the engine's own joins — another take the voice made, or more pause; no Fish.
         if (fix.take || fix.pause) {
@@ -775,7 +780,11 @@ export async function processMyinWords() {
         deferred ||= defer;
       }
       // voice.wav once for the round (2026-11-25: 18 fixes rebuilt the 68 MB voice 18 times); a take or pause edit in between already joins the new sounds.
-      if (deferred) await runAsync(speaker.python, ["voice_fix.py", voiceJob, "--assemble"], { cwd: timing, env });
+      if (patch) patch = await fitParagraphSounds(speaker, voiceDir, env);
+      // A fitted paragraph is joined in again even after take edits only (they join by themselves, before the fit).
+      if (deferred || patch) await runAsync(speaker.python, ["voice_fix.py", voiceJob, "--assemble"], { cwd: timing, env });
+      if (patch) patch = sameTimes(readJson(path.join(voiceDir, PATCH_KEPT, "timings.json")), readJson(path.join(voiceDir, "timings.json")));
+      if (job.patch) console.log(`myin voice fix: ${patch ? "times kept — the sound goes over the drawn video" : "times moved — back to ④ for the full video"}`);
       // Without the OS's dictionary (an older OS) new lines go back into the package instead.
       if (fixed.some((fix) => fix.ok) && !job.dictionary) mergeVoiceDictionaries(timing, path.join(job.layout === "short" ? myinPkgShort : myinPkg, "tools", "voice_timing"));
     } else if (fixes.length) {
@@ -854,7 +863,8 @@ export async function processMyinWords() {
         preview = { bytes: statSync(mp3).size };
       } catch (error) { console.error(`myin voice preview skipped: ${job.runId}: ${error.message}`); }
     }
-    await call({ action: "myin_complete", ...lease, ...(voice ? { voice } : {}), ...(preview ? { preview } : {}) });
+    const patched = patch ? await patchFinal(job, work, out).catch((error) => { console.error(`myin sound-only final skipped: ${job.runId}: ${error.message}`); return null; }) : null;
+    await call({ action: "myin_complete", ...lease, ...(voice ? { voice } : {}), ...(preview ? { preview } : {}), ...(patched ? { patched } : {}) });
     console.log(`myin words ready: ${job.runId}${fixed.length ? ` (${fixed.filter((fix) => fix.ok).length}/${fixed.length} sentences fixed)` : ""}`);
   } catch (error) {
     console.error(`myin words failed: ${job.runId}: ${error.message}${error.cause ? ` · cause: ${error.cause.code ?? error.cause.message}` : ""}`);
@@ -1334,6 +1344,61 @@ const renderProcs = () => String(Math.max(1, Math.min(16, Math.floor(Number(proc
 const stamp = (what, runId) => console.log(`${new Date().toISOString()} myin final ${what}: ${runId}`);
 
 /** v13 stage 4b: his full render, mix and handouts; the OS gets the video, 한장정리.png, 덱_전체.pdf, subs_youtube.srt and a loudness check. */
+/** The finished video's loudness (LUFS, true peak), as the OS shows it. */
+function loudness(video, env) {
+  // Per-frame lines go to the verbose log: a 12-minute video printed 1.2 MB of them and overflowed spawnSync's buffer before the summary.
+  const report = spawnSync("ffmpeg", ["-hide_banner", "-nostats", "-i", video, "-vn", "-af", "ebur128=peak=true:framelog=verbose", "-f", "null", "-"], { encoding: "utf8", env, maxBuffer: 16 * 1024 * 1024 }).stderr ?? "";
+  const last = (pattern) => Number([...report.matchAll(pattern)].at(-1)?.[1]);
+  const lufs = last(/\bI:\s+(-?\d+(?:\.\d+)?) LUFS/g), peak = last(/Peak:\s+(-?\d+(?:\.\d+)?) dBFS/g);
+  if (!Number.isFinite(lufs) || !Number.isFinite(peak)) throw Object.assign(new Error("loudness check did not run"), { code: "MYIN_LOUDNESS_UNKNOWN" });
+  return { lufs, peak };
+}
+
+// ── 한 문장 고치기 ② (대표 2026-11-26 「딱 해당 구간만 다시 뽑고 이어 붙이기」) ──
+const PATCH_RAW = "myin_video_final_myin_v1_raw.mp4", PATCH_KEPT = "patch-before";
+const voiceFitScript = path.join(path.dirname(fileURLToPath(import.meta.url)), "myin_voice_fit.py");
+const readJson = (file) => JSON.parse(readFileSync(file, "utf8"));
+/** Each paragraph sound and the timings as they are before the fix (clones on APFS). */
+function keepParagraphSounds(voiceDir) {
+  const kept = path.join(voiceDir, PATCH_KEPT);
+  rmSync(kept, { recursive: true, force: true });
+  mkdirSync(kept);
+  for (const name of readdirSync(voiceDir)) if (/^p\d{2}_t\.wav$/.test(name) || name === "timings.json") copyFileSync(path.join(voiceDir, name), path.join(kept, name), fsConstants.COPYFILE_FICLONE);
+}
+/** The paragraph sounds voice_fix made again, fitted to the ones they replace; false when one is too different to fit. */
+async function fitParagraphSounds(speaker, voiceDir, env) {
+  const kept = path.join(voiceDir, PATCH_KEPT);
+  for (const name of readdirSync(kept).filter((name) => name.endsWith("_t.wav"))) {
+    const now = path.join(voiceDir, name);
+    if (!existsSync(now) || readFileSync(now).equals(readFileSync(path.join(kept, name)))) continue;
+    if (!(await runOut(speaker.python, [voiceFitScript, path.join(kept, name), now], { env })).ok) return false;
+  }
+  return true;
+}
+/** His joined timings before and after the fix put every paragraph at the same place (±40 ms, his timings are rounded to 10 ms). */
+export function sameTimes(before, after) {
+  const a = before?.paragraphs ?? [], b = after?.paragraphs ?? [];
+  return a.length > 0 && a.length === b.length && Math.abs(before.total - after.total) <= 0.04 && a.every((p, i) => Math.abs(p.start - b[i].start) <= 0.04 && Math.abs(p.dur - b[i].dur) <= 0.04);
+}
+/** The finished video again with the new voice: his remix over the picture the last final drew (1–2 minutes), its loudness, and up. */
+async function patchFinal(job, work, videoDir) {
+  current.step = "mixing";
+  const myinDir = path.join(work, "tools", "myin_pipeline");
+  const story = existsSync(path.join(videoDir, "myin_storyboard_styled.json")) ? "myin_storyboard_styled.json" : "myin_storyboard.json";
+  const drawEnv = { ...layoutEnv(myinEnv(), job.layout), STORY: story };
+  // His remix trims the YouTube subtitles again when the intro is off: the ones the OS already has stay, so the file here does too.
+  const srt = path.join(videoDir, "subs_youtube.srt"), srtKept = `${srt}.patch`;
+  if (existsSync(srt)) copyFileSync(srt, srtKept);
+  try { await runAsync(myinPython, ["render_myin.py", "os_myin", "remix", `../../voice/os_myin/${PATCH_RAW}`, "final_myin_v1.mp4"], { cwd: myinDir, env: drawEnv }); }
+  finally { if (existsSync(srtKept)) renameSync(srtKept, srt); }
+  const video = path.join(videoDir, "final_myin_v1.mp4");
+  const { lufs, peak } = loudness(video, drawEnv);
+  current.step = "upload";
+  await upload(job.patch.videoUploadUrl, video, "video/mp4");
+  console.log(`myin final sound-only: ${job.runId} (${lufs} LUFS, peak ${peak})`);
+  return { bytes: statSync(video).size, durationSeconds: seconds(video), lufs, peak };
+}
+
 export async function processMyinFinal() {
   if (!myinPkg) return false;
   const job = await call({ action: "myin_final_claim", ...(local ? { engine: engine() } : { ...shortClaim, ...pcField }) });
@@ -1375,11 +1440,7 @@ export async function processMyinFinal() {
       stamp("mixed", job.runId);
       await runAsync(myinPython, ["render_myin.py", "os_myin", "handouts"], { cwd: myinDir, env: drawEnv });
     }
-    // Per-frame lines go to the verbose log: a 12-minute video printed 1.2 MB of them and overflowed spawnSync's buffer before the summary.
-    const report = spawnSync("ffmpeg", ["-hide_banner", "-nostats", "-i", video, "-vn", "-af", "ebur128=peak=true:framelog=verbose", "-f", "null", "-"], { encoding: "utf8", env, maxBuffer: 16 * 1024 * 1024 }).stderr ?? "";
-    const last = (pattern) => Number([...report.matchAll(pattern)].at(-1)?.[1]);
-    const lufs = last(/\bI:\s+(-?\d+(?:\.\d+)?) LUFS/g), peak = last(/Peak:\s+(-?\d+(?:\.\d+)?) dBFS/g);
-    if (!Number.isFinite(lufs) || !Number.isFinite(peak)) throw Object.assign(new Error("loudness check did not run"), { code: "MYIN_LOUDNESS_UNKNOWN" });
+    const { lufs, peak } = loudness(video, env);
     current.step = "upload";
     await upload(job.videoUploadUrl, video, "video/mp4");
     if (job.summaryUploadUrl) await upload(job.summaryUploadUrl, path.join(videoDir, "handouts", "한장정리.png"), "image/png");

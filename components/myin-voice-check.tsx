@@ -24,7 +24,7 @@ export interface MyinVoiceFixView { memo: string; say: string | null; read: stri
 export interface MyinVoiceCheckView { skipped: boolean; name: string; at: string }
 type Memo = { memo: string; say?: string; read?: string; video?: true; p?: number };
 /** 음성 고치기 범위 (0dfd9a37 보완 ①): what the memos make again, as the OS finds the sentences (lib/myin-voice-plan). */
-export interface VoiceFixPlan { targets: { at: number; text: string; memos: Memo[] }[]; unplaced: Memo[][]; conflicts: string[][]; fixes: Memo[]; keep: number; sentences: number; final: boolean }
+export interface VoiceFixPlan { targets: { at: number; text: string; memos: Memo[] }[]; unplaced: Memo[][]; conflicts: string[][]; fixes: Memo[]; keep: number; sentences: number; final: boolean; patch?: boolean }
 /** What Fish reads: the sentences found, and 120 letters for each one the render PC still has to find (as before this plan). */
 export const planText = (plan: VoiceFixPlan) => [...plan.targets.map((target) => target.text), ...plan.unplaced.map(() => "가".repeat(120))].join("\n");
 export const askVoicePlan = (token: string | null, runId: string, fixes: Memo[]) => apiRequest<VoiceFixPlan>("/api/v1/content/youtube-automation/myin",
@@ -38,7 +38,7 @@ export function VoiceFixScope({ plan }: { plan: VoiceFixPlan }) {
     <ul>{plan.targets.map((target) => <li key={`${target.at}-${target.text}`}>{mmss(target.at)} · {target.text}{target.memos.length > 1 ? ` (메모 ${target.memos.length}개)` : ""}</li>)}
       {plan.unplaced.map((group) => <li key={group[0].memo}>{group[0].memo} · 여기서는 문장을 못 찾았어요. 영상 만드는 컴퓨터가 시각으로 찾아요(확인 필요)</li>)}</ul>
     <small>그대로 두는 문장 {plan.unplaced.length ? "약 " : ""}{plan.keep}개{plan.sentences ? ` (전체 ${plan.sentences}문장)` : ""} · 받아쓰기 · 자막은 새 음성으로 저절로 다시 만들어요
-      {plan.final ? " · 완성 영상은 [전체 영상 만들기]로 다시 만들어야 새 음성이 들어가요" : ""}</small>
+      {plan.patch ? " · 완성 영상은 다시 그리지 않고 그 문단 소리만 바꿔 몇 분 안에 새로 나와요(길이가 많이 달라지면 [전체 영상 만들기])" : plan.final ? " · 완성 영상은 [전체 영상 만들기]로 다시 만들어야 새 음성이 들어가요" : ""}</small>
     {plan.conflicts.length ? <p className="yt-warn" role="alert">같은 문장에 읽는 글이나 발음이 둘 이상이에요. 하나만 남겨 주세요: {plan.conflicts[0].join(" / ")}</p> : null}
   </div>;
 }
@@ -157,7 +157,7 @@ export function MyinVoiceCheck({ runId, stage, fixable, pending, check, token, o
             </li>)}</ul></details> : null}
           {takesBox}</>}
       {open && !fixable ? <p>이 영상은 10/30 16시 전에 시작해 문장만 다시 만들 수 없어요. 고칠 곳은 최종 검토 피드백에 남겨요.</p> : null}
-      {open && fixable && stage !== "words_ready" ? <p><small>여기서 고치면 받아쓰기 · 자막을 다시 만들어요. 장면 그림 단계면 장면 그림도 다시, 완성 영상이 있으면 ④로 돌아가 「전체 영상 만들기」로 새 음성을 넣어요.</small></p> : null}
+      {open && fixable && stage !== "words_ready" ? <p><small>여기서 고치면 받아쓰기 · 자막을 다시 만들어요. 장면 그림 단계면 장면 그림도 다시, 완성 영상이 나온 뒤면 그 문단 소리만 바꿔 몇 분 안에 새 완성 영상이 나와요(④에서 고치면 「전체 영상 만들기」로 새 음성을 넣어요).</small></p> : null}
       {open && fixable ? <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <input className="input" style={{ width: 80 }} value={time} placeholder="02:03" aria-label="시각" onChange={event => { setPara(undefined); setTime(event.target.value); }} />
