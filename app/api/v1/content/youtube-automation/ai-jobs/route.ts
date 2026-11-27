@@ -12,6 +12,7 @@ export const dynamic = "force-dynamic";
 // GPT 초안 (2026-10-29): this request may start GPT work after its response (next/server after), which takes several minutes.
 export const maxDuration = 800;
 const headers = { "cache-control": "private, no-store" };
+const gptConfigured = () => Boolean(process.env.OPENAI_API_KEY?.trim());
 const disabled = () => new ApiError(404, "AUTOMATION_PILOT_DISABLED", "영상 자동화 파일럿이 아직 연결되지 않았습니다.");
 // ② 원고 and ⑦ 발행키트 open on the staff switch; ③ 화면 설계 and 기획표 stay with the DEV-only pilot.
 // 기획안 (유튜브 공정 v1) opens with them.
@@ -28,7 +29,8 @@ export async function GET(request: Request) {
     const actor = await authenticateRequest(request, { allowAgent: false });
     const sourceId = z.string().uuid().parse(params.get("sourceId"));
     // ③ 장면 의견: several jobs wait in turn, so the panel reads the recent ones (all=1) to tell which notes are still being fixed.
-    return NextResponse.json(await staffJobStatus(actor, sourceId, task, params.get("all") === "1" ? 20 : 1), { headers });
+    const status = await staffJobStatus(actor, sourceId, task, params.get("all") === "1" ? 20 : 1);
+    return NextResponse.json({ ...status, gptConfigured: gptConfigured() }, { headers });
   } catch (error) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "INVALID_AUTOMATION_INPUT", "콘텐츠를 확인해 주세요."));
     return apiErrorResponse(error);
@@ -46,7 +48,7 @@ export async function POST(request: Request) {
     // GPT 초안: gpt = "precise" | "saving" asks the OS to do the card now with the company's GPT credit.
     const tier = z.enum(["precise", "saving"]).optional().parse(gpt);
     if (tier && !isGptTask(input.task)) throw new ApiError(400, "GPT_TASK_UNSUPPORTED", "이 작업은 GPT로 바로 만들 수 없어요.");
-    if (tier && !process.env.OPENAI_API_KEY?.trim()) throw new ApiError(503, "OPENAI_NOT_CONFIGURED", "OpenAI 연결이 아직 없어서 GPT로 만들 수 없어요.");
+    if (tier && !gptConfigured()) throw new ApiError(503, "OPENAI_NOT_CONFIGURED", "OpenAI 연결이 아직 없어서 GPT로 만들 수 없어요.");
     const job = await requestStaffJob(actor, input, tier ? { tier } : undefined);
     if (tier && job.status === "backlog") scheduleGptJob(job.id, { id: actor.id, name: actor.name, team: actor.team }, tier);
     return NextResponse.json({ job }, { headers });

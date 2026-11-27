@@ -122,7 +122,7 @@ export function SendDialog({ page, task, open, onClose, job, defaults, extra, qu
   extra?: Record<string, unknown>;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
-  const gptOk = isGptTask(task);
+  const gptOk = isGptTask(task) && (task !== "card" || job.status?.gptConfigured === true);
   const [tab, setTab] = useState<SendTab>(gptOk ? "gpt" : "queue");
   const [tier, setTier] = useState<GptTier>("precise");
   const [minutes, setMinutes] = useState(defaults?.minutes ?? 10);
@@ -147,7 +147,7 @@ export function SendDialog({ page, task, open, onClose, job, defaults, extra, qu
   const waiting = job.status?.job?.status === "backlog";
   const connected = (job.status?.myAi.keys ?? 0) > 0;
   const send = async (copy: boolean, gpt?: GptTier) => {
-    if (!projectId || !page.accessToken) return;
+    if (!projectId || !page.accessToken || (gpt && !gptOk)) return;
     setBusy(true); setError("");
     try {
       const body = task === "script" ? { task, sourceId: projectId, targetMinutes: minutes, role, ...(attachments.trim() ? { attachments: attachments.trim() } : {}) }
@@ -214,7 +214,7 @@ export function SendDialog({ page, task, open, onClose, job, defaults, extra, qu
     </div>
     <div className="yp-modal-f">
       <button type="button" className="yp-btn" onClick={onClose}>{running ? "닫기" : "취소"}</button>
-      {running ? null : tab === "gpt" ? <button type="button" className="yp-btn yp-pri" disabled={busy || (waiting && byGpt)} onClick={() => void send(false, tier)}><Sparkles size={14} /> GPT로 만들기</button>
+      {running ? null : tab === "gpt" ? <button type="button" className="yp-btn yp-pri" disabled={!gptOk || busy || (waiting && byGpt)} onClick={() => void send(false, tier)}><Sparkles size={14} /> GPT로 만들기</button>
         : tab === "queue" ? <button type="button" className="yp-btn yp-pri" disabled={busy || waiting} onClick={() => void send(false)}><Sparkles size={14} /> 보내기</button>
         : tab === "now" ? <button type="button" className="yp-btn yp-pri" disabled={busy} onClick={() => waiting ? void navigator.clipboard.writeText(MY_AI_PROMPT).then(() => setCopied(true)) : void send(true)}><Copy size={14} /> {waiting ? "문장 복사" : "보내고 문장 복사"}</button>
           : <button type="button" className="yp-btn yp-pri" disabled={busy || Object.values(paste).some(value => !value.trim())} onClick={() => void submitPaste()}>결과 넣기</button>}

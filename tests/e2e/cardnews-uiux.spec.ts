@@ -500,6 +500,25 @@ test("all seven format samples are available before generation", async ({ page }
   }
 });
 
+test("a saved plan restores its format after reload without starting GPT", async ({ page }) => {
+  await page.goto(editUrl);
+  const section = page.locator(".yp-fsec").filter({ has: page.getByText("포맷 고르기", { exact: true }) });
+  const formats = section.getByRole("checkbox");
+  await expect(formats.first()).toBeVisible();
+  for (const format of await formats.all()) await format.uncheck();
+  await section.getByRole("checkbox", { name: "단계형" }).check();
+  await section.getByRole("button", { name: "기획안 확인", exact: true }).click();
+  await section.getByRole("textbox").fill("영수증을 보관하고 정산할 때 찾는 세 단계");
+  await section.getByRole("button", { name: "기획안 저장", exact: true }).click();
+  await expect(section.getByText("기획안과 선택한 포맷을 저장했어요.")).toBeVisible();
+  await page.reload();
+  await expect(section.locator("input:checked")).toHaveCount(1);
+  await expect(section.getByRole("checkbox", { name: "단계형" })).toBeChecked();
+  await section.getByRole("button", { name: "기획안 확인", exact: true }).click();
+  await expect(section.getByRole("textbox")).toHaveValue("영수증을 보관하고 정산할 때 찾는 세 단계");
+  await expect(section.getByRole("button", { name: "직접 쓰기" })).toBeEnabled();
+});
+
 test("the list starts a card in place and persists edited title, audience and test visibility", async ({ page }) => {
   const list = "/content/projects?platform=card";
   await page.goto(list);
@@ -510,7 +529,7 @@ test("the list starts a card in place and persists edited title, audience and te
   await sheet.getByLabel("한 줄 주제").fill("월요일 아침의 작은 계획");
   await sheet.getByLabel("누구에게").fill("주말에도 걱정하는 직장인");
   await sheet.getByRole("button", { name: /카드 만들러 가기/ }).click();
-  await expect(page.getByRole("button", { name: "추천 2개로 초안 뽑기" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "기획안 확인", exact: true })).toBeVisible();
   await page.locator(".yp-subj").getByRole("button", { name: "더 보기" }).click();
   const details = page.locator(".yp-more form");
   await details.getByLabel("제목").fill("월요일 오전에 시작할 일");
