@@ -161,3 +161,22 @@ test("게시 확인 requires a distinct Instagram post for every episode and hon
   assert.equal(finishedCardPublication(withheld, "now").status, "withheld");
   assert.equal(finishedCardPublication(patch(withheld, { episode: 2, url: "https://www.instagram.com/reel/xyz/" }), "now").status, "published");
 });
+
+test("production outline retains sources, pins the format and does not export a design reference as a cover", () => {
+  const photo = { path: "example.png", w: 100, h: 120 };
+  for (const purpose of ["design", "use"]) {
+    const production = { title: "회의 메모", format: "steps", memo: "질문을 적어요.\n담당자를 정해요.", detail: "질문\n담당자", direction: "실제 예시", reference: { purpose, photo } };
+    const state = nextCards(cardProject(), emptyStage("cards", "card"), { production, createOutline: true }, "PD", "now", () => "outline");
+    const d = state.drafts[0];
+    assert.equal(state.picked, d.id);
+    assert.equal(d.formatVersion, 1);
+    assert.equal(d.outline, true);
+    assert.deepEqual(d.production, production);
+    assert.equal(d.slides.length, 6);
+    assert.equal(d.slides[1].fields.title, "질문");
+    assert.equal(d.slides[1].fields.body, "질문을 적어요.");
+    assert.deepEqual(d.slides[0].photo, purpose === "use" ? photo : undefined);
+    assert.throws(() => nextCards(cardProject(), state, { draft: { ...d, outline: false } }, "PD", "later", () => ""), /필수 항목/);
+    assert.throws(() => nextCards(cardProject(), state, { draft: { ...d, format: "quote" } }, "PD", "later", () => ""), /포맷/);
+  }
+});

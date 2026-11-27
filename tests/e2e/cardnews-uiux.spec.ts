@@ -239,6 +239,8 @@ test("웹툰 pictures are drawn together: put back from one ZIP, or drawn on the
   await batch.getByRole("checkbox", { name: "2장 고르기" }).check();
   await batch.getByRole("button", { name: "회사 API로 1장 그리기" }).click();
   await page.locator("dialog.cost-dlg").getByRole("button", { name: "1장 그리기", exact: true }).click();
+  await expect(page.getByRole("button", { name: "2장 보기", exact: true }).locator("img")).toHaveAttribute("src", before!);
+  await batch.getByRole("button", { name: "2장 그림 적용" }).click();
   await expect(page.getByRole("button", { name: "2장 보기", exact: true }).locator("img")).not.toHaveAttribute("src", before ?? "");
 });
 
@@ -376,7 +378,7 @@ test("URL bookmarks persist per account, load without posting, undo removal and 
   await expect(page.locator(".yp-fl-status")).toContainText("끝난 카드뉴스");
   await page.locator(".yp-fl-proj").click();
   await page.getByRole("link", { name: "주제 찾기", exact: true }).last().click();
-  await page.getByRole("tab", { name: /카드뉴스/ }).click();
+  await page.getByRole("tablist", { name: "무엇을 만드나요" }).getByRole("tab", { name: /카드뉴스/ }).click();
   await page.getByRole("tab", { name: /완료된 카드뉴스/ }).click();
   await expect(page.locator(".yp-card-catalog li")).toHaveCount(1);
   await page.locator(".yp-card-catalog").getByRole("link", { name: "열기", exact: true }).click();
@@ -494,10 +496,24 @@ test("same-topic planning comparison and single-slide rewrite preserve the basel
   await expect(cover).toContainText("일요일 밤");
   await rows.nth(1).getByRole("button", { name: "이 초안으로 다듬기" }).click();
   await page.getByRole("button", { name: "2장 보기", exact: true }).click();
+  await page.getByText("부분 수정 · 재생성", { exact: true }).click();
+  await page.getByLabel("수정 범위").selectOption("page");
   await page.getByRole("button", { name: "2장만 다시 만들기" }).click();
+  await expect(rows.nth(1)).not.toContainText("걱정에 이름 붙이기");
+  await page.getByRole("button", { name: "완료한 수정안 적용" }).click();
   await expect(rows.nth(1)).toContainText("걱정에 이름 붙이기");
   await expect(cover).toContainText("일요일 밤");
   await expect(rows.first().locator("[data-card-field=head]")).toHaveText(original!);
+  await page.getByLabel("문구 잠금", { exact: true }).check();
+  if (!await page.getByLabel("수정 범위").isVisible()) await page.getByText("부분 수정 · 재생성", { exact: true }).click();
+  await page.getByLabel("수정 범위").selectOption("all");
+  await page.getByRole("button", { name: "전체 페이지 다시 만들기" }).click();
+  const candidates = page.locator("details").filter({ has: page.locator("summary", { hasText: "부분 수정 · 재생성" }) });
+  await expect(candidates.getByText("1장 · 완료", { exact: true })).toBeVisible();
+  await expect(candidates.getByText("2장 · 완료", { exact: true })).toHaveCount(0);
+  await candidates.getByRole("button", { name: "취소", exact: true }).click();
+  await expect(cover).toContainText("일요일 밤");
+
 });
 
 test("all seven format samples are available before generation", async ({ page }) => {
@@ -581,4 +597,71 @@ test("mobile export offers the next task and does not mark a failed download as 
   await page.getByText("남은 화 게시 안 함", { exact: true }).click();
   await page.getByLabel("게시 안 함 이유").fill("검토중");
   await expect(page.getByRole("button", { name: "이유 저장" })).toBeDisabled();
+});
+
+test("production inputs reopen, create the selected outline and keep image work behind review", async ({ page }) => {
+  await editor(page);
+  const form = page.getByRole("region", { name: "유형별 카드 제작" });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => form.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+  await form.getByRole("button", { name: /설명형/ }).click();
+  await form.getByRole("button", { name: /단계형/ }).click();
+  const sample = form.getByRole("button", { name: "본문 예시 크게 보기" });
+  await sample.click();
+  const dialog = form.getByRole("dialog", { name: "포맷 예시 크게 보기" });
+  await expect(dialog).toContainText("단계형 · 본문");
+  await dialog.getByRole("button", { name: "마지막 장" }).click();
+  await expect(dialog).toContainText("단계형 · 마지막 장");
+  await page.keyboard.press("Escape");
+  await expect(sample).toBeFocused();
+  await form.getByLabel("작업명").fill("회의 메모");
+  await form.getByLabel("원문·메모").fill("질문을 적어요.\n담당자를 정해요.\n기한을 적어요.");
+  await form.getByLabel("실행 순서").fill("질문\n담당자\n기한");
+  await expect(form.getByRole("status")).toHaveText("저장 완료");
+  await page.reload();
+  await expect(form.getByLabel("실행 순서")).toHaveValue("질문\n담당자\n기한");
+  await form.getByRole("button", { name: "페이지 구성 만들기" }).click();
+  const make = page.getByRole("button", { name: "이 구성으로 제작하기" });
+  await expect(make).toBeVisible();
+  await expect(make).toBeDisabled();
+  await expect(page.getByRole("button", { name: "AI로 그리기" })).toHaveCount(0);
+  await page.getByRole("button", { name: "5장 보기", exact: true }).click();
+  await page.getByRole("textbox", { name: "한 줄 정리", exact: true }).fill("회의에서 정한 일을 기록해요");
+  await page.getByRole("button", { name: "6장 보기", exact: true }).click();
+  await page.getByRole("textbox", { name: "마무리 문장", exact: true }).fill("다음 회의에서 써 보세요");
+  await page.getByRole("textbox", { name: "다음 행동", exact: true }).fill("한 줄 적기");
+  await make.click();
+  await expect(make).toHaveCount(0);
+  await page.getByRole("button", { name: "전체 미리보기", exact: true }).click();
+  await expect(page.locator('[aria-label="전체 페이지 미리보기"] .yp-card-pv')).toHaveCount(6);
+  await page.getByRole("checkbox", { name: "문구 잠금" }).check();
+  await expect(page.getByText("저장됨", { exact: true }).first()).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("button", { name: "6장 보기", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("checkbox", { name: "문구 잠금" })).toBeChecked();
+});
+
+test("production reference picker works with the keyboard and preserves the image on invalid replacement", async ({ page }) => {
+  await editor(page);
+  const panel = page.getByRole("region", { name: "유형별 카드 제작" });
+  const picker = panel.getByRole("button", { name: "이미지 첨부" });
+  await panel.getByLabel("참고 이미지 용도").selectOption("use");
+  await picker.focus();
+  const chooser = page.waitForEvent("filechooser");
+  await picker.press("Enter");
+  await (await chooser).setFiles({ name: "참고.png", mimeType: "image/png", buffer: Buffer.from(PNG, "base64") });
+  await expect(panel.getByText("첨부됨 · 30 × 20")).toBeVisible();
+  await expect(panel.getByRole("status")).toHaveText("저장 완료");
+  await page.reload();
+  await expect(panel.getByLabel("참고 이미지 용도")).toHaveValue("use");
+  const reference = panel.getByRole("img", { name: "업로드한 참고 이미지" });
+  await expect(reference).toBeVisible();
+  await panel.getByLabel("참고 이미지 파일").setInputFiles({ name: "잘못된.txt", mimeType: "text/plain", buffer: Buffer.from("test") });
+  await expect(panel.getByRole("alert")).toContainText("이미지를 선택");
+  await expect(reference).toBeVisible();
+  await panel.getByRole("button", { name: "참고 이미지 제거" }).click();
+  await expect(picker).toBeVisible();
+  await expect(panel.getByRole("status")).toHaveText("저장 완료");
+  await page.reload();
+  await expect(panel.getByRole("button", { name: "이미지 교체" })).toHaveCount(0);
 });

@@ -1,4 +1,7 @@
 "use client";
+import { CardProductionStart } from "./card-production-start";
+import { CardRegeneration } from "./card-regeneration";
+import { type ProductionInput, FORMAT_INPUT, PRODUCTION_TYPES } from "@/lib/cardnews/production";
 import { CardCanonContext } from "./card-canon-context";
 import { CanonRail } from "./canon-rail";
 // 카드뉴스 (설계서 2026-10-30): 주제 → 카드 만들기 → 최종 검토 → 내보내기. Cards are written and seen in one place: the preview is the
@@ -10,9 +13,9 @@ import { createContext, Fragment, useCallback, useContext, useEffect, useLayoutE
 import { ArrowDown, ArrowRight, ArrowUp, Copy, Download, GalleryHorizontal, ImagePlus, Plus, Trash2 } from "lucide-react";
 import { CardSlideView } from "@/lib/cardnews/card-slide";
 import { formatSample } from "@/lib/cardnews/format-sample";
-import { mondayFields, planningOutline } from "@/lib/cardnews/planning";
+import { planningOutline } from "@/lib/cardnews/planning";
 import { cardPublicationProgress, cardsMissing, instagramPostId } from "@/lib/cardnews/cards";
-import { GUIDE_CAST, MYIN_CAST, type CharacterScene, type MyinCharacter, addCardSlide, CARD_FORMAT_IDS, CARD_FORMATS, CARD_SIZE, firstCardLine, cardLetters, cardMaxSlides, cardProblems, moveCardSlide, parseCardHashtags, removeCardSlide, slideSpec, TOON_AIM, toonBattery, toonUploads, type CardDraft, type CardFormatId, type CardPhoto } from "@/lib/cardnews/formats";
+import { GUIDE_CAST, MYIN_CAST, type CharacterScene, type MyinCharacter, addCardSlide, CARD_FORMAT_IDS, CARD_FORMATS, CARD_SIZE, firstCardLine, cardLetters, cardMaxSlides, cardProblems, moveCardSlide, parseCardHashtags, removeCardSlide, slideSpec, TOON_AIM, toonBattery, toonArtMissing, toonUploads, type CardDraft, type CardFormatId, type CardPhoto } from "@/lib/cardnews/formats";
 import { isCardTestProject, type CardSourceChoice } from "@/lib/cardnews/sources";
 import { apiRequest } from "@/lib/api-client";
 import { modelName } from "@/lib/cost";
@@ -23,7 +26,7 @@ import { projectName, stepHref, type YpProject } from "@/lib/youtube-process/pro
 import { CostTag, tokenEstimate, useCostConfirm } from "./cost-notice";
 import { useSession } from "./session-provider";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
-import { errorMessage, youtubeProcessClient, type YpClient } from "./youtube-process-data";
+import { errorMessage, isConflict, youtubeProcessClient, type YpClient } from "./youtube-process-data";
 import { CardDrawBatch } from "./card-draw-batch";
 import { CardDrawPanel } from "./card-draw-panel";
 import { CardSourcePicker } from "./card-source-picker";
@@ -49,10 +52,19 @@ function useCardPhotoUrls(page: YpPage, drafts: (CardDraft | null | undefined)[]
       let hit = signedPhotos.get(path);
       if (!hit || hit.until < Date.now()) { hit = { until: Date.now() + 50 * 60_000, url: client.assetUrl(projectId, path) }; signedPhotos.set(path, hit); }
       return [path, await hit.url.catch(() => { signedPhotos.delete(path); return ""; })] as const;
-    })).then(rows => { if (live) setUrls(current => ({ ...current, ...Object.fromEntries(rows.filter(([, url]) => url)) })); });
+    })).then(rows => { if (live) setUrls(current => ({ ...current, ...Object.fromEntries(rows) })); });
     return () => { live = false; };
   }, [client, projectId, paths]);
   return urls;
+}
+
+function cardOutputIssue(draft: CardDraft, photos: Record<string,string>, textIssue?: string) {
+  if (draft.outline) return "페이지 구성을 확인해 주세요.";
+  if (textIssue) return textIssue;
+  const missing = toonArtMissing(draft);
+  if (missing >= 0) return `${missing + 1}장 그림을 먼저 완성해 주세요.`;
+  const unreadable = draft.slides.findIndex(s => s.photo && photos[s.photo.path] === "");
+  return unreadable >= 0 ? `${unreadable + 1}장 사진을 열 수 없어요. 다시 연결해 주세요.` : "";
 }
 
 /** A photo shrunk in the browser before it goes up (a card shows it at most 864px wide): JPEG, or PNG when it may be a cut-out (누끼). */
@@ -220,7 +232,7 @@ export function CardFromThreads({ itemId }: { itemId: string }) {
   return <span><button type="button" disabled={busy} onClick={() => void make()}>{busy ? "만드는 중…" : "카드뉴스로 만들기"}</button>{error ? <small role="alert"> {error}</small> : null}</span>;
 }
 
-const bare = (draft: CardDraft) => ({ id: draft.id, format: draft.format, slides: draft.slides, caption: draft.caption, hashtags: draft.hashtags });
+const bare = (draft: CardDraft) => ({ id: draft.id, format: draft.format, formatVersion: draft.formatVersion, workTitle: draft.workTitle, outline: draft.outline, slides: draft.slides, caption: draft.caption, hashtags: draft.hashtags });
 const draftLabel = (draft: CardDraft) => draft.ai ? draftTag(draft.ai.by, draft.ai.model) : "직접 쓴 초안";
 
 /** 카드 만들기: pick formats, draft them (AI or by hand), compare, pick one, edit it on the preview, then 카드 확정. */
@@ -236,13 +248,30 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
   const [planning, setPlanning] = useState(false);
   const [planSaved, setPlanSaved] = useState(false);
   const [brief, setBrief] = useState("");
-  const [rewriting, setRewriting] = useState(false);
+  const [fullPreview, setFullPreview] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const conflict = useRef(false);
+  const projectId = project?.id;
+  const resolvePhoto = useCallback((path: string) => {
+    if (!page.client || !projectId) return Promise.reject(new Error("프로젝트를 열어 주세요."));
+    return page.client.assetUrl(projectId, path);
+  }, [page.client, projectId]);
   const [compareAll, setCompareAll] = useState(false);
   const [send, setSend] = useState(false);
   const [draft, setDraft] = useState<CardDraft | null>(null);
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [slide, setSlide] = useState(0);
+  const positionKey = projectId && draft ? `card-editor-position:${projectId}:${draft.id}` : "";
+  useEffect(() => {
+    if (!positionKey) return;
+    try { setSlide(Number(localStorage.getItem(positionKey)) || 0); } catch { setSlide(0); }
+  }, [positionKey]);
+  const selectSlide = (index: number) => {
+    setSlide(index);
+    if (positionKey) try { localStorage.setItem(positionKey, String(index)); } catch { /* Browser storage can be disabled. */ }
+  };
   const [undo, setUndo] = useState<CardDraft | null>(null);
   // 꼬리 맞추기: which bubble's tail the next tap on the big preview points (only on the card it was pressed on).
   const [aim, setAim] = useState<{ index: number; key: keyof typeof TOON_AIM } | null>(null);
@@ -261,7 +290,7 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
     setSampleFormat(formats[0] ?? "list");
   }, [project, cards]);
   const reload = page.reload;
-  const job = useStaffJob(page, "card", useCallback(() => { setDirty(false); void reload(); }, [reload]));
+
   const onOver = useCallback((index: number, fields: string[]) => setOver(current => JSON.stringify(current[index] ?? []) === JSON.stringify(fields) ? current : { ...current, [index]: fields }), []);
   // Saves follow one another (two formats written by hand, then typing): each goes on the version the last one left.
   const version = useRef(0);
@@ -269,19 +298,22 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
   const draftRef = useRef(draft); draftRef.current = draft;
   const editRev = useRef(0), pending = useRef(0);
   const queue = useRef<Promise<YpProject | null>>(Promise.resolve(null));
-  useEffect(() => { if (stage) version.current = Math.max(version.current, stage.version); }, [stage]);
+  useEffect(() => { if (stage && !dirty && !pending.current && !conflict.current) version.current = Math.max(version.current, stage.version); }, [stage, dirty]);
   const save = useCallback((patch: Record<string, unknown>) => {
     const targetId = pageRef.current.bundle?.project.id;
     pending.current += 1; setBusy(true);
     const run = queue.current.then(async () => {
       const current = pageRef.current, stored = current.bundle?.stages.cards;
-      if (!current.client || !stored || !targetId || current.bundle?.project.id !== targetId) return null;
+      if (conflict.current || !current.client || !stored || !targetId || current.bundle?.project.id !== targetId) return null;
       try {
-        const result = await current.client.saveStage(targetId, "cards", Math.max(version.current, stored.version), patch);
-        version.current = result.stage.version;
+        const result = await current.client.saveStage(targetId, "cards", version.current, patch);
+        version.current = result.stage.version; setSaveError("");
         current.setBundle(bundle => bundle?.project.id === targetId ? { ...bundle, project: result.project, stages: { ...bundle.stages, cards: result.stage } } : bundle);
         return result.project;
-      } catch (reason) { current.fail(reason); return null; }
+      } catch (reason) {
+        if (isConflict(reason)) conflict.current = true;
+        setSaveError(errorMessage(reason)); current.fail(reason); return null;
+      }
     }).finally(() => { pending.current -= 1; setBusy(pending.current > 0); });
     queue.current = run;
     return run;
@@ -293,6 +325,10 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
     if (saved && rev === editRev.current) setDirty(false);
     return saved;
   }, [save]);
+  const job = useStaffJob(page, "card", useCallback(() => {
+    if (!dirty) void reload();
+    else void persistDraft().then(saved => { if (saved) void reload(); });
+  }, [dirty, persistDraft, reload]));
   // 카드 확정 saves what was just typed first (the same flush every confirm step uses since 2026-10-30).
   const control = useGate(page, "draft", async () => {
     if (dirty) return persistDraft();
@@ -307,7 +343,7 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
     return () => window.clearTimeout(timer);
   }, [dirty, draft, composing, persistDraft]);
   const edit = (next: CardDraft) => { editRev.current += 1; draftRef.current = next; setDraft(next); setDirty(true); };
-  const structure = (next: CardDraft, selected: number) => { if (!draft || next === draft) return; setUndo(draft); edit(next); setOver({}); setSlide(selected); };
+  const structure = (next: CardDraft, selected: number) => { if (!draft || next === draft) return; setUndo(draft); edit(next); setOver({}); selectSlide(selected); };
   const setScene = (scene?: CharacterScene) => {
     if (draft) structure({ ...draft, slides: draft.slides.map((row, index) => index === current ? { ...row, scene } : row) }, current);
   };
@@ -327,7 +363,7 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
   }
   const current = draft?.slides[slide] ? slide : 0;
   const scene = draft?.slides[current]?.scene;
-  const spec = draft ? slideSpec(draft.format, draft.slides[current].type) : null;
+  const spec = draft ? slideSpec(draft.format, draft.slides[current].type, draft.formatVersion) : null;
   const addBlank = async () => { for (const format of chosen) if (!(await save({ add: format }))) return; };
   const sampleProject = page.demo && project.id === "demo-p13";
   const savePlan = () => save({ brief: brief.trim(), briefFormats: chosen });
@@ -337,31 +373,26 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
       cards.focus || project.yp.topic.note, chosen.includes("list") && "읽고 나서 독자가 할 일과 저장할 양식을 적어 주세요.", planningOutline(chosen)].filter(Boolean).join("\n"));
     setPlanning(true);
   };
-  const rewrite = async () => {
-    if (!draft || !stage || rewriting || dirty || busy) return;
-    const original = draft.slides[current];
-    const rev = editRev.current;
-    if (!page.demo && !window.confirm("선택한 장의 원고를 회사 GPT로 다시 생성할까요? API 비용이 발생합니다.")) return;
-    setRewriting(true);
+  const download = async (zip: boolean) => {
+    if (!draft || !page.client || page.demo || busy || dirty || exporting) return;
+    setExporting(true);
     try {
-      let fields: Record<string, string> | null;
-      if (page.demo) {
-        const first = mondayFields(original, current);
-        fields = mondayFields(original, current, JSON.stringify(original.fields) === JSON.stringify(first));
-      } else {
-        const result = await apiRequest<{ fields: Record<string, string> }>(`/api/v1/content/youtube/projects/${project.id}/cards`, {
-          token: page.accessToken, method: "POST", body: JSON.stringify({ action: "rewrite", draftId: draft.id, index: current, version: stage.version }),
-        });
-        fields = result.fields;
-      }
-      if (!fields) throw new Error("이 장에 해당하는 데모 예시가 없어요.");
-      if (draftRef.current?.id !== draft.id || editRev.current !== rev || pageRef.current.bundle?.stages.cards.version !== stage.version)
-        throw new Error("생성 중 초안이 변경됐어요. 현재 편집본에서 다시 시도해 주세요.");
-      structure({ ...draft, slides: draft.slides.map((row, index) => index === current ? { ...row, fields: { ...row.fields, ...fields } } : row) }, current);
-    } catch (reason) { page.fail(reason); } finally { setRewriting(false); }
+      const blob = await page.client.cardsFile(project.id, zip ? { draft: draft.id, zip: true } : { draft: draft.id, slide: current });
+      saveBlob(blob, zip ? "카드뉴스.zip" : `card-${String(current + 1).padStart(2, "0")}.png`);
+    } catch (err) { page.fail(err); } finally { setExporting(false); }
   };
+  const uploadReference = async (file: File) => {
+    const shrunk = await shrinkPhoto(file);
+    const asset = await page.client!.uploadAsset(project.id, "card", shrunk.file);
+    return { path: asset.path, w: shrunk.w, h: shrunk.h };
+  };
+  const saveProduction = async (production: ProductionInput, create: boolean) => {
+    if (create && dirty && !(await persistDraft())) return false;
+    return Boolean(await save({ production, ...(create ? { createOutline: true } : {}) }));
+  };
+  const outputIssue = draft && cardOutputIssue(draft, photos, problems.blocking[0] || overList[0]);
   // A photo (or a drawn picture) lands on the card that was open when it was picked, on the draft as it is by then.
-  const placePhoto = (photo: CardPhoto, at: number) => { const latest = draftRef.current; if (latest) edit({ ...latest, slides: latest.slides.map((row, index) => index === at ? { ...row, photo } : row) }); };
+  const placePhoto = (photo: CardPhoto, at: number) => { const latest = draftRef.current; if (latest && latest.id === draft?.id && JSON.stringify(latest.slides[at]) === JSON.stringify(draft.slides[at]) && !latest.slides[at].imageLocked) edit({ ...latest, slides: latest.slides.map((row, index) => index === at ? { ...row, photo } : row) }); else page.fail(new Error("그림을 만드는 동안 이 장이 바뀌었어요. 현재 장에서 다시 시도해 주세요.")); };
   /** True once the picture is on the card (「내 GPT로 그리기」 says so). */
   const putPhoto = async (file: File | undefined, at: number) => {
     if (!file || !draft || !page.client) return false;
@@ -385,7 +416,17 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
     {cards.source.kind !== "none" ? <details className="yp-card yp-card-src"><summary>원본 · {SOURCE_NAME[cards.source.kind]} 「{cards.source.title}」{cards.focus ? ` · 이 부분 위주로: ${cards.focus}` : ""}</summary>
       <pre>{cards.source.text}</pre></details> : null}
 
-    {editable ? <YpSection n={1} title="포맷 고르기" gq="최대 3개를 한 번에 뽑아 나란히 비교해요">
+    {editable && <CardProductionStart key={project.id} initial={cards.production ?? { title: project.title, format: cards.briefFormats?.[0] ?? "list", memo: (cards.source.text || project.yp.topic.note || "").slice(0,16000), direction: cards.focus, detail: "" }}
+      aiAvailable={gptConfigured && !job.open} onRequestAI={async input => {
+        if (dirty && !(await persistDraft())) return false;
+        if (!await save({ production: input, briefFormats: [input.format] })) return false;
+        setChosen([input.format]); setSend(true); return true;
+      }} save={saveProduction} upload={uploadReference} resolvePhoto={resolvePhoto}
+      thumbnail={(id, pos, width) => { const example = formatSample(id); const art = "/myin-2d/탐색이.png";
+        if (id === "webtoon") for (const s of example.slides) if (s.type === "toon" || s.type === "panel") s.photo = { path: art, w: 1080, h: 1350 };
+        return <CardPhotos.Provider value={{ [art]: art }}><CardPreview draft={example} index={pos === "cover" ? 0 : pos === "end" ? example.slides.length - 1 : 1} width={width} /></CardPhotos.Provider>; }}
+      onReady={() => { setSlide(0); setUndo(null); setFullPreview(false); requestAnimationFrame(() => editorRef.current?.scrollIntoView({ block: "start" })); }} />}
+    {editable ? <details open={!cards.production || planning || send || job.open}><summary>여러 포맷의 초안 비교 · 직접 쓰기</summary><YpSection n={1} title="포맷 고르기" gq="최대 3개를 한 번에 뽑아 나란히 비교해요">
       <div className="yp-card-formats">{CARD_FORMAT_IDS.map(id => { const format = CARD_FORMATS[id]; const on = chosen.includes(id);
         return <label key={id} className={`yp-card-format${on ? " yp-on" : ""}`}>
           <input type="checkbox" aria-label={format.name} checked={on} disabled={!on && chosen.length >= 3} onChange={() => { setSampleFormat(id); setChosen(on ? chosen.filter(row => row !== id) : [...chosen, id]); }} />
@@ -426,7 +467,7 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
       </section>}
       <JobLine job={job} onRetry={openPlan} />
       <SendDialog page={page} task="card" open={send} onClose={() => setSend(false)} job={job} extra={{ formats: chosen }} />
-    </YpSection> : null}
+    </YpSection></details> : null}
 
     {cards.drafts.length ? <YpSection n={editable ? 2 : 1} title="초안 비교" gq={`${cards.drafts.length}개 · 같은 주제`}>
       <button type="button" className="yp-btn yp-sm" aria-pressed={compareAll} onClick={() => setCompareAll(!compareAll)}>{compareAll ? "앞 4장만 보기" : "전체 장 비교"}</button>
@@ -443,7 +484,7 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
         </div>; })}</div>
     </YpSection> : null}
 
-    {draft ? <YpSection n={editable ? 3 : 2} title={editable ? "고른 초안 다듬기" : "확정한 카드"} gq={`${CARD_FORMATS[draft.format].name} · ${draft.slides.length}장`}>
+    {draft ? <YpSection n={editable ? 3 : 2} title={draft.outline ? "페이지 구성 확인" : editable ? "고른 초안 다듬기" : "확정한 카드"} gq={`${CARD_FORMATS[draft.format].name} · ${draft.slides.length}장`}>
       <div ref={editorRef} className="yp-card-issues">
         {([["필수 수정", [...problems.blocking, ...overList]], ["참고", problems.warnings]] as const).map(([name, issues]) => issues.length > 0 &&
           <section key={name}><strong>{name} {issues.length}건</strong><ul>{issues.map((message, i) => {
@@ -453,7 +494,7 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
             const field = row && slideSpec(draft.format, row.type)?.fields.find(item => message.includes(item.label));
             const label = field?.label ?? (message.startsWith("캡션") ? "공통 캡션" : message.startsWith("해시태그") ? "공통 해시태그" : null);
             return <li key={i}>{editable && (row || label) ? <button className="yp-btn yp-sm" type="button" onClick={() => {
-              if (row) setSlide(index);
+              if (row) selectSlide(index);
               requestAnimationFrame(() => {
                 const scope = editorRef.current?.parentElement;
                 const target = label ? scope?.querySelector<HTMLElement>(`[aria-label="${label}"]`) : scope?.querySelector<HTMLElement>(`[aria-label="${index + 1}장 보기"]`);
@@ -463,20 +504,37 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
           })}</ul></section>)}
       </div>
       <div className="yp-card-tools" aria-label="카드 장 관리">
-        {editable && (!page.demo || (sampleProject && draft.format === "steps" && draft.slides.length === 6)) && <button type="button" className="yp-btn yp-sm" disabled={rewriting || dirty || busy || (!page.demo && !gptConfigured)} onClick={() => void rewrite()}>{rewriting ? "다시 만드는 중…" : `${current + 1}장만 다시 만들기`}</button>}
+        {editable && draft.production ? <label>작업명 <input className="yp-in" aria-label="편집 중인 작업명" maxLength={200} value={draft.workTitle ?? draft.production.title} onChange={event => edit({ ...draft, workTitle: event.target.value })} /></label> : <strong>{draft.workTitle || draft.production?.title || project.title}</strong>}<span>{PRODUCTION_TYPES[FORMAT_INPUT[draft.format].type].name} · {CARD_FORMATS[draft.format].name}</span>
+        {!draft.outline && <><button className="yp-btn yp-sm" aria-expanded={fullPreview} onClick={() => setFullPreview(v => !v)}>전체 미리보기</button>
+          <button className="yp-btn yp-sm" disabled={Boolean(outputIssue) || dirty || busy || exporting || page.demo} onClick={() => void download(false)}>현재 장 PNG</button>
+          <button className="yp-btn yp-sm" disabled={Boolean(outputIssue) || dirty || busy || exporting || page.demo} onClick={() => void download(true)}>전체 PNG ZIP</button>
+          {page.demo && <small>데모에서는 미리보기만 제공해요. 파일은 연결된 계정에서 받을 수 있어요.</small>}
+          {outputIssue && <small role="status">출력 전 확인 · {outputIssue}</small>}</>}
         {editable && draft.format === "list" && draft.slides[current].type === "item" && !draft.slides[current].fields.before && <button type="button" className="yp-btn yp-sm" onClick={() => structure({ ...draft, slides: draft.slides.map((row, i) => i === current ? { ...row, layout: row.layout === "spotlight" ? undefined : "spotlight" } : row) }, current)}>배치만 바꾸기</button>}
         <b>카드 {draft.slides.length} / {cardMaxSlides(draft.format)}장{toonUploads(draft).length > 1 ? ` · ${toonUploads(draft).length}화` : ""}</b>
         {editable && CARD_FORMATS[draft.format].slides.filter(item => item.max > item.min).map(item => <button key={item.type} type="button" className="yp-btn yp-sm" disabled={addCardSlide(draft, item.type) === draft} onClick={() => structure(addCardSlide(draft, item.type), current)}><Plus size={13} />{item.type === "toon" ? "다음 화 나누기" : `${item.label} 카드 추가`}</button>)}
-        {editable && <button type="button" className="yp-btn yp-sm" disabled={!undo} onClick={() => { if (undo) { edit(undo); setOver({}); setSlide(Math.min(current, undo.slides.length - 1)); setUndo(null); } }}>장 편집 되돌리기</button>}
-        <span role="status" className="yp-hint">{busy ? "저장 중…" : dirty ? "변경 내용 저장 대기" : "저장됨"}</span>
+        {editable && <button type="button" className="yp-btn yp-sm" disabled={!undo} onClick={() => { if (undo) { edit(undo); setOver({}); selectSlide(Math.min(current, undo.slides.length - 1)); setUndo(null); } }}>장 편집 되돌리기</button>}
+        <span role="status" className="yp-hint">{saveError ? "저장 실패 · " + saveError : busy ? "저장 중…" : dirty ? "변경 내용 저장 대기" : "저장됨"}</span>
       </div>
-      {editable && draft.format === "webtoon" ? <CardDrawBatch key={`draw-${draft.id}`} page={page} projectId={project.id} draft={draft} onPlace={(index, photo) => placePhoto(photo, index)} onFile={(index, file) => putPhoto(file, index)} /> : null}
+      {saveError && <button className="yp-btn" onClick={() => { if (conflict.current) location.reload(); else void persistDraft(); }}>{conflict.current ? "내 변경을 버리고 최신 저장본 열기" : "다시 저장"}</button>}
+      {draft.outline && <div className="yp-outline"><p>각 장을 선택해 문구와 장면을 확인해 주세요. 표지와 마무리는 포맷이 정한 위치에 두고, 본문은 허용된 장 수 안에서 이동할 수 있어요.</p>
+        {draft.production?.direction && <p>제작 요청 · {draft.production.direction}</p>}
+        <ol>{draft.slides.map((s,i) => <li key={i}><button className="yp-btn" onClick={() => selectSlide(i)}>{i+1}장 · {slideSpec(draft.format,s.type)?.label} · {firstCardLine(draft.format,s) || "문구 입력"}</button></li>)}</ol>
+        <button className="yp-btn yp-pri" disabled={!editable || busy || Boolean(problems.blocking.length) || Boolean(saveError)} onClick={async () => {
+          const next = { ...draft, outline: false }; edit(next); await persistDraft();
+        }}>이 구성으로 제작하기</button></div>}
+      {!draft.outline && fullPreview && <div className="yp-card-strip" aria-label="전체 페이지 미리보기">{draft.slides.map((_,i) => <CardPreview key={i} draft={draft} index={i} width={210}/>)}</div>}
+      {editable && !draft.outline && (!page.demo || (sampleProject && draft.format === "steps" && draft.slides.length === 6)) &&
+        <CardRegeneration key={`rewrite-${draft.id}`} page={page} draft={draft} index={current} version={stage!.version}
+          disabled={dirty || busy || (!page.demo && !gptConfigured)} apply={next => structure(next,current)}
+          preview={(d,i) => <CandidatePreview page={page} draft={d} index={i} />} />}
+      {editable && !draft.outline && draft.format === "webtoon" ? <CardDrawBatch key={`draw-${draft.id}`} page={page} projectId={project.id} draft={draft} onPlace={(index, photo) => placePhoto(photo, index)} onFile={(index, file) => putPhoto(file, index)} /> : null}
       <div className="yp-card-edit">
         <div className="yp-card-list" aria-label="카드 순서">{draft.slides.map((row, index) => <div key={index} className="yp-card-item" draggable={editable && (slideSpec(draft.format, row.type)?.max ?? 0) > 1}
           onDragStart={event => event.dataTransfer.setData("application/x-card-slide", JSON.stringify({ id: draft.id, index }))}
           onDragOver={event => { if (editable && event.dataTransfer.types.includes("application/x-card-slide")) event.preventDefault(); }}
           onDrop={event => { if (!editable) return; event.preventDefault(); try { const from = JSON.parse(event.dataTransfer.getData("application/x-card-slide")); if (from.id === draft.id) { const next = moveCardSlide(draft, from.index, index); structure(next, next === draft ? current : index); } } catch { /* External or malformed drops do not change the draft. */ } }}>
-          <button type="button" className={index === current ? "yp-on" : ""} onClick={() => setSlide(index)} aria-label={`${index + 1}장 보기`} aria-pressed={index === current}>
+          <button type="button" className={index === current ? "yp-on" : ""} onClick={() => selectSlide(index)} aria-label={`${index + 1}장 보기`} aria-pressed={index === current}>
             <CardPreview draft={draft} index={index} width={84} onOver={onOver} /><span>{index + 1} · {row.type === "toon" && row.fields.episode?.trim() ? `${row.fields.episode.trim()} 표지` : slideSpec(draft.format, row.type)?.label}{over[index]?.length ? " · 넘침" : ""}</span></button>
           {editable && <div className="yp-card-item-actions">
             <button type="button" aria-label={`${index + 1}장 위로`} title="위로 이동" disabled={moveCardSlide(draft, index, index - 1) === draft} onClick={() => structure(moveCardSlide(draft, index, index - 1), index - 1)}><ArrowUp size={13} /></button>
@@ -489,6 +547,8 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
         } : undefined} />
         <div className="yp-card-fields">
           <h3>{current + 1}장 · {spec?.label}</h3>
+          {editable && <div className="yp-row-btns">{(["textLocked","imageLocked"] as const).map((key,i) => <label key={key}><input type="checkbox" checked={Boolean(draft.slides[current][key])} onChange={e => edit({ ...draft, slides: draft.slides.map((s,n) => n === current ? { ...s, [key]: e.target.checked } : s) })} /> {i ? "이미지 잠금" : "문구 잠금"}</label>)}</div>}
+          {editable && spec?.photo && draft.format !== "webtoon" && <label className="yp-field">이미지 영역 · 장면과 행동<textarea className="yp-in" maxLength={400} value={draft.slides[current].artDirection ?? scene?.action ?? ""} onChange={e => edit({ ...draft, slides: draft.slides.map((s,n) => n === current ? { ...s, artDirection: e.target.value } : s) })} /></label>}
           {editable ? <p className="yp-hint">가장 먼저 읽힐 구절 하나를 *별표*로 감싸면 파란색으로 보여요 (표지 · 마무리는 노란색).</p> : null}
           {editable && draft.format === "list" && ["cover", "item", "end"].includes(draft.slides[current].type) && <fieldset className="yp-field"><legend>장면 디자인</legend>
             <label>캐릭터 <select value={scene?.kind === "character" ? scene.character : ""} onChange={event => setScene(event.target.value ? { side: "right", size: "large", ...scene, kind: "character", character: event.target.value as MyinCharacter } : undefined)}>
@@ -507,12 +567,12 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
             return <Fragment key={field.key}><label className="yp-field"><span className="yp-fld-h"><b>{field.label}</b>{field.optional ? <span className="yp-opt">선택</span> : null}
               <span className={n > field.max ? "yp-card-n yp-bad" : "yp-card-n"}>{n}/{field.max}</span>{over[current]?.includes(field.key) ? <span className="yp-tag yp-bad">넘침</span> : null}</span>
               <textarea className="yp-in" rows={field.max > 30 ? 3 : 2} value={value} aria-label={field.label} disabled={!editable} onCompositionStart={() => setComposing(true)} onCompositionEnd={() => setComposing(false)} onChange={event => set(event.target.value)} /></label>{aimRow}</Fragment>; })}
-          {(spec?.photo || scene?.action) && editable ? <div className="yp-field"><span className="yp-fld-h"><b>사진</b><span className="yp-opt">선택</span></span>
+          {(spec?.photo || scene?.action) && editable && !draft.outline && !draft.slides[current].imageLocked ? <div className="yp-field"><span className="yp-fld-h"><b>사진</b><span className="yp-opt">선택</span></span>
             <p className="yp-hint">실제 사진 · 자료를 넣거나 AI로 그려요. AI 그림은 설명용이라 실제 기록처럼 쓰지 않아요 (디자인 정본 §8).</p>
-            <CardDrawPanel key={draft.id + ":" + current} page={page} projectId={project.id} photo={draft.slides[current].photo} onPhoto={photo => placePhoto(photo, current)}
+            <CardDrawPanel key={draft.id + ":" + current} page={page} projectId={project.id} photo={draft.slides[current].photo} designReference={draft.production?.reference?.purpose === "design" ? draft.production.reference.photo.path : undefined} onPhoto={photo => placePhoto(photo, current)}
               onFile={file => putPhoto(file, current)} label={`${current + 1}장`}
               defaultStyle={draft.format === "webtoon" ? "webtoon" : "simple"}
-              brief={draft.format === "webtoon" ? { scene: draft.slides[current].fields.scene ?? "", cast: draft.slides[current].fields.cast ?? "" } : scene?.action ? { scene: scene.action, cast: "", guideCharacter: GUIDE_CAST.find(name => name === scene.character) } : undefined}>
+              brief={draft.format === "webtoon" ? { scene: draft.slides[current].fields.scene ?? "", cast: draft.slides[current].fields.cast ?? "" } : (draft.slides[current].artDirection || scene?.action) ? { scene: draft.slides[current].artDirection || scene?.action || "", cast: "", guideCharacter: GUIDE_CAST.find(name => name === scene?.character) } : undefined}>
               <label className="yp-btn yp-sm"><ImagePlus size={13} aria-hidden="true" />{photoBusy ? "올리는 중…" : draft.slides[current].photo ? "사진 바꾸기" : "사진 넣기"}
                 <input type="file" accept="image/jpeg,image/png,image/webp" aria-label="사진 파일" hidden disabled={photoBusy} onChange={event => { const at = current; void putPhoto(event.target.files?.[0], at); event.target.value = ""; }} /></label>
               {draft.slides[current].photo ? <button type="button" className="yp-btn yp-sm" disabled={photoBusy} onClick={() => dropPhoto(current)}>사진 빼기</button> : null}
@@ -523,6 +583,11 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
 
     </YpSection> : editable && !cards.drafts.length ? <p className="yp-pempty">포맷을 고르고 초안을 뽑으면 여기서 카드를 다듬어요.</p> : null}
   </YpFrame></CardPhotos.Provider>;
+}
+
+function CandidatePreview({ page, draft, index }: { page: YpPage; draft: CardDraft; index: number }) {
+  const photos = useCardPhotoUrls(page, [draft]);
+  return <CardPhotos.Provider value={photos}><CardPreview draft={draft} index={index} width={180} /></CardPhotos.Provider>;
 }
 
 function CardEditorPreview({ draft, index, onAim }: { draft: CardDraft; index: number; onAim?: (x: number, y: number) => void }) {
@@ -662,6 +727,11 @@ export function CardExportScreen({ page, header }: { page: YpPage; header: React
   useEffect(() => { setUrl(savedUrl); }, [savedUrl, episode, project?.id]);
   useEffect(() => { setWhy(progress?.reason ?? ""); }, [progress?.reason, project?.id]);
   const photos = useCardPhotoUrls(page, [draft]);
+  const [overflow, setOverflow] = useState<Record<number, boolean>>({});
+  const checkOverflow = useCallback((index: number, fields: string[]) => setOverflow(old =>
+    Boolean(old[index]) === Boolean(fields.length) ? old : { ...old, [index]: Boolean(fields.length) }), []);
+  const clipped = draft?.slides.findIndex((_, i) => overflow[i]) ?? -1;
+  const outputIssue = draft && cardOutputIssue(draft, photos, clipped >= 0 ? `${clipped + 1}장 문구가 영역을 넘어요.` : cardProblems(draft).blocking[0]);
   if (!page.bundle || !project || !cards || !progress) return <YpFrame page={page} view={5} action={null} header={header} title="내보내기" sub="" />;
   const run = async (what: string, work: () => Promise<unknown>) => { setBusy(what); try { await work(); } catch (reason) { page.fail(reason); } finally { setBusy(""); } };
   const caption = draft ? [draft.caption.trim(), draft.hashtags.map(tag => `#${tag}`).join(" ")].filter(Boolean).join("\n\n") : "";
@@ -697,12 +767,17 @@ export function CardExportScreen({ page, header }: { page: YpPage; header: React
       {!publication && <p className="yp-hint" role="status">{cards.data.exported?.downloadedEpisodes?.length ? `내보냄 · ${cards.data.exported.downloadedEpisodes.length}/${progress.episodes}화` : "승인 · 내보내기 준비"}</p>}
       <YpSection n={1} title="이미지 · 캡션" gq={draft ? `${draft.slides.length}장 · 1080 × 1350` : ""}>
         {page.demo && <p className="yp-hint">연습 화면에서는 카드 미리보기만 제공합니다. PNG 다운로드는 로그인한 작업 공간에서 이용할 수 있어요.</p>}
-        {draft ? <CardPhotos.Provider value={photos}><div className="yp-card-strip">{draft.slides.map((_, index) => <CardPreview key={index} draft={draft} index={index} width={120} />)}</div></CardPhotos.Provider> : null}
+        {outputIssue && <p role="alert">출력 전 확인 · {outputIssue}</p>}
+        {draft ? <CardPhotos.Provider value={photos}><div className="yp-card-strip">{draft.slides.map((_, index) => <div key={index}>
+          <CardPreview draft={draft} index={index} width={120} onOver={checkOverflow} />
+          <button className="yp-btn yp-sm" disabled={page.demo || Boolean(busy || outputIssue)} onClick={() => void run("png", async () => {
+            saveBlob(await page.client!.cardsFile(project.id, { draft: draft.id, slide: index }), `card-${String(index+1).padStart(2,"0")}.png`);
+          })}>{index+1}장 PNG</button></div>)}</div></CardPhotos.Provider> : null}
         <div className="yp-row-btns" style={{ marginTop: 10 }}>
           {(draft && toonUploads(draft).length > 1 ? toonUploads(draft) : [null]).map((post, at) => {
             // 웹툰형 goes up one 화 per post, so each 화 is its own ZIP (대표 2026-11-04).
             const name = post && draft ? draft.slides[post.from].fields.episode?.trim() || `${at + 1}화` : "", key = post ? `zip${at + 1}` : "zip";
-            return <button key={key} data-card-zip={at + 1} type="button" className={at ? "yp-btn" : "yp-btn yp-pri"} disabled={page.demo || !draft || Boolean(busy)} onClick={() => void run(key, async () => {
+            return <button key={key} data-card-zip={at + 1} type="button" className={at ? "yp-btn" : "yp-btn yp-pri"} disabled={page.demo || !draft || Boolean(busy || outputIssue)} onClick={() => void run(key, async () => {
               saveBlob(await page.client!.cardsFile(project.id, post ? { zip: true, upload: at + 1 } : { zip: true }), `카드뉴스-${projectName(project).slice(0, 30)}${post ? `-${name}` : ""}.zip`);
               if (!publication && !cards.data.exported?.downloadedEpisodes?.includes(at + 1)) await persistEvidence({ downloaded: true, episode: at + 1 });
             })}>

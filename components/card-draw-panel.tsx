@@ -2,12 +2,30 @@
 // 카드 만들기 › 사진 › AI로 그리기 (대표 2026-11-02): the PD writes the scene, picks 캐릭터 창고 pictures to keep the faces, and GPT draws
 // one picture for the card. A picture already on the card can be kept in the 창고 under a name (캐릭터로 저장).
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import Image from "next/image";
 import { Sparkles, X } from "lucide-react";
 import { imageEstimate } from "@/lib/cost";
 import { CARD_DRAW_QUALITY, CARD_DRAW_REFS_MAX, CARD_DRAW_SCENE_MAX, CARD_DRAW_STYLES, castCharacters, myGptDrawPrompt, type CardCharacterView, type CardDrawQuality, type CardDrawStyle } from "@/lib/cardnews/draw";
 import type { CardPhoto } from "@/lib/cardnews/formats";
 import { CostTag, useCostConfirm, useCostModels } from "./cost-notice";
 import type { YpPage } from "./youtube-process-frame";
+
+export function CardImageChoice({ page, projectId, original, candidate, label, apply, cancel }: {
+  page: YpPage; projectId: string; original: CardPhoto; candidate: CardPhoto; label: string; apply: () => void; cancel: () => void;
+}) {
+  const [urls, setUrls] = useState<string[]>([]);
+  const [failed, setFailed] = useState(false);
+  const client = page.client;
+  useEffect(() => {
+    let live = true; setUrls([]); setFailed(false);
+    if (client) Promise.all([original.path,candidate.path].map(path => client.assetUrl(projectId,path)))
+      .then(value => { if (live) setUrls(value); }, () => { if (live) setFailed(true); });
+    return () => { live = false; };
+  }, [client,projectId,original.path,candidate.path]);
+  return <div className="yp-row-btns">{urls.map((url,i) => <figure key={i}><Image unoptimized src={url} width={120} height={150} className="yp-card-reference-img" alt={i ? "새 그림" : "기존 그림"} /><figcaption>{i ? "수정안" : "현재 그림"}</figcaption></figure>)}
+    {failed && <span role="alert">비교할 이미지를 열 수 없어요.</span>}
+    <button type="button" className="yp-btn" onClick={cancel}>취소</button><button type="button" className="yp-btn yp-pri" disabled={urls.length !== 2} onClick={apply}>{label} 그림 적용</button></div>;
+}
 
 /** The picked 창고 pictures side by side in one PNG, the order they were picked: 「내 GPT로 그리기」 pastes it into ChatGPT. */
 export async function referenceSheet(urls: string[]) {
@@ -23,8 +41,9 @@ export async function referenceSheet(urls: string[]) {
 
 /** `children`: the photo buttons the 「AI로 그리기」 button sits beside. `brief`: a 웹툰 card's own 장면 and 나오는 사람. `onFile`: puts a pasted or
  * dropped picture on the card (true once it is there). `label`: the card, as 「22장」. */
-export function CardDrawPanel({ page, projectId, photo, onPhoto, onFile, label, brief, defaultStyle = "simple", children }: { page: YpPage; projectId: string; photo?: CardPhoto;
-  onPhoto: (photo: CardPhoto) => void; onFile: (file: File) => Promise<boolean>; label: string; brief?: { scene: string; cast: string; guideCharacter?: string }; defaultStyle?: CardDrawStyle; children: ReactNode }) {
+export function CardDrawPanel({ page, projectId, photo, onPhoto, onFile, label, brief, designReference, defaultStyle = "simple", children }: { page: YpPage; projectId: string; photo?: CardPhoto;
+  designReference?: string; onPhoto: (photo: CardPhoto) => void; onFile: (file: File) => Promise<boolean>; label: string; brief?: { scene: string; cast: string; guideCharacter?: string }; defaultStyle?: CardDrawStyle; children: ReactNode }) {
+  const [choice, setChoice] = useState<{ original: CardPhoto; candidate: CardPhoto } | null>(null);
   const [open, setOpen] = useState(false);
   const [scene, setScene] = useState("");
   const [style, setStyle] = useState<CardDrawStyle>(defaultStyle);
@@ -99,7 +118,8 @@ export function CardDrawPanel({ page, projectId, photo, onPhoto, onFile, label, 
   const run = async (what: string, work: () => Promise<void>) => { setBusy(what); try { await work(); } catch (reason) { page.fail(reason); } finally { setBusy(""); } };
   const draw = () => run("draw", async () => {
     if (!await cost.confirm({ model, amount, detail: `그림 1장${refs.length ? ` · 캐릭터 그림 ${refs.length}장 참고` : ""}`, note: "GPT 크레딧(매달 500달러)에서 나가요. 그림은 설명용이에요 — 실제 기록처럼 쓰지 않아요.", ok: "그리기" })) return;
-    onPhoto(await client.cardDraw(projectId, { scene: scene.trim(), style, quality, refs, guideCharacter: brief?.guideCharacter }));
+    const candidate = await client.cardDraw(projectId, { scene: scene.trim(), style, quality, refs, designReference, guideCharacter: brief?.guideCharacter });
+    if (photo) setChoice({ original: photo, candidate }); else onPhoto(candidate);
   });
   const picked = refs.map(id => characters?.find(row => row.id === id)).filter((row): row is CardCharacterView => Boolean(row));
   const step = (key: string) => setDone(current => current.includes(key) ? current : [...current, key]);
@@ -143,7 +163,7 @@ export function CardDrawPanel({ page, projectId, photo, onPhoto, onFile, label, 
     <button type="button" className="yp-btn yp-sm" onClick={() => setOpen(true)}><Sparkles size={13} aria-hidden="true" />AI로 그리기</button>
     <button type="button" className="yp-btn yp-sm" onClick={() => { setOpen(true); setMine(true); }}>내 GPT로 그리기</button><CostTag kind="ai" /></>}</div>;
   if (!open) return <>{row}{cost.element}</>;
-  return <>{row}<div className="yp-card-draw" role="group" aria-label="AI로 그리기">
+  return <>{row}{choice && photo?.path === choice.original.path && <CardImageChoice page={page} projectId={projectId} label={label} {...choice} cancel={() => setChoice(null)} apply={() => { onPhoto(choice.candidate); setChoice(null); }} />}<div className="yp-card-draw" role="group" aria-label="AI로 그리기">
     <label className="yp-field"><span className="yp-fld-h"><b>어떤 장면인가요?</b><span className="yp-card-n">{[...scene].length}/{CARD_DRAW_SCENE_MAX}</span></span>
       <textarea className="yp-in" rows={3} maxLength={CARD_DRAW_SCENE_MAX} aria-label="장면 설명" value={scene} placeholder="예) 밤 11시 사무실, 한결이 모니터 앞에서 「괜찮아요」라고 웃는데 책상 밑에서 낙서 캐릭터가 빼꼼 내다봐요" onChange={event => setScene(event.target.value)} /></label>
     <div className="yp-row-btns">

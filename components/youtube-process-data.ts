@@ -379,6 +379,17 @@ const demoAdopted = new Set<string>();
 const demoJobResolution = new Map<string, "retry" | "close">();
 const demoFeedback = new Map<string, YpFeedbackView[]>();
 const demoFiles = new Map<string, string>();
+const demoCardCache = "brandy-os-demo-card-images-v1";
+
+async function demoAssetUrl(path: string) {
+  const url = demoFiles.get(path);
+  if (url || !path.startsWith("youtube/demo/card/")) return url ?? "";
+  const response = await (await caches.open(demoCardCache)).match("/" + path);
+  if (!response) return "";
+  const restored = URL.createObjectURL(await response.blob());
+  demoFiles.set(path, restored);
+  return restored;
+}
 const demoCharacters: CardCharacterView[] = [];
 /** The demo has no 영상 만드는 컴퓨터: [찾기] returns two example references at once (no images). */
 function exampleRefs(id: string, query: string): YpShortRefFetch {
@@ -639,10 +650,14 @@ function demoClient(): YpClient {
     },
     uploadAsset: async (_id, kind, file) => {
       const path = `youtube/demo/${kind}/${crypto.randomUUID()}.${file.name.split(".").pop()?.toLowerCase() ?? "bin"}`;
+      if (kind === "card") {
+        try { await (await caches.open(demoCardCache)).put("/" + path, new Response(file)); }
+        catch { throw new Error("이 브라우저에 이미지를 저장하지 못했어요. 저장 공간을 확인하고 다시 첨부해 주세요."); }
+      }
       demoFiles.set(path, URL.createObjectURL(file));
       return { path, name: file.name, bytes: file.size };
     },
-    assetUrl: async (_id, path) => demoFiles.get(path) ?? "",
+    assetUrl: (_id, path) => demoAssetUrl(path),
     finalUrl: async (_id, final) => final.path ? demoFiles.get(final.path) ?? null : null,
     finalSrt: async () => null,
     feedback: async id => structuredClone(demoFeedback.get(id) ?? []),

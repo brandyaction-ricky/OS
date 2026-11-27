@@ -50,8 +50,8 @@ export function assertCardJobOpen(project: YpProject) {
   if (project.yp.stage !== "draft" || editableFields(project, "draft") !== "all") throw new ApiError(409, "CARD_JOB_CLOSED", "카드를 확정하기 전에만 초안을 뽑을 수 있어요.");
 }
 /** What the drafts are made from: a change to any of it closes a job asked for before. */
-export const cardInputKey = (project: Pick<YpProject, "title" | "yp">, cards: Pick<YpCards, "source" | "focus" | "brief">, formats: CardFormatId[], canon: string) =>
-  createHash("sha256").update(JSON.stringify([cards.source.text, cards.focus, project.title, project.yp.topic.target, project.yp.topic.note, formats, canon, ...(cards.brief ? [cards.brief] : [])])).digest("hex");
+export const cardInputKey = (project: Pick<YpProject, "title" | "yp">, cards: Pick<YpCards, "source" | "focus" | "brief" | "production">, formats: CardFormatId[], canon: string) =>
+  createHash("sha256").update(JSON.stringify([cards.source.text, cards.focus, project.title, project.yp.topic.target, project.yp.topic.note, formats, canon, ...(cards.brief ? [cards.brief] : []), ...(cards.production && formats.includes(cards.production.format) ? [cards.production] : [])])).digest("hex");
 
 const NOTES: Partial<Record<CardSlide["type"], string>> = { item: "번호는 OS가 붙여요", summary: "앞 장의 소제목 목록은 OS가 자동으로 넣어요",
   compare: "두 쪽을 같은 기준으로, 왼쪽은 흔한 쪽 · 오른쪽은 권하는 쪽", step: "한 장에 한 단계, 할 일을 행동으로 · 단계 번호와 흐름은 OS가 그려요",
@@ -83,11 +83,11 @@ export function cardFormatSpec(formats: CardFormatId[]) {
   }).join("\n\n");
 }
 
-export function cardJobCard(input: { project: Pick<YpProject, "title" | "yp">; cards: Pick<YpCards, "source" | "focus" | "brief">; formats: CardFormatId[];
+export function cardJobCard(input: { project: Pick<YpProject, "title" | "yp">; cards: Pick<YpCards, "source" | "focus" | "brief" | "production">; formats: CardFormatId[];
   canon: { id: string } | null; voice: { id: string; title: string }[]; cast?: { id: string; title: string } | null; leaseMinutes: number }) {
   const { project, cards, formats } = input;
   const names = formats.map(id => CARD_FORMATS[id].name).join(" · ");
-  const data = { source: { kind: cards.source.kind, title: cards.source.title, text: cards.source.text }, focus: cards.focus, approvedPlan: cards.brief,
+  const data = { source: { kind: cards.source.kind, title: cards.source.title, text: cards.source.text }, focus: cards.focus, approvedPlan: cards.brief, production: cards.production && formats.includes(cards.production.format) ? { workTitle: cards.production.title, sourceText: cards.production.memo, direction: cards.production.direction, formatDetail: cards.production.detail } : undefined,
     topic: { title: project.title, target: project.yp.topic.target, note: project.yp.topic.note } };
   return `이 작업 하나만 처리합니다. 승인 · 업로드 · 게시 · 삭제는 하지 않습니다.
 
@@ -179,13 +179,14 @@ export function checkCardResult(value: unknown, formats: CardFormatId[]): CardRe
 /** Adds the new drafts (never touching the ones there), preserves the human selection, and keeps at most 12 by dropping the
  * oldest AI drafts that are not picked. A save that crossed a PD edit is read again and tried once more. */
 export async function saveCardDrafts(supabase: Supabase, ownerId: string, team: string, project: YpProject, result: CardResult,
-  author: { by: string; model: string; jobId: string; canon: string; trace?: NonNullable<CardDraft["ai"]>["trace"] }) {
+  author: { production?: YpCards["production"]; by: string; model: string; jobId: string; canon: string; trace?: NonNullable<CardDraft["ai"]>["trace"] }) {
   for (let attempt = 0; ; attempt++) {
     const current = (await readStages(supabase, project)).cards;
     const existing = current.data.drafts.filter(draft => draft.ai?.jobId === author.jobId);
     if (existing.length) return { drafts: existing.length, picked: current.data.picked };
     const at = new Date().toISOString();
-    const fresh: CardDraft[] = result.drafts.map(draft => ({ ...draft, id: randomUUID().slice(0, 8), at, by: author.by,
+    const fresh: CardDraft[] = result.drafts.map(draft => ({ ...draft, formatVersion: 1, ...(author.production?.format === draft.format ? { outline: true, production: author.production,
+        slides: draft.slides.map((slide, i) => i === 0 && author.production?.reference?.purpose === "use" ? { ...slide, photo: author.production.reference.photo } : slide) } : {}), id: randomUUID().slice(0, 8), at, by: author.by,
       ai: { by: author.by, model: author.model, at, jobId: author.jobId, trace: author.trace, canon: author.canon, sig: cardSignature(draft) } }));
     const picked = current.data.picked;
     const drafts = [...current.data.drafts, ...fresh];
