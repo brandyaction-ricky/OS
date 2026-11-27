@@ -8,7 +8,7 @@ import { useCostConfirm, useCostModels, voiceEstimate } from "./cost-notice";
 import { askVoicePlan, planText } from "./myin-voice-check";
 import type { YpFeedbackView, YpFinalView } from "./youtube-process-data";
 
-interface VoiceRun { id: string; stage: string; voiceFixable?: boolean; voiceFixes?: { memo: string }[]; voiceChanged?: { at: string; count: number } | null; final?: { at: string } | null }
+interface VoiceRun { id: string; stage: string; voiceFixable?: boolean; voiceFixes?: { memo: string }[]; voiceChanged?: { at: string; count: number } | null; voicePatch?: boolean; final?: { at: string } | null }
 const fmt = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 
 /**
@@ -44,7 +44,7 @@ export function VoiceFeedbackBox({ projectId, final, items, token, onSeek }: {
     const plan = await askVoicePlan(token, run.id, fixes).catch(() => null);
     const text = plan ? planText(plan) : "가".repeat(fixes.length * 120);
     const ok = await cost.confirm({ model: myinVoice, amount: voiceEstimate(`${text}${text}`, myinVoice).krw,
-      detail: `${plan?.fixes.length ?? fixes.length}곳${plan && plan.fixes.length < fixes.length ? "(같은 곳 피드백은 하나로)" : ""} · 그 문장만 두 번 만들어 더 나은 것을 골라요 · 끝나면 전체 영상을 다시 만들어야 새 음성이 들어가요 · 예상 금액`, ok: "확인하고 다시 만들기" });
+      detail: `${plan?.fixes.length ?? fixes.length}곳${plan && plan.fixes.length < fixes.length ? "(같은 곳 피드백은 하나로)" : ""} · 그 문장만 두 번 만들어 더 나은 것을 골라요 · ${run.stage === "final_ready" ? "영상은 다시 그리지 않고 그 문단 소리만 바꿔 몇 분 안에 새 완성 영상이 나와요" : "끝나면 전체 영상을 다시 만들어야 새 음성이 들어가요"} · 예상 금액`, ok: "확인하고 다시 만들기" });
     if (!ok) return;
     setBusy(true); setError("");
     try {
@@ -55,7 +55,7 @@ export function VoiceFeedbackBox({ projectId, final, items, token, onSeek }: {
   };
   return <div className="yp-note" role="status" style={{ display: "block", marginBottom: 10 }}>
     {cost.element}
-    {pending ? <><b>음성 고치는 중 · {run.voiceFixes!.length}곳</b><br /><small>그 문장만 다시 만들어요. 끝나면 제작에서 전체 영상을 다시 만들어요.</small></>
+    {pending ? <><b>음성 고치는 중 · {run.voiceFixes!.length}곳</b><br /><small>{run.voicePatch ? "그 문장만 다시 만들어 소리만 바꿔 넣어요. 몇 분 뒤 새 완성 영상이 여기 나와요. 길이가 많이 달라지면 제작에서 전체 영상을 다시 만들어요." : "그 문장만 다시 만들어요. 끝나면 제작에서 전체 영상을 다시 만들어요."}</small></>
       : run.voiceChanged ? <><b>음성을 다시 만들었어요 · {run.voiceChanged.count}곳</b><br />
         <Link className="yp-lnk" href={stepHref(3, projectId)}>제작에서 전체 영상 다시 만들기 →</Link></>
       : <><b>음성 피드백 {voice.length}개</b>
