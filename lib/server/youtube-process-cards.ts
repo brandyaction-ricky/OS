@@ -128,6 +128,7 @@ const draftSchema = z.object({
 export const cardsPatchSchema = z.object({
   /** A draft as edited (its AI record stays the server's), a new empty draft of a format, a draft removed, the one picked. */
   draft: draftSchema, add: z.enum(CARD_FORMAT_IDS as [CardDraft["format"], ...CardDraft["format"][]]), remove: z.string().max(40), pick: z.string().max(40),
+  briefFormats: z.array(z.enum(CARD_FORMAT_IDS as [CardDraft["format"], ...CardDraft["format"][]])).min(1).max(3).refine(ids => new Set(ids).size === ids.length),
   focus: z.string().max(500), brief: z.string().trim().min(1).max(1800),
   /** 내보내기: where it went up (the address of the post). */
   exported: z.object({ url: z.string().url().max(500).optional(), episode: z.number().int().positive().optional(), withheldReason: z.string().trim().max(500).optional(), downloaded: z.literal(true).optional(), copied: z.literal(true).optional(), posted: z.literal(true).optional() }).strict().refine(value => value.url !== undefined || value.withheldReason !== undefined || value.downloaded === true || value.copied === true || value.posted === true),

@@ -12,7 +12,7 @@ export class CardError extends Error {
 export const CARD_DRAFTS_MAX = 12;
 
 /** A draft as edited (its AI record stays the stored one), a new empty draft of a format, a draft removed, the one picked; or 내보내기's address. */
-export interface CardsPatch { draft?: Omit<CardDraft, "at" | "by" | "ai">; add?: CardFormatId; remove?: string; pick?: string; focus?: string; brief?: string; exported?: { url?: string; episode?: number; withheldReason?: string; downloaded?: true; copied?: true; posted?: true } }
+export interface CardsPatch { draft?: Omit<CardDraft, "at" | "by" | "ai">; add?: CardFormatId; remove?: string; pick?: string; focus?: string; brief?: string; briefFormats?: CardFormatId[]; exported?: { url?: string; episode?: number; withheldReason?: string; downloaded?: true; copied?: true; posted?: true } }
 
 export function instagramPostId(value: string) {
   try {
@@ -88,7 +88,7 @@ export function nextCards(project: Pick<YpProject, "yp">, current: YpCards, patc
   }
   // The first draft made is the one being worked on until another is picked.
   if (!picked && patch.add) picked = drafts.at(-1)!.id;
-  return { ...current, drafts, picked, ...(patch.brief !== undefined ? { brief: patch.brief } : {}), ...(patch.focus !== undefined ? { focus: patch.focus } : {}) };
+  return { ...current, drafts, picked, ...(patch.briefFormats ? { briefFormats: patch.briefFormats } : {}), ...(patch.brief !== undefined ? { brief: patch.brief } : {}), ...(patch.focus !== undefined ? { focus: patch.focus } : {}) };
 }
 
 export const pickedDraft = (cards: YpCards) => cards.drafts.find(row => row.id === cards.picked) ?? null;

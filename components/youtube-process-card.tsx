@@ -234,6 +234,7 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
   const [sampleFormat, setSampleFormat] = useState<CardFormatId>("list");
   const sample = useMemo(() => formatSample(sampleFormat), [sampleFormat]);
   const [planning, setPlanning] = useState(false);
+  const [planSaved, setPlanSaved] = useState(false);
   const [brief, setBrief] = useState("");
   const [rewriting, setRewriting] = useState(false);
   const [compareAll, setCompareAll] = useState(false);
@@ -255,7 +256,9 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
   useEffect(() => {
     if (!project || !cards || defaultsFor.current === project.id) return;
     defaultsFor.current = project.id;
-    setChosen(cards.recommend?.formats.slice(0, 3) ?? []);
+    const formats = cards.briefFormats ?? cards.recommend?.formats.slice(0, 3) ?? [];
+    setChosen(formats);
+    setSampleFormat(formats[0] ?? "list");
   }, [project, cards]);
   const reload = page.reload;
   const job = useStaffJob(page, "card", useCallback(() => { setDirty(false); void reload(); }, [reload]));
@@ -316,9 +319,10 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
     .map(([index, fields]) => `${Number(index) + 1}장 ${fields.map(key => slideSpec(draft!.format, draft!.slides[Number(index)].type)?.fields.find(field => field.key === key)?.label ?? key).join(" · ")} 칸이 넘쳐요`);
   const problems = draft ? cardProblems(draft) : { blocking: [], warnings: [] };
   const missing = cardsMissing(draft ? { ...cards, drafts: cards.drafts.map(row => row.id === draft.id ? draft : row) } : cards) || overList[0] || "";
+  const gptConfigured = job.status?.gptConfigured === true;
   const action = gateAction(page, "draft", 1, control, missing);
   if (action.kind === "button" && editable) {
-    action.notice = page.demo ? <span className="yp-hint">연습 · 그림 검사 비용 없음</span> : <CostTag kind="paid" what="확정 시 자동 그림 검사 · 정밀 기준 (잔액이 낮으면 절약)" amount={tokenEstimate(GPT_TIERS.precise.model, 10_000, 8_000)} upTo />;
+    action.notice = page.demo ? <span className="yp-hint">연습 · 그림 검사 비용 없음</span> : !gptConfigured ? null : <CostTag kind="paid" what="확정 시 자동 그림 검사 · 정밀 기준 (잔액이 낮으면 절약)" amount={tokenEstimate(GPT_TIERS.precise.model, 10_000, 8_000)} upTo />;
     action.extra = <>{action.notice}{action.extra}</>;
   }
   const current = draft?.slides[slide] ? slide : 0;
@@ -326,7 +330,9 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
   const spec = draft ? slideSpec(draft.format, draft.slides[current].type) : null;
   const addBlank = async () => { for (const format of chosen) if (!(await save({ add: format }))) return; };
   const sampleProject = page.demo && project.id === "demo-p13";
+  const savePlan = () => save({ brief: brief.trim(), briefFormats: chosen });
   const openPlan = () => {
+    setPlanSaved(false);
     setBrief(cards.brief || [project.title, project.yp.topic.target && `독자 · ${project.yp.topic.target}`,
       cards.focus || project.yp.topic.note, chosen.includes("list") && "읽고 나서 독자가 할 일과 저장할 양식을 적어 주세요.", planningOutline(chosen)].filter(Boolean).join("\n"));
     setPlanning(true);
@@ -394,24 +400,29 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
         </div></section>
       {chosen.includes("list") && <a className="yp-btn" href="/card-information/compare.html" target="_blank" rel="noreferrer">정보전달형 기존·개선 6장 비교 ↗</a>}
       {cards.recommend?.why ? <p className="yp-hint">추천 이유: {cards.recommend.why}</p> : null}
+      {!gptConfigured && <p className="yp-hint" role="status">{page.demo ? "데모에서는 기획안과 예시를 확인할 수 있어요." : job.status?.gptConfigured === false ? "회사 GPT 연결이 설정되지 않았어요. 기획안을 저장하거나 내 AI 또는 직접 쓰기로 계속할 수 있어요." : "회사 GPT 설정을 확인할 수 없어요. 기획안 저장과 직접 쓰기를 사용할 수 있어요."}</p>}
       <div className="yp-row-btns">
-        <button type="button" className="yp-btn yp-pri" disabled={!chosen.length || job.open} onClick={openPlan}>{cards.recommend?.formats.length === 2 && chosen.length === 2 && chosen.every(id => cards.recommend?.formats.includes(id)) ? "추천 2개로 초안 뽑기" : `AI로 초안 뽑기 (${chosen.length}개)`}</button>
-        <CostTag kind="paid" amount={tokenEstimate(GPT_TIERS.precise.model, 60_000, 32_000)} /><small>정밀 1회 예상 · 3~6분 · 점검 실패 시 1회 재시도</small>
+        <button type="button" className="yp-btn yp-pri" disabled={!chosen.length || job.open} onClick={openPlan}>{!gptConfigured ? "기획안 확인" : cards.recommend?.formats.length === 2 && chosen.length === 2 && chosen.every(id => cards.recommend?.formats.includes(id)) ? "추천 2개로 초안 뽑기" : `AI로 초안 뽑기 (${chosen.length}개)`}</button>
+        {gptConfigured && <><CostTag kind="paid" amount={tokenEstimate(GPT_TIERS.precise.model, 60_000, 32_000)} /><small>정밀 1회 예상 · 3~6분 · 점검 실패 시 1회 재시도</small></>}
         <button type="button" className="yp-btn" disabled={!chosen.length || busy} onClick={() => void addBlank()}>직접 쓰기</button>
       {sampleProject && !planning && <button type="button" className="yp-btn" onClick={() => { setChosen(["steps"]); setBrief("월요일마다 무거운 직장인 · 일요일 밤의 걱정을 월요일 첫 행동으로 옮긴다.\n" + planningOutline(["steps"])); setPlanning(true); }}>같은 주제로 개선 예시 비교</button>}</div>
+      {planSaved && !planning && <p className="yp-hint" role="status">기획안과 선택한 포맷을 저장했어요.</p>}
       {planning && <section className="yp-card-b" aria-label="생성 전 기획안">
         <h3>생성 전 기획안 확인</h3><p>{planningOutline(chosen)}</p>
         {chosen.includes("list") && <button type="button" className="yp-btn" disabled={brief.includes("캐릭터 해설형")} onClick={() => setBrief(value => (value + "\n캐릭터 해설형으로 기획해요. 표지에 주제와 어울리는 마이인 캐릭터를 고르고, 본문에는 행동 비교와 기록 양식을 넣어요.").trim())}>마이인 캐릭터 해설형 적용</button>}
         <label>독자 · 핵심 메시지 · 장별 전개<textarea value={brief} maxLength={1800} rows={5} onChange={event => setBrief(event.target.value)} /></label>
         <div className="yp-row-btns"><button className="yp-btn" onClick={() => setPlanning(false)}>취소</button>
-        <button className="yp-btn yp-pri" disabled={!brief.trim() || !chosen.length || busy || dirty || job.open} onClick={async () => {
-          if (!(await save({ brief: brief.trim() }))) return;
+        <button className="yp-btn" disabled={!brief.trim() || !chosen.length || busy || dirty} onClick={async () => {
+          if (await savePlan()) { setPlanning(false); setPlanSaved(true); }
+        }}>기획안 저장</button>
+        <button className="yp-btn yp-pri" disabled={!brief.trim() || !chosen.length || busy || dirty || job.open || (!job.status && !(sampleProject && chosen.length === 1 && chosen[0] === "steps"))} onClick={async () => {
+          if (!(await savePlan())) return;
           if (sampleProject && chosen.length === 1 && chosen[0] === "steps") {
             if (!(await save({ mondaySample: true }))) return;
             setSlide(0); setCompareAll(true);
           } else setSend(true);
           setPlanning(false);
-        }}>{sampleProject && chosen.length === 1 && chosen[0] === "steps" ? "기획 확인 · 로컬 예시 열기" : "기획 확인 · AI 생성 방식 선택"}</button></div>
+        }}>{sampleProject && chosen.length === 1 && chosen[0] === "steps" ? "기획 확인 · 로컬 예시 열기" : gptConfigured ? "기획 확인 · AI 생성 방식 선택" : "기획 확인 · 내 AI로 보내기"}</button></div>
       </section>}
       <JobLine job={job} onRetry={openPlan} />
       <SendDialog page={page} task="card" open={send} onClose={() => setSend(false)} job={job} extra={{ formats: chosen }} />
@@ -452,7 +463,7 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
           })}</ul></section>)}
       </div>
       <div className="yp-card-tools" aria-label="카드 장 관리">
-        {editable && (!page.demo || (sampleProject && draft.format === "steps" && draft.slides.length === 6)) && <button type="button" className="yp-btn yp-sm" disabled={rewriting || dirty || busy} onClick={() => void rewrite()}>{rewriting ? "다시 만드는 중…" : `${current + 1}장만 다시 만들기`}</button>}
+        {editable && (!page.demo || (sampleProject && draft.format === "steps" && draft.slides.length === 6)) && <button type="button" className="yp-btn yp-sm" disabled={rewriting || dirty || busy || (!page.demo && !gptConfigured)} onClick={() => void rewrite()}>{rewriting ? "다시 만드는 중…" : `${current + 1}장만 다시 만들기`}</button>}
         {editable && draft.format === "list" && draft.slides[current].type === "item" && !draft.slides[current].fields.before && <button type="button" className="yp-btn yp-sm" onClick={() => structure({ ...draft, slides: draft.slides.map((row, i) => i === current ? { ...row, layout: row.layout === "spotlight" ? undefined : "spotlight" } : row) }, current)}>배치만 바꾸기</button>}
         <b>카드 {draft.slides.length} / {cardMaxSlides(draft.format)}장{toonUploads(draft).length > 1 ? ` · ${toonUploads(draft).length}화` : ""}</b>
         {editable && CARD_FORMATS[draft.format].slides.filter(item => item.max > item.min).map(item => <button key={item.type} type="button" className="yp-btn yp-sm" disabled={addCardSlide(draft, item.type) === draft} onClick={() => structure(addCardSlide(draft, item.type), current)}><Plus size={13} />{item.type === "toon" ? "다음 화 나누기" : `${item.label} 카드 추가`}</button>)}
