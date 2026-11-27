@@ -25,6 +25,7 @@ const STAGE = "L1";
 export const ORDER = "@layer os.vendor, os.base, os.legacy, os.kit, os.screen;";
 // 파일 → 레이어. 새 CSS 파일을 만들면 여기에 먼저 적는다(적지 않으면 실패).
 const FILE_LAYER = {
+  "components/canon-rail.module.css": "os.kit",
   "app/theme-tokens.css": null, // 색 토큰: 레이어 밖(어떤 레이어도 못 덮음)
   "app/os-foundation.css": "os.base+os.kit",
   "app/globals.css": "os.legacy",

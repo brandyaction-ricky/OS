@@ -8,7 +8,7 @@ import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { CARD_FORMAT_IDS, type CardFormatId } from "@/lib/cardnews/formats";
 import { checkColumnHtml, cleanColumnHtml } from "@/lib/seo-column";
-import { BENCH_MAX, CARD_GRADES, canonVersion, GRIND_KINDS, internalLinks, resultKey, scriptBundle, type Bench, type BenchItem, type BenchResult, type BenchRun, type GrindKind, type ScriptVerdict } from "@/lib/canon-grind/grind";
+import { experimentPrompt, type GrindPrompts, BENCH_MAX, CARD_GRADES, canonVersion, GRIND_KINDS, internalLinks, resultKey, scriptBundle, type Bench, type BenchItem, type BenchResult, type BenchRun, type GrindKind, type ScriptVerdict } from "@/lib/canon-grind/grind";
 import { THREADS_EDITORIAL_WORKFLOW } from "@/lib/threads-editorial";
 import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
 import { threadsPostsProblem } from "@/lib/threads-posts";
@@ -118,7 +118,7 @@ export const grindActionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("add"), projectId: z.string().uuid() }).strict(),
   z.object({ action: z.literal("addTopic"), title: z.string().trim().min(2).max(200), target: z.string().trim().min(1).max(300), note: z.string().max(2000).default("") }).strict(),
   z.object({ action: z.literal("remove"), itemId: z.string().max(40) }).strict(),
-  z.object({ action: z.literal("run"), formats: z.array(z.enum(CARD_FORMAT_IDS as [CardFormatId, ...CardFormatId[]])).max(3).default([]), tier: z.enum(["precise", "saving"]) }).strict(),
+  z.object({ action: z.literal("run"), formats: z.array(z.enum(CARD_FORMAT_IDS as [CardFormatId, ...CardFormatId[]])).max(3).default([]), tier: z.enum(["precise", "saving"]), prompts: z.record(z.object({ style: z.string().trim().max(600), quality: z.string().trim().max(600) }).strict()).optional() }).strict(),
   z.object({ action: z.literal("score"), runId: z.string().uuid(), key: z.string().max(60),
     grades: z.record(n, z.enum(CARD_GRADES as [string, ...string[]])), notes: z.record(n, z.string().max(300)).default({}) }).strict(),
 ]);
@@ -217,14 +217,15 @@ export async function actOnGrind(actor: RequestActor, kind: GrindKind, input: z.
     return readGrind(kind);
   }
   if (kind === "card" && !input.formats.length) throw new ApiError(400, "GRIND_FORMATS_REQUIRED", "포맷을 하나 이상 골라 주세요.");
-  return { ...(await startRun(actor, kind, kind === "card" ? input.formats : [ONE_FORMAT[kind]], input.tier)), ...(await readGrind(kind)) };
+  return { ...(await startRun(actor, kind, kind === "card" ? input.formats : [ONE_FORMAT[kind]], input.tier, input.prompts)), ...(await readGrind(kind)) };
 }
 
 /** The one format a non-card draft has. */
 const ONE_FORMAT = { short: "script", threads: "posts", column: "html" } as const;
 
 /** 「이 정본으로 다시 뽑기」: one run record now, the GPT work after the response (several minutes). */
-async function startRun(actor: RequestActor, kind: GrindKind, formats: string[], tier: GptTier) {
+async function startRun(actor: RequestActor, kind: GrindKind, formats: string[], tier: GptTier, settings: GrindPrompts = {}) {
+  const prompts = Object.fromEntries(Object.entries(settings).filter(([key, value]) => formats.includes(key) && (value.style || value.quality)));
   if (!process.env.OPENAI_API_KEY?.trim()) throw new ApiError(503, "OPENAI_NOT_CONFIGURED", "OpenAI 연결이 아직 없어서 다시 뽑을 수 없어요.");
   const row = await benchRow(kind, actor);
   const bench = benchOf(row);
@@ -233,12 +234,12 @@ async function startRun(actor: RequestActor, kind: GrindKind, formats: string[],
   if (!canon) throw new ApiError(409, "GRIND_CANON_MISSING", `「${GRIND_KINDS[kind].canonTitle}」을 찾지 못했어요.`);
   if ((await runRows(kind, row!.id)).map(runOf).some(run => run.state === "running")) throw new ApiError(409, "GRIND_RUN_BUSY", "이미 다시 뽑는 중이에요. 끝나면 다시 눌러 주세요.");
   const { model } = GPT_TIERS[tier];
-  const run: Omit<BenchRun, "id"> = { canon: canon.version, at: new Date().toISOString(), by: actor.ownerId, byName: actor.name, model, formats, state: "running", results: [], scores: {} };
+  const run: Omit<BenchRun, "id"> = { canon: canon.version, at: new Date().toISOString(), by: actor.ownerId, byName: actor.name, model, formats, prompts, state: "running", results: [], scores: {} };
   const { data, error } = await service().from("os_records").insert({ id: randomUUID(), record_type: "content_package", title: `${GRIND_KINDS[kind].canonTitle} ${canon.version} 다시 뽑기`,
     status: "active", priority: "normal", parent_id: row!.id, owner_id: actor.id, created_by: actor.id, updated_by: actor.id, team: actor.team, tags: [GRIND_KINDS[kind].label, "정본 다듬기"],
     metadata: { packageKind: GRIND_KINDS[kind].run, run }, description: "" }).select("id").single();
   if (error || !data) throw new ApiError(400, "GRIND_RUN_SAVE_FAILED", "다시 뽑기를 시작하지 못했어요.");
-  after(() => drawRun(kind, data.id as string, bench.items, formats, tier, canon, actor.id).catch(reason => console.error(`canon grind run failed: ${reason instanceof Error ? reason.message : reason}`)));
+  after(() => drawRun(kind, data.id as string, bench.items, formats, tier, canon, actor.id, prompts).catch(reason => console.error(`canon grind run failed: ${reason instanceof Error ? reason.message : reason}`)));
   return { started: data.id as string };
 }
 
@@ -304,7 +305,8 @@ async function threadsDocs(card: string) {
 }
 
 /** Every 시험 원본 drawn in parallel, then saved once. */
-async function drawRun(kind: GrindKind, runId: string, items: BenchItem[], formats: string[], tier: GptTier, canon: { id: string; version: string }, by: string) {
+async function drawRun(kind: GrindKind, runId: string, items: BenchItem[], formats: string[], tier: GptTier, canon: { id: string; version: string }, by: string, prompts: GrindPrompts) {
+  const guidance = experimentPrompt(prompts);
   const voice = kind === "card" ? await namedProcedures(service(), [VOICE_CANON_TITLE]) : [];
   const cardOf = (item: BenchItem) => kind !== "card" ? item.instructions ?? ""
     : cardJobCard({ project: { title: item.title, yp: { topic: { target: item.target, note: item.note } } } as unknown as Pick<YpProject, "title" | "yp">,
@@ -315,7 +317,7 @@ async function drawRun(kind: GrindKind, runId: string, items: BenchItem[], forma
   const draw = async (item: BenchItem): Promise<BenchResult[]> => {
     const failed = (error: string) => formats.map(format => ({ key: resultKey(item.id, format), itemId: item.id, title: item.title, format, error }));
     if (!cardOf(item)) return failed("시험 원본에 작업 내용이 없어요. 빼고 다시 넣어 주세요.");
-    const answer = await ask(tier, kind === "threads" ? await threadsDocs(cardOf(item)) : shared, cardOf(item), async value => kind === "card"
+    const answer = await ask(tier, kind === "threads" ? await threadsDocs(cardOf(item)) : shared, cardOf(item) + (guidance ? "\n\n## 이번 실험의 편집 지시\n포맷별로 해당 지시만 적용하세요. 정본, 사실 근거, 제출 스키마를 유지하세요.\n" + guidance : ""), async value => kind === "card"
       ? checkCardResult(value, formats as CardFormatId[]).drafts.map(draft => ({ key: resultKey(item.id, draft.format), itemId: item.id, title: item.title, format: draft.format, draft }))
       : [{ key: resultKey(item.id, ONE_FORMAT[kind]), itemId: item.id, title: item.title, format: ONE_FORMAT[kind],
         draft: kind === "short" ? checkShort(value, shortCanon) : kind === "threads" ? checkThreads(value) : checkColumn(value) }]);

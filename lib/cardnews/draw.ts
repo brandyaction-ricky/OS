@@ -18,7 +18,7 @@ export type CardDrawStyle = keyof typeof CARD_DRAW_STYLES;
 export const CARD_DRAW_QUALITY = { medium: "보통", high: "선명하게" } as const;
 export type CardDrawQuality = keyof typeof CARD_DRAW_QUALITY;
 
-export interface CardDrawInput { scene: string; style: CardDrawStyle; quality: CardDrawQuality; refs: string[] }
+export interface CardDrawInput { designReference?: string; scene: string; style: CardDrawStyle; quality: CardDrawQuality; refs: string[]; guideCharacter?: string }
 /** A 캐릭터 창고 picture: a drawn or uploaded card picture kept to draw the same character again. */
 export interface CardCharacter { id: string; name: string; path: string; at: string; byId: string; by: string }
 export type CardCharacterView = CardCharacter & { url: string };

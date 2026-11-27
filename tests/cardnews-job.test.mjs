@@ -68,20 +68,45 @@ test("a field over its limit, a missing format or an unknown field comes back wi
   assert.deepEqual([...ok.drafts[0].hashtags], ["직장인", "커리어", "번아웃"]);
 });
 
-test("new drafts are added beside the others, the first is picked, and at most 12 stay", async () => {
+test("new drafts are added beside the others, the PD keeps the choice, and at most 12 stay", async () => {
   const author = { by: "리키", model: "gpt-6.1-sol", jobId: "job", canon: "v0.1" };
   const result = job.checkCardResult({ recommend: { formats: ["quote"], why: "" }, drafts: [quote()] }, ["quote"]);
   conflicts = 1;
   const saved = await job.saveCardDrafts(null, "owner", "", {}, result, author);
   assert.equal(stored.data.drafts.length, 1);
-  assert.equal(stored.data.picked, saved.picked);
+  assert.equal(stored.data.picked, "");
+  assert.equal(saved.picked, "");
+  const picked = stored.data.drafts[0].id;
+  stored.data.picked = picked;
+  const retried = await job.saveCardDrafts(null, "owner", "", {}, result, author);
+  assert.equal(retried.picked, picked);
+  assert.equal(stored.data.drafts.length, 1);
   assert.equal(stored.data.drafts[0].ai.sig, formats.cardSignature(result.drafts[0]));
   assert.equal(stored.data.drafts[0].ai.canon, "v0.1");
   // A PD-made draft and the picked one survive; the oldest unpicked AI drafts make room.
   const mine = { ...formats.emptyCardDraft("list", "mine", "PD", "t"), at: "t" };
   stored.data.drafts = [stored.data.drafts[0], mine, ...Array.from({ length: 10 }, (_, n) => ({ ...stored.data.drafts[0], id: `old${n}` }))];
-  await job.saveCardDrafts(null, "owner", "", {}, result, author);
+  await job.saveCardDrafts(null, "owner", "", {}, result, { ...author, jobId: "another" });
   const ids = stored.data.drafts.map(draft => draft.id);
   assert.equal(ids.length, 12);
-  assert.ok(ids.includes(saved.picked) && ids.includes("mine") && !ids.includes("old0"));
+  assert.ok(ids.includes(picked) && stored.data.picked === picked && ids.includes("mine") && !ids.includes("old0"));
+});
+
+test("AI submissions reject a repeated body card", () => {
+  const draft = quote();
+  draft.slides[2] = structuredClone(draft.slides[1]);
+  assert.throws(() => job.checkCardResult({ recommend: { formats: [], why: "" }, drafts: [draft] }, ["quote"]), /원고가 앞 장과 같아요/);
+});
+
+test("information scenes retain their cast and reject copied or missing actions", () => {
+  const draft = quote();
+  draft.slides.forEach((slide, i) => {
+    slide.scene = { kind: "character", character: formats.GUIDE_CAST[i], action: "행동 예시 " + i };
+  });
+  const result = { recommend: { formats: [], why: "" }, drafts: [draft] };
+  assert.equal(job.checkCardResult(result, ["quote"]).drafts[0].slides[2].scene.character, formats.GUIDE_CAST[2]);
+  draft.slides[3].scene.action = draft.slides[2].scene.action;
+  assert.throws(() => job.checkCardResult(result, ["quote"]), /그림 설명이 앞 장과 같습니다/);
+  delete draft.slides[3].scene;
+  assert.throws(() => job.checkCardResult(result, ["quote"]), /관찰 가능한 행동/);
 });

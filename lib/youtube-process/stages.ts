@@ -201,11 +201,12 @@ export interface YpScreenCheck {
  * picked, and what 카드 확정 fixed. Drafts of several formats sit side by side; the PD picks one and edits it. */
 export interface YpCardSource { kind: "longform" | "short" | "threads" | "none"; title: string; text: string; at: string }
 export interface YpCards {
-  source: YpCardSource; focus: string; drafts: CardDraft[]; picked: string;
+  production?: import("../cardnews/production").ProductionInput;
+  source: YpCardSource; focus: string; brief?: string; briefFormats?: CardFormatId[]; drafts: CardDraft[]; picked: string;
   recommend?: { formats: CardFormatId[]; why: string };
   /** sig = the confirmed card; aiSig = the AI draft it started from, to see how far the PD moved it (정본 다듬기). */
   confirmed?: { at: string; draftId: string; sig: string; aiSig?: string };
-  exported?: { at: string; by: string; url: string };
+  exported?: { at: string; by: string; url: string; posts?: { episode: number; url: string }[]; withheldReason?: string; downloadedAt?: string; copiedAt?: string; postedAt?: string; downloadedEpisodes?: number[] };
 }
 /** 롱폼 주제 (owner 2026-10-30, like the 숏폼's): the title formulas the staff AI drew from the 참고 영상 and the 주제 후보 made from
  * them; the PD picks one and fixes the topic. channels = different channels among a formula's videos (3 = 확인된 주제, as in 틈새). */

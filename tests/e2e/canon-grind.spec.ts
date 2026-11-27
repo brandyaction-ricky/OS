@@ -55,3 +55,18 @@ test("롱폼 원고 정본 다듬기: 두 번째 검수 by 정본 묶음, the ga
   await expect(page.getByRole("navigation", { name: "현재 위치" }).getByRole("link", { name: "롱폼 유튜브" })).toBeVisible();
   await expect(page.getByRole("link", { name: "원고 정본 다듬기" })).toHaveAttribute("href", "/content/script-canon");
 });
+
+test("카드 정본 실험 지시는 포맷별로 분리되고 다시 불러올 수 있다", async ({ page }) => {
+  await page.goto("/content/card-canon");
+  const list = page.getByRole("group", { name: "정리형 실험 프롬프트" });
+  await list.getByLabel("스타일 지시").fill("현장의 질문으로 시작");
+  await page.getByRole("checkbox", { name: "비교형", exact: true }).check();
+  const compare = page.getByRole("group", { name: "비교형 실험 프롬프트" });
+  await compare.getByLabel("품질 기준").fill("같은 기준으로 양쪽 비교");
+  await page.getByRole("button", { name: "내 설정 저장" }).click();
+  await page.reload();
+  await page.getByRole("button", { name: "내 설정 불러오기" }).click();
+  await expect(compare.getByLabel("품질 기준")).toHaveValue("같은 기준으로 양쪽 비교");
+  await expect(list.getByLabel("스타일 지시")).toHaveValue("현장의 질문으로 시작");
+  await expect(list.getByLabel("품질 기준")).toHaveValue("");
+});

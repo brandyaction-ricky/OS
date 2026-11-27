@@ -1,3 +1,4 @@
+import { z } from "zod";
 // 카드뉴스 포맷 목록 (설계서 2026-10-30 §2): what each format is made of — slide kinds, how many, and the letters each field may
 // hold. The screens, the AI job and the server check all read this one list; the 카드뉴스 정본 says how to write, not these numbers.
 // Limits count letters with spaces; they start from the font size and the 888px text width and are tuned while the 정본 is ground.
@@ -21,9 +22,9 @@ const cover: CardSlideSpec = { type: "cover", label: "표지", min: 1, max: 1, p
 const end: CardSlideSpec = { type: "end", label: "마무리", min: 1, max: 1, fields: [{ key: "line", label: "마무리 문장", max: 30 }, { key: "action", label: "다음 행동", max: 14 }] };
 const summary: CardSlideSpec = { type: "summary", label: "정리", min: 1, max: 1, fields: [{ key: "line", label: "한 줄 정리", max: 24 }] };
 
-export const CARD_FORMATS: Record<CardFormatId, CardFormat> = {
+const FORMATS_V1: Record<CardFormatId, CardFormat> = {
   list: { id: "list", name: "정리형", when: "방법 · 신호 · 이유를 나열할 때 (롱폼 원고에 잘 맞아요)", slides: [cover,
-    { type: "item", label: "항목", min: 3, max: 7, photo: true, fields: [{ key: "title", label: "소제목", max: 16 }, { key: "body", label: "설명", max: 60 }] }, summary, end] },
+    { type: "item", label: "항목", min: 3, max: 7, photo: true, fields: [{ key: "title", label: "소제목", max: 16 }, { key: "body", label: "설명", max: 60 }, { key: "before", label: "바꾸기 전 문장", max: 38, optional: true }] }, { ...summary, fields: [...summary.fields, { key: "worksheet", label: "메모 양식 (한 줄에 한 항목)", max: 48, optional: true }] }, end] },
   myth: { id: "myth", name: "오해와 진실형", when: "흔한 생각을 뒤집을 때 (저장 · 공유가 잘 돼요)", slides: [cover,
     { type: "pair", label: "오해와 진실", min: 3, max: 5, fields: [{ key: "myth", label: "흔한 생각", max: 28 }, { key: "fact", label: "실제", max: 50 }, { key: "basis", label: "근거", max: 40, optional: true }] }, summary, end] },
   quote: { id: "quote", name: "한 문장형", when: "통찰을 한 줄씩 (스레드 글 · 숏폼 대본에 잘 맞아요)", slides: [cover,
@@ -48,6 +49,13 @@ export const CARD_FORMATS: Record<CardFormatId, CardFormat> = {
       { key: "shout", label: "외침", max: 14, optional: true }, { key: "sfx", label: "효과음", max: 6, optional: true }] },
     { ...summary, label: "오늘의 한 줄" }, end] },
 };
+// Register future definitions under a new version. Unversioned saved cards belong to v1.
+export const CURRENT_FORMAT_VERSION = 1 as const;
+const FORMAT_VERSIONS = { 1: FORMATS_V1 } as const;
+export const CARD_FORMATS = FORMAT_VERSIONS[CURRENT_FORMAT_VERSION];
+export function formatForDraft(draft: { format: CardFormatId; formatVersion?: keyof typeof FORMAT_VERSIONS }) {
+  return FORMAT_VERSIONS[draft.formatVersion ?? 1][draft.format];
+}
 /** The fields a 웹툰 card keeps for drawing its picture, never printed on it. */
 export const CARD_DRAW_FIELDS = ["scene", "cast"];
 /** Where a 웹툰 bubble's tail points, in % of the card: the PD taps the speaker on the preview (stored as `talkAt` / `replyAt`, "x,y");
@@ -71,15 +79,73 @@ export const isCardFormat = (value: unknown): value is CardFormatId => typeof va
 
 /** A photo kept in the project's files (youtube/<project>/card/…), with its size so the card keeps its ratio. */
 export interface CardPhoto { path: string; w: number; h: number }
-export interface CardSlide { type: CardSlideType; fields: Record<string, string>; photo?: CardPhoto }
+export const MYIN_CAST = {
+  "인연이": "관계",
+  "마음이": "관계",
+  "만남이": "관계",
+  "맞춤이": "관계",
+  "원만이": "관계",
+  "짝꿍이": "관계",
+  "친밀이": "관계",
+  "구현이": "성취",
+  "끝장이": "성취",
+  "추월이": "성취",
+  "향상이": "성취",
+  "만약이": "실행",
+  "방향이": "실행",
+  "약속이": "실행",
+  "자율이": "실행",
+  "효율이": "실행",
+  "인정이": "영향",
+  "주목이": "영향",
+  "해결이": "영향",
+  "육성이": "영향",
+  "전달이": "영향",
+  "성찰이": "의미",
+  "소신이": "의미",
+  "연결이": "의미",
+  "원칙이": "의미",
+  "까닭이": "이해",
+  "수집이": "이해",
+  "응용이": "이해",
+  "탐색이": "이해",
+  "파악이": "이해"
+} as const;
+export const GUIDE_CAST = ["탐색이", "전달이", "까닭이", "만남이", "성찰이", "약속이"] as const;
+export const MYIN_SCENE_CANON = `마이인 정보전달형 · 2D 장면 기준
+주제와 독자가 정해지면 장마다 무엇을 새로 알게 되는지 정하고, 실제로 보일 행동과 소품을 먼저 고릅니다. 그 행동을 표현할 인물을 선택합니다. 탐색이는 관찰·탐색, 전달이는 설명·공유, 까닭이는 원인·차이 확인, 만남이는 다른 사람과 시도, 성찰이는 되짚기·기록, 약속이는 다음 행동·약속에 어울립니다. 순서나 등장 횟수를 고정하지 않습니다.
+여섯 장 정리형의 기본 흐름은 독자의 질문 → 두 행동 비교 → 구체적인 한 동작 → 다른 상황에서 시험 → 독자가 직접 쓸 세 줄 → 오늘 할 행동입니다. 다른 하위 포맷은 그 포맷의 장 구조를 따릅니다. 주제를 바꾸면 장소·상대·소품·시선·손동작을 새로 기획합니다. 연속 동작을 비교할 때만 같은 인물과 장소를 의도적으로 이어 씁니다.
+1080×1350. 검정 바탕, 연두색 제목, 흰 본문과 하단 장면. 그림에는 글자를 그리지 않고 문구는 별도로 조판합니다. 그림은 가이드 원화의 눈, 머리와 몸 비율, 윤곽선, 고유 색과 소품을 유지한 평면 2D입니다. 기록 장은 작은 인물을 제목 옆에 두고 손으로 쓸 공간 세 줄을 남깁니다.`;
+export type MyinCharacter = keyof typeof MYIN_CAST;
+export const characterSceneSchema = z.object({
+  kind: z.enum(["character", "comparison", "worksheet"]),
+  character: z.enum(Object.keys(MYIN_CAST) as [MyinCharacter, ...MyinCharacter[]]).default("탐색이"),
+  side: z.enum(["left", "right"]).default("right"), size: z.enum(["small", "large"]).default("large"),
+  action: z.string().trim().min(2).max(320).optional(), dark: z.boolean().optional(), reason: z.string().max(120).optional(),
+});
+export interface CharacterScene {
+  kind: "character" | "comparison" | "worksheet";
+  character: MyinCharacter;
+  side: "left" | "right";
+  size: "small" | "large";
+  dark?: boolean;
+  reason?: string;
+  action?: string;
+}
+export function characterAsset(name: string) {
+  return Object.hasOwn(MYIN_CAST, name) ? `/myin-card-cast/${name}.png` : undefined;
+}
+export interface CardSlide { textLocked?: boolean; imageLocked?: boolean; artDirection?: string; scene?: CharacterScene; layout?: "spotlight"; type: CardSlideType; fields: Record<string, string>; photo?: CardPhoto }
+import type { CanonTrace } from "../youtube-process/canon-trace";
 export interface CardDraft {
+  formatVersion?: 1; workTitle?: string; outline?: boolean; production?: import("./production").ProductionInput;
   id: string; format: CardFormatId; slides: CardSlide[]; caption: string; hashtags: string[]; at: string; by: string;
   /** Who drafted it: a staff member's own AI or the company GPT, and under which 카드뉴스 정본 version (for the 정본 다듬기 comparison). */
   /** sig: cardSignature of the draft as the AI handed it in, so 카드 확정 can tell how far the PD changed it. */
-  ai?: { by: string; model: string; at: string; jobId: string; canon: string; sig: string; why?: string };
+  ai?: { trace?: CanonTrace[]; by: string; model: string; at: string; jobId: string; canon: string; sig: string; why?: string };
 }
 
-export const slideSpec = (format: CardFormatId, type: CardSlideType) => CARD_FORMATS[format].slides.find(spec => spec.type === type);
+export const slideSpec = (format: CardFormatId, type: CardSlideType, formatVersion: 1 = 1) => formatForDraft({ format, formatVersion }).slides.find(spec => spec.type === type);
 /** A slide's place in its format's order. 웹툰 표지 and 칸 share one, so the next 화 can start between two 칸. */
 const orderRank = (format: CardFormatId, type: CardSlideType) =>
   CARD_FORMATS[format].slides.findIndex(spec => spec.type === (format === "webtoon" && type === "toon" ? "panel" : type));
@@ -97,7 +163,7 @@ export function cardPage(draft: Pick<CardDraft, "format" | "slides">, index: num
 const blank = (spec: CardSlideSpec): CardSlide => ({ type: spec.type, fields: Object.fromEntries(spec.fields.map(field => [field.key, ""])) });
 /** A new draft with each slide kind at its fewest. */
 export function emptyCardDraft(format: CardFormatId, id: string, by: string, at: string): CardDraft {
-  return { id, format, slides: CARD_FORMATS[format].slides.flatMap(spec => Array.from({ length: spec.min }, () => blank(spec))), caption: "", hashtags: [], at, by };
+  return { id, format, formatVersion: CURRENT_FORMAT_VERSION, slides: CARD_FORMATS[format].slides.flatMap(spec => Array.from({ length: spec.min }, () => blank(spec))), caption: "", hashtags: [], at, by };
 }
 /** One more body slide after the last of its kind (a 웹툰 표지 after the last 칸, as the next 화), when the format allows it. */
 export function addCardSlide(draft: CardDraft, type: CardSlideType): CardDraft {
@@ -141,6 +207,11 @@ const josa = (word: string, batchim: string, open: string) => {
 };
 // Owner rules carried into every format: the 진단 is paid (발행 키트 정본 · 2026-10-26), and '여러분' is not our voice (말투 정본).
 const BANNED: [RegExp, string][] = [[/무료\s*(진단|검사)/, "진단은 유료예요 — ‘무료 진단’이라고 쓰지 않아요"], [/여러분/, "‘여러분’은 쓰지 않아요 (말투 정본)"]];
+const editorialTerms = /원본|제공된|가상\s*장면|원고|(?<![가-힣])정본/;
+export function firstCardLine(format: CardFormatId, slide: CardSlide) {
+  return slideSpec(format, slide.type)?.fields.filter(field => !CARD_DRAW_FIELDS.includes(field.key))
+    .map(field => plainCardText(slide.fields[field.key] ?? "").trim()).find(Boolean) || "작성 전";
+}
 const HASHTAGS = { min: 3, max: 5 };
 export const CAPTION_MAX = 2200;
 
@@ -150,7 +221,7 @@ export const CAPTION_MAX = 2200;
  */
 export function cardProblems(draft: Pick<CardDraft, "format" | "slides" | "caption" | "hashtags">) {
   const blocking: string[] = [], warnings: string[] = [];
-  const format = CARD_FORMATS[draft.format];
+  const format = formatForDraft(draft);
   if (!format) return { blocking: ["포맷을 골라 주세요"], warnings };
   if (draft.slides.length > cardMaxSlides(draft.format)) blocking.push(`카드는 ${cardMaxSlides(draft.format)}장까지예요`);
   for (const spec of format.slides) {
@@ -172,11 +243,13 @@ export function cardProblems(draft: Pick<CardDraft, "format" | "slides" | "capti
   draft.slides.forEach((slide, index) => {
     const spec = slideSpec(draft.format, slide.type);
     if (!spec) { blocking.push(`${index + 1}장은 이 포맷에 없는 카드예요`); return; }
-    if (slide.photo && !spec.photo) blocking.push(`${index + 1}장 ${spec.label}에는 사진을 넣지 않아요 — 도식이 그 자리예요`);
+    if (slide.photo && !spec.photo && !slide.scene?.action) blocking.push(`${index + 1}장 ${spec.label}에는 사진을 넣지 않아요 — 도식이 그 자리예요`);
     // An AI draft arrives without pictures, so a missing one is pointed out here and only 카드 확정 waits for it (cardsMissing).
     if (draft.format === "webtoon" && spec.photo && !slide.photo) warnings.push(`${index + 1}장 그림이 아직 없어요 — 「AI로 그리기」로 그려요`);
     for (const field of spec.fields) {
       const value = (slide.fields[field.key] ?? "").trim();
+      const term = !CARD_DRAW_FIELDS.includes(field.key) && plainCardText(value).match(editorialTerms)?.[0];
+      if (term) blocking.push(`${index + 1}장 ${field.label} · 제작 용어 ‘${term}’를 독자에게 보여 줄 말로 바꿔 주세요`);
       if (!value && !field.optional) blocking.push(`${index + 1}장 ${josa(field.label, "을", "를")} 써 주세요`);
       if (cardLetters(value) > field.max) blocking.push(`${index + 1}장 ${josa(field.label, "이", "가")} ${cardLetters(value) - field.max}자 넘쳐요 (${field.max}자까지)`);
       if (value.length >= 8) { if (seen.has(value)) warnings.push(`${seen.get(value)! + 1}장과 ${index + 1}장에 같은 문장이 있어요`); else seen.set(value, index); }
@@ -184,12 +257,22 @@ export function cardProblems(draft: Pick<CardDraft, "format" | "slides" | "capti
     const marks = Object.values(slide.fields).reduce((sum, value) => sum + (value.split(CARD_MARK).length - 1) / 2, 0);
     if (marks > 1) warnings.push(`${index + 1}장에 강조가 ${marks}곳이에요 — 한 장에 하나만 *별표*로 감싸요`);
   });
-  const all = [...draft.slides.flatMap(slide => Object.values(slide.fields).map(plainCardText)), draft.caption].join("\n");
+  const publicFields = draft.slides.flatMap((slide, index) => (slideSpec(draft.format, slide.type)?.fields ?? [])
+    .filter(field => !CARD_DRAW_FIELDS.includes(field.key))
+    .map(field => ({ label: `${index + 1}장 ${field.label}`, text: plainCardText(slide.fields[field.key] ?? "") })));
+  publicFields.push({ label: "캡션", text: draft.caption });
+  const all = publicFields.map(field => field.text).join("\n");
   for (const [pattern, message] of BANNED) if (pattern.test(all)) warnings.push(message);
-  if (/\d+(\.\d+)?\s*(%|퍼센트|배|명 중)/.test(all) && !/출처|자료|조사|연구|통계/.test(all)) warnings.push("숫자가 있어요 — 출처를 근거 칸이나 캡션에 적어 주세요");
+  const statistic = publicFields.find(field => /\d+(\.\d+)?\s*(%|퍼센트|배|명 중)/.test(field.text));
+  if (statistic && !/출처|자료|조사|연구|통계/.test(all)) warnings.push(`${statistic.label} · 숫자가 있어요 — 근거 칸이나 캡션 마지막 줄에 출처(기관 · 연도 · 대상)를 적어 주세요`);
   if (letters(draft.caption) > CAPTION_MAX) blocking.push(`캡션은 ${CAPTION_MAX.toLocaleString("ko-KR")}자까지예요`);
-  if (!draft.caption.trim()) warnings.push("캡션이 비어 있어요");
-  if (draft.hashtags.length && (draft.hashtags.length < HASHTAGS.min || draft.hashtags.length > HASHTAGS.max)) warnings.push(`해시태그는 ${HASHTAGS.min}~${HASHTAGS.max}개가 좋아요 (지금 ${draft.hashtags.length}개)`);
+  const captionTerm = draft.caption.match(editorialTerms)?.[0];
+  const tagTerm = draft.hashtags.join(" ").match(editorialTerms)?.[0];
+  if (tagTerm) blocking.push(`해시태그 · 제작 용어 ‘${tagTerm}’를 바꿔 주세요`);
+  if (captionTerm) blocking.push(`캡션 · 제작 용어 ‘${captionTerm}’를 바꿔 주세요`);
+  if (letters(draft.caption.split(/\r?\n/).slice(0, 2).join("\n")) > 125) warnings.push("캡션 첫 두 줄을 125자 이내로 줄여 보세요");
+  if (letters(draft.caption.trim()) < 300 || letters(draft.caption.trim()) > 800) warnings.push("캡션은 300~800자가 좋아요");
+  if ((draft.hashtags.length < HASHTAGS.min || draft.hashtags.length > HASHTAGS.max)) warnings.push(`해시태그는 ${HASHTAGS.min}~${HASHTAGS.max}개가 좋아요 (지금 ${draft.hashtags.length}개)`);
   return { blocking, warnings };
 }
 

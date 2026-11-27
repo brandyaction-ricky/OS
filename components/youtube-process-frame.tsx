@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, Check, ChevronDown, ChevronUp, Clock, Info, PauseCircle } from "lucide-react";
-import { canReopen, editedSinceDecision, GATE_FIELDS, gateName, reopenWhy } from "@/lib/youtube-process/confirm";
+import { canReopen, editedSinceDecision, GATE_FIELDS, gateFields, gateName, reopenWhy } from "@/lib/youtube-process/confirm";
 import { mayTrash, projectHref, projectName, stepHref, stepName, YP_FLOW, YP_KIND_LABEL, YP_STAGE_INDEX, type YpGate, type YpProject } from "@/lib/youtube-process/project";
 import { setEditGuard } from "@/lib/api-client";
 import { useSession } from "./session-provider";
@@ -124,8 +124,11 @@ export function gateAction(page: YpPage, gate: YpGate, view: number, control: Re
   const current = project.yp.stage === "done" ? YP_FLOW.length : YP_STAGE_INDEX[project.yp.stage];
   if (view !== current && current < YP_FLOW.length) return { kind: "link", label: `이어서 하기 · ${stepName(current, project.yp.topic.type)}`, href: stepHref(current, project.id) };
   // The PD confirms; or asks an approver instead (2026-11-02), and may still confirm while the request waits.
-  const ask = project.yp.gates[gate].state !== "wait" && page.client
-    ? <AskApprover client={page.client} members={page.members} disabled={Boolean(missing) || control.busy} onSend={to => void control.act("request", undefined, to)} /> : null;
+  const cardDecision = project.yp.topic.type === "card" && (gate === "draft" || gate === "review");
+  const ask = cardDecision && page.canConfirm
+    ? (project.yp.gates[gate].state === "none" && page.client ? <ConfirmActions changesOnly project={project} gate={gate} client={page.client} onDone={() => void page.reload()} /> : null)
+    : project.yp.gates[gate].state !== "wait" && page.client
+    ? <AskApprover label={cardDecision ? "대표에게 컨펌 요청" : undefined} client={page.client} members={page.members} disabled={Boolean(missing) || control.busy} onSend={to => void control.act("request", undefined, to)} /> : null;
   return { kind: "button", label: `${gateName(gate, project.yp.topic.type)}하고 다음으로`, reason: missing, busy: control.busy, onClick: () => void control.act("confirm"), extra: ask };
 }
 
@@ -133,12 +136,12 @@ export function gateAction(page: YpPage, gate: YpGate, view: number, control: Re
  * 컨펌 요청 (owner request 2026-11-02): beside the PD's own 컨펌, the PD picks an approver and sends the step to their 대표 메뉴 ›
  * 컨펌 › 컨펌 대기. The approvers are asked for only when the button is pressed.
  */
-export function AskApprover({ client, members, disabled, onSend }: { client: YpClient; members: YpMember[]; disabled: boolean; onSend: (to: string) => void }) {
+export function AskApprover({ client, members, disabled, onSend, label = "컨펌 요청하기" }: { label?: string; client: YpClient; members: YpMember[]; disabled: boolean; onSend: (to: string) => void }) {
   const [ids, setIds] = useState<string[] | null>(null);
   const [to, setTo] = useState("");
   const [error, setError] = useState("");
   const open = () => { setError(""); client.approvers().then(list => { setIds(list); setTo(list[0] ?? ""); }, reason => setError(errorMessage(reason))); };
-  if (!ids) return <>{error ? <span className="yp-warn-t" role="alert">{error}</span> : null}<button type="button" className="yp-btn yp-lg" disabled={disabled} onClick={open}>컨펌 요청하기</button></>;
+  if (!ids) return <>{error ? <span className="yp-warn-t" role="alert">{error}</span> : null}<button type="button" className="yp-btn yp-lg" disabled={disabled} onClick={open}>{label}</button></>;
   return <span className="yp-ask">
     {ids.length ? <label>누구에게 <select className="yp-pdsel" value={to} onChange={event => setTo(event.target.value)}>
       {ids.map(id => <option key={id} value={id}>{members.find(member => member.id === id)?.name ?? "대표"}</option>)}</select></label> : <span>회사 승인자가 아직 없어요</span>}
@@ -200,7 +203,7 @@ export function GateBanner({ page, gate, okExtra }: { page: YpPage; gate: YpGate
       : <p className="yp-hint">기다리지 않고 아래 [{name}하고 다음으로]를 눌러 직접 컨펌해도 돼요.{page.client ? <> <CancelAsk project={project} gate={gate} client={page.client}
         onDone={next => page.setBundle(current => current ? { ...current, project: next } : current)} onError={page.fail} /></> : null}</p>}
   </div>;
-  if (info.state === "changes") return <div className="yp-note yp-warn" role="status"><AlertTriangle size={16} className="yp-i" aria-hidden="true" /><div><b>대표 수정 요청 · {md(info.decidedAt)}</b><br />메모: “{info.memo}”<br />{info.fields?.length ? `특히 볼 칸: ${info.fields.map(field => GATE_FIELDS[gate][field] ?? field).join(", ")} · ` : ""}모든 칸을 고칠 수 있어요</div></div>;
+  if (info.state === "changes") return <div className="yp-note yp-warn" role="status"><AlertTriangle size={16} className="yp-i" aria-hidden="true" /><div><b>대표 수정 요청 · {md(info.decidedAt)}</b><br />메모: “{info.memo}”<br />{info.fields?.length ? `특히 볼 칸: ${info.fields.map(field => gateFields(gate, project.yp.topic.type)[field] ?? GATE_FIELDS[gate][field] ?? field).join(", ")} · ` : ""}모든 칸을 고칠 수 있어요</div></div>;
   if (info.state === "hold") return <div className="yp-note yp-bad" role="status"><PauseCircle size={16} className="yp-i" aria-hidden="true" /><div><b>보류됨 · {md(info.decidedAt)} · 대표</b><br />사유: “{info.reason}”<br />손본 뒤 컨펌할 수 있어요.</div></div>;
   if (info.state === "ok") return <div className="yp-note yp-ok" role="status"><Check size={16} className="yp-i" aria-hidden="true" /><div><b>{name} OK{info.decidedAt ? ` · ${md(info.decidedAt)}` : ""} · {info.self ? "PD 컨펌" : "대표"}</b>
     {canReopen(project, gate) && page.client ? <> <ReopenButton project={project} gate={gate} client={page.client} onDone={next => page.setBundle(current => current ? { ...current, project: next } : current)} onError={page.fail} /></>
@@ -247,24 +250,39 @@ export function ReplyForm({ control }: { control: ReturnType<typeof useGate> }) 
 export function Subject({ page }: { page: YpPage }) {
   const [open, setOpen] = useState(false);
   const project = page.bundle!.project;
+  const [saving, setSaving] = useState(false);
   const pd = page.members.find(member => member.id === project.assigneeId)?.name ?? "—";
   // 로건 QA 10/30: a 숏폼's references are kept on its 대본 step — 10 of them read 「없음」 here.
   const refs = [...project.yp.topic.refs, ...(page.bundle!.stages.shortScript?.data.refs ?? [])].filter((ref, at, all) => all.findIndex(row => row.url === ref.url) === at);
   return <>
-    <section className="yp-subj"><div className="yp-subj-m"><div className="yp-subj-k">영상 주제</div><div className="yp-subj-t">{projectName(project)}</div>
+    <section className="yp-subj"><div className="yp-subj-m"><div className="yp-subj-k">{project.yp.topic.type === "card" ? "카드 주제" : "영상 주제"}</div><div className="yp-subj-t">{projectName(project)}</div>
       <div className="yp-subj-meta"><span className="yp-tag">{project.yp.topic.type ? YP_KIND_LABEL[project.yp.topic.type] : "유형 없음"}</span><span>담당 PD: {pd}</span></div></div>
       <button type="button" className="yp-btn" aria-expanded={open} onClick={() => setOpen(value => !value)}>{open ? "접기" : "더 보기"} {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button></section>
     {open ? <section className="yp-card yp-more"><div className="yp-card-b"><dl className="yp-kv">
+      {project.yp.topic.type === "card" && project.yp.stage === "draft" && project.yp.gates.draft.state === "none" && page.client && <><dt>카드 정보</dt><dd><form key={project.id} className="yp-row-btns" onSubmit={async event => {
+        event.preventDefault();
+        const data = new FormData(event.currentTarget);
+        const title = String(data.get("title")).trim(), target = String(data.get("target")).trim();
+        if (title.length < 2 || !target) { page.fail(new Error("제목은 두 자 이상, 대상은 한 자 이상 입력해 주세요.")); return; }
+        setSaving(true);
+        try {
+          const canFlag = mayTrash(project, page.profile?.id, page.profile?.role === "admin");
+          const next = await page.client!.update(project.id, project.version, { title, target, ...(canFlag ? { isTest: data.has("isTest") } : {}) });
+          page.setBundle(current => current?.project.id === next.id ? { ...current, project: next } : current);
+        } catch (reason) { page.fail(reason); } finally { setSaving(false); }
+      }}><label>제목<input className="yp-in" name="title" required minLength={2} maxLength={200} defaultValue={project.title}/></label><label>대상<input className="yp-in" name="target" required maxLength={300} defaultValue={project.yp.topic.target}/></label>
+      {mayTrash(project, page.profile?.id, page.profile?.role === "admin") && <label><input type="checkbox" name="isTest" defaultChecked={project.yp.isTest}/> 시험</label>}
+      <button className="yp-btn" disabled={saving}>카드 정보 저장</button></form></dd></>}
       <dt>정밀 타겟</dt><dd>{project.yp.topic.target || "—"}</dd>
-      <dt>참고 영상</dt><dd>{refs.length ? refs.map(ref => <div key={ref.url}><a href={ref.url} target="_blank" rel="noreferrer">{ref.title || ref.url}</a></div>) : "없음"}</dd>
+      <dt>{project.yp.topic.type === "card" ? "참고 자료" : "참고 영상"}</dt><dd>{refs.length ? refs.map(ref => <div key={ref.url}><a href={ref.url} target="_blank" rel="noreferrer">{ref.title || ref.url}</a></div>) : "없음"}</dd>
       <dt>전달 사항</dt><dd>{project.yp.topic.note || "없음"}</dd>
       <dt>주제 화면</dt><dd><Link className="yp-lnk" href={stepHref(0, project.id)}>주제 보기 →</Link></dd></dl></div></section> : null}
   </>;
 }
 
 /** Every step screen: progress line, page title, the step's own heading (시안 stageHead) and the shared notices. */
-export function YpFrame({ page, view, action, header, title, sub, savedAt, onSave, saveDisabled, todo, children }: {
-  page: YpPage; view: number; action: YpAction | null; header: ReactNode; title: string; sub: string; savedAt?: string; onSave?: () => void; saveDisabled?: boolean;
+export function YpFrame({ page, view, action, mobileAction, header, title, sub, savedAt, onSave, saveDisabled, todo, children }: {
+  page: YpPage; view: number; action: YpAction | null; mobileAction?: YpAction; header: ReactNode; title: string; sub: string; savedAt?: string; onSave?: () => void; saveDisabled?: boolean;
   /** What this step still needs, shown with the next button at the end of the step (owner request 2026-10-21: no guide text). */
   todo?: { label: string; done: boolean }[]; children?: ReactNode;
 }) {
@@ -272,7 +290,7 @@ export function YpFrame({ page, view, action, header, title, sub, savedAt, onSav
   if (!page.bundle) return <>{header}{page.error ? <div className="yp-note yp-warn" role="alert"><div>{page.error} <button type="button" className="yp-lnk" onClick={() => void page.reload()}>다시 불러오기</button></div></div>
     : <p className="yp-hint" role="status">영상을 불러오는 중이에요…</p>}</>;
   return <>
-    {action ? <YoutubeFlow project={page.bundle.project} view={view} action={action} /> : null}
+    {action ? <YoutubeFlow project={page.bundle.project} view={view} action={action} mobileAction={mobileAction} /> : null}
     {/* The step is the page heading here (시안 stageHead); the menu name stays in the breadcrumb. */}
     <header className="page-header"><div className="page-title-group"><h1 className="page-title" data-ui="page-title">{title}</h1><p>{sub}</p></div>
       {onSave ? <div className="header-actions yp-stool">{savedAt ? <span className="yp-stamp"><i />저장됨 {savedAt}</span> : null}<button type="button" className="yp-btn yp-sm" disabled={saveDisabled} onClick={onSave}>임시 저장</button></div> : null}</header>

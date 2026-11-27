@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Check } from "lucide-react";
-import { GATE_FIELDS, gateName } from "@/lib/youtube-process/confirm";
+import { gateFields, gateName } from "@/lib/youtube-process/confirm";
 import { projectName, stepHref, YP_KIND_LABEL, type YpGate, type YpProject } from "@/lib/youtube-process/project";
 import { finalPair, SLOTS, ypFormat, type YpShortScript } from "@/lib/youtube-process/stages";
 import { checkShortScript } from "@/lib/youtube-process/short-script";
@@ -29,7 +29,7 @@ const RESULT_TONE: Record<string, string> = { ok: "yp-ok", changes: "yp-warn", h
  * OK · 수정 요청 · 보류 for a waiting gate (S10 아래 막대, S10-1, S10-2). Shared by the confirm menu and the project screen; `list` draws
  * the three as numbered choices (한눈에 보기 확인 카드, 리키 관제실 시안 v0.1) with the same forms under them.
  */
-export function ConfirmActions({ project, gate, client, onDone, list = false }: { project: YpProject; gate: YpGate; client: YpClient; onDone: (next: YpProject) => void; list?: boolean }) {
+export function ConfirmActions({ project, gate, client, onDone, list = false, changesOnly = false }: { project: YpProject; gate: YpGate; client: YpClient; onDone: (next: YpProject) => void; list?: boolean; changesOnly?: boolean }) {
   const [mode, setMode] = useState<"changes" | "hold" | null>(null);
   const [fields, setFields] = useState<string[]>([]);
   const [memo, setMemo] = useState("");
@@ -45,12 +45,12 @@ export function ConfirmActions({ project, gate, client, onDone, list = false }: 
     } catch (reason) { setError(errorMessage(reason)); } finally { setBusy(false); }
   };
   return <>
-    {list ? <div className="yp-cf-opts" role="group" aria-label="고를 것">
+    {changesOnly ? <button type="button" className="yp-btn yp-lg" disabled={busy} aria-expanded={mode === "changes"} onClick={() => setMode(mode === "changes" ? null : "changes")}>수정 요청</button> : list ? <div className="yp-cf-opts" role="group" aria-label="고를 것">
       <button type="button" className="yp-cf-opt" disabled={busy} onClick={() => void run("ok")}><span aria-hidden="true">1</span>컨펌</button>
       <button type="button" className="yp-cf-opt" disabled={busy} aria-expanded={mode === "changes"} onClick={() => setMode(mode === "changes" ? null : "changes")}><span aria-hidden="true">2</span>수정 요청</button>
       <button type="button" className="yp-cf-opt" disabled={busy} aria-expanded={mode === "hold"} onClick={() => setMode(mode === "hold" ? null : "hold")}><span aria-hidden="true">3</span>보류</button>
     </div> : <div className="yp-abar">
-      <span className="yp-abar-msg">{gate === "review" ? `대표 OK가 나야 ${project.yp.topic.type === "short" ? "내보내기로" : "업로드로"} 넘어가요` : "OK를 누르면 다음 단계가 바로 열려요"}</span>
+      <span className="yp-abar-msg">{gate === "review" ? `대표 OK가 나야 ${["short", "card"].includes(project.yp.topic.type ?? "") ? "내보내기로" : "업로드로"} 넘어가요` : "OK를 누르면 다음 단계가 바로 열려요"}</span>
       <button type="button" className="yp-btn" disabled={busy} aria-expanded={mode === "hold"} onClick={() => setMode(mode === "hold" ? null : "hold")}>보류</button>
       <button type="button" className="yp-btn" disabled={busy} aria-expanded={mode === "changes"} onClick={() => setMode(mode === "changes" ? null : "changes")}>수정 요청</button>
       <button type="button" className="yp-btn yp-pri yp-lg" disabled={busy} onClick={() => void run("ok")}><Check size={16} aria-hidden="true" />OK</button>
@@ -58,7 +58,7 @@ export function ConfirmActions({ project, gate, client, onDone, list = false }: 
     {mode === "changes" ? <form className="yp-card yp-confirm-form" onSubmit={event => { event.preventDefault(); void run("changes"); }}>
       <b>고칠 칸 (하나 이상)</b>
       {/* 로건 QA 10/30: a 숏폼 · 광고 has no 최종 썸네일 to point at. */}
-      <div className="yp-confirm-fields">{Object.entries(GATE_FIELDS[gate]).filter(([key]) => !(key === "make.thumbs" && project.yp.topic.type === "short")).map(([key, label]) => <label key={key} className="yp-chk2">
+      <div className="yp-confirm-fields">{Object.entries(gateFields(gate, project.yp.topic.type)).filter(([key]) => !(key === "make.thumbs" && project.yp.topic.type === "short")).map(([key, label]) => <label key={key} className="yp-chk2">
         <input type="checkbox" checked={fields.includes(key)} onChange={event => setFields(list => event.target.checked ? [...list, key] : list.filter(item => item !== key))} />{label}</label>)}</div>
       <label>메모 (필수)<textarea className="yp-in" id="yp-confirm-memo" rows={2} value={memo} onChange={event => setMemo(event.target.value)} placeholder="무엇을 어떻게 고치면 좋을지 써 주세요" /></label>
       <div><button type="submit" className="yp-btn yp-pri" disabled={busy || !fields.length || !memo.trim()}>수정 요청 보내기</button></div>

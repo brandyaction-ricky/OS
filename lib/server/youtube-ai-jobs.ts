@@ -5,6 +5,7 @@ import { pastAdsForAi } from "@/lib/youtube-process/ad-results";
 import { adHistory } from "./youtube-ad-results";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
+import { notify } from "./youtube-process";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { OsRecord } from "@/lib/record-types";
 import type { RequestActor } from "./auth";
@@ -47,7 +48,7 @@ import { assertScriptNotesInputs, saveScriptNotes, scriptNotesCard, scriptNotesI
 import { markSceneNotesSent, sceneNoteInputs, sceneNotesCard, sceneNotesInputKey, saveSceneNotes } from "./myin-scene-notes";
 import { addThumbCandidate, assertV1ThumbsInputs, keepThumbFeed, THUMB_TOOLS, thumbsByJob, thumbsMadeCount, thumbUploadUrl, v1ThumbsCard, v1ThumbsInputKey } from "./youtube-thumbs";
 import { channelContext } from "./channel-canon";
-import { assertCardJobOpen, cardCanon, cardFormatsSchema, cardInputKey, cardJobCard, cardJobSource, checkCardResult, saveCardDrafts, VOICE_CANON_TITLE, WEBTOON_CAST_TITLE } from "./youtube-process-card-job";
+import { assertCardJobOpen, cardCanon, cardDesignSource, cardRequiredProcedures, cardFormatsSchema, cardInputKey, cardJobCard, cardJobSource, checkCardResult, saveCardDrafts, VOICE_CANON_TITLE, WEBTOON_CAST_TITLE } from "./youtube-process-card-job";
 
 /** The name a job carries: the adopted title, or a v1 project's confirmed A. */
 const jobTitle = (state: Awaited<ReturnType<typeof readPipeline>>) => isYoutubeV1(state.source) ? v1Title(v1Stages(state)) : state.writing.packageTitle || state.source.title;
@@ -77,6 +78,7 @@ complete 할 때 result 옆에 report도 보내 주세요. 사람은 「한눈�
 // 원고 공정 정본 §2 '역할'. ① 기획 has no such field yet, so the staff member picks it when sending ② to their AI.
 export const SCRIPT_ROLES = ["유입형", "전환형", "판매형"] as const;
 const jobMetaSchema = z.object({
+  canonTrace: z.array(z.object({ id: z.string().uuid(), title: z.string(), version: z.number().int(), bundle: z.string().optional() })).optional(),
   kind: z.literal(STAFF_AI_JOB_KIND), task: z.enum(["thumbs", "scene-plan", "script", "storyboard", "kit", "plan", "shorts", "short", "niche", "column", "short-copy", "retitle", "short-topics", "short-recycle", "short-formula", "short-script", "topic-formula", "card", "image-creative", "script-notes", "scene-notes"]), sourceId: z.string().uuid(), inputKey: z.string().length(64), noteIds: z.array(z.string()).optional(),
   // ruleVersions only on jobs made before 2026-10-18; a design no longer depends on script rule versions.
   templateVersion: z.string().optional(), ruleVersions: z.array(versionRef).optional(), targetMinutes: z.number().optional(), role: z.enum(SCRIPT_ROLES).optional(), attachments: z.string().optional(), slot: z.enum(SLOTS).optional(), myinRunId: z.string().uuid().optional(), requestedAt: z.string(),
@@ -154,7 +156,7 @@ const leaseLive = (value?: JobMeta["lease"]) => Boolean(value && Date.parse(valu
 /** What the 영상 제작 screen shows for a job: never the lease token. */
 export function publicStaffJob(job: OsRecord) {
   const m = meta(job);
-  return { id: job.id, status: job.status, task: m.task, inputKey: m.inputKey, requestedAt: m.requestedAt, claimedAt: m.claimedAt ?? null,
+  return { id: job.id, status: job.status, task: m.task, stage: job.stage, inputKey: m.inputKey, requestedAt: m.requestedAt, claimedAt: m.claimedAt ?? null,
     model: m.model ?? null, issues: m.issues ?? [], failReason: m.failReason ?? null, doneAt: m.doneAt ?? null, processing: job.status === "active" && leaseLive(m.lease),
     targetMinutes: m.targetMinutes ?? null, role: m.role ?? null, slot: m.slot ?? null, executor: m.executor ?? "staff", tier: m.tier ?? null, notes: m.noteIds ?? null };
 }
@@ -389,7 +391,7 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
   const metadata: JobMeta = { kind: STAFF_AI_JOB_KIND, task: input.task, sourceId: input.sourceId, inputKey, requestedAt: now, ...(market ? { market } : {}),
     ...(input.task === "scene-plan" ? { templateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION } : input.task === "storyboard" ? { myinRunId }
       : { targetMinutes, role, ...(attachments ? { attachments } : {}), ...(slot ? { slot } : {}) }), ...(pool ? { pool } : {}),
-    ...(input.task === "card" ? { formats: input.formats } : {}), ...(input.task === "thumbs" ? { thumbTool: input.tool, ...(input.frame ? { thumbFrame: input.frame } : {}) } : {}),
+    ...(input.task === "card" ? { formats: input.formats, formatVersion: 1 } : {}), ...(input.task === "thumbs" ? { thumbTool: input.tool, ...(input.frame ? { thumbFrame: input.frame } : {}) } : {}),
     ...(input.task === "script-notes" || input.task === "scene-notes" ? { noteIds: [...new Set(input.notes)] } : {}),
     ...(input.task === "scene-notes" ? { myinRunId } : {}),
     ...(input.task === "image-creative" ? { space: "personal", ...(imagePhase ? {imagePhase} : {}), proc:"image-creative", targetId:input.sourceId, sub:"phase" in input.request ? "formats" : "copy", imageRequest: input.request, ...(input.target ? {target:input.target} : {}) } : {}),
@@ -451,6 +453,23 @@ export async function staffJobStatus(actor: RequestActor, sourceId: string, task
  * 한눈에 보기: open and recently blocked jobs on the videos this person can see (the ids come from their RLS-scoped list), and
  * results that arrived with a 결론 먼저 report and nobody has taken yet.
  */
+/** Transition with the same lease and version used to save the result. A cancellation wins
+ * either before this transition or after it, never halfway through publishing the drafts. */
+export async function cardJobPhase(agent: RequestActor, id: string, lease: string, stage: "card_writing" | "card_checking") {
+  const job = await ownJob(agent, id);
+  const m = liveLease(job, lease);
+  if (m.task !== "card" || job.stage === "card_committing") throw new ApiError(409, "CARD_JOB_CHANGED", "작업 상태를 다시 확인해 주세요.");
+  await saveJob(job, { stage, metadata: m });
+}
+
+export async function cancelCardJob(actor: RequestActor, id: string) {
+  const job = await ownJob(actor, id);
+  const m = meta(job);
+  if (m.task !== "card" || m.executor !== "gpt" || !["backlog", "active"].includes(job.status) || job.stage === "card_committing")
+    throw new ApiError(409, "CARD_JOB_CHANGED", "초안이 저장 중이거나 이미 끝났어요. 작업 상태를 확인해 주세요.");
+  await saveJob(job, { status: "cancelled", stage: "cancelled", metadata: { ...m, lease: undefined, closedAt: new Date().toISOString() } });
+}
+
 export async function openStaffJobsFor(projectIds: Set<string>) {
   if (!projectIds.size) return [];
   const since = new Date(Date.now() - 3 * 86_400_000).toISOString();
@@ -705,9 +724,9 @@ async function claimJob(agent: RequestActor, jobId: string, byGpt: boolean) {
   if (Boolean(m.executor) !== byGpt) throw new ApiError(409, "STAFF_AI_JOB_TAKEN", m.executor ? "GPT가 만드는 작업이에요." : "직원 AI에게 보낸 작업이에요.");
   if (job.status !== "backlog" && !(job.status === "active" && !leaseLive(m.lease))) throw new ApiError(409, "STAFF_AI_JOB_TAKEN", "이미 처리 중이거나 끝난 작업입니다.");
   const minutes = LEASE_MINUTES[m.task];
-  const take = async () => {
+  const take = async (canonTrace?: JobMeta["canonTrace"]) => {
     const lease = { token: randomUUID(), expiresAt: new Date(Date.now() + minutes * 60_000).toISOString() };
-    await saveJob(job, { status: "active", stage: "claimed", metadata: { ...m, lease, claimedAt: new Date().toISOString(), issues: [] } });
+    await saveJob(job, { status: "active", stage: "claimed", metadata: { ...m, ...(canonTrace ? { canonTrace } : {}), lease, claimedAt: new Date().toISOString(), issues: [] } });
     return lease;
   };
   if (m.task === "storyboard") {
@@ -777,11 +796,15 @@ async function claimJob(agent: RequestActor, jobId: string, byGpt: boolean) {
   if (m.task === "card") {
     const { project, cards, canon, formats } = await currentCardInput(job);
     // GPT reads the 정본 pasted in from the card's doc_id; without it there is nothing to follow.
-    if (byGpt && !canon) throw new ApiError(409, "CARD_CANON_MISSING", "「카드뉴스 정본」을 찾지 못했어요.");
-    const lease = await take();
+    if (!canon) throw new ApiError(409, "CARD_CANON_MISSING", "「카드뉴스 정본」을 찾지 못했어요.");
+    const titles = formats.includes("webtoon") ? [VOICE_CANON_TITLE, WEBTOON_CAST_TITLE] : [VOICE_CANON_TITLE];
+    const [references, design] = await Promise.all([cardRequiredProcedures(service(), titles), cardDesignSource(service())]);
+    if (design) references.push(design);
+    const voice = references.filter(doc => doc.title === VOICE_CANON_TITLE);
+    const cast = references.find(doc => doc.title === WEBTOON_CAST_TITLE);
+    const lease = await take([{ id: canon.id, title: canon.title, version: canon.docVersion, bundle: canon.version }, ...references]);
     return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt,
-      instructions: cardJobCard({ project, cards, formats, canon, voice: await namedProcedures(service(), [VOICE_CANON_TITLE]),
-        cast: formats.includes("webtoon") ? (await namedProcedures(service(), [WEBTOON_CAST_TITLE]))[0] ?? null : null, leaseMinutes: minutes }) };
+      ...(byGpt ? { documentRefs: [{ id: canon.id, title: canon.title, version: canon.docVersion }, ...references] } : {}), instructions: cardJobCard({ project, cards, formats, canon, design, voice, cast, leaseMinutes: minutes }) };
   }
   if (m.task === "column") {
     const state = await currentColumnInput(job);
@@ -945,11 +968,13 @@ export async function completeStaffJob(agent: RequestActor, input: Extract<z.inf
     return { done: true, ...saved, next: "담당 PD가 유튜브 공정 › 대본에서 다듬고 대본을 확정합니다." };
   }
   if (m.task === "card") {
-    const { record, project, canon, formats } = await currentCardInput(job);
+    const { record, project, cards, canon, formats } = await currentCardInput(job);
     const checked = await keepIssues(job, m, () => checkCardResult(input.result, formats));
+    const committing = await saveJob(job, { stage: "card_committing", metadata: m });
     const saved = await saveCardDrafts(service(), agent.ownerId, record.team ?? "", project, checked,
-      { by: await displayName(service(), agent.ownerId, agent.name), model: input.model, jobId: job.id, canon: canon?.version ?? "정본 없음" });
-    await saveJob(job, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });
+      { production: cards.production, by: await displayName(service(), agent.ownerId, agent.name), model: input.model, jobId: job.id, trace: m.canonTrace, canon: canon?.version ?? "정본 없음" });
+    await saveJob(committing, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });
+    await notify([agent.ownerId], "ai_result", project.id, `card-drafts:${job.id}`);
     return { done: true, ...saved, next: "담당 PD가 카드뉴스 › 카드 만들기에서 초안을 나란히 보고 하나를 골라 카드를 확정합니다." };
   }
   if (m.task === "column") {

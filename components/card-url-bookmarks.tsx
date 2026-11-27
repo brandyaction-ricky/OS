@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { CARD_BOOKMARK_MAX, readCardBookmarks, validCardUrl, type CardUrlBookmark } from "@/lib/cardnews/bookmarks";
 
 /** Explicitly browser-local and account-scoped; loading a URL never marks a project as posted. */
-export function CardUrlBookmarks({ ownerId, url, onLoad }: { ownerId: string | undefined; url: string; onLoad: (url: string) => void }) {
+export function CardUrlBookmarks({ ownerId, url, onLoad }: { ownerId: string | undefined; url: string; onLoad?: (url: string) => void }) {
   const key = ownerId ? `brandy:card-url-bookmarks:v1:${ownerId}` : "";
   const [items, setItems] = useState<CardUrlBookmark[]>([]), [label, setLabel] = useState(""), [selected, setSelected] = useState(""), [message, setMessage] = useState("");
   const [removed, setRemoved] = useState<CardUrlBookmark | null>(null);
@@ -28,11 +28,11 @@ export function CardUrlBookmarks({ ownerId, url, onLoad }: { ownerId: string | u
     if (persist(current => [...current.filter(row => row.url !== item.url), item], "주소를 즐겨찾기에 저장했어요.")) { setLabel(""); setSelected(item.id); }
   };
   return <section className="yp-url-bookmarks" aria-label="주소 즐겨찾기">
-    <b>주소 즐겨찾기</b><p className="yp-hint">이 브라우저에서 내 계정에만 저장됩니다. 불러온 뒤 [주소 남기기]를 눌러야 게시물에 반영됩니다.</p>
+    <b>주소 즐겨찾기</b><p className="yp-hint">이 브라우저에서 내 계정에만 저장됩니다. {onLoad && "불러온 뒤 [주소 남기기]를 눌러야 게시물에 반영됩니다."}</p>
     <div className="yp-row-btns"><input className="yp-in" aria-label="주소 즐겨찾기 이름" maxLength={80} placeholder="주소 이름 (선택)" value={label} onChange={event => setLabel(event.target.value)} />
       <button type="button" className="yp-btn" disabled={!key || !validCardUrl(url.trim())} onClick={add}>현재 주소 즐겨찾기</button></div>
     <div className="yp-row-btns"><select className="yp-in" aria-label="저장한 주소" value={items.some(row => row.id === selected) ? selected : ""} onChange={event => setSelected(event.target.value)}><option value="">즐겨찾기 선택</option>{items.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select>
-      <button type="button" className="yp-btn" disabled={!items.some(row => row.id === selected)} onClick={() => { const item = items.find(row => row.id === selected); if (item) { onLoad(item.url); setMessage("입력칸에 불러왔어요. 주소를 확인한 뒤 남겨 주세요."); } }}>주소 불러오기</button>
+      <button type="button" className="yp-btn" disabled={!onLoad || !items.some(row => row.id === selected)} onClick={() => { const item = items.find(row => row.id === selected); if (onLoad && item) { onLoad(item.url); setMessage("입력칸에 불러왔어요. 주소를 확인한 뒤 남겨 주세요."); } }}>주소 불러오기</button>
       <button type="button" className="yp-btn yp-sm" disabled={!items.some(row => row.id === selected)} onClick={() => { const item = items.find(row => row.id === selected); if (item && persist(current => current.filter(row => row.id !== item.id), "즐겨찾기에서 뺐어요.")) { setRemoved(item); setSelected(""); } }}>즐겨찾기 삭제</button></div>
     {removed && <button type="button" className="yp-btn yp-sm" onClick={() => { if (persist(current => [...current.filter(row => row.url !== removed.url), removed], "즐겨찾기를 복원했어요.")) setRemoved(null); }}>즐겨찾기 삭제 되돌리기</button>}
     {message && <p role="status" className="yp-hint">{message}</p>}

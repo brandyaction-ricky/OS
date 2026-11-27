@@ -1,0 +1,30 @@
+@layer os.vendor, os.base, os.legacy, os.kit, os.screen;
+@layer os.kit {
+.rail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 8px 12px;
+  margin-block: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  font-size: 13px;
+}
+.rail a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.check {
+  margin-inline-start: auto;
+  font-weight: 600;
+}
+@media (max-width: 820px) {
+  .check { margin-inline-start: 0; }
+  .rail a { min-height: 40px; }
+}
+}

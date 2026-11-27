@@ -1,3 +1,4 @@
+import type { CanonTrace } from "@/lib/youtube-process/canon-trace";
 import { after } from "next/server";
 import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
@@ -6,7 +7,7 @@ import type { YpProject } from "@/lib/youtube-process/project";
 import type { RequestActor } from "./auth";
 import { generateContentText } from "./content-model";
 import { creditTier } from "./openai-credit";
-import { claimStaffJob, completeStaffJob, failStaffJob, requestStaffJob, staffJobRequestSchema } from "./youtube-ai-jobs";
+import { cardJobPhase, claimStaffJob, completeStaffJob, failStaffJob, requestStaffJob, staffJobRequestSchema } from "./youtube-ai-jobs";
 import { displayName } from "./youtube-process-ai";
 import { readStages } from "./youtube-process-stages";
 
@@ -24,10 +25,12 @@ const gptActor = (owner: Owner) => ({ type: "agent", id: owner.id, ownerId: owne
   allowedStatuses: [], scopes: [], organizationId: null, mustChangePassword: false, supabase: createServiceSupabase() }) as unknown as RequestActor;
 
 /** The documents a card tells its AI to open, pasted in (each up to 40,000 letters, 160,000 in all). */
-export async function cardDocs(instructions: string) {
-  const ids = [...new Set([...instructions.matchAll(/doc_id: ([0-9a-f-]{36})/gi)].map((match) => match[1]))];
+export async function cardDocs(instructions: string, expected?: CanonTrace[]) {
+  const ids = expected?.map(ref => ref.id) ?? [...new Set([...instructions.matchAll(/doc_id: ([0-9a-f-]{36})/gi)].map((match) => match[1]))];
   if (!ids.length) return "";
-  const { data } = await createServiceSupabase().from("os_documents").select("id,title,content_md").in("id", ids).neq("status", "archived");
+  const { data } = await createServiceSupabase().from("os_documents").select("id,title,current_version,content_md").in("id", ids).neq("status", "archived");
+  if (expected?.some(ref => !data?.some(doc => String(doc.id) === ref.id && Number(doc.current_version) === ref.version)))
+    throw new ApiError(409, "CANON_VERSION_CHANGED", "작업을 시작한 뒤 정본이 바뀌었어요. 최신 정본으로 다시 요청해 주세요.");
   let left = 160_000;
   return (data ?? []).map((doc) => {
     const text = String(doc.content_md ?? "").slice(0, Math.max(0, Math.min(40_000, left)));
@@ -43,16 +46,18 @@ export const unwrap = (value: unknown) => value && typeof value === "object" && 
 /** Takes the job, asks GPT (a second try with the OS's format problems), and completes or fails it like a staff AI would. */
 export async function runGptJob(jobId: string, owner: Owner, tier: GptTier) {
   const agent = gptActor(owner);
-  const claimed = await claimStaffJob(agent, jobId, true) as { task?: string; lease: string; instructions: string };
+  const claimed = await claimStaffJob(agent, jobId, true) as { task?: string; lease: string; instructions: string; documentRefs?: CanonTrace[] };
   const { model, effort } = GPT_TIERS[tier];
   let issues = "", lastText = "";
   try {
     // Image requests already contain their authorized product/reference snapshot. Never treat
     // a doc_id typed into the user's advertising brief as permission to read a service-role document.
-    const docs = claimed.task === "image-creative" ? "" : await cardDocs(claimed.instructions);
+    const docs = claimed.task === "image-creative" ? "" : await cardDocs(claimed.instructions, claimed.documentRefs);
     for (let attempt = 0; attempt < 2; attempt++) {
+      if (claimed.task === "card") await cardJobPhase(agent, jobId, claimed.lease, "card_writing");
       const text = await generateContentText({ model, effort, maxTokens: 32_000, timeoutMs: 600_000, cachedPrefix: docs ? `${PREFACE}\n\n# 붙인 문서\n${docs}` : PREFACE,
         prompt: `# 작업 카드\n${claimed.instructions}${issues ? `\n\n## 지난 답에서 OS가 돌려준 고칠 점 (고쳐서 다시 답합니다)\n${issues}` : ""}` });
+      if (claimed.task === "card") await cardJobPhase(agent, jobId, claimed.lease, "card_checking");
       lastText = text;
       let result: unknown;
       try { result = unwrap(JSON.parse(text)); } catch { issues = "JSON 객체 하나로만 답해 주세요."; continue; }

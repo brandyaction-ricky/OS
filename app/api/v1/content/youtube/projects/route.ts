@@ -10,7 +10,7 @@ const headers = { "cache-control": "private, no-store" };
 export async function GET(request: Request) {
   try {
     const actor = await youtubeActor(request);
-    return NextResponse.json({ projects: await listYoutubeProjects(actor) }, { headers });
+    return NextResponse.json({ projects: await listYoutubeProjects(actor, new URL(request.url).searchParams.get("cardLibrary") === "1") }, { headers });
   } catch (error) { return apiErrorResponse(error); }
 }
 
