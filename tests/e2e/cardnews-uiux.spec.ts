@@ -606,6 +606,14 @@ test("production inputs reopen, create the selected outline and keep image work 
   await expect.poll(() => form.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
   await form.getByRole("button", { name: /설명형/ }).click();
   await form.getByRole("button", { name: /단계형/ }).click();
+  const sample = form.getByRole("button", { name: "본문 예시 크게 보기" });
+  await sample.click();
+  const dialog = form.getByRole("dialog", { name: "포맷 예시 크게 보기" });
+  await expect(dialog).toContainText("단계형 · 본문");
+  await dialog.getByRole("button", { name: "마지막 장" }).click();
+  await expect(dialog).toContainText("단계형 · 마지막 장");
+  await page.keyboard.press("Escape");
+  await expect(sample).toBeFocused();
   await form.getByLabel("작업명").fill("회의 메모");
   await form.getByLabel("원문·메모").fill("질문을 적어요.\n담당자를 정해요.\n기한을 적어요.");
   await form.getByLabel("실행 순서").fill("질문\n담당자\n기한");
@@ -631,4 +639,29 @@ test("production inputs reopen, create the selected outline and keep image work 
   await page.reload();
   await expect(page.getByRole("button", { name: "6장 보기", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("checkbox", { name: "문구 잠금" })).toBeChecked();
+});
+
+test("production reference picker works with the keyboard and preserves the image on invalid replacement", async ({ page }) => {
+  await editor(page);
+  const panel = page.getByRole("region", { name: "유형별 카드 제작" });
+  const picker = panel.getByRole("button", { name: "이미지 첨부" });
+  await panel.getByLabel("참고 이미지 용도").selectOption("use");
+  await picker.focus();
+  const chooser = page.waitForEvent("filechooser");
+  await picker.press("Enter");
+  await (await chooser).setFiles({ name: "참고.png", mimeType: "image/png", buffer: Buffer.from(PNG, "base64") });
+  await expect(panel.getByText("첨부됨 · 30 × 20")).toBeVisible();
+  await expect(panel.getByRole("status")).toHaveText("저장 완료");
+  await page.reload();
+  await expect(panel.getByLabel("참고 이미지 용도")).toHaveValue("use");
+  const reference = panel.getByRole("img", { name: "업로드한 참고 이미지" });
+  await expect(reference).toBeVisible();
+  await panel.getByLabel("참고 이미지 파일").setInputFiles({ name: "잘못된.txt", mimeType: "text/plain", buffer: Buffer.from("test") });
+  await expect(panel.getByRole("alert")).toContainText("이미지를 선택");
+  await expect(reference).toBeVisible();
+  await panel.getByRole("button", { name: "참고 이미지 제거" }).click();
+  await expect(picker).toBeVisible();
+  await expect(panel.getByRole("status")).toHaveText("저장 완료");
+  await page.reload();
+  await expect(panel.getByRole("button", { name: "이미지 교체" })).toHaveCount(0);
 });

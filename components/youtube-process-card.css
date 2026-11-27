@@ -211,17 +211,54 @@
 }
 
 .linear-shell .ui-v2.yp .yp-card-reference-img { object-fit: contain; }
-.linear-shell .ui-v2.yp .yp-production { padding: clamp(16px,3vw,28px); }
-.linear-shell .ui-v2.yp .yp-production h2, .linear-shell .ui-v2.yp .yp-production h3 { margin: 0 0 12px; }
-.linear-shell .ui-v2.yp .yp-production-types, .linear-shell .ui-v2.yp .yp-production-formats { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit,minmax(min(100%,180px),1fr)); margin-bottom: 24px; }
-.linear-shell .ui-v2.yp .yp-production-types button, .linear-shell .ui-v2.yp .yp-production-formats button { color: inherit; text-align: left; }
-.linear-shell .ui-v2.yp .yp-production-types button { display: flex; gap: 12px; align-items: center; }
-.linear-shell .ui-v2.yp .yp-production-formats button { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
-.linear-shell .ui-v2.yp .yp-production [aria-pressed=true] { outline: 2px solid currentColor; outline-offset: -2px; }
-.linear-shell .ui-v2.yp .yp-production-strip { display: flex; gap: 4px; overflow: hidden; }
-.linear-shell .ui-v2.yp .yp-production fieldset { display: grid; gap: 12px; min-width: 0; margin: 0 0 16px; padding: 14px; border: 1px solid var(--line); }
-.linear-shell .ui-v2.yp .yp-production label, .linear-shell .ui-v2.yp .yp-outline label { display: grid; gap: 5px; font-weight: 600; }
+.linear-shell .ui-v2.yp .yp-production { padding: 0; container: yp-production / inline-size; }
+.linear-shell .ui-v2.yp .yp-production-block, .linear-shell .ui-v2.yp .yp-production-fields, .linear-shell .ui-v2.yp .yp-production-footer { padding: 24px; }
+.linear-shell .ui-v2.yp .yp-production-heading, .linear-shell .ui-v2.yp .yp-production-subhead { margin: 0 0 12px; font-size: 15px; }
+.linear-shell .ui-v2.yp .yp-production-subhead { margin-top: 24px; }
+.linear-shell .ui-v2.yp .yp-production-types, .linear-shell .ui-v2.yp .yp-production-pair, .linear-shell .ui-v2.yp .yp-production-layout { display: grid; gap: 12px; }
+.linear-shell .ui-v2.yp .yp-production-types { grid-template-columns: repeat(3, minmax(0,1fr)); }
+.linear-shell .ui-v2.yp .yp-production-layout, .linear-shell .ui-v2.yp .yp-production-pair { grid-template-columns: repeat(2, minmax(0,1fr)); }
+.linear-shell .ui-v2.yp .yp-production-formats, .linear-shell .ui-v2.yp .yp-choice-copy, .linear-shell .ui-v2.yp .yp-production-field { display: grid; align-content: start; min-width: 0; gap: 4px; }
+.linear-shell .ui-v2.yp .yp-production-formats { gap: 8px; }
+.linear-shell .ui-v2.yp .yp-production-choice {
+  display: flex; align-items: center; gap: 12px; min-width: 0; padding: 12px;
+  color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  text-align: start; font: inherit; line-height: 1.5; cursor: pointer;
+}
+.linear-shell .ui-v2.yp .yp-production-choice .yp-choice-copy { flex: 1; }
+.linear-shell .ui-v2.yp .yp-production-choice:hover { background: var(--surface-hover); }
+.linear-shell .ui-v2.yp .yp-production-choice[aria-pressed=true] { border-color: var(--accent); background: var(--accent-soft); }
+.linear-shell .ui-v2.yp .yp-production-choice:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+.linear-shell .ui-v2.yp .yp-production-meta { color: var(--muted); font-size: 12px; font-weight: 400; }
+.linear-shell .ui-v2.yp .yp-production-example {
+  display: grid; align-content: center; gap: 12px; min-width: 0; padding: 16px;
+  border-radius: 8px; background: var(--panel-2);
+}
+.linear-shell .ui-v2.yp .yp-production-example-head, .linear-shell .ui-v2.yp .yp-production-strip, .linear-shell .ui-v2.yp .yp-production-asset, .linear-shell .ui-v2.yp .yp-production-asset-controls, .linear-shell .ui-v2.yp .yp-production-footer {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+}
+.linear-shell .ui-v2.yp .yp-production-example-head, .linear-shell .ui-v2.yp .yp-production-asset { justify-content: space-between; }
+.linear-shell .ui-v2.yp .yp-production-strip { justify-content: space-evenly; }
+.linear-shell .ui-v2.yp .yp-production-slide { display: grid; justify-items: center; gap: 6px; padding: 4px; background: transparent; border: 0; border-radius: 6px; color: var(--text-2); font: inherit; font-size: 12px; cursor: zoom-in; }
+.linear-shell .ui-v2.yp .yp-production-slide:hover { background: var(--surface-hover); }
+.linear-shell .ui-v2.yp .yp-production-dialog-body { display: grid; justify-items: center; gap: 12px; padding: 16px; }
+.linear-shell .ui-v2.yp .yp-production-dialog { max-width: min(360px, 96vw); }
+.linear-shell .ui-v2.yp .yp-production-dialog .yp-btn[aria-pressed=true] { background: var(--surface-selected); border-color: var(--accent); }
+.linear-shell .ui-v2.yp .yp-production-fields { min-width: 0; margin: 0; border: 0; border-top: 1px solid var(--line); display: grid; gap: 16px; }
+.linear-shell .ui-v2.yp .yp-production-fields .yp-production-heading { margin: 0; }
+.linear-shell .ui-v2.yp .yp-production-field { font-weight: 600; gap: 6px; }
+.linear-shell .ui-v2.yp .yp-production-field .yp-in { min-width: 0; width: 100%; font-weight: 400; line-height: 1.5; }
+.linear-shell .ui-v2.yp .yp-production-asset { background: var(--panel-2); border: 1px dashed var(--line); border-radius: 8px; padding: 12px; }
+.linear-shell .ui-v2.yp .yp-production-asset .yp-choice-copy { flex: 1 1 auto; }
+.linear-shell .ui-v2.yp .yp-production-asset-controls .yp-in { width: auto; }
+.linear-shell .ui-v2.yp .yp-production-error { flex-basis: 100%; color: var(--danger); }
+.linear-shell .ui-v2.yp .yp-production-footer { justify-content: flex-end; padding-block: 12px; border-top: 1px solid var(--line); color: var(--text-2); }
+.linear-shell .ui-v2.yp .yp-outline label { display: grid; gap: 5px; font-weight: 600; }
 .linear-shell .ui-v2.yp .yp-outline { display: grid; gap: 12px; }
-.linear-shell .ui-v2.yp .yp-production .yp-production-strip { display: flex; }
-.linear-shell .ui-v2.yp .yp-production-formats button small, .linear-shell .ui-v2.yp .yp-production-types button small { display: block; }
+@container yp-production (max-width: 640px) {
+  .linear-shell .ui-v2.yp .yp-production-types, .linear-shell .ui-v2.yp .yp-production-layout, .linear-shell .ui-v2.yp .yp-production-pair { grid-template-columns: minmax(0,1fr); }
+  .linear-shell .ui-v2.yp .yp-production-block, .linear-shell .ui-v2.yp .yp-production-fields, .linear-shell .ui-v2.yp .yp-production-footer { padding: 16px; }
+  .linear-shell .ui-v2.yp .yp-production-asset-controls { width: 100%; }
+  .linear-shell .ui-v2.yp .yp-production-footer .yp-pri { width: 100%; min-height: 40px; }
+}
 }

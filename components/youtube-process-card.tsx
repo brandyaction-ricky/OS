@@ -422,9 +422,9 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
         if (!await save({ production: input, briefFormats: [input.format] })) return false;
         setChosen([input.format]); setSend(true); return true;
       }} save={saveProduction} upload={uploadReference} resolvePhoto={resolvePhoto}
-      thumbnail={(id, pos) => { const example = formatSample(id); const art = "/myin-2d/탐색이.png";
+      thumbnail={(id, pos, width) => { const example = formatSample(id); const art = "/myin-2d/탐색이.png";
         if (id === "webtoon") for (const s of example.slides) if (s.type === "toon" || s.type === "panel") s.photo = { path: art, w: 1080, h: 1350 };
-        return <CardPhotos.Provider value={{ [art]: art }}><CardPreview draft={example} index={pos === "cover" ? 0 : pos === "end" ? example.slides.length - 1 : 1} width={pos === "body" ? 60 : 48} /></CardPhotos.Provider>; }}
+        return <CardPhotos.Provider value={{ [art]: art }}><CardPreview draft={example} index={pos === "cover" ? 0 : pos === "end" ? example.slides.length - 1 : 1} width={width} /></CardPhotos.Provider>; }}
       onReady={() => { setSlide(0); setUndo(null); setFullPreview(false); requestAnimationFrame(() => editorRef.current?.scrollIntoView({ block: "start" })); }} />}
     {editable ? <details open={!cards.production || planning || send || job.open}><summary>여러 포맷의 초안 비교 · 직접 쓰기</summary><YpSection n={1} title="포맷 고르기" gq="최대 3개를 한 번에 뽑아 나란히 비교해요">
       <div className="yp-card-formats">{CARD_FORMAT_IDS.map(id => { const format = CARD_FORMATS[id]; const on = chosen.includes(id);
