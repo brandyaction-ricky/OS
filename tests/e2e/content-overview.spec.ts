@@ -48,6 +48,8 @@ test("marking a project as a test hides it in decisions and schedules until each
   const title = "[예시] 월요일마다 무거운 사람의 공통점";
   const card = page.locator(".yp-mv").filter({ hasText: title });
   await card.getByRole("button", { name: "시험 표시", exact: true }).click();
+  await expect(card).toHaveCount(0);
+  await page.getByRole("checkbox", { name: "시험·복사본 포함" }).check();
   await expect(card.getByRole("button", { name: "시험 해제" })).toHaveAttribute("aria-pressed", "true");
   const overview = page.getByRole("link", { name: /^한눈에 보기/ }).first();
   if (!await overview.isVisible()) await page.getByRole("button", { name: /^공통/ }).first().click();
