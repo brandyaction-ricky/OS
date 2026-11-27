@@ -1,0 +1,13 @@
+{
+  "checkedCommit": "c6e217e",
+  "pngCount": 15,
+  "distinctHashes": 15,
+  "allDimensions": "1080x1350",
+  "hashesMatchBrowserCapture": true,
+  "relatedUnitTests": {
+    "passed": 27,
+    "failed": 0
+  },
+  "aiGeneration": "not verified; local demo has no AI or database connection",
+  "productCodeChanged": false
+}
