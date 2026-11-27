@@ -19,7 +19,7 @@ const RECORD = /^[0-9a-f-]{36}\.json$/;
 export const imageModel = () => process.env.OPENAI_IMAGE_MODEL?.trim() || DEFAULT_COST_MODELS.image;
 
 export const cardDrawSchema = z.object({
-  action: z.literal("draw"), guideCharacter: z.enum(GUIDE_CAST).optional(), scene: z.string().trim().min(2).max(CARD_DRAW_SCENE_MAX), style: z.enum(["webtoon", "simple"]),
+  action: z.literal("draw"), designReference: z.string().max(200).optional(), guideCharacter: z.enum(GUIDE_CAST).optional(), scene: z.string().trim().min(2).max(CARD_DRAW_SCENE_MAX), style: z.enum(["webtoon", "simple"]),
   quality: z.enum(["medium", "high"]), refs: z.array(z.string().uuid()).max(CARD_DRAW_REFS_MAX).default([]),
 }).strict();
 export const characterAddSchema = z.object({ projectId: z.string().uuid(), path: z.string().max(200), name: z.string().trim().min(1).max(40) }).strict();
@@ -126,12 +126,21 @@ export async function drawCardImage(actor: RequestActor, projectId: string, inpu
     if (error || !data) throw new ApiError(502, "CARD_CHARACTER_READ_FAILED", `캐릭터 그림 「${row!.name}」을 읽지 못했어요.`);
     return new File([data], `ref-${index + 1}.${row!.path.endsWith(".png") ? "png" : "jpg"}`, { type: row!.path.endsWith(".png") ? "image/png" : "image/jpeg" });
   }));
+  if (input.designReference) {
+    const prefix = `youtube/${project.id}/card/`;
+    if (!input.designReference.startsWith(prefix) || !/^[0-9a-f-]{36}\.(jpg|png)$/.test(input.designReference.slice(prefix.length)))
+      throw new ApiError(400, "ASSET_PATH_INVALID", "이 작업의 참고 이미지를 선택해 주세요.");
+    const { data, error } = await service.storage.from(MEDIA_BUCKET).download(input.designReference);
+    if (!data || error) throw new ApiError(422, "CARD_REFERENCE_MISSING", "디자인 참고 이미지를 다시 연결해 주세요.");
+    const png = input.designReference.endsWith(".png");
+    files.push(new File([data], png ? "style.png" : "style.jpg", { type: png ? "image/png" : "image/jpeg" }));
+  }
   if (input.guideCharacter) {
     const bytes = await readFile(join(process.cwd(), "public", "myin-2d", input.guideCharacter + ".png"));
     files.unshift(new File([new Uint8Array(bytes)], "myin-model.png", { type: "image/png" }));
   }
   const prompt = input.guideCharacter ? `Use reference 1 as the exact MYIN 2D character model for ${input.guideCharacter}. Preserve eyes, outline, palette, signature accessories and proportions. Draw the proposed action in a landscape composition. No text. Scene: ${input.scene}` : cardDrawPrompt(input.scene, input.style, refs.map(row => row!.name));
-  const { bytes } = await drawImageBytes({ prompt, files, size: input.guideCharacter ? "1536x1024" : `${CARD_DRAW_SIZE.width}x${CARD_DRAW_SIZE.height}`, quality: input.quality });
+  const { bytes } = await drawImageBytes({ prompt: input.designReference ? prompt + " Use the final reference only for composition, palette and visual style." : prompt, files, size: input.guideCharacter ? "1536x1024" : `${CARD_DRAW_SIZE.width}x${CARD_DRAW_SIZE.height}`, quality: input.quality });
   const path = `youtube/${project.id}/card/${randomUUID()}.png`;
   const { error } = await service.storage.from(MEDIA_BUCKET).upload(path, bytes, { contentType: "image/png", upsert: false });
   if (error) throw new ApiError(502, "CARD_DRAW_SAVE_FAILED", "그린 그림을 저장하지 못했어요. 다시 그려 주세요.");

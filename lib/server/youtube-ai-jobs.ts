@@ -396,7 +396,7 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
     requestedStage: source.record_type === "content_topic" ? projectFromRecord({ ...source, owner_id: source.owner_id ?? "" })?.yp.stage : undefined, ...(market ? { market } : {}),
     ...(input.task === "scene-plan" ? { templateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION } : input.task === "storyboard" ? { myinRunId }
       : { targetMinutes, role, ...(attachments ? { attachments } : {}), ...(slot ? { slot } : {}) }), ...(pool ? { pool } : {}),
-    ...(input.task === "card" ? { formats: input.formats } : {}), ...(input.task === "thumbs" ? { thumbTool: input.tool } : {}),
+    ...(input.task === "card" ? { formats: input.formats, formatVersion: 1 } : {}), ...(input.task === "thumbs" ? { thumbTool: input.tool } : {}),
     ...(input.task === "script-notes" || input.task === "scene-notes" ? { noteIds: [...new Set(input.notes)] } : {}),
     ...(input.task === "scene-notes" ? { myinRunId } : {}),
     ...(input.task === "image-creative" ? { space: "personal", ...(imagePhase ? {imagePhase} : {}), proc:"image-creative", targetId:input.sourceId, sub:"phase" in input.request ? "formats" : "copy", imageRequest: input.request, ...(input.target ? {target:input.target} : {}) } : {}),
@@ -1024,11 +1024,11 @@ export async function completeStaffJob(agent: RequestActor, input: Extract<z.inf
     return { done: true, ...saved, next: "담당 PD가 유튜브 공정 › 대본에서 다듬고 대본을 확정합니다." };
   }
   if (m.task === "card") {
-    const { record, project, canon, formats } = await currentCardInput(job);
+    const { record, project, cards, canon, formats } = await currentCardInput(job);
     const checked = await keepIssues(job, m, () => checkCardResult(input.result, formats));
     const committing = await saveJob(job, { stage: "card_committing", metadata: m });
     const saved = await saveCardDrafts(service(), agent.ownerId, record.team ?? "", project, checked,
-      { by: await displayName(service(), agent.ownerId, agent.name), model: input.model, jobId: job.id, trace: m.canonTrace, canon: canon?.version ?? "정본 없음" });
+      { production: cards.production, by: await displayName(service(), agent.ownerId, agent.name), model: input.model, jobId: job.id, trace: m.canonTrace, canon: canon?.version ?? "정본 없음" });
     await saveJob(committing, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });
     await notify([agent.ownerId], "ai_result", project.id, `card-drafts:${job.id}`);
     return { done: true, ...saved, next: "담당 PD가 카드뉴스 › 카드 만들기에서 초안을 나란히 보고 하나를 골라 카드를 확정합니다." };

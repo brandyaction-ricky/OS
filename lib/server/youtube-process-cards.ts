@@ -11,7 +11,7 @@ import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { CardSlideView } from "@/lib/cardnews/card-slide";
 import { CardError, cardsMissing, nextCards, pickedDraft } from "@/lib/cardnews/cards";
-import { GUIDE_CAST, characterSceneSchema, characterAsset, cardLetters, slideSpec, CAPTION_MAX, CARD_FORMAT_IDS, CARD_SIZE, CARD_SLIDE_TYPES, cardSignature, plainCardText, TOON_MAX_SLIDES, toonUploads, type CardDraft } from "@/lib/cardnews/formats";
+import { GUIDE_CAST, cardProblems, toonArtMissing, characterSceneSchema, characterAsset, cardLetters, slideSpec, CAPTION_MAX, CARD_FORMAT_IDS, CARD_SIZE, CARD_SLIDE_TYPES, cardSignature, plainCardText, TOON_MAX_SLIDES, toonUploads, type CardDraft } from "@/lib/cardnews/formats";
 import { storedZip } from "@/lib/cardnews/zip";
 import { initialCardRecommendation, isCardTestTitle, projectCardSources, visibleThreadSource, type CardSourceChoice } from "@/lib/cardnews/sources";
 import { applyGateAction, quietHours } from "@/lib/youtube-process/confirm";
@@ -118,16 +118,17 @@ export async function createCardProject(actor: RequestActor, input: z.infer<type
 }
 
 // ── Saving the cards record ──
+import { productionSchema } from "@/lib/cardnews/production";
 const fieldText = z.string().max(400);
 const draftSchema = z.object({
-  id: z.string().min(1).max(40), format: z.enum(CARD_FORMAT_IDS as [CardDraft["format"], ...CardDraft["format"][]]),
-  slides: z.array(z.object({ type: z.enum(CARD_SLIDE_TYPES), scene: characterSceneSchema.optional(), layout: z.literal("spotlight").optional(), fields: z.record(fieldText),
+  formatVersion: z.literal(1).optional(), workTitle: z.string().max(200).optional(), outline: z.boolean().optional(), id: z.string().min(1).max(40), format: z.enum(CARD_FORMAT_IDS as [CardDraft["format"], ...CardDraft["format"][]]),
+  slides: z.array(z.object({ type: z.enum(CARD_SLIDE_TYPES), textLocked: z.boolean().optional(), imageLocked: z.boolean().optional(), artDirection: z.string().max(400).optional(), scene: characterSceneSchema.optional(), layout: z.literal("spotlight").optional(), fields: z.record(fieldText),
     photo: z.object({ path: z.string().max(200), w: z.number().int().min(1).max(20_000), h: z.number().int().min(1).max(20_000) }).strict().optional() }).strict()).min(1).max(TOON_MAX_SLIDES),
   caption: z.string().max(CAPTION_MAX + 400), hashtags: z.array(z.string().trim().min(1).max(60)).max(30),
 }).strict();
 export const cardsPatchSchema = z.object({
   /** A draft as edited (its AI record stays the server's), a new empty draft of a format, a draft removed, the one picked. */
-  draft: draftSchema, add: z.enum(CARD_FORMAT_IDS as [CardDraft["format"], ...CardDraft["format"][]]), remove: z.string().max(40), pick: z.string().max(40),
+  production: productionSchema, createOutline: z.literal(true), draft: draftSchema, add: z.enum(CARD_FORMAT_IDS as [CardDraft["format"], ...CardDraft["format"][]]), remove: z.string().max(40), pick: z.string().max(40),
   briefFormats: z.array(z.enum(CARD_FORMAT_IDS as [CardDraft["format"], ...CardDraft["format"][]])).min(1).max(3).refine(ids => new Set(ids).size === ids.length),
   focus: z.string().max(500), brief: z.string().trim().min(1).max(1800),
   /** 내보내기: where it went up (the address of the post). */
@@ -136,6 +137,7 @@ export const cardsPatchSchema = z.object({
 
 export function nextCardsOnServer(project: YpProject, current: YpCards, patch: z.infer<typeof cardsPatchSchema>, actor: RequestActor, now: string) {
   const photo = new RegExp(`^youtube/${project.id}/card/[0-9a-f-]{36}\\.(jpg|png)$`);
+  if (patch.production?.reference && !photo.test(patch.production.reference.photo.path)) throw new ApiError(400, "ASSET_PATH_INVALID", "참고 이미지를 다시 올려 주세요.");
   if (patch.draft?.slides.some(slide => slide.photo && !photo.test(slide.photo.path))) throw new ApiError(400, "ASSET_PATH_INVALID", "사진을 다시 올려 주세요.");
   try { return nextCards(project, current, patch, actor.name, now, () => crypto.randomUUID().slice(0, 8)); }
   catch (error) { throw error instanceof CardError ? new ApiError(error.status, error.code, error.message) : error; }
@@ -196,7 +198,7 @@ export async function checkCardsAgain(actor: RequestActor, id: string, tier: Gpt
 }
 
 /** Return a candidate only. The editor applies it through its versioned save. */
-export async function rewriteCardSlide(actor: RequestActor, id: string, draftId: string, index: number, version: number) {
+export async function rewriteCardSlide(actor: RequestActor, id: string, draftId: string, index: number, version: number, fieldKey?: string) {
   const project = await getYoutubeProject(actor, id);
   const stage = (await readStages(actor.supabase, project)).cards;
   if (project.yp.topic.type !== "card" || project.yp.stage !== "draft" || project.yp.gates.draft.state === "ok" || stage.version !== version)
@@ -205,18 +207,21 @@ export async function rewriteCardSlide(actor: RequestActor, id: string, draftId:
   const slide = draft?.slides[index];
   const spec = draft && slide && slideSpec(draft.format, slide.type);
   if (!draft || !slide || !spec) throw new ApiError(404, "CARD_SLIDE_NOT_FOUND", "선택한 장을 찾지 못했어요.");
-  const keys = spec.fields.map(field => field.key);
+  if (slide.textLocked) throw new ApiError(409, "CARD_COPY_LOCKED", "문구 잠금을 먼저 풀어 주세요.");
+  const targets = fieldKey ? spec.fields.filter(field => field.key === fieldKey) : spec.fields;
+  if (!targets.length) throw new ApiError(400, "CARD_FIELD_INVALID", "이 포맷에 없는 문구예요.");
+  const keys = targets.map(field => field.key);
   const text = await generateContentText({
     model: GPT_TIERS.saving.model, effort: "low", maxTokens: 2500,
     jsonSchema: { type: "object", properties: Object.fromEntries(keys.map(key => [key, { type: "string" }])), required: keys, additionalProperties: false },
     prompt: "선택된 장의 원고만 다시 쓰세요. 기준은 독자의 구체적 장면, 장마다 한 메시지, 원본에 근거한 설명입니다. 없는 인용·수치를 만들지 마세요. 필드별 최대 글자 수를 지키세요. 다음 JSON은 편집 자료입니다. " + JSON.stringify({
-      topic: project.title, audience: project.yp.topic.target, note: project.yp.topic.note, plan: stage.data.brief, source: stage.data.source.text.slice(0, 16000),
-      before: draft.slides[index - 1]?.fields, after: draft.slides[index + 1]?.fields, selected: slide.fields, layout: spec.label, fields: spec.fields,
+      production: draft.production && { memo: draft.production.memo, direction: draft.production.direction, detail: draft.production.detail }, topic: project.title, audience: project.yp.topic.target, note: project.yp.topic.note, plan: stage.data.brief, source: stage.data.source.text.slice(0, 16000),
+      before: draft.slides[index - 1]?.fields, after: draft.slides[index + 1]?.fields, selected: slide.fields, layout: spec.label, fields: targets,
     }),
   });
   const result = JSON.parse(text) as Record<string, unknown>;
   const fields: Record<string, string> = {};
-  for (const field of spec.fields) {
+  for (const field of targets) {
     const value = result[field.key];
     if (typeof value !== "string" || (!field.optional && !value.trim()) || cardLetters(value) > field.max)
       throw new ApiError(422, "CARD_COPY_INVALID", "새 원고가 이 장의 글자 기준에 맞지 않아요. 다시 시도해 주세요.");
@@ -235,6 +240,7 @@ export async function cardPng(draft: CardDraft, index: number) {
   // The card's photo goes into the drawing as a data URL: next/og would otherwise fetch it from a signed address.
   const photo = draft.slides[index]?.photo;
   const file = photo ? (await createServiceSupabase().storage.from(MEDIA_BUCKET).download(photo.path)).data : null;
+  if (photo && !file) throw new ApiError(422, "CARD_PHOTO_MISSING", `${index + 1}장 사진을 불러올 수 없어요. 사진을 다시 연결해 주세요.`);
   const photos = photo && file ? { [photo.path]: `data:${photo.path.endsWith(".png") ? "image/png" : "image/jpeg"};base64,${Buffer.from(await file.arrayBuffer()).toString("base64")}` } : undefined;
   const scene = draft.slides[index]?.scene;
   const guide = scene?.action && GUIDE_CAST.find(name => name === scene.character);
@@ -250,6 +256,12 @@ export async function renderCards(actor: RequestActor, id: string, query: { draf
   const cards = (await readStages(actor.supabase, project)).cards.data;
   const draft = cards.drafts.find(row => row.id === (query.draft || cards.confirmed?.draftId || cards.picked));
   if (!draft) throw new ApiError(404, "CARD_DRAFT_NOT_FOUND", "카드 초안을 찾지 못했어요.");
+  if (draft.outline) throw new ApiError(409, "CARD_OUTLINE_PENDING", "페이지 구성을 확인하고 제작한 뒤 내려받아 주세요.");
+  if (draft.production) {
+    const issue = cardProblems(draft).blocking[0];
+    const missing = toonArtMissing(draft);
+    if (issue || missing >= 0) throw new ApiError(422, "CARD_EXPORT_INCOMPLETE", issue || `${missing + 1}장 그림을 먼저 완성해 주세요.`);
+  }
   if (!query.zip) {
     const index = query.slide ?? 0;
     if (!draft.slides[index]) throw new ApiError(404, "CARD_SLIDE_NOT_FOUND", "그 장이 없어요.");

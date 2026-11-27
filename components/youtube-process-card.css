@@ -209,4 +209,19 @@
 @media (max-width: 520px) {
   .linear-shell .ui-v2.yp :is(.yp-card-issues,.yp-source-panel,.yp-card-entry,.yp-card-tools,.yp-card-row-h) button { min-height: 40px; }
 }
+
+.linear-shell .ui-v2.yp .yp-card-reference-img { object-fit: contain; }
+.linear-shell .ui-v2.yp .yp-production { padding: clamp(16px,3vw,28px); }
+.linear-shell .ui-v2.yp .yp-production h2, .linear-shell .ui-v2.yp .yp-production h3 { margin: 0 0 12px; }
+.linear-shell .ui-v2.yp .yp-production-types, .linear-shell .ui-v2.yp .yp-production-formats { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit,minmax(min(100%,180px),1fr)); margin-bottom: 24px; }
+.linear-shell .ui-v2.yp .yp-production-types button, .linear-shell .ui-v2.yp .yp-production-formats button { color: inherit; text-align: left; }
+.linear-shell .ui-v2.yp .yp-production-types button { display: flex; gap: 12px; align-items: center; }
+.linear-shell .ui-v2.yp .yp-production-formats button { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.linear-shell .ui-v2.yp .yp-production [aria-pressed=true] { outline: 2px solid currentColor; outline-offset: -2px; }
+.linear-shell .ui-v2.yp .yp-production-strip { display: flex; gap: 4px; overflow: hidden; }
+.linear-shell .ui-v2.yp .yp-production fieldset { display: grid; gap: 12px; min-width: 0; margin: 0 0 16px; padding: 14px; border: 1px solid var(--line); }
+.linear-shell .ui-v2.yp .yp-production label, .linear-shell .ui-v2.yp .yp-outline label { display: grid; gap: 5px; font-weight: 600; }
+.linear-shell .ui-v2.yp .yp-outline { display: grid; gap: 12px; }
+.linear-shell .ui-v2.yp .yp-production .yp-production-strip { display: flex; }
+.linear-shell .ui-v2.yp .yp-production-formats button small, .linear-shell .ui-v2.yp .yp-production-types button small { display: block; }
 }

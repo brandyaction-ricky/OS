@@ -4,6 +4,8 @@ import type { YpProject } from "../youtube-process/project.ts";
 import type { YpCards } from "../youtube-process/stages.ts";
 import { cardProblems, emptyCardDraft, toonUploads, toonArtMissing, type CardDraft, type CardFormatId } from "./formats.ts";
 
+import { productionOutline, type ProductionInput } from "./production.ts";
+
 export class CardError extends Error {
   readonly code: string;
   readonly status: number;
@@ -12,7 +14,7 @@ export class CardError extends Error {
 export const CARD_DRAFTS_MAX = 12;
 
 /** A draft as edited (its AI record stays the stored one), a new empty draft of a format, a draft removed, the one picked; or 내보내기's address. */
-export interface CardsPatch { draft?: Omit<CardDraft, "at" | "by" | "ai">; add?: CardFormatId; remove?: string; pick?: string; focus?: string; brief?: string; briefFormats?: CardFormatId[]; exported?: { url?: string; episode?: number; withheldReason?: string; downloaded?: true; copied?: true; posted?: true } }
+export interface CardsPatch { production?: ProductionInput; createOutline?: true; draft?: Omit<CardDraft, "at" | "by" | "ai">; add?: CardFormatId; remove?: string; pick?: string; focus?: string; brief?: string; briefFormats?: CardFormatId[]; exported?: { url?: string; episode?: number; withheldReason?: string; downloaded?: true; copied?: true; posted?: true } }
 
 export function instagramPostId(value: string) {
   try {
@@ -71,14 +73,20 @@ export function nextCards(project: Pick<YpProject, "yp">, current: YpCards, patc
   if (project.yp.stage !== "draft" || editableFields(project, "draft") !== "all")
     throw new CardError("STAGE_LOCKED", project.yp.stage === "topic" ? "주제를 확정하면 카드를 만들 수 있어요." : "카드를 확정했어요. 고치려면 [다시 열기]를 눌러요.");
   let drafts = current.drafts;
-  if (patch.add) {
+  if (patch.add || patch.createOutline) {
     if (drafts.length >= CARD_DRAFTS_MAX) throw new CardError("CARD_DRAFTS_FULL", `초안은 ${CARD_DRAFTS_MAX}개까지 둘 수 있어요. 안 쓰는 초안을 지워 주세요.`, 400);
-    drafts = [...drafts, emptyCardDraft(patch.add, newId(), by, now)];
+    if (patch.createOutline) {
+      const input = patch.production ?? current.production;
+      if (!input?.title.trim() || !input.memo.trim()) throw new CardError("CARD_INPUT_MISSING", "작업명과 원문을 입력해 주세요.", 400);
+      drafts = [...drafts, productionOutline(input, newId(), by, now)];
+    } else if (patch.add) drafts = [...drafts, emptyCardDraft(patch.add, newId(), by, now)];
   }
   if (patch.draft) {
     const before = drafts.find(row => row.id === patch.draft!.id);
     if (!before) throw new CardError("CARD_DRAFT_NOT_FOUND", "그 초안을 찾지 못했어요. 새로 불러와 주세요.", 404);
-    drafts = drafts.map(row => row.id === before.id ? { ...patch.draft!, at: now, by, ...(before.ai ? { ai: before.ai } : {}) } : row);
+    if (patch.draft.format !== before.format) throw new CardError("CARD_FORMAT_CHANGED", "저장된 작업의 포맷은 바꿀 수 없어요.");
+    if (before.outline && !patch.draft.outline && cardProblems(patch.draft).blocking.length) throw new CardError("CARD_OUTLINE_INVALID", "페이지 구성의 필수 항목을 확인해 주세요.");
+    drafts = drafts.map(row => row.id === before.id ? { ...patch.draft!, formatVersion: before.formatVersion ?? 1, production: before.production, at: now, by, ...(before.ai ? { ai: before.ai } : {}) } : row);
   }
   if (patch.remove) drafts = drafts.filter(row => row.id !== patch.remove);
   let picked = patch.pick !== undefined ? patch.pick : current.picked;
@@ -87,8 +95,8 @@ export function nextCards(project: Pick<YpProject, "yp">, current: YpCards, patc
     picked = "";
   }
   // The first draft made is the one being worked on until another is picked.
-  if (!picked && patch.add) picked = drafts.at(-1)!.id;
-  return { ...current, drafts, picked, ...(patch.briefFormats ? { briefFormats: patch.briefFormats } : {}), ...(patch.brief !== undefined ? { brief: patch.brief } : {}), ...(patch.focus !== undefined ? { focus: patch.focus } : {}) };
+  if (patch.createOutline || (!picked && patch.add)) picked = drafts.at(-1)!.id;
+  return { ...current, drafts, picked, ...(patch.production ? { production: patch.production } : {}), ...(patch.briefFormats ? { briefFormats: patch.briefFormats } : {}), ...(patch.brief !== undefined ? { brief: patch.brief } : {}), ...(patch.focus !== undefined ? { focus: patch.focus } : {}) };
 }
 
 export const pickedDraft = (cards: YpCards) => cards.drafts.find(row => row.id === cards.picked) ?? null;
@@ -96,6 +104,7 @@ export const pickedDraft = (cards: YpCards) => cards.drafts.find(row => row.id =
 export function cardsMissing(cards: YpCards) {
   const draft = pickedDraft(cards);
   if (!draft) return cards.drafts.length ? "쓸 초안을 하나 골라 주세요" : "포맷을 골라 초안을 만들어 주세요";
+  if (draft.outline) return "페이지 구성을 확인하고 제작해 주세요";
   const art = toonArtMissing(draft);
   return cardProblems(draft).blocking[0] ?? (art >= 0 ? `${art + 1}장 그림을 그려 주세요` : "");
 }

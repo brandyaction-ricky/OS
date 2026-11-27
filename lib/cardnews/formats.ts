@@ -22,7 +22,7 @@ const cover: CardSlideSpec = { type: "cover", label: "표지", min: 1, max: 1, p
 const end: CardSlideSpec = { type: "end", label: "마무리", min: 1, max: 1, fields: [{ key: "line", label: "마무리 문장", max: 30 }, { key: "action", label: "다음 행동", max: 14 }] };
 const summary: CardSlideSpec = { type: "summary", label: "정리", min: 1, max: 1, fields: [{ key: "line", label: "한 줄 정리", max: 24 }] };
 
-export const CARD_FORMATS: Record<CardFormatId, CardFormat> = {
+const FORMATS_V1: Record<CardFormatId, CardFormat> = {
   list: { id: "list", name: "정리형", when: "방법 · 신호 · 이유를 나열할 때 (롱폼 원고에 잘 맞아요)", slides: [cover,
     { type: "item", label: "항목", min: 3, max: 7, photo: true, fields: [{ key: "title", label: "소제목", max: 16 }, { key: "body", label: "설명", max: 60 }, { key: "before", label: "바꾸기 전 문장", max: 38, optional: true }] }, { ...summary, fields: [...summary.fields, { key: "worksheet", label: "메모 양식 (한 줄에 한 항목)", max: 48, optional: true }] }, end] },
   myth: { id: "myth", name: "오해와 진실형", when: "흔한 생각을 뒤집을 때 (저장 · 공유가 잘 돼요)", slides: [cover,
@@ -49,6 +49,13 @@ export const CARD_FORMATS: Record<CardFormatId, CardFormat> = {
       { key: "shout", label: "외침", max: 14, optional: true }, { key: "sfx", label: "효과음", max: 6, optional: true }] },
     { ...summary, label: "오늘의 한 줄" }, end] },
 };
+// Register future definitions under a new version. Unversioned saved cards belong to v1.
+export const CURRENT_FORMAT_VERSION = 1 as const;
+const FORMAT_VERSIONS = { 1: FORMATS_V1 } as const;
+export const CARD_FORMATS = FORMAT_VERSIONS[CURRENT_FORMAT_VERSION];
+export function formatForDraft(draft: { format: CardFormatId; formatVersion?: keyof typeof FORMAT_VERSIONS }) {
+  return FORMAT_VERSIONS[draft.formatVersion ?? 1][draft.format];
+}
 /** The fields a 웹툰 card keeps for drawing its picture, never printed on it. */
 export const CARD_DRAW_FIELDS = ["scene", "cast"];
 /** Where a 웹툰 bubble's tail points, in % of the card: the PD taps the speaker on the preview (stored as `talkAt` / `replyAt`, "x,y");
@@ -128,16 +135,17 @@ export interface CharacterScene {
 export function characterAsset(name: string) {
   return Object.hasOwn(MYIN_CAST, name) ? `/myin-card-cast/${name}.png` : undefined;
 }
-export interface CardSlide { scene?: CharacterScene; layout?: "spotlight"; type: CardSlideType; fields: Record<string, string>; photo?: CardPhoto }
+export interface CardSlide { textLocked?: boolean; imageLocked?: boolean; artDirection?: string; scene?: CharacterScene; layout?: "spotlight"; type: CardSlideType; fields: Record<string, string>; photo?: CardPhoto }
 import type { CanonTrace } from "../youtube-process/canon-trace";
 export interface CardDraft {
+  formatVersion?: 1; workTitle?: string; outline?: boolean; production?: import("./production").ProductionInput;
   id: string; format: CardFormatId; slides: CardSlide[]; caption: string; hashtags: string[]; at: string; by: string;
   /** Who drafted it: a staff member's own AI or the company GPT, and under which 카드뉴스 정본 version (for the 정본 다듬기 comparison). */
   /** sig: cardSignature of the draft as the AI handed it in, so 카드 확정 can tell how far the PD changed it. */
   ai?: { trace?: CanonTrace[]; by: string; model: string; at: string; jobId: string; canon: string; sig: string; why?: string };
 }
 
-export const slideSpec = (format: CardFormatId, type: CardSlideType) => CARD_FORMATS[format].slides.find(spec => spec.type === type);
+export const slideSpec = (format: CardFormatId, type: CardSlideType, formatVersion: 1 = 1) => formatForDraft({ format, formatVersion }).slides.find(spec => spec.type === type);
 /** A slide's place in its format's order. 웹툰 표지 and 칸 share one, so the next 화 can start between two 칸. */
 const orderRank = (format: CardFormatId, type: CardSlideType) =>
   CARD_FORMATS[format].slides.findIndex(spec => spec.type === (format === "webtoon" && type === "toon" ? "panel" : type));
@@ -155,7 +163,7 @@ export function cardPage(draft: Pick<CardDraft, "format" | "slides">, index: num
 const blank = (spec: CardSlideSpec): CardSlide => ({ type: spec.type, fields: Object.fromEntries(spec.fields.map(field => [field.key, ""])) });
 /** A new draft with each slide kind at its fewest. */
 export function emptyCardDraft(format: CardFormatId, id: string, by: string, at: string): CardDraft {
-  return { id, format, slides: CARD_FORMATS[format].slides.flatMap(spec => Array.from({ length: spec.min }, () => blank(spec))), caption: "", hashtags: [], at, by };
+  return { id, format, formatVersion: CURRENT_FORMAT_VERSION, slides: CARD_FORMATS[format].slides.flatMap(spec => Array.from({ length: spec.min }, () => blank(spec))), caption: "", hashtags: [], at, by };
 }
 /** One more body slide after the last of its kind (a 웹툰 표지 after the last 칸, as the next 화), when the format allows it. */
 export function addCardSlide(draft: CardDraft, type: CardSlideType): CardDraft {
@@ -213,7 +221,7 @@ export const CAPTION_MAX = 2200;
  */
 export function cardProblems(draft: Pick<CardDraft, "format" | "slides" | "caption" | "hashtags">) {
   const blocking: string[] = [], warnings: string[] = [];
-  const format = CARD_FORMATS[draft.format];
+  const format = formatForDraft(draft);
   if (!format) return { blocking: ["포맷을 골라 주세요"], warnings };
   if (draft.slides.length > cardMaxSlides(draft.format)) blocking.push(`카드는 ${cardMaxSlides(draft.format)}장까지예요`);
   for (const spec of format.slides) {

@@ -298,7 +298,12 @@ function ToonSlide({ draft, slide, index, theme, src }: { draft: CardDraft; slid
 }
 
 /** Card `index` of `draft` at 1080 × 1350; `photos` maps a photo's path to an address the drawing can load (a signed URL, or a data URL in the PNG). */
-export function CardSlideView({ draft, index, photos, characterSrc, theme = CARD_THEME }: { draft: CardDraft; index: number; photos?: Record<string, string>; characterSrc?: string; theme?: Theme }) {
+interface CardViewProps { draft: CardDraft; index: number; photos?: Record<string, string>; characterSrc?: string; theme?: Theme }
+const CARD_RENDERERS = { 1: renderV1 };
+export function CardSlideView(props: CardViewProps) {
+  return CARD_RENDERERS[props.draft.formatVersion ?? 1](props);
+}
+function renderV1({ draft, index, photos, characterSrc, theme = CARD_THEME }: CardViewProps) {
   const slide = draft.slides[index];
   if (slide?.scene?.action && draft.format !== "webtoon" && draft.format !== "steps") {
     const plan = slide.scene;

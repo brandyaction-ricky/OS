@@ -25,7 +25,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   }
 }
 
-const postBody = z.discriminatedUnion("action", [z.object({ action: z.literal("check"), tier: z.enum(["precise", "saving"]) }).strict(), cardDrawSchema, z.object({ action: z.literal("rewrite"), draftId: z.string().max(40), index: z.number().int().min(0).max(99), version: z.number().int().nonnegative() }).strict()]);
+const postBody = z.discriminatedUnion("action", [z.object({ action: z.literal("check"), tier: z.enum(["precise", "saving"]) }).strict(), cardDrawSchema, z.object({ action: z.literal("rewrite"), fieldKey: z.string().min(1).max(40).optional(), draftId: z.string().max(40), index: z.number().int().min(0).max(99), version: z.number().int().nonnegative() }).strict()]);
 
 /** 최종 검토 › 화면 자동 검사 › [다시 검사]: GPT looks at the confirmed cards again. 카드 만들기 › AI로 그리기: GPT draws one picture. */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -34,7 +34,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const projectId = z.string().uuid().parse((await params).id);
     const input = postBody.parse(await parseJson(request, 4_000));
     const headers = { "cache-control": "private, no-store" };
-    if (input.action === "rewrite") return Response.json({ fields: await rewriteCardSlide(actor, projectId, input.draftId, input.index, input.version) }, { headers });
+    if (input.action === "rewrite") return Response.json({ fields: await rewriteCardSlide(actor, projectId, input.draftId, input.index, input.version, input.fieldKey) }, { headers });
     if (input.action === "draw") return Response.json({ photo: await drawCardImage(actor, projectId, input) }, { headers });
     return Response.json({ check: await checkCardsAgain(actor, projectId, input.tier) }, { headers });
   } catch (error) {

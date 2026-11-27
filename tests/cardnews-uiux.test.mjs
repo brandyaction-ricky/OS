@@ -7,6 +7,7 @@ import test from "node:test";
 import ts from "typescript";
 import * as zod from "zod";
 import * as formats from "../lib/cardnews/formats.ts";
+import * as production from "../lib/cardnews/production.ts";
 import * as sources from "../lib/cardnews/sources.ts";
 import * as cards from "../lib/cardnews/cards.ts";
 import * as project from "../lib/youtube-process/project.ts";
@@ -124,7 +125,7 @@ const code = await readFile(new URL("../lib/server/youtube-process-cards.ts", im
 const modules = {
   "node:fs/promises": {}, "node:path": {}, react: {}, "next/og": {}, zod,
   "@/lib/http": { ApiError }, "@/lib/supabase/server": { createServiceSupabase: () => { throw new Error("A catalog read must not use service-role access"); } },
-  "@/lib/cardnews/card-slide": {}, "@/lib/cardnews/cards": cards, "@/lib/cardnews/formats": formats,
+  "@/lib/cardnews/production": production, "@/lib/cardnews/card-slide": {}, "@/lib/cardnews/cards": cards, "@/lib/cardnews/formats": formats,
   "@/lib/cardnews/sources": sources, "@/lib/cardnews/zip": {}, "@/lib/youtube-process/confirm": confirm,
   "@/lib/youtube-process/project": project, "@/lib/youtube-process/stages": stages, "@/lib/youtube-narration-document": {},
   "./youtube-process": { listYoutubeProjects: async actor => actor.projects }, "./youtube-process-stages": {},

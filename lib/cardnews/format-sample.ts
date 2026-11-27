@@ -11,9 +11,13 @@ const samples: Record<CardFormatId, CardSlide> = {
   webtoon: { type: "panel", fields: { narration: "일요일 밤 열한 시", talk: "내일 첫마디가 뭐였지?", think: "한 줄만 적고 자자." } },
 };
 
+const CARD_SAMPLE_SUB: Record<CardFormatId, string> = { list: "메모에 남길 세 가지", myth: "준비에 대한 오해", quote: "잠들기 전 읽는 한 문장", compare: "두 메모를 나란히", steps: "첫 행동까지 세 단계", structure: "준비를 이루는 세 요소", webtoon: "" };
+
 export function formatSample(format: CardFormatId) {
   const draft = emptyCardDraft(format, "sample", "", "");
+  draft.slides[0].fields = format === "webtoon" ? { episode: "1화", title: "내일 첫마디" } : { head: "회의 전날의 첫 질문", sub: CARD_SAMPLE_SUB[format] };
   draft.slides[1] = samples[format];
+  draft.slides[draft.slides.length - 1].fields = { line: "내일 먼저 묻고 싶은 말은?", action: "질문 한 줄 적기" };
   if (format === "structure") {
     draft.slides[2].fields.title = "떠오른 장면";
     draft.slides[3].fields.title = "내가 고를 일";
