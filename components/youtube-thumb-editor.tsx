@@ -5,7 +5,7 @@ import { apiRequest } from "@/lib/api-client";
 import type { YpSlot } from "@/lib/youtube-process/stages";
 import type { ThumbSavedEdit } from "@/lib/youtube-process/thumb-edit";
 import { ThumbFrame } from "@/lib/youtube-process/thumb-frame";
-import { THUMB_EXTRA_COLORS, THUMB_STYLES, thumbLayout, type ThumbEdit, type ThumbExtraColor, type ThumbSubject } from "@/lib/youtube-process/thumb-style";
+import { THUMB_EXTRA_COLORS, THUMB_PERSON, THUMB_STYLES, thumbLayout, type ThumbEdit, type ThumbExtraColor, type ThumbSubject } from "@/lib/youtube-process/thumb-style";
 import type { YpPage } from "./youtube-process-frame";
 import { Scaled } from "./youtube-thumb-picker";
 
@@ -13,7 +13,7 @@ import { Scaled } from "./youtube-thumb-picker";
 // undo, a phone-size view and the frame's checks. 저장 renders the PNG with the same frame and puts it in the slot.
 type Target = "photo" | string;
 const style = THUMB_STYLES.anim;
-const EDIT_KEYS = ["size", "photo", "extras"] as const;
+const EDIT_KEYS = ["frame", "flip", "size", "photo", "extras"] as const;
 const editOf = (draft: ThumbSavedEdit): ThumbEdit => Object.fromEntries(EDIT_KEYS.filter((key) => draft[key] !== undefined).map((key) => [key, draft[key]]));
 const newId = () => crypto.randomUUID().slice(0, 8);
 
@@ -55,6 +55,8 @@ export function ThumbEditor({ page, slot, start, onSave, onClose }: {
   const undo = () => { const last = history.at(-1); if (!last) return; setHistory(history.slice(0, -1)); setDraft(last); };
   const photo = draft.photo ?? { scale: 1, x: 0, y: 0, brightness: 1 };
   const checks = thumbLayout(draft.copy, style, editOf(draft), subject).checks;
+  const person = draft.frame === "person";
+  const sizeRange = person ? [THUMB_PERSON.minPx, THUMB_PERSON.maxPx] : [style.title.minPx, style.title.maxPx];
 
   const onDown = (event: PointerEvent<HTMLDivElement>) => {
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -103,12 +105,14 @@ export function ThumbEditor({ page, slot, start, onSave, onClose }: {
         <div className="yp-seg2 yp-sm" role="tablist">{([["text", "글자"], ["photo", "사진"], ["extras", "장치"]] as const).map(([key, label]) =>
           <button key={key} type="button" role="tab" aria-selected={tab === key} className={tab === key ? "yp-on" : ""} onClick={() => setTab(key)}>{label}</button>)}</div>
         {tab === "text" ? <div className="yp-te-fields">
-          <label className="yp-lbl">문구 <span className="yp-gq">두 줄까지 · 줄바꿈으로 나눠요</span>
-            <textarea className="yp-in" rows={2} maxLength={40} value={draft.copy.text} onChange={(event) => change({ ...draft, copy: { ...draft.copy, text: event.target.value } })} /></label>
-          <label className="yp-lbl">파랑 강조 <span className="yp-gq">문구 안의 말 그대로</span>
-            <input className="yp-in" maxLength={20} value={draft.copy.accent ?? ""} onChange={(event) => change({ ...draft, copy: { ...draft.copy, accent: event.target.value } })} /></label>
+          <div className="yp-seg2 yp-sm" role="group" aria-label="틀">{([["", "기본형"], ["person", "인물형"]] as const).map(([key, label]) =>
+            <button key={label} type="button" className={(draft.frame ?? "") === key ? "yp-on" : ""} onClick={() => change({ ...draft, frame: key || undefined, flip: key ? draft.flip : undefined, size: undefined, photo: undefined })}>{label}</button>)}</div>
+          <label className="yp-lbl">문구 <span className="yp-gq">{person ? "세 줄까지: 작은 띠 · 파랑 박스 · 검정 박스 (두 줄이면 파랑 · 검정)" : "두 줄까지 · 줄바꿈으로 나눠요"}</span>
+            <textarea className="yp-in" rows={person ? 3 : 2} maxLength={60} value={draft.copy.text} onChange={(event) => change({ ...draft, copy: { ...draft.copy, text: event.target.value } })} /></label>
+          {person ? null : <label className="yp-lbl">파랑 강조 <span className="yp-gq">문구 안의 말 그대로</span>
+            <input className="yp-in" maxLength={20} value={draft.copy.accent ?? ""} onChange={(event) => change({ ...draft, copy: { ...draft.copy, accent: event.target.value } })} /></label>}
           <label className="yp-lbl">크기 {draft.size ? `${draft.size}px` : "자동"}
-            <input type="range" min={style.title.minPx} max={style.title.maxPx} value={draft.size ?? thumbLayout(draft.copy, style).size} onChange={(event) => change({ ...draft, size: Number(event.target.value) })} /></label>
+            <input type="range" min={sizeRange[0]} max={sizeRange[1]} value={draft.size ?? thumbLayout(draft.copy, style, editOf(draft)).size} onChange={(event) => change({ ...draft, size: Number(event.target.value) })} /></label>
           {draft.size ? <button type="button" className="yp-lnk" onClick={() => change({ ...draft, size: undefined })}>크기 자동으로</button> : null}
         </div> : null}
         {tab === "photo" ? <div className="yp-te-fields">
@@ -116,6 +120,7 @@ export function ThumbEditor({ page, slot, start, onSave, onClose }: {
           <label className="yp-lbl">밝기 {Math.round(photo.brightness * 100)}%<input type="range" min={60} max={140} value={Math.round(photo.brightness * 100)} onChange={(event) => change({ ...draft, photo: { ...photo, brightness: Number(event.target.value) / 100 } })} /></label>
           <p className="yp-hint">위치는 미리보기에서 「사진」을 고르고 끌어서 옮겨요.</p>
           <div className="yp-row-btns"><button type="button" className="yp-btn yp-sm" onClick={() => change({ ...draft, photo: undefined })}><RotateCcw size={13} /> 처음 자리로</button>
+            {person ? <button type="button" className={`yp-btn yp-sm${draft.flip ? " yp-on" : ""}`} aria-pressed={Boolean(draft.flip)} onClick={() => change({ ...draft, flip: draft.flip ? undefined : true })}>좌우 뒤집기</button> : null}
             <label className="yp-btn yp-sm"><ImagePlus size={13} /> {busy === "photo" ? "올리는 중…" : "사진만 바꾸기"}<input type="file" hidden accept="image/jpeg,image/png" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void ownPhoto(file); }} /></label>
             {draft.image && draft.candidate ? <button type="button" className="yp-btn yp-sm" onClick={() => change({ ...draft, image: undefined, photo: undefined })}>후보 그림으로</button> : null}</div>
         </div> : null}

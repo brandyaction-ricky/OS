@@ -2,12 +2,14 @@
 // at the same one (sent once, paid once), which the OS cannot place, and how many sentences stay as they are. It finds a sentence the way
 // Logan's voice_fix does — by the words heard (4+ Hangul, 60% of them in one sentence), then by the time — so the plan matches the run.
 
-export interface VoiceSentence { at: number; text: string }
-export interface VoiceMemo { memo: string; say?: string; read?: string; video?: true }
+export interface VoiceSentence { at: number; text: string; p?: number }
+/** `p`: the paragraph a row of the 음성 확인 panel belongs to (2026-11-26) — the memo is placed inside it, not by time across the voice. */
+export interface VoiceMemo { memo: string; say?: string; read?: string; video?: true; p?: number }
 export interface VoiceTarget { index: number; at: number; text: string; memos: VoiceMemo[] }
 
 const han = (text: string) => text.replace(/[^가-힣]/g, "");
 const mmss = (text: string) => { const m = /^\s*(\d+):(\d+(?:\.\d+)?)/.exec(text); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+const clock = (t: number) => `${String(Math.floor(t / 60)).padStart(2, "0")}:${(t % 60).toFixed(1).padStart(4, "0")}`;
 /** The words heard, as voice_fix reads them: the memo without its leading time, up to a bracket or an arrow. */
 export const heardOf = (memo: string) => memo.replace(/^\s*\d+:\d+(?:\.\d+)?\s*/, "").split(/[(（]|->|→/)[0];
 
@@ -25,18 +27,23 @@ function cover(heard: string, sentence: string) {
 export function planVoiceFix(memos: VoiceMemo[], sentences: VoiceSentence[]) {
   const targets = new Map<number, VoiceTarget>();
   const unplaced = new Map<string, VoiceMemo[]>();
-  for (const memo of memos) {
+  for (let memo of memos) {
     const heard = han(heardOf(memo.memo));
+    // A row's memo looks only inside its own paragraph (a crack row 「‖ 보여 ‖」 has too few words, and its time fell on the next sentence).
+    const inPara = memo.p !== undefined && !memo.video ? sentences.flatMap((sentence, i) => sentence.p === memo.p ? [i] : []) : [];
+    const pool = inPara.length ? inPara : sentences.map((_, i) => i);
     let index = -1;
     if (heard.length >= 4) {
-      const scores = sentences.map((sentence) => cover(heard, han(sentence.text)));
+      const scores = pool.map((i) => cover(heard, han(sentences[i].text)));
       const best = scores.indexOf(Math.max(...scores, 0));
-      if (best >= 0 && scores[best] >= 0.6) index = best;
+      if (best >= 0 && scores[best] >= 0.6) index = pool[best];
     }
     const at = mmss(memo.memo);
-    if (index < 0 && !memo.video && at !== null && sentences.length) { index = 0; sentences.forEach((sentence, i) => { if (sentence.at <= at + 0.3) index = i; }); }
+    if (index < 0 && (inPara.length || (!memo.video && at !== null && sentences.length))) { index = pool[0]; pool.forEach((i) => { if (at !== null && sentences[i].at <= at + 0.3) index = i; }); }
     if (index < 0) { const key = at === null ? memo.memo : `t${Math.round(at)}`; unplaced.set(key, [...(unplaced.get(key) ?? []), memo]); continue; }
     const target = targets.get(index) ?? { index, at: sentences[index].at, text: sentences[index].text, memos: [] };
+    // The render PC finds a sentence by the words in the memo; a paragraph-bound memo carries the sentence itself, the note after it in brackets.
+    if (inPara.length) memo = { ...memo, memo: `${clock(sentences[index].at)} ${sentences[index].text.replace(/[(（)）]|->|→/g, " ")} (${heardOf(memo.memo).trim() || "메모"})`.slice(0, 300) };
     target.memos.push(memo);
     targets.set(index, target);
   }
@@ -46,7 +53,8 @@ export function planVoiceFix(memos: VoiceMemo[], sentences: VoiceSentence[]) {
   // One fix per sentence: its first memo (voice_fix finds the sentence from it), with the 읽는 글 and 발음 any memo of it gave.
   const fixes = groups.map((group) => {
     const [say] = one(group, "say"), [read] = one(group, "read");
-    return { ...group[0], ...(say ? { say } : {}), ...(read ? { read } : {}) };
+    const first = { ...group[0] }; delete first.p;
+    return { ...first, ...(say ? { say } : {}), ...(read ? { read } : {}) };
   });
   return { targets: [...targets.values()].sort((a, b) => a.at - b.at), unplaced: [...unplaced.values()], conflicts, fixes,
     keep: Math.max(0, sentences.length - targets.size) };

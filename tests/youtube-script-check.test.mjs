@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { checkManuscript, checkScriptBody, sourcedParagraphs } from "../lib/youtube-script-check.ts";
 
@@ -26,7 +27,7 @@ test("title, head line, sections and length problems are all listed at once", ()
   assert.match(issues, /8자 이내/);
   // Length is a note now (owner decision 2026-10-26), not a reason to refuse.
   assert.doesNotMatch(issues, /15%/);
-  assert.match(checked.notes.join(), /목표 10분\(4900자\)과 15% 넘게 다릅니다/);
+  assert.match(checked.notes.join(), /목표 10분\(5450자\)과 15% 넘게 다릅니다/);
 });
 
 test("body rules: paragraph length, banned words, stage cues and unsourced research", () => {
@@ -113,12 +114,12 @@ test("v1.9 해명 종결: '아니에요·아닙니다' endings outside quotes at
   assert.doesNotMatch(closing(["다음 장면으로 가요.", "그건 아니라고 봐요."]), /해명/);
 });
 
-test("length: 공백 포함 490자 = 1분; more than 15% off is a note to fix the 러닝타임, never a refusal", () => {
+test("length: 공백 포함 545자 = 1분(낭독 D); more than 15% off is a note to fix the 러닝타임, never a refusal", () => {
   const text = (n) => Array.from({ length: n }, (_, i) => paragraph(`L${i}`));
-  assert.deepEqual(checkScriptBody(text(4), 1).notes, []);
-  const long = checkScriptBody(text(5), 1);
+  assert.deepEqual(checkScriptBody(text(5), 1).notes, []);
+  const long = checkScriptBody(text(6), 1);
   assert.deepEqual(long.issues, []);
-  assert.match(long.notes.join(), /총 \d+자\(약 1분\) — 목표 1분\(490자\)과 15% 넘게 다릅니다\. 내용에 필요한 길이면 러닝타임을 원고에 맞춰 고칩니다/);
+  assert.match(long.notes.join(), /총 \d+자\(약 1분\) — 목표 1분\(545자\)과 15% 넘게 다릅니다\. 내용에 필요한 길이면 러닝타임을 원고에 맞춰 고칩니다/);
 });
 
 test("정본 겹침 skips the owner's own two lines in 말투 정본 §11, which the script they were written for uses verbatim", () => {
@@ -126,4 +127,49 @@ test("정본 겹침 skips the owner's own two lines in 말투 정본 §11, which
   const issues = (extra) => checkScriptBody([`${paragraph("o")} ${extra}`], null, null, canon).issues.join("\n");
   assert.doesNotMatch(issues("답은 이렇게 괜찮다고 넘긴 상황에 다 들어 있거든요. 이 영상을 다 보시면, 내가 원하는 게 뭔지 알고, 선택하는 데 도움을 받을 거예요."), /정본 겹침/);
   assert.match(checkScriptBody([`${paragraph("p")} 그래도 저는 이 연구가 좋습니다.`], null, null, `${canon} "그래도 저는 이 연구가 좋습니다"`).issues.join(), /정본 겹침/);
+});
+
+test("풀링형 scripts may have up to 10 sections (풀링형 정본 §2); 키풀링형 keeps 2~5", () => {
+  const text = manuscript("원리 하나", Array.from({ length: 8 }, (_, i) => [`장${i}`, 1]));
+  assert.match(checkManuscript(text, { title: "원리 하나", targetMinutes: 2 }).issues.join(" "), /섹션\(##\)이 8개입니다\. 2~5개여야/);
+  assert.doesNotMatch(checkManuscript(text, { title: "원리 하나", targetMinutes: 2, pulling: true }).issues.join(" "), /섹션\(##\)/);
+});
+
+test("기획안 영상 형식: the PD picks 키풀링형 or 풀링형 and the 원고 job reads the 풀링형 정본 with it", async () => {
+  const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+  assert.match(read("lib/server/youtube-process-stages.ts"), /format: z\.enum\(\["keypulling", "pulling"\]\)/);
+  assert.match(read("lib/youtube-process/stages.ts"), /titles: "draft\.tt", format: "draft\.format"/);
+  assert.match(read("components/youtube-process-draft.tsx"), /project\.yp\.topic\.type === "anim" \? <div className=\{`yp-field[\s\S]*?aria-label="영상 형식"/);
+  const ai = read("lib/server/youtube-process-ai.ts");
+  assert.match(ai, /format: pulling \? "풀링형" : "원고형"/);
+  assert.match(ai, /checkManuscript\(bundle\.manuscript, \{ title, targetMinutes: author\.targetMinutes, canon, pulling: ypFormat\(stages\.plan\.data\) === "pulling" \}\)/);
+  const job = read("lib/server/youtube-script-job.ts");
+  assert.match(job, /\.ilike\("title", "풀링형 롱폼%"\)\.neq\("status", "archived"\)/, "found by title, so its doc id is not in the code");
+  assert.match(job, /\$\{await canonRefs\(supabase, pulling\)\}/);
+});
+
+test("원고 작업 지시문 follows 원고 공정 정본 v2.9: one axis + one alternative, one independent review, no comment quota (대표 2026-11-24)", () => {
+  const job = readFileSync(new URL("../lib/server/youtube-script-job.ts", import.meta.url), "utf8");
+  for (const gone of [/10번 안팎/, /6개 이상/, /축 후보 채점/, /관문마다 통과/]) assert.doesNotMatch(job, gone);
+  assert.match(job, /축 1개 \+ 대안 1개를 세워 작성 AI가 채점표\(§3\)로 직접 고릅니다/);
+  assert.match(job, /관문 2~6은 독립 검수 한 번으로 한꺼번에 판정합니다/);
+  assert.match(job, /3번이면 그 상태로 제출하고/);
+  assert.match(job, /댓글 원문이 없거나 적어도 원고를 씁니다/);
+  assert.match(job, /「제가 만난 분」처럼 다른 관계로 바꿔 말하지 않습니다/);
+  // 풀링형: no persuasion material and no OS search, 관문 1 · 6 only, length in letters without spaces.
+  assert.match(job, /대표 라이브 발언 · 대표 실제 경험 · 고객 후기 금지/);
+  assert.match(job, /관문 6\(말투\)만 독립 검수 한 번으로 봅니다/);
+  assert.match(job, /원고 구조 정본과 현재기준은 열지 않습니다/);
+  assert.match(job, /\$\{pulling \? "" : `\n## 재료 — 쓸 것만 찾습니다/);
+  assert.match(job, /공백 제외 약 \$\{targetMinutes \* PULLING_CHARS_PER_MINUTE\}자/);
+});
+
+test("낭독 규칙: a number ending in 2 with a particle, and 「네」 with a particle, are found in the 원고; units, decimals and 「네,」 are not", () => {
+  const body = (s) => checkScriptBody([`${s} ${"가".repeat(90)}`], null).issues.join("\n");
+  assert.match(body("이 둘 중 2에서 고르면"), /「2에서」 — 숫자 2 뒤에 조사/);
+  assert.match(body("12를 먼저 봐요"), /「12를」/);
+  assert.doesNotMatch(body("2단 2가지 2분의 1 1.2를 2, 그리고"), /숫자 2 뒤에 조사/);
+  assert.match(body("네나 아니요로 답해요"), /「네나」 — 「네」에 조사/);
+  assert.match(body("「네와 아니요」만 있어요"), /「네와」/);
+  assert.doesNotMatch(body("네, 아니면 아니요로 네모 네번째"), /「네」에 조사/);
 });

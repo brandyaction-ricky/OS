@@ -86,7 +86,7 @@ test("a 수정안 applied queues the drawing; it runs on the video's own compute
   assert.match(claim, /placeFilter\(owner\)\(run\)/);
   assert.match(claim, /pinnedElsewhere\(run, pc\)/);
   const worker = read("tools/youtube-media-worker.mjs");
-  assert.match(worker, /processMyinRedraw\(\)\.then\(\(done\) => done \|\| processMyinPrep\(\)\)/, "a member's own computer");
+  assert.match(worker, /processMyinRedraw\(\)\)\.then\(\(done\) => done \|\| processMyinPrep\(\)\)/, "a member's own computer");
   assert.match(worker, /processMyinCta\(\)\)\.then\(\(rendered\) => rendered \|\| processMyinRedraw\(\)\)\.then\(\(rendered\) => rendered \|\| processMyinPrep\(\)\)/, "the render PC");
   // The preparation draws its sheets the same way (his preview() only where ours fails) and sends their cell numbers.
   const prep = worker.slice(worker.indexOf("export async function processMyinPrep"), worker.indexOf("async function fetchPhotos"));

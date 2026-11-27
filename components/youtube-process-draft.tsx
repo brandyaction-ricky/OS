@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { ArrowDown, ArrowUp, ImagePlus, Plus, Sparkles, X } from "lucide-react";
 import { editableFields } from "@/lib/youtube-process/confirm";
 import { parseYoutubeRef, projectName, sameRef, topicKeywords } from "@/lib/youtube-process/project";
-import { draftMissing, PLAN_FIELD_KEY, SLOTS, slotOf, thumbFilled, type YpPlan, type YpSlot, type YpThumb } from "@/lib/youtube-process/stages";
+import { draftMissing, PLAN_FIELD_KEY, SLOTS, slotOf, thumbFilled, ypFormat, type YpPlan, type YpSlot, type YpThumb } from "@/lib/youtube-process/stages";
 import { ThumbPicker, type ThumbPicked } from "./youtube-thumb-picker";
 import type { ThumbTool } from "@/lib/youtube-process/thumb-style";
 import { GateBanner, gateAction, gateSub, hhmm, LockedStep, ReplyForm, Subject, useGate, useLeaveGuard, useYpBundle, YpFrame, YpSection } from "./youtube-process-frame";
@@ -43,7 +43,7 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
   const job = useStaffJob(page, "plan", onJobDone);
   // 롱폼 애니메이션 썸네일 후보: its own job, sent from the picker with the image tool and how many.
   const thumbsJob = useStaffJob(page, "thumbs", useCallback(() => undefined, []));
-  const [thumbAsk, setThumbAsk] = useState<{ tool: ThumbTool; count: number } | null>(null);
+  const [thumbAsk, setThumbAsk] = useState<{ tool: ThumbTool; count: number; frame?: "person" } | null>(null);
 
   const project = page.bundle?.project;
   const fields = project ? editableFields(project, "draft") : [];
@@ -162,13 +162,17 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
             <ThumbPicker page={page} title={form.titles[0]?.text ?? ""} can={can("thumbs")} busyJob={thumbsJob.open}
               planCopies={form.thumbs.slice(0, 3).filter(t => t.copy?.trim()).map(t => ({ text: t.copy!, ...(t.pick?.accent ? { accent: t.pick.accent } : {}) }))}
               picked={Object.fromEntries(SLOTS.flatMap((slot, i) => form.thumbs[i]?.pick ? [[slot, form.thumbs[i].pick!.candidate]] : []))}
-              onPick={pickThumb} onMake={(tool, count) => setThumbAsk({ tool, count })} />
+              onPick={pickThumb} onMake={(tool, count, frame) => setThumbAsk({ tool, count, ...(frame ? { frame } : {}) })} />
             {form.thumbs[0]?.pick && form.thumbs[1]?.pick ? <label className="yp-lbl yp-tp-diff">A · B는 무엇이 다른가요
               <select className="yp-in yp-sel1" value={form.thumbs[1].pick.diff ?? ""} disabled={!can("thumbs")} onChange={event => edit({ thumbs: form.thumbs.map((row, i) => i === 1 && row.pick ? { ...row, pick: { ...row.pick, ...(event.target.value ? { diff: event.target.value as "카피" | "그림" | "배치" } : { diff: undefined }) } } : row) }, true)}>
                 <option value="">고르기</option><option>카피</option><option>그림</option><option>배치</option></select></label> : null}
           </div> : null}
         </YpSection>
         <YpSection n={2} title="영상 흐름 (뼈대)" gq="어떤 순서로 보여 주나요?" need>
+          {project.yp.topic.type === "anim" ? <div className={`yp-field${rev("draft.format") ? " yp-rev" : ""}`}><div className="yp-fld-h"><b>영상 형식</b><span className="yp-gq">어떤 영상인가요?</span>{rev("draft.format") ? <span className="yp-revtag">대표가 짚은 칸</span> : null}</div>
+            <div className="yp-seg2" role="radiogroup" aria-label="영상 형식">{([["keypulling", "키풀링형"], ["pulling", "풀링형"]] as const).map(([value, label]) =>
+              <button key={value} type="button" role="radio" aria-checked={ypFormat(form) === value} className={ypFormat(form) === value ? "yp-on" : ""} disabled={!can("format")} onClick={() => edit({ format: value }, true)}>{label}</button>)}</div>
+            <p className="yp-hint">{ypFormat(form) === "pulling" ? "원리 하나를 쉽게 풀어 주는 영상이에요. 말로 구독·진단을 권하지 않아요." : "진단으로 이어지는 설명 영상이에요. 구독 요청 한 곳과 진단 안내가 들어가요."}</p></div> : null}
           <div className={`yp-field${rev("draft.opening") ? " yp-rev" : ""}`}><div className="yp-fld-h"><b>오프닝 (첫 30초)</b><span className="yp-gq">처음 30초에 뭘 보여 주나요?</span>{rev("draft.opening") ? <span className="yp-revtag">대표가 짚은 칸</span> : null}</div>
             <textarea className="yp-in" rows={3} aria-label="오프닝" value={form.opening} readOnly={!can("opening")} placeholder="예) 회의에서 내 의견이 무시당했을 때, 그릇 큰 사람은 이렇게 반응한다" onChange={event => edit({ opening: event.target.value })} />
             <p className="yp-hint">제목 · 썸네일에서 한 약속을 바로 보여 줄 장면</p></div>

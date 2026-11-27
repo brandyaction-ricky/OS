@@ -8,7 +8,7 @@ import { editableFields } from "@/lib/youtube-process/confirm";
 import { myinCleanScript, myinScriptMarkdown } from "@/lib/myin-script";
 import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
 import { personName, projectName, topicKeywords, stepHref } from "@/lib/youtube-process/project";
-import { finalPair, MAKE_STEPS, SLOTS, thumbsMissing, type YpMake, type YpPlan, type YpSlot } from "@/lib/youtube-process/stages";
+import { finalPair, MAKE_STEPS, pickFrame, SLOTS, thumbsMissing, ypFormat, type YpMake, type YpPlan, type YpSlot } from "@/lib/youtube-process/stages";
 import { MyinV13Panel } from "./myin-v13-panel";
 import { FormulaNote, JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
 import { GateBanner, gateSub, md, stepAction, Subject, useYpBundle, YpFrame, YpSection, LockedStep, type YpPage } from "./youtube-process-frame";
@@ -164,7 +164,7 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
         {finals.length ? <ul className="yp-hist" style={{ marginBottom: 10 }}>{[...finals].reverse().map(final => <li key={final.v}><time>v{final.v}{final.v === finals.length ? " 최신" : ""}</time>{confirmedAt && final.at > confirmedAt ? <span className="yp-tag yp-warn">컨펌 뒤 올림</span> : null}
           <span>{final.source === "myin" ? "자동 제작" : final.name} · {md(final.at)} · {sizeLabel(final.bytes)}{final.durationSeconds ? ` · ${Math.floor(final.durationSeconds / 60)}분 ${Math.round(final.durationSeconds % 60)}초` : ""}</span></li>)}</ul> : null}
         {auto && page.demo ? <div className="yp-note yp-gray"><div>데모에서는 자동 제작을 하지 않아요.</div></div> : null}
-        {auto && !page.demo ? <MyinV13Panel sourceId={project.id} title={projectName(project)} embedded onFinal={onFinal} short={short} channel={project.yp.topic.channel} recycled={Boolean(project.yp.recycle)}
+        {auto && !page.demo ? <MyinV13Panel sourceId={project.id} title={projectName(project)} embedded onFinal={onFinal} short={short} channel={project.yp.topic.channel} recycled={Boolean(project.yp.recycle)} pulling={ypFormat(page.bundle?.stages.plan.data) === "pulling"}
           folded={!short} finals={finals.some(final => final.source === "myin") ? finals.length : 0}
           voiceText={shortScript ? scriptLines(shortScript.text).map(line => line.text).join(" ") : myinCleanScript(myinScriptMarkdown(null, narrationFromMarkdown(bundle.stages.outline.data.script))).spoken.join("\n")}
           finalNote={<p className="yt-note">최종본 v{finals.length || 1} 완성. {short ? "소리를 확인하고 [다음: 최종 검토]를 눌러요." : "소리를 확인하고 최종 썸네일 A · B를 올려요."}</p>} /> : null}
@@ -192,7 +192,7 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
           {repick && canThumb ? <div className="yp-card yp-tp-repick">
             <ThumbPicker page={page} title={finalPair(page.bundle!.stages.plan.data, data, "A")?.title ?? ""} can busyJob={false}
               planCopies={SLOTS.flatMap(slot => { const thumb = page.bundle!.stages.plan.data.confirmed?.[slot]?.thumb; return thumb?.copy ? [{ text: thumb.copy, ...(thumb.pick?.accent ? { accent: thumb.pick.accent } : {}) }] : []; })}
-              picked={{}} onPick={async (slot, value) => { if (await save({ thumb: { slot, path: value.path, name: value.name, edit: { candidate: value.pick.candidate, copy: { text: value.copy.text, accent: value.copy.accent ?? "" } } } }, `thumb-${slot}`)) setRepick(false); }} />
+              picked={{}} onPick={async (slot, value) => { if (await save({ thumb: { slot, path: value.path, name: value.name, edit: { candidate: value.pick.candidate, copy: { text: value.copy.text, accent: value.copy.accent ?? "" }, ...pickFrame(value.pick) } } }, `thumb-${slot}`)) setRepick(false); }} />
           </div> : null}
         </> : <p className="yp-hint">jpg · png로 올려요. 마음에 안 들면 [고치기]에서 직접 고치거나 [공식대로 다시 뽑기]로 후보를 받아요. 바꾼 칸은 최종 검토에서 대표가 확인해요.</p>}
         <SendDialog page={page} task="retitle" open={Boolean(redoAsk)} onClose={() => setRedoAsk(null)} job={redoJob} extra={redoAsk ?? undefined} queryDefault={topicKeywords(projectName(project), project.yp.topic.target)} />
@@ -206,7 +206,7 @@ function frameEdit(plan: YpPlan, make: YpMake, slot: YpSlot): ThumbSavedEdit | n
   const saved = make.thumbs[slot]?.edit;
   if (saved) return saved;
   const thumb = plan.confirmed?.[slot]?.thumb;
-  return thumb?.pick && thumb.copy ? { candidate: thumb.pick.candidate, copy: { text: thumb.copy, accent: thumb.pick.accent ?? "" } } : null;
+  return thumb?.pick && thumb.copy ? { candidate: thumb.pick.candidate, copy: { text: thumb.copy, accent: thumb.pick.accent ?? "" }, ...pickFrame(thumb.pick) } : null;
 }
 
 function FinalThumb({ page, slot, make, can, fix, busy, job, open, onUpload, onFix, onReset, onEdit }: { page: YpPage; slot: YpSlot; make: YpMake; can: boolean; fix: boolean; busy: boolean; job: ReturnType<typeof useStaffJob>;

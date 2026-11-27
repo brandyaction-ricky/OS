@@ -23,6 +23,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { adRuntimeDigest, processAdRender } from "./image-ad-renderer.mjs";
 import { shortformDiagramCapabilities } from "./shortform-diagrams.mjs";
 import { checkShortformRuntime,renderShortform } from "./shortform-renderer.mjs";
+import { parseHelpers, splitPieces } from "./myin-split.mjs";
 
 const osUrl = (process.env.OS_URL ?? "").replace(/\/$/, "");
 const local = process.argv.includes("--local");
@@ -50,6 +51,13 @@ export function killTree(pid) {
 // RENDER_PC_NAME names it on the screen; without one, the computer's own name.
 const pcName = local ? "" : ((process.env.RENDER_PC_NAME || os.hostname()).replace(/\.local$/, "").replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[^A-Za-z0-9]+/, "").slice(0, 40) || "render-pc");
 const pcField = pcName ? { pc: pcName } : {};
+// 음성도 내 컴퓨터에서 (로건 요청 11-16): a staff computer makes the voices its member gives it only when it has the voice tools —
+// MYIN_LOCAL_VOICE=on, the voice Python, and an engine whose voice script can ask Fish through the OS (FISH_TTS_URL; no Fish key on the
+// computer) — and says so on every heartbeat, so the screen offers it only then.
+let localVoiceReady;
+const localVoice = () => localVoiceReady ??= local && process.env.MYIN_LOCAL_VOICE === "on" && existsSync(process.env.MYIN_VOICE_PYTHON || "/nonexistent")
+  && readText(path.join(myinPkg, "tools", "mindmap_pipeline", "stage_voice.py")).includes("FISH_TTS_URL");
+const readText = (file) => { try { return readFileSync(file, "utf8"); } catch { return ""; } };
 const workerRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 let adEngine;
 const adFingerprint = () => adEngine ??= adRuntimeDigest(workerRoot);
@@ -62,7 +70,7 @@ const diskFreeGb = () => { const { bavail, bsize } = statfsSync(mindmapDir || os
 export async function heartbeat() {
   const answer = await call({ action: "heartbeat", diskFreeGb: diskFreeGb(), memUsedGb: gb(os.totalmem() - os.freemem()), memTotalGb: gb(os.totalmem()), job: current,
     packageName: (process.env.MINDMAP_PACKAGE_NAME || path.basename(path.resolve(local ? myinPkg : mindmapDir, ".."))).slice(0, 80),
-    ...(engine() ? { engine: engine() } : {}), ...pcField }).catch((error) => { console.error(`heartbeat: ${error.message}`); return null; });
+    ...(engine() ? { engine: engine() } : {}), ...pcField, ...(local ? { voice: localVoice() } : {}) }).catch((error) => { console.error(`heartbeat: ${error.message}`); return null; });
   if (answer?.stopRun && answer.stopRun === current?.runId && stopping !== answer.stopRun) {
     stopping = answer.stopRun;
     console.error(`newer run of this video: stopping ${stopping}`);
@@ -537,11 +545,13 @@ export async function myinRebuild(runId, seed, layout) {
  */
 export function myinVoiceEnv(job, base = process.env) {
   const onPc = job.paragraphs.every((paragraph) => !paragraph.url);
-  const key = base.FISH_API_KEY?.trim() ?? "", voice = job.fishVoice?.referenceId?.trim() || base.FISH_VOICE_ID?.trim() || "";
+  // 키 없이 Fish (로건 요청 11-16 · 2단계): a staff computer asks Fish through the OS for the voice it leased, with its own staff key.
+  const proxy = local && job.runId && job.lease ? `${osUrl}/api/v1/content/youtube-automation/local-render/fish?run=${job.runId}&lease=${job.lease}` : "";
+  const key = proxy ? secret : base.FISH_API_KEY?.trim() ?? "", voice = job.fishVoice?.referenceId?.trim() || base.FISH_VOICE_ID?.trim() || "";
   if (onPc && (!key || !voice)) throw Object.assign(new Error("this render PC has no Fish key or voice to make the voice"), { code: "MYIN_VOICE_KEY_MISSING" });
   // Without a key, his older stage_voice still only joins the OS files: placeholder keys pass its "keys present" check.
   return { onPc, python: base.MYIN_VOICE_PYTHON || myinPython,
-    env: { ...base, PATH: `/opt/homebrew/bin:${base.PATH ?? ""}`, PYTHONIOENCODING: "utf-8", FISH_API_KEY: key || "unused", FISH_VOICE_ID: voice || "unused" } };
+    env: { ...base, PATH: ["/opt/homebrew/bin", base.PATH ?? ""].join(path.delimiter), PYTHONIOENCODING: "utf-8", FISH_API_KEY: key || "unused", FISH_VOICE_ID: voice || "unused", ...(proxy ? { FISH_TTS_URL: proxy } : {}) } };
 }
 
 /** Like runAsync, but never throws: what the process printed (stdout and stderr) and whether it ended well. */
@@ -634,9 +644,13 @@ export function styleStoryboard(videoDir, myinDir, style, file = "myin_storyboar
  * paragraphs with it again. Returns how many paragraphs were taken.
  */
 export const REUSE_MARK = "_이전음성.txt";
-export function reuseEarlierVoice(work, texts, donorWorks) {
+/** The tempo a voice folder was made at (풀링형 낭독 D writes voice_tempo.txt; older voices are 1). */
+export const voiceTempoOf = (voiceDir) => { try { return readFileSync(path.join(voiceDir, "voice_tempo.txt"), "utf8").trim() || "1"; } catch { return "1"; } };
+/** The earlier run whose voice a fresh voice may reuse: same tempo, so a sped-up voice never takes a paragraph at the old pace. */
+export const voiceDonor = (donorWorks, tempo = "1") => donorWorks.find((dir) => existsSync(path.join(dir, "voice", "os_voice", "speech.txt")) && voiceTempoOf(path.join(dir, "voice", "os_voice")) === tempo);
+export function reuseEarlierVoice(work, texts, donorWorks, tempo = "1") {
   const voiceDir = path.join(work, "voice", "os_voice");
-  const donor = donorWorks.find((dir) => existsSync(path.join(dir, "voice", "os_voice", "speech.txt")));
+  const donor = voiceDonor(donorWorks, tempo);
   if (!donor) return 0;
   const from = path.join(donor, "voice", "os_voice");
   const json = (file) => { try { return JSON.parse(readFileSync(file, "utf8")); } catch { return {}; } };
@@ -692,9 +706,17 @@ export function recycleVoice(job, voiceDir) {
   console.log(`myin voice recycled from ${job.recycle.from}: ${cuts.map(([a, b]) => `${a}–${b}`).join(", ")} s`);
 }
 
+const D_TEMPO = "1.1", D_PARA_GAP = "0.27";   // 낭독 D: 0.3 s between paragraphs before the 1.1× (the sample the owner chose)
+/** The CTA lines of a run are voiced at its narration's pace (stage_cta → the same make_paragraph). */
+const ctaAtVoicePace = (speaker, work) => {
+  const tempo = voiceTempoOf(path.join(work, "voice", "os_voice"));
+  if (tempo !== "1") speaker.env.VOICE_TEMPO = tempo;
+  return speaker;
+};
+
 export async function processMyinWords() {
-  if (!myinPkg) return false;
-  const job = await call({ action: "myin_claim", ...shortClaim, ...pcField });
+  if (!myinPkg || (local && !localVoice())) return false;
+  const job = await call({ action: "myin_claim", ...(local ? { engine: engine() } : { ...shortClaim, ...pcField }) });
   if (job.idle) return false;
   current = { step: "download", runId: job.runId };
   const lease = { runId: job.runId, lease: job.lease };
@@ -705,6 +727,11 @@ export async function processMyinWords() {
     const voiceDir = path.join(work, "voice", voiceJob);
     mkdirSync(voiceDir, { recursive: true });
     const speaker = myinVoiceEnv(job);
+    // 낭독 D (대표 2026-11-25: 풀링형, then every longform): Fish 0.94 as always, then each paragraph sound 1.1× (pitch kept) and 0.3 s
+    // between paragraphs before that speed-up — the engine does it where it writes pNN_t.wav, so the words, subtitles, checks and
+    // re-voiced paragraphs all use the faster sound. The OS says the run's pace; a voice that already exists keeps the pace it was made at.
+    const tempo = existsSync(path.join(voiceDir, "voice.wav")) ? voiceTempoOf(voiceDir) : job.voiceTempo === D_TEMPO || job.pulling ? D_TEMPO : "1";
+    if (tempo !== "1") Object.assign(speaker.env, { VOICE_TEMPO: tempo, VOICE_PARA_GAP: D_PARA_GAP });
     for (const paragraph of speaker.onPc || job.recycle ? [] : job.paragraphs) {
       const n = String(paragraph.index).padStart(2, "0");
       const raw = path.join(voiceDir, `p${n}_raw.wav`), pcm = path.join(voiceDir, `p${n}.wav`);
@@ -720,6 +747,7 @@ export async function processMyinWords() {
     const fixes = Array.isArray(job.fixes) ? job.fixes : [];
     const timing = path.join(work, "tools", "voice_timing");
     const fixed = [];
+    let patch = false;
     const hasVoice = existsSync(path.join(voiceDir, "voice.wav")), hasTool = existsSync(path.join(timing, "voice_fix.py"));
     if (job.dictionary && existsSync(timing)) writeVoiceDictionaries(timing, job.dictionary);
     // 바뀐 문단만 다시 듣기 (요청 3번의 5): what the voice before this one was heard as, per paragraph sound — the words and the voice
@@ -732,6 +760,12 @@ export async function processMyinWords() {
     } else if (fixes.length && hasVoice && hasTool) {
       current.step = "voice fix";
       await runOut(myinPython, [wordsScript, "snap", voiceDir, out, before]);
+      const defer = readFileSync(path.join(timing, "voice_fix.py"), "utf8").includes("--assemble");   // packages from 2026-11-25 on
+      let deferred = false;
+      // 한 문장 고치기 ② (대표 2026-11-26): a fix asked on the finished video keeps every time — the paragraphs voiced again are fitted to
+      // the sound they replace — so only the sound is mixed again over the picture already drawn. A pause edit moves times by design.
+      patch = Boolean(job.patch) && defer && !fixes.some((fix) => fix.pause) && existsSync(path.join(out, PATCH_RAW));
+      if (patch) keepParagraphSounds(voiceDir);
       for (const fix of fixes) {
         // 테이크 바꾸기 · 앞뒤 쉼 (요청 2번, 2026-11-17): our script with the engine's own joins — another take the voice made, or more pause; no Fish.
         if (fix.take || fix.pause) {
@@ -741,9 +775,16 @@ export async function processMyinWords() {
           continue;
         }
         const result = await runOut(speaker.python, ["voice_fix.py", voiceJob, "--memo", fix.memo, ...(fix.say ? ["--say", fix.say] : []), ...(fix.read ? ["--read", fix.read] : []),
-          ...(fix.video ? ["--video", "--video_work", videoJob] : [])], { cwd: timing, env });
+          ...(fix.video ? ["--video", "--video_work", videoJob] : [])], { cwd: timing, env: defer ? { ...env, VOICE_FIX_DEFER: "1" } : env });
         fixed.push({ memo: fix.memo, ok: result.ok, report: fixReport(result.out) });
+        deferred ||= defer;
       }
+      // voice.wav once for the round (2026-11-25: 18 fixes rebuilt the 68 MB voice 18 times); a take or pause edit in between already joins the new sounds.
+      if (patch) patch = await fitParagraphSounds(speaker, voiceDir, env);
+      // A fitted paragraph is joined in again even after take edits only (they join by themselves, before the fit).
+      if (deferred || patch) await runAsync(speaker.python, ["voice_fix.py", voiceJob, "--assemble"], { cwd: timing, env });
+      if (patch) patch = sameTimes(readJson(path.join(voiceDir, PATCH_KEPT, "timings.json")), readJson(path.join(voiceDir, "timings.json")));
+      if (job.patch) console.log(`myin voice fix: ${patch ? "times kept — the sound goes over the drawn video" : "times moved — back to ④ for the full video"}`);
       // Without the OS's dictionary (an older OS) new lines go back into the package instead.
       if (fixed.some((fix) => fix.ok) && !job.dictionary) mergeVoiceDictionaries(timing, path.join(job.layout === "short" ? myinPkgShort : myinPkg, "tools", "voice_timing"));
     } else if (fixes.length) {
@@ -753,32 +794,48 @@ export async function processMyinWords() {
       if (!hasVoice) throw Object.assign(new Error("the voice to fix is gone from this render PC"), { code: "MYIN_VOICE_FIX_NO_VOICE" });
     } else {
       const earlier = (Array.isArray(job.earlier) ? job.earlier : []).filter((id) => /^[0-9a-f-]{36}$/.test(id)).map((id) => path.join(myinWork, id));
-      const reused = earlier.length && !existsSync(path.join(voiceDir, "voice.wav")) ? reuseEarlierVoice(work, job.paragraphs.map((p) => p.text), earlier) : 0;
+      const reused = earlier.length && !existsSync(path.join(voiceDir, "voice.wav")) ? reuseEarlierVoice(work, job.paragraphs.map((p) => p.text), earlier, tempo) : 0;
       if (reused) console.log(`myin voice: ${reused}/${job.paragraphs.length} paragraphs kept from an earlier voice of this video`);
-      const donor = reused ? earlier.find((dir) => existsSync(path.join(dir, "voice", "os_voice", "speech.txt"))) : null;   // as reuseEarlierVoice picks it
+      const donor = reused ? voiceDonor(earlier, tempo) : null;   // as reuseEarlierVoice picks it
       if (donor) await runOut(myinPython, [wordsScript, "snap", path.join(donor, "voice", "os_voice"), path.join(donor, "voice", "os_myin"), before]);
       current.step = "narration";
       try { await runAsync(speaker.python, ["stage_voice.py", script, voiceJob], { cwd: path.join(work, "tools", "mindmap_pipeline"), env }); }
       finally { for (const name of readdirSync(voiceDir)) if (name.endsWith(REUSE_MARK)) rmSync(path.join(voiceDir, name), { force: true }); }
+      if (tempo !== "1") writeFileSync(path.join(voiceDir, "voice_tempo.txt"), tempo);
     }
     // 들어 볼 문장 (his voice_audit): every sentence scored for breaks and long runs, worst first; stage 1 lists the ones worth a listen.
-    let audit = null;
-    if (speaker.onPc && !job.recycle && existsSync(path.join(timing, "voice_audit.py"))) {
-      current.step = "voice check";
+    // It runs beside the read check and the pause check (2026-11-25: 12 of the first pass's 17 minutes were these three one after another).
+    const voiceAudit = async () => {
+      if (!(speaker.onPc && !job.recycle && existsSync(path.join(timing, "voice_audit.py")))) return null;
       const file = path.join(voiceDir, "audit.json");
       const some = existsSync(before) && (await runOut(speaker.python, [wordsScript, "audit", voiceDir, before, file], { cwd: timing, env })).ok;
       const result = some ? { ok: true } : await runOut(speaker.python, ["voice_audit.py", voiceDir, file], { cwd: timing, env });
-      try { if (result.ok) audit = JSON.parse(readFileSync(file, "utf8")); } catch { audit = null; }
-    }
+      try { return result.ok ? JSON.parse(readFileSync(file, "utf8")) : null; } catch { return null; }
+    };
     // 발음 확인 (대표 요청 2026-11-22): words both faster-whisper small and medium heard differently from the script (tools/myin_read_check.py).
     // Only paragraph sounds that changed are heard again. MYIN_READ_CHECK=off skips it; a failure only leaves the list out.
-    let misreads = null;
-    if (speaker.onPc && !job.recycle && process.env.MYIN_READ_CHECK !== "off" && existsSync(path.join(voiceDir, "timings.json"))) {
-      current.step = "read check";
+    const readCheck = async () => {
+      if (!(speaker.onPc && !job.recycle && process.env.MYIN_READ_CHECK !== "off" && existsSync(path.join(voiceDir, "timings.json")))) return null;
       const file = path.join(voiceDir, "misreads.json");
       rmSync(file, { force: true });
-      if ((await runOut(myinPython, [readCheckScript, voiceDir, file])).ok) try { misreads = JSON.parse(readFileSync(file, "utf8")); } catch { misreads = null; }
-    }
+      if (!(await runOut(myinPython, [readCheckScript, voiceDir, file])).ok) return null;
+      try { return JSON.parse(readFileSync(file, "utf8")); } catch { return null; }
+    };
+    // 쉼 검사 (로건 11-24, 대표 낭독 규칙): 띄워 읽음 · 덩어리 끊김 · 붙여 읽음 · 낱말 안 끊김, by the engine's own script when the run's
+    // package carries it (tools/voice_timing/pause_check_myin.py). MYIN_PAUSE_CHECK=off skips it; a failure only leaves the list out.
+    // It runs after the read check, which leaves its small-model words in pause_check_cache.json, so whisper small is not run twice.
+    const pauseScript = path.join(timing, "pause_check_myin.py");
+    const pauseCheck = async () => {
+      if (!(speaker.onPc && !job.recycle && process.env.MYIN_PAUSE_CHECK !== "off" && existsSync(pauseScript) && existsSync(path.join(voiceDir, "timings.json")))) return null;
+      const file = path.join(voiceDir, "pauses.json");
+      rmSync(file, { force: true });
+      if (!(await runOut(myinPython, [pauseScript, voiceDir, file], { cwd: timing })).ok) return null;
+      // 음이탈 · 높아진 채 이어짐 (한 문장 고치기 ③, 대표 귀로 맞춘 기준): added to the same list, so those paragraphs are voiced again too.
+      if (process.env.MYIN_CRACK_CHECK !== "off") await runOut(myinPython, [crackScript, voiceDir, file]);
+      try { return JSON.parse(readFileSync(file, "utf8")); } catch { return null; }
+    };
+    current.step = "voice check";
+    const [audit, [misreads, pauses]] = await Promise.all([voiceAudit(), readCheck().then(async (found) => [found, await pauseCheck()])]);
     const speech = readFileSync(path.join(voiceDir, "speech.txt"), "utf8");
     const spoken = speech.replace(/\r/g, "").split("\n").filter((line) => line.trim() && !line.startsWith("#SECTION"));
     if (spoken.length !== job.paragraphs.length || spoken.some((text, i) => text !== job.paragraphs[i].text))
@@ -791,7 +848,7 @@ export async function processMyinWords() {
     const bundle = path.join(out, "myin-words.json");
     writeFileSync(bundle, JSON.stringify({ words: JSON.parse(readFileSync(path.join(out, "words.json"), "utf8")),
       subtitlesAss: readFileSync(path.join(out, "subs_myin.ass"), "utf8"), subtitleQc: readFileSync(path.join(out, "subs_qc.md"), "utf8"),
-      speech, durationSeconds: seconds(path.join(voiceDir, "voice.wav")), ...(Array.isArray(audit) ? { audit } : {}), ...(Array.isArray(misreads) ? { misreads } : {}), ...(fixed.length ? { fixes: fixed } : {}),
+      speech, durationSeconds: seconds(path.join(voiceDir, "voice.wav")), ...(Array.isArray(audit) ? { audit } : {}), ...(Array.isArray(misreads) ? { misreads } : {}), ...(Array.isArray(pauses) ? { pauses } : {}), ...(fixed.length ? { fixes: fixed } : {}),
       ...(readVoiceDictionaries(timing) ? { dictionary: readVoiceDictionaries(timing) } : {}) }));
     current.step = "upload";
     await upload(job.bundleUploadUrl, bundle, "application/json");
@@ -808,7 +865,8 @@ export async function processMyinWords() {
         preview = { bytes: statSync(mp3).size };
       } catch (error) { console.error(`myin voice preview skipped: ${job.runId}: ${error.message}`); }
     }
-    await call({ action: "myin_complete", ...lease, ...(voice ? { voice } : {}), ...(preview ? { preview } : {}) });
+    const patched = patch ? await patchFinal(job, work, out).catch((error) => { console.error(`myin sound-only final skipped: ${job.runId}: ${error.message}`); return null; }) : null;
+    await call({ action: "myin_complete", ...lease, ...(voice ? { voice } : {}), ...(preview ? { preview } : {}), ...(patched ? { patched } : {}) });
     console.log(`myin words ready: ${job.runId}${fixed.length ? ` (${fixed.filter((fix) => fix.ok).length}/${fixed.length} sentences fixed)` : ""}`);
   } catch (error) {
     console.error(`myin words failed: ${job.runId}: ${error.message}${error.cause ? ` · cause: ${error.cause.code ?? error.cause.message}` : ""}`);
@@ -982,7 +1040,7 @@ export async function processMyinPrep() {
     }
     // A render-PC voice run brings the lines without files: his stage_cta makes them like the narration (2026-10-29 로건).
     if (job.cta.some((line) => !line.url)) {
-      const speaker = myinVoiceEnv({ paragraphs: [], fishVoice: job.fishVoice }, env);
+      const speaker = ctaAtVoicePace(myinVoiceEnv({ paragraphs: [], fishVoice: job.fishVoice }, env), work);
       await runAsync(speaker.python, ["stage_cta.py", "os_myin"], { cwd: myinDir, env: speaker.env });
     }
     if (job.siteCapture) await runAsync(myinPython, ["capture_site.py"], { cwd: myinDir, env });
@@ -1145,10 +1203,10 @@ export async function processMyinCta() {
   const lease = { runId: job.runId, lease: job.lease };
   try {
     if (job.seed) await myinRebuild(job.runId, job.seed, job.layout);
-    const { videoDir, myinDir } = myinDirs(job.runId);
+    const { work, videoDir, myinDir } = myinDirs(job.runId);
     const env = layoutEnv(myinEnv(), job.layout);
     writeFileSync(path.join(videoDir, "myin_storyboard.json"), JSON.stringify(job.storyboard, null, 1));
-    const speaker = myinVoiceEnv({ paragraphs: [], fishVoice: job.fishVoice }, env);
+    const speaker = ctaAtVoicePace(myinVoiceEnv({ paragraphs: [], fishVoice: job.fishVoice }, env), work);
     await runAsync(speaker.python, ["stage_cta.py", "os_myin"], { cwd: myinDir, env: speaker.env });
     current.step = "upload";
     for (const line of job.lines) await upload(line.uploadUrl, path.join(videoDir, "cta", `cta_${String(line.index).padStart(2, "0")}.wav`), "audio/wav");
@@ -1179,6 +1237,7 @@ print("TIMES " + json.dumps([[s["t0"], s["t1"]] for s in M.resolve(st, w)]))`;
 const voiceEditScript = path.join(path.dirname(fileURLToPath(import.meta.url)), "myin_voice_edit.py");
 const wordsScript = path.join(path.dirname(fileURLToPath(import.meta.url)), "myin_words.py");
 const readCheckScript = path.join(path.dirname(fileURLToPath(import.meta.url)), "myin_read_check.py");
+const crackScript = path.join(path.dirname(fileURLToPath(import.meta.url)), "myin_crack_check.py");
 
 /** 테이크 고르기: one sentence's takes from a voice this PC made, up to the OS to listen to (nothing paid). */
 export async function processMyinTakes() {
@@ -1191,7 +1250,7 @@ export async function processMyinTakes() {
     const work = path.join(myinWork, job.runId), out = path.join(work, "voice", "takes-out");
     if (!existsSync(path.join(work, "voice", "os_voice", "voice.wav"))) throw Object.assign(new Error("no voice of this run on this PC"), { code: "MYIN_TAKES_NO_VOICE" });
     rmSync(out, { recursive: true, force: true });
-    const speaker = myinVoiceEnv({ paragraphs: [] });
+    const speaker = myinVoiceEnv({ paragraphs: [], fishVoice: job.fishVoice });   // the voice comes with the job: this PC has no FISH_VOICE_ID of its own
     const result = await runOut(speaker.python, [voiceEditScript, "os_voice", "takes", String(job.p), job.text, out], { cwd: path.join(work, "tools", "mindmap_pipeline"), env: speaker.env });
     if (!result.ok) throw Object.assign(new Error(fixReport(result.out) || "takes failed"), { code: /테이크 바꾸기/.test(result.out) ? "MYIN_TAKES_UNAVAILABLE" : "MYIN_TAKES_FAILED" });
     const listed = JSON.parse(readFileSync(path.join(out, "takes.json"), "utf8")).takes;
@@ -1282,11 +1341,72 @@ export async function processMyinClips() {
   return true;
 }
 
+// 전체 영상 그리기 일꾼 수 (2026-11-25): 4 drew 13.9 frames a second on the 8-core Mac mini; MYIN_RENDER_PROCS sets it per PC.
+const renderProcs = () => String(Math.max(1, Math.min(16, Math.floor(Number(process.env.MYIN_RENDER_PROCS)) || 4)));
+// The full render prints no times of its own; these four lines show where its hour goes.
+const stamp = (what, runId) => console.log(`${new Date().toISOString()} myin final ${what}: ${runId}`);
+
 /** v13 stage 4b: his full render, mix and handouts; the OS gets the video, 한장정리.png, 덱_전체.pdf, subs_youtube.srt and a loudness check. */
+/** The finished video's loudness (LUFS, true peak), as the OS shows it. */
+function loudness(video, env) {
+  // Per-frame lines go to the verbose log: a 12-minute video printed 1.2 MB of them and overflowed spawnSync's buffer before the summary.
+  const report = spawnSync("ffmpeg", ["-hide_banner", "-nostats", "-i", video, "-vn", "-af", "ebur128=peak=true:framelog=verbose", "-f", "null", "-"], { encoding: "utf8", env, maxBuffer: 16 * 1024 * 1024 }).stderr ?? "";
+  const last = (pattern) => Number([...report.matchAll(pattern)].at(-1)?.[1]);
+  const lufs = last(/\bI:\s+(-?\d+(?:\.\d+)?) LUFS/g), peak = last(/Peak:\s+(-?\d+(?:\.\d+)?) dBFS/g);
+  if (!Number.isFinite(lufs) || !Number.isFinite(peak)) throw Object.assign(new Error("loudness check did not run"), { code: "MYIN_LOUDNESS_UNKNOWN" });
+  return { lufs, peak };
+}
+
+// ── 한 문장 고치기 ② (대표 2026-11-26 「딱 해당 구간만 다시 뽑고 이어 붙이기」) ──
+const PATCH_RAW = "myin_video_final_myin_v1_raw.mp4", PATCH_KEPT = "patch-before";
+const voiceFitScript = path.join(path.dirname(fileURLToPath(import.meta.url)), "myin_voice_fit.py");
+const readJson = (file) => JSON.parse(readFileSync(file, "utf8"));
+/** Each paragraph sound and the timings as they are before the fix (clones on APFS). */
+function keepParagraphSounds(voiceDir) {
+  const kept = path.join(voiceDir, PATCH_KEPT);
+  rmSync(kept, { recursive: true, force: true });
+  mkdirSync(kept);
+  for (const name of readdirSync(voiceDir)) if (/^p\d{2}_t\.wav$/.test(name) || name === "timings.json") copyFileSync(path.join(voiceDir, name), path.join(kept, name), fsConstants.COPYFILE_FICLONE);
+}
+/** The paragraph sounds voice_fix made again, fitted to the ones they replace; false when one is too different to fit. */
+async function fitParagraphSounds(speaker, voiceDir, env) {
+  const kept = path.join(voiceDir, PATCH_KEPT);
+  for (const name of readdirSync(kept).filter((name) => name.endsWith("_t.wav"))) {
+    const now = path.join(voiceDir, name);
+    if (!existsSync(now) || readFileSync(now).equals(readFileSync(path.join(kept, name)))) continue;
+    if (!(await runOut(speaker.python, [voiceFitScript, path.join(kept, name), now], { env })).ok) return false;
+  }
+  return true;
+}
+/** His joined timings before and after the fix put every paragraph at the same place (±40 ms, his timings are rounded to 10 ms). */
+export function sameTimes(before, after) {
+  const a = before?.paragraphs ?? [], b = after?.paragraphs ?? [];
+  return a.length > 0 && a.length === b.length && Math.abs(before.total - after.total) <= 0.04 && a.every((p, i) => Math.abs(p.start - b[i].start) <= 0.04 && Math.abs(p.dur - b[i].dur) <= 0.04);
+}
+/** The finished video again with the new voice: his remix over the picture the last final drew (1–2 minutes), its loudness, and up. */
+async function patchFinal(job, work, videoDir) {
+  current.step = "mixing";
+  const myinDir = path.join(work, "tools", "myin_pipeline");
+  const story = existsSync(path.join(videoDir, "myin_storyboard_styled.json")) ? "myin_storyboard_styled.json" : "myin_storyboard.json";
+  const drawEnv = { ...layoutEnv(myinEnv(), job.layout), STORY: story };
+  // His remix trims the YouTube subtitles again when the intro is off: the ones the OS already has stay, so the file here does too.
+  const srt = path.join(videoDir, "subs_youtube.srt"), srtKept = `${srt}.patch`;
+  if (existsSync(srt)) copyFileSync(srt, srtKept);
+  try { await runAsync(myinPython, ["render_myin.py", "os_myin", "remix", `../../voice/os_myin/${PATCH_RAW}`, "final_myin_v1.mp4"], { cwd: myinDir, env: drawEnv }); }
+  finally { if (existsSync(srtKept)) renameSync(srtKept, srt); }
+  const video = path.join(videoDir, "final_myin_v1.mp4");
+  const { lufs, peak } = loudness(video, drawEnv);
+  current.step = "upload";
+  await upload(job.patch.videoUploadUrl, video, "video/mp4");
+  console.log(`myin final sound-only: ${job.runId} (${lufs} LUFS, peak ${peak})`);
+  return { bytes: statSync(video).size, durationSeconds: seconds(video), lufs, peak };
+}
+
 export async function processMyinFinal() {
   if (!myinPkg) return false;
   const job = await call({ action: "myin_final_claim", ...(local ? { engine: engine() } : { ...shortClaim, ...pcField }) });
   if (job.idle) return false;
+  stamp("claimed", job.runId);
   current = { step: "drawing", runId: job.runId };
   const lease = { runId: job.runId, lease: job.lease };
   try {
@@ -1305,22 +1425,25 @@ export async function processMyinFinal() {
       // 피드용 1:1 · 4:5 (asked for on the OS): the same story drawn in each frame, with the same voice
       for (const size of Object.keys(job.sizeUploadUrls ?? {})) await webShort(job, work, videoDir, path.join(videoDir, `final_${size.replace(":", "x")}.mp4`), ["--format", size]);
     } else if (job.layout === "short") {
-      await runAsync(myinPython, ["render_myin.py", "os_myin", "render", "4"], { cwd: myinDir, env: { ...drawEnv, OUTNAME: "final_myin_v1_raw.mp4" } });
+      await runAsync(myinPython, ["render_myin.py", "os_myin", "render", renderProcs()], { cwd: myinDir, env: { ...drawEnv, OUTNAME: "final_myin_v1_raw.mp4", MYIN_VIDEO_ONLY: "1" } });
+      stamp("drawn", job.runId);
       // 숏폼: his picture with the voice alone, as the pilots A1–A3 (no music, no effects), brought to the longform's −14 LUFS
       // (the A1 pilot measured −16 LUFS, peak −0.5 dB); no handouts.
       const end = Number(job.storyboard?.end);
       execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-i", path.join(videoDir, "myin_video_final_myin_v1_raw.mp4"), "-i", path.join(work, "voice", "os_voice", "voice.wav"),
         "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-af", "pan=stereo|c0=c0|c1=c0,loudnorm=I=-14:TP=-1.5:LRA=11", "-ar", "48000", "-c:a", "aac", "-b:a", "192k", ...(end > 0 ? ["-t", String(end)] : []), video], { env });
     } else {
-      await runAsync(myinPython, ["render_myin.py", "os_myin", "render", "4"], { cwd: myinDir, env: { ...drawEnv, OUTNAME: "final_myin_v1_raw.mp4" } });
+      // 나눠 그리기: idle render PCs on the office network draw pieces too; the render below then only fills what is missing.
+      const split = local ? { used: false } : await splitPieces({ runId: job.runId, work, myinDir, env: drawEnv, python: myinPython, procs: Number(renderProcs()), helpers: parseHelpers(process.env.MYIN_HELPERS) })
+        .catch((error) => { console.error(`split skipped: ${error.message}`); return { used: false }; });
+      if (split.used) console.log(`${new Date().toISOString()} myin final split: ${job.runId} ${split.done}/${split.pieces} pieces in ${split.seconds} s · ${Object.entries(split.by).map(([k, v]) => `${k} ${v}`).join(" · ")}`);
+      await runAsync(myinPython, ["render_myin.py", "os_myin", "render", renderProcs()], { cwd: myinDir, env: { ...drawEnv, OUTNAME: "final_myin_v1_raw.mp4", MYIN_VIDEO_ONLY: "1", ...(split.used ? { MYIN_REUSE_PIECES: "1" } : {}) } });
+      stamp("drawn", job.runId);
       await runAsync(myinPython, ["render_myin.py", "os_myin", "remix", "../../voice/os_myin/myin_video_final_myin_v1_raw.mp4", "final_myin_v1.mp4"], { cwd: myinDir, env: drawEnv });
+      stamp("mixed", job.runId);
       await runAsync(myinPython, ["render_myin.py", "os_myin", "handouts"], { cwd: myinDir, env: drawEnv });
     }
-    // Per-frame lines go to the verbose log: a 12-minute video printed 1.2 MB of them and overflowed spawnSync's buffer before the summary.
-    const report = spawnSync("ffmpeg", ["-hide_banner", "-nostats", "-i", video, "-vn", "-af", "ebur128=peak=true:framelog=verbose", "-f", "null", "-"], { encoding: "utf8", env, maxBuffer: 16 * 1024 * 1024 }).stderr ?? "";
-    const last = (pattern) => Number([...report.matchAll(pattern)].at(-1)?.[1]);
-    const lufs = last(/\bI:\s+(-?\d+(?:\.\d+)?) LUFS/g), peak = last(/Peak:\s+(-?\d+(?:\.\d+)?) dBFS/g);
-    if (!Number.isFinite(lufs) || !Number.isFinite(peak)) throw Object.assign(new Error("loudness check did not run"), { code: "MYIN_LOUDNESS_UNKNOWN" });
+    const { lufs, peak } = loudness(video, env);
     current.step = "upload";
     await upload(job.videoUploadUrl, video, "video/mp4");
     if (job.summaryUploadUrl) await upload(job.summaryUploadUrl, path.join(videoDir, "handouts", "한장정리.png"), "image/png");
@@ -1328,6 +1451,7 @@ export async function processMyinFinal() {
     await upload(job.srtUploadUrl, path.join(videoDir, "subs_youtube.srt"), "application/x-subrip");
     const sizes = Object.entries(job.renderer === "web" ? job.sizeUploadUrls ?? {} : {});
     for (const [size, url] of sizes) await upload(url, path.join(videoDir, `final_${size.replace(":", "x")}.mp4`), "video/mp4");
+    stamp("uploaded", job.runId);
     await call({ action: "myin_final_complete", ...lease, bytes: readFileSync(video).length, durationSeconds: seconds(video), lufs, peak, ...(sizes.length ? { sizes: true } : {}) });
     console.log(`myin final ready: ${job.runId} (${lufs} LUFS, peak ${peak})`);
   } catch (error) {
@@ -1395,7 +1519,7 @@ async function runLocal() {
   void heartbeat();
   setInterval(() => void heartbeat(), 60_000).unref();
   do {
-    const worked = await processMyinRedraw().then((done) => done || processMyinPrep()).then((done) => done || processMyinClips()).then((done) => done || processMyinFinal()).then((done) => done || processImageAds()).catch((error) => {
+    const worked = await processMyinWords().then((done) => done || processMyinRedraw()).then((done) => done || processMyinPrep()).then((done) => done || processMyinClips()).then((done) => done || processMyinFinal()).then((done) => done || processImageAds()).catch((error) => {
       // The render PC moved to another engine: exit 3 between jobs, so the runner (public/myin-local) installs it and starts again.
       if (error.code === "MYIN_ENGINE_DIFFERENT") { console.error(`${error.message} (engine ${engine()})`); process.exit(3); }
       console.error(error.message);
@@ -1450,6 +1574,9 @@ else if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).h
   const shortsOnly=process.argv.includes("--shorts-only");
   if (!shortsOnly&&!existsSync(path.join(mindmapDir, "tools", "mindmap_pipeline", "stage_render.py"))) throw new Error("MINDMAP_DIR must point at Logan's unzipped mind-map package");
   console.log(`render PC name: ${pcName}`);
+  // 나눠 그리기: the other render PCs call this PC's helper script over SSH; each release keeps its own copy current.
+  try { const helper = path.join(os.homedir(), "render", "myin_help_pieces.sh"); copyFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "myin_help_pieces.sh"), helper); execFileSync("chmod", ["755", helper]); }
+  catch (error) { console.error(`split helper not installed: ${error.message}`); }
   await heartbeat(); // knows whether this PC's engine is held before it claims anything
   setInterval(() => void heartbeat(), 60_000).unref();
   void reportDiagramCatalog();

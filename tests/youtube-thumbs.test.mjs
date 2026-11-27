@@ -35,7 +35,10 @@ test("a 롱폼 애니메이션 기획안 is confirmed with pictures in A and B; 
   const plan = { titles: [{ id: "a", text: "제목 A" }, { id: "b", text: "제목 B" }], thumbs: [{ id: "1", mode: "text", copy: "문구" }, { id: "2", mode: "text", copy: "문구 2" }],
     opening: "o", body: "b", closing: "c", note: "", extraRefs: [] };
   assert.equal(draftMissing(plan, "live"), "");
-  assert.equal(draftMissing(plan, "anim"), "썸네일 A · B 필요");
+  assert.equal(draftMissing(plan, "anim"), "썸네일 A를 후보에서 골라 넣어 주세요");
+  // 풀링형 3편 (대표 2026-11-24): a copy too long for the frame says so beside the button.
+  const long = { ...plan, thumbs: [{ id: "1", mode: "text", copy: "다괜찮아보이는데왜못고를까요" }, plan.thumbs[1]] };
+  assert.match(draftMissing(long, "anim"), /^썸네일 A 문구가 기본형 틀에 안 들어가요\(.*\) — 줄을 나누거나 줄이거나, 인물형 틀로 골라요$/);
   const picked = { ...plan, thumbs: plan.thumbs.map((t, i) => ({ ...t, mode: "img", path: `youtube/p/plan_thumb/${i}.png` })) };
   assert.equal(draftMissing(picked, "anim"), "");
 });
@@ -91,7 +94,7 @@ test("제작 keeps the frame edit with each slot: a hand-put finished thumbnail 
   const stages = read("lib/server/youtube-process-stages.ts");
   assert.match(stages, /thumb: z\.object\(\{ slot: z\.enum\(SLOTS\), path: text\(300\), name: text\(240\), edit: thumbSavedEditSchema\.optional\(\) \}\)/);
   assert.match(stages, /const edit = patch\.thumb\.edit \? \{ \.\.\.patch\.thumb\.edit, full: undefined \} : before \? \{ \.\.\.before, full: true \} : undefined;/);
-  assert.match(stages, /edit: \{ candidate: picked\.pick\.candidate, copy: \{ text: picked\.copy, accent: picked\.pick\.accent \?\? "" \} \}/);
+  assert.match(stages, /edit: \{ candidate: picked\.pick\.candidate, copy: \{ text: picked\.copy, accent: picked\.pick\.accent \?\? "" \}, \.\.\.pickFrame\(picked\.pick\) \}/);
   const thumbs = read("lib/server/youtube-thumbs.ts");
   assert.match(thumbs, /plan_thumb\/\[0-9a-f-\]\{36\}\\\\\.\(png\|jpg\)\$/);
   const make = read("components/youtube-process-make.tsx");
@@ -122,4 +125,32 @@ test("the AI's subject box puts the subject as tall as the room above the title,
   assert.match(server, /subject: z\.object\(\{ box: z\.tuple\(\[px, px, px, px\]\), size: z\.tuple\(\[px, px\]\) \}\)\.strict\(\)/);
   assert.match(server, /createElement\(ThumbFrame, \{ style, image, copy, edit: input\.edit, subject \}\)/);
   assert.match(read("components/youtube-thumb-picker.tsx"), /subject=\{current\.subject\}/);
+});
+
+test("인물형 틀 (대표 확정 2026-11-24): photo over the frame, band · blue box · black box from the bottom-left, as on the local tool", () => {
+  const layout = thumbLayout({ text: "직무 고민 중이라면\n“다 괜찮아 보이는데..?”\n맞는 직무는 이름에 없습니다" }, style, { frame: "person", flip: true });
+  assert.ok(layout.person);
+  assert.equal(layout.person.band.text, "직무 고민 중이라면");
+  assert.deepEqual(layout.person.boxes.map((b) => [b.text, b.bg, b.top, b.height]), [["“다 괜찮아 보이는데..?”", "#315FFA", 390, 106], ["맞는 직무는 이름에 없습니다", "#000000", 500, 106]]);
+  assert.equal(layout.person.band.top, 330);
+  assert.deepEqual(layout.photoBox, { left: 0, top: 0, width: 1280, height: 720 });
+  assert.ok(layout.checks.every((c) => c.ok), layout.checks.filter((c) => !c.ok).map((c) => c.text).join());
+  const slashed = thumbLayout({ text: "직무 고민 중이라면 / “다 괜찮아 보이는데..?” / 맞는 직무는 이름에 없습니다" }, style, { frame: "person" });
+  assert.equal(slashed.person.band.text, "직무 고민 중이라면");
+  assert.ok(slashed.checks.every((c) => c.ok), slashed.checks.filter((c) => !c.ok).map((c) => c.text).join());
+  const two = thumbLayout({ text: "5년 동안 뭐 했지?\n물경력은 역할에서 생깁니다" }, style, { frame: "person" });
+  assert.equal(two.person.band, null);
+  assert.ok(thumbLayout({ text: "가\n나\n다\n라" }, style, { frame: "person" }).checks.some((c) => !c.ok), "four lines do not fit the 인물형");
+  assert.ok(thumbLayout({ text: "아주아주아주아주아주아주아주아주아주아주아주아주 긴 문구" }, style, { frame: "person" }).checks.some((c) => !c.ok));
+  assert.deepEqual(cleanThumbEdit({ frame: "person", flip: true, size: 40 }, style), { frame: "person", flip: true, size: 56 });
+  assert.ok(thumbSavedEditSchema.safeParse({ frame: "person", flip: true, copy: { text: "a\nb\nc" } }).success);
+  const jobs = read("lib/server/youtube-ai-jobs.ts"), thumbs = read("lib/server/youtube-thumbs.ts");
+  assert.match(jobs, /frame: z\.literal\("person"\)\.optional\(\), query:/);
+  assert.match(thumbs, /if \(frame === "person"\) return personThumbsCard\(/);
+  assert.match(thumbs, /!ok && !\(frame && key === "white"\)/);
+  // A job sent without the frame (an older screen) still takes person candidates: the AI marks them itself.
+  assert.match(thumbs, /frame: z\.literal\("person"\)\.optional\(\), flip: z\.boolean\(\)\.optional\(\),/);
+  assert.match(thumbs, /const frame = jobFrame \?\? input\.frame;/);
+  assert.match(thumbs, /candidate에 "frame": "person"을 넣고/);
+  assert.match(read("components/youtube-thumb-picker.tsx"), /if \(current\?\.frame\) \{ setFrame\(current\.frame\); setFlip\(Boolean\(current\.flip\)\); \}/);
 });

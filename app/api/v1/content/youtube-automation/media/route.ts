@@ -5,7 +5,7 @@ import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { safeSecretMatch } from "@/lib/server/auth";
 import { buildYoutubeRenderBrief, claimYoutubeRender, completeYoutubeRender, failYoutubeRender } from "@/lib/server/youtube-render-run";
-import { MYIN_VOICE_PARTS, myinRunReplaced, claimMyinTakes, completeMyinTakes, failMyinTakes, myinTakeFile, myinTakesUpload, claimMyinBreath, claimMyinClips, claimMyinCta, claimMyinFinal, claimMyinPrep, claimMyinWords, completeMyinBreath, completeMyinClips, completeMyinCta, completeMyinFinal, completeMyinPrep, completeMyinVoiceBackfill, completeMyinWords, failMyinPrep, failMyinStage, failMyinWords, claimMyinRedraw, completeMyinRedraw, failMyinRedraw, redrawResultSchema, myinStillsUpload, myinVoiceBackfill, stillFiles, stills } from "@/lib/server/myin-run";
+import { MYIN_VOICE_PARTS, myinPatchedSchema, myinRunReplaced, claimMyinTakes, completeMyinTakes, failMyinTakes, myinTakeFile, myinTakesUpload, claimMyinBreath, claimMyinClips, claimMyinCta, claimMyinFinal, claimMyinPrep, claimMyinWords, completeMyinBreath, completeMyinClips, completeMyinCta, completeMyinFinal, completeMyinPrep, completeMyinVoiceBackfill, completeMyinWords, failMyinPrep, failMyinStage, failMyinWords, claimMyinRedraw, completeMyinRedraw, failMyinRedraw, redrawResultSchema, myinStillsUpload, myinVoiceBackfill, stillFiles, stills } from "@/lib/server/myin-run";
 import { RENDER_PC_NAME, renderPcSignalSchema, saveRenderPcSignal } from "@/lib/server/youtube-render-pc";
 import { assetsReadySchema, assetsUploadSchema, assetsUploadUrls, engineReadySchema, engineUploadSchema, engineUploadUrls, saveAssetsManifest, saveEngineManifest } from "@/lib/server/render-engine";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
@@ -40,7 +40,7 @@ const inputSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("myin_claim"), short: z.literal(true).optional(), pc }).strict(),
   z.object({ action: z.literal("myin_complete"), runId: z.string().uuid(), lease: z.string().uuid(),
     voice: z.object({ parts: z.number().int().min(1).max(MYIN_VOICE_PARTS), bytes: z.number().int().positive(), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict().optional(),
-    preview: z.object({ bytes: z.number().int().positive() }).strict().optional() }).strict(),
+    preview: z.object({ bytes: z.number().int().positive() }).strict().optional(), patched: myinPatchedSchema.optional() }).strict(),
   z.object({ action: z.literal("myin_fail"), runId: z.string().uuid(), lease: z.string().uuid(), code: z.string().max(80) }).strict(),
   // 지난 영상 음성 (2026-10-28): stage-1 voice.wav for runs made before the render PC kept it in the OS (tools/myin-voice-backfill.mjs).
   z.object({ action: z.literal("myin_voice_backfill"), runId: z.string().uuid().optional() }).strict(),

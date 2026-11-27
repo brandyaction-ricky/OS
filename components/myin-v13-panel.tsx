@@ -17,18 +17,25 @@ import { MyinScreenCheck } from "./myin-screen-check";
 import { MyinSceneNotes, sceneSheets, type SceneSheetsReply } from "./myin-scene-notes";
 import { MyinVoiceCheck, type MyinVoiceCheckView, type MyinVoiceFixView } from "./myin-voice-check";
 import { localBlocker, useLocalRender, type DraftPlace } from "./myin-local-render";
+import { localVoiceBlocker, VOICE_FALLBACK_MS } from "@/lib/myin-local";
 import { lastSettings, MyinMakeSettings, placeName, rememberSettings, SettingsLine, type MakeSettings, type RunSettings } from "./myin-make-settings";
 import { assToSrt } from "@/lib/subtitle-files";
 import { myinRetryScope, myinStop } from "@/lib/myin-stop";
 import { MyinRunRecord } from "./myin-run-record";
 import { MyinSubtitleEdit } from "./myin-subtitle-edit";
 import { EditorScreenEntry } from "./editor-screen";
+import { imageEstimate } from "@/lib/cost";
+import { MYIN_AI_PHOTO_MODEL, MYIN_AI_PHOTOS_MAX } from "@/lib/myin-storyboard";
 
+/** One AI 사진 at high quality, in 원 (the planning figure in lib/cost.ts). */
+const AI_PHOTO_KRW = imageEstimate(MYIN_AI_PHOTO_MODEL, "high", 0) ?? 0;
 interface Storyboard { scenes: number; model: string; at: string; metaphors: { scene: number; type: string; at: string }[]; cta: { after: string; line: string }[];
   summary: { title: string; points: string[] } | null; reasons: { metaphors: string; cta: string; summary: string };
-  assets: { kind: string; file: string; url: string; source: string; license: string; use: string }[]; fuzzy: string[]; notes: string[]; reading?: string[];
+  assets: { kind: string; file: string; url: string; source: string; license: string; use: string; ai?: true; desc?: string }[]; fuzzy: string[]; notes: string[]; reading?: string[];
   /** 고친 원고 (요청 3번): lent by the video's earlier run — paragraphs the edit changed, scenes the AI fixed. */ carried?: { changed: number; scenes: number } }
-interface MyinRun { id: string; status: string; stage: string; layout?: "short" | null; renderer?: "web" | null; paragraphs: number; paragraphsReady: number; voiceOnPc?: boolean; lastErrorCode: string | null; waitingPhotos?: string[];
+interface MyinRun { id: string; status: string; stage: string;
+  /** 음성도 내 컴퓨터에서 (로건 요청 11-16): whose computer makes this voice; when the step began waiting (backlog only). */ localVoice?: { by: string; name: string } | null; waitingSince?: string | null; layout?: "short" | null; renderer?: "web" | null; paragraphs: number; paragraphsReady: number; voiceOnPc?: boolean; lastErrorCode: string | null; waitingPhotos?: string[];
+  /** AI 사진: being drawn after the storyboard came in, or the ones that could not be drawn. */ aiPhotos?: { state: "drawing" | "failed"; files: string[]; at: string } | null;
   words: { words: number; subtitleLines: number; durationSeconds: number } | null; storyboard: Storyboard | null;
   review: { decision: "confirmed" | "revise"; name: string; note: string; at: string } | null;
   assetDecisions: Record<string, { decision: "approved" | "excluded" }>; ctaReady: string | null;
@@ -56,16 +63,18 @@ const PHASE: Record<string, string> = { breath_pending: "영상 만드는 컴퓨
 // Preview clips scale with the storyboard: one per metaphor scene plus the opening, about 1.5 minutes each (2026-10-26: 31 clips, 45 minutes).
 // ponytail: estimates, no per-scene progress — that needs the render PC to report it.
 // words: +4 min since 로건 호흡·타이밍 (2026-10-27) re-times the gaps between sentences with a transcription.
-// final: about 8 minutes per minute of video at 60 fps (2026-10-28: 52 minutes for 13 minutes at 30 fps; 60 fps from 2026-10-29).
+// final: 30 fps again from 2026-11-25 (owner; 60 fps took 4.7 minutes a video minute on the Mac mini — 3편 43 minutes for 9 minutes),
+// half the frames, about 2.5 minutes a video minute.
+const FINAL_MIN_PER_MIN = 2.5;
 const TYPICAL_MIN: Record<string, number> = { words_pending: 10, prep_pending: 5 };
 const finalWhere = (run: MyinRun) => run.localFinish ? `${run.localFinish.name}님 컴퓨터에서 만들어요 · 영상 만드는 컴퓨터로는 ${finalMinutes(run)}분쯤 걸려요 · 끝날 때까지 켜 두세요`
   : `영상 만드는 컴퓨터에서 ${finalMinutes(run)}분쯤 걸려요`;
-const finalMinutes = (run: MyinRun) => Math.ceil((run.words?.durationSeconds ?? 780) / 60 * 5);   // 60fps, 5-second pieces: a 13-minute video ≈ 1 hour on the Mac mini (2026-10-29 test)
+const finalMinutes = (run: MyinRun) => Math.ceil((run.words?.durationSeconds ?? 780) / 60 * FINAL_MIN_PER_MIN);
 // ponytail: a 숏폼's minutes are guesses from the A1 pilot (40 s, one draft of the whole short); measure after the first ones.
 const SHORT_MIN: Record<string, number> = { words_pending: 6, prep_pending: 3, clips_pending: 5, final_pending: 8 };
-// 롱폼 음성은 문장마다 4번 만들어 받아쓰기로 고른다(음성 고르기 v2, 2026-11-11 맥미니 시험: 한 문장 약 27초).
-// v2.1 (2026-11-12, two paragraphs at a time): 39 paragraphs took 63–66 minutes on 11-13, so 1.4 a paragraph.
-const typicalMinutes = (run: MyinRun) => run.voiceOnPc && run.stage === "words_pending" ? (run.layout === "short" ? 8 : 10 + Math.ceil(run.paragraphs * 1.4))
+// 롱폼 음성은 문단마다 한 번에 만든다(대표 2026-11-25, 맥미니 pkg-staging-20261125-guide): 3편 42문단 음성 약 3분 + 들어 볼 문장 ·
+// 발음 확인 · 쉼 점검 약 10분(11-25 실측). 예전 방식(문장마다 네 테이크, 1문단 1.4분)은 55분쯤 걸렸다.
+const typicalMinutes = (run: MyinRun) => run.voiceOnPc && run.stage === "words_pending" ? (run.layout === "short" ? 8 : 8 + Math.ceil(run.paragraphs * 0.2))
   : run.layout === "short" ? SHORT_MIN[run.stage] : run.stage === "clips_pending" ? Math.ceil(((run.storyboard?.metaphors.length ?? 0) + 1) * 1.5)
   : run.stage === "final_pending" ? finalMinutes(run) : TYPICAL_MIN[run.stage];
 // What a stop means and what 다시 하기 redoes, so a staff member knows whether pressing again can help (2026-10-26: three presses hit
@@ -86,7 +95,7 @@ function StopNote({ run }: { run: MyinRun }) {
 const placedOn = (run: MyinRun) => run.clipsReview ? run.localFinish : run.local;
 const maker = (run: MyinRun) => { const local = placedOn(run); return local ? `${local.name}님 컴퓨터` : run.pc ? `영상 만드는 컴퓨터(${run.pc})` : "영상 만드는 컴퓨터"; };
 // 로건 사람 말투 음성 (2026-10-29): the render PC makes the voice too — about 13 seconds a paragraph before the transcription.
-const phaseLabel = (run: MyinRun) => run.voiceOnPc && run.stage === "words_pending" ? "영상 만드는 컴퓨터가 음성 · 받아쓰기 · 자막 만드는 중"
+const phaseLabel = (run: MyinRun) => run.voiceOnPc && run.stage === "words_pending" ? `${run.localVoice ? `${run.localVoice.name}님 컴퓨터` : "영상 만드는 컴퓨터"}가 음성 · 받아쓰기 · 자막 만드는 중`
   : run.stage === "cta_pending" && run.localFinish && run.voiceOnPc ? `영상 만드는 컴퓨터가 구독 대사 음성을 만들어요 · 그다음 ${maker(run)}가 자료 준비`
   : run.stage === "final_pending" ? `${maker(run)}가 전체 영상 만드는 중`
   : run.stage === "prep_pending" ? run.clipsReview ? `${maker(run)}가 자료 준비 · 다시 점검 중` : `${maker(run)}가 미리보기 준비 · ${run.layout === "short" ? "" : "자동 선곡 · "}점검 중`
@@ -121,10 +130,11 @@ const when = (iso: string) => new Intl.DateTimeFormat("ko-KR", { month: "numeric
  * storyboard and its confirmation, the drafts (2026-10-27: before the paid CTA voice and the sound pass), then the finished video and handouts. Where the pilot is closed
  * (production today) it says so instead.
  */
-export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, voiceText, title = "", short = false, channel, folded = false, finals = 0, recycled = false }: { sourceId: string; finalNote?: ReactNode; embedded?: boolean; onFinal?: () => void;
+export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, voiceText, title = "", short = false, channel, folded = false, finals = 0, recycled = false, pulling = false }: { sourceId: string; finalNote?: ReactNode; embedded?: boolean; onFinal?: () => void;
   /** 로건 11-13 「제작 탭 = 편집 화면 하나」: the editor screen in the page, where the video is now (with its one next action) and the five
    *  step cards folded under it; `finals` is how many finished versions 제작 lists. */ folded?: boolean; finals?: number;
   /** The project's 채널 카드 (다채널 1단계): its look is picked first; none means the 기본 채널, the first. */ channel?: string;
+  /** 풀링형 (기획안 형식): no 구독 대사, so its voice is not counted in the start confirm. */ pulling?: boolean;
   /** The video name, for downloaded file names. */ title?: string;
   /** The spoken paragraphs, for the company-money estimate shown before the voice is made (owner request 2026-10-25). */ voiceText?: string;
   /** 숏폼 (2026-10-28): drawn 9:16 by the render PC — no music, 구독 대사 or handouts, and its ④ goes straight on to the full video. */ short?: boolean;
@@ -134,18 +144,19 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
   const askVoice = async (text: string, again: string, takes = false) => {
     if (!text.trim() || recycled) return true;
     const estimate = voiceEstimate(text, myinVoice);
-    // 영상 만드는 컴퓨터가 음성을 만들면: 숏폼은 끊긴 문장만 한 번 더(로건 2026-10-29, 많게는 두 배), 롱폼은 문장마다 4번 만들어
-    // 가장 자연스러운 것을 고른다(음성 고르기 v2, 로건 2026-11-11) — 네 배.
-    const takesNote = !takes ? "" : short ? "끊긴 문장은 한 번 더 만들어 많게는 2배 · " : "문장마다 4번 만들어 가장 자연스러운 것을 골라요 · ";
-    return cost.confirm({ model: myinVoice, amount: takes && !short ? estimate.krw * 4 : estimate.krw, detail: `${estimate.chars.toLocaleString("ko-KR")}자 · ${takesNote}${again}`, ok: "확인하고 만들기" });
+    // 영상 만드는 컴퓨터가 음성을 만들면: 숏폼은 끊긴 문장만 한 번 더(로건 2026-10-29, 많게는 두 배), 롱폼은 문단마다 한 번에(대표 2026-11-25).
+    const takesNote = !takes ? "" : short ? "끊긴 문장은 한 번 더 만들어 많게는 2배 · " : "문단마다 한 번에 만들어요 · ";
+    return cost.confirm({ model: myinVoice, amount: estimate.krw, detail: `${estimate.chars.toLocaleString("ko-KR")}자 · ${takesNote}${again}`, ok: "확인하고 만들기" });
   };
   // 로건 11-13: a 롱폼 that goes on by itself asks once, at the start, for every paid step up to the finished video — the voice and the
   // 구독 대사 voice (300자까지, as the editor's 「완성」 counted it) — and 「완성」 asks no more.
   const askStart = (text: string, takes: boolean, kept = "") => {
     if (recycled) return Promise.resolve(true);
-    const voice = voiceEstimate(text, myinVoice), cta = voiceEstimate("가".repeat(600), myinVoice);
-    return cost.confirm({ model: myinVoice, amount: voice.krw * (takes ? 4 : 1) + cta.krw, upTo: true, ok: "확인하고 시작",
-      detail: `${kept}음성 ${voice.chars.toLocaleString("ko-KR")}자${takes ? "(문장마다 4번 만들어 골라요)" : ""} + 구독 대사 음성(300자까지) · 지금 한 번 확인하면 「완성」까지 다시 묻지 않아요 · 켜 둔 GPT 화면 검사는 GPT 크레딧에서 따로 빠져요` });
+    const voice = voiceEstimate(text, myinVoice), cta = voiceEstimate("가".repeat(600), myinVoice), photos = MYIN_AI_PHOTOS_MAX * AI_PHOTO_KRW;
+    // 쉼 · 음이탈 점검 → 다시 낭독: the caught paragraphs (up to ~1,600자) once more, twice. 풀링형 has no 구독 대사 (cta []).
+    const again = voiceEstimate("가".repeat(Math.min(text.length, 1_600) * 2), myinVoice);
+    return cost.confirm({ model: myinVoice, amount: voice.krw + (pulling ? 0 : cta.krw) + photos + again.krw, upTo: true, ok: "확인하고 시작",
+      detail: `${kept}음성 ${voice.chars.toLocaleString("ko-KR")}자${takes && !short ? "(문단마다 한 번에)" : takes ? "(끊긴 문장은 한 번 더)" : ""}${pulling ? "" : " + 구독 대사 음성(300자까지)"} + 기획표가 고른 AI 사진(${MYIN_AI_PHOTOS_MAX}장까지, 장당 약 ${AI_PHOTO_KRW.toLocaleString("ko-KR")}원) + 쉼 · 음이탈 점검에 걸린 문단 다시 낭독(2번까지) · 지금 한 번 확인하면 「완성」까지 다시 묻지 않아요 · 켜 둔 GPT 화면 검사는 GPT 크레딧에서 따로 빠져요` });
   };
   const { accessToken } = useSession();
   const [run, setRun] = useState<MyinRun | null>(null);
@@ -190,7 +201,9 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
   }, [accessToken]);
   const draftWaiting = Boolean(run && !run.clipsReview && ["prep_pending", "clips_pending"].includes(run.stage));
   const finishWaiting = Boolean(run?.clipsReview && !short && ["cta_pending", "prep_pending", "prep_ready", "final_pending"].includes(run.stage));
-  const { status: localPc, reload: reloadLocal } = useLocalRender(accessToken, !run || Boolean(run.scriptChanged) || editingSettings || draftWaiting || finishWaiting);
+  // 음성도 내 컴퓨터에서 (로건 요청 11-16): a longform's first voice waiting for the render PC (or given to a member's computer).
+  const voiceWaiting = Boolean(run && run.voiceOnPc && run.stage === "words_pending" && !run.words && run.layout !== "short" && run.status !== "blocked");
+  const { status: localPc, reload: reloadLocal } = useLocalRender(accessToken, !run || Boolean(run.scriptChanged) || editingSettings || draftWaiting || finishWaiting || voiceWaiting);
   const load = useCallback(async () => {
     if (!accessToken) return;
     try {
@@ -210,7 +223,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
   }, [accessToken, sourceId, onFinal]);
   useEffect(() => { void load(); }, [load]);
   const working = Boolean(run && (["breath_pending", "voice_pending", "words_pending", "cta_pending", "prep_pending", "clips_pending", "final_pending"].includes(run.stage) && run.status !== "blocked" || (job?.job && ["backlog", "active"].includes(job.job.status))
-    || (run.prepared?.redraw && run.prepared.redraw !== "failed")));
+    || (run.prepared?.redraw && run.prepared.redraw !== "failed") || run.aiPhotos?.state === "drawing"));
   // While a step waits on a person, another member may take it from their own account: this screen reads the run again every minute,
   // so a storyboard someone else confirmed does not stay here as 「확인 대기」 (2026-11-04: its button then failed with 「확인을 기다리는
   // 기획표가 없습니다」).
@@ -300,8 +313,17 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       : !localBlocker(localPc, target.localReady) && !target.workingSince ? <button type="button" className="secondary-button compact" disabled={Boolean(busy)}
         onClick={() => move(target, "local")}>내 컴퓨터로 만들기</button> : null}
   </div>;
+  // The render PC has not taken the voice for VOICE_FALLBACK_MS: offer this computer, when it has the voice tools.
+  const voiceButtons = (target: MyinRun) => {
+    if (target.localVoice) return <div className="yt-actions"><small>음성 만드는 곳 · {target.localVoice.name}님 컴퓨터</small>
+      {!target.workingSince ? <button type="button" className="secondary-button compact" disabled={Boolean(busy)} onClick={() => void act("voice_place", () => post("/myin", "PATCH", { action: "voice_place", runId: target.id, place: "pc" }))}>영상 만드는 컴퓨터로 보내기</button> : null}</div>;
+    if (target.workingSince || !target.waitingSince || Date.now() - Date.parse(target.waitingSince) < VOICE_FALLBACK_MS) return null;
+    const blocker = localVoiceBlocker(localPc);
+    return <div className="yt-actions"><small>영상 만드는 컴퓨터가 5분 넘게 음성을 가져가지 않았어요{blocker ? ` · 내 컴퓨터로는 아직 못 해요(${blocker})` : ""}</small>
+      {!blocker ? <button type="button" className="secondary-button compact" disabled={Boolean(busy)} onClick={() => void act("voice_place", () => post("/myin", "PATCH", { action: "voice_place", runId: target.id, place: "local" }))}>내 컴퓨터로 돌리기</button> : null}</div>;
+  };
   const openSettings = () => {
-    if (run?.settings) setSettings({ place: run.settings.place, screenCheck: run.settings.screenCheck, confirm: run.settings.confirm ?? "auto" });
+    if (run?.settings) setSettings({ place: run.settings.place, voice: run.settings.voice ?? "pc", screenCheck: run.settings.screenCheck, confirm: run.settings.confirm ?? "auto" });
     setEditingSettings(true);
     window.setTimeout(() => document.getElementById("myin-settings")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
   };
@@ -321,7 +343,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
   // 장면 그림 → 「완성」: the paid steps approved at the start ask nothing more (로건 11-13); a video started before that asks as it did.
   const finishDraft = async (target: MyinRun) => {
     if (!target.paidOk) {
-      if (!window.confirm(`지금 기획표로 완성해요. ${maker(target)}가 사진을 확정하고 구독 대사 음성을 만든 뒤 1080p 60fps 전체 영상까지 이어서 만들어요. 시작할까요?`)) return;
+      if (!window.confirm(`지금 기획표로 완성해요. ${maker(target)}가 사진을 확정하고 구독 대사 음성을 만든 뒤 1080p 30fps 전체 영상까지 이어서 만들어요. 시작할까요?`)) return;
       if (target.storyboard && !await askVoice(target.storyboard.cta.map((c) => c.line).join("\n"), "이미 만든 문장은 다시 들지 않아요", Boolean(target.voiceOnPc))) return;
     }
     await act("clips", () => post("/editor", "POST", { action: "save", projectId: sourceId }));
@@ -424,13 +446,14 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       {run?.scriptChanged ? <p className="yt-note yt-warn">{short ? "확정한 대본이 바뀌었어요. 아래 작업은 옛 대본으로 만든 것이라 더 진행되지 않아요. 새로 만들면 기획표와 미리보기 확인도 다시 거쳐요." : "구성안 원고가 바뀌었어요. 아래 작업은 옛 원고로 만든 것이라 더 진행되지 않아요. 새로 만들면 기획표와 미리보기 확인도 다시 거쳐요."}</p> : null}
       {!run || (run.status === "blocked" && !run.words) || run.scriptChanged ? <div className="yt-actions">
         <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void start()}>{busy === "start" ? "시작하는 중…" : run?.scriptChanged ? short ? "바뀐 대본으로 음성 다시 만들기" : "바뀐 원고로 v13 음성 다시 만들기" : run ? short ? "음성 다시 시작" : "v13 음성 다시 시작" : short ? "음성 만들기" : "v13 음성 만들기"}</button>
-        {recycled ? <small>롱폼 음성을 잘라 써요 · 음성 비용 0원</small> : <small><CostTag kind="paid" amount={voiceText ? voiceEstimate(run?.scriptChanged && run.voiceReuse ? run.voiceReuse.text : voiceText, myinVoice).krw * (voiceOnPc && !short ? 4 : 1) : null} /> 같은 {short ? "대본" : "원고"}으로 다시 누르면 만든 음성을 이어 써요.</small> }
+        {recycled ? <small>롱폼 음성을 잘라 써요 · 음성 비용 0원</small> : <small><CostTag kind="paid" amount={voiceText ? voiceEstimate(run?.scriptChanged && run.voiceReuse ? run.voiceReuse.text : voiceText, myinVoice).krw : null} /> 같은 {short ? "대본" : "원고"}으로 다시 누르면 만든 음성을 이어 써요.</small> }
       </div> : null}
       {run ? <div className="yt-run">
         <div className="yt-run-head"><span className="status-pill" data-status={run.status === "blocked" && !run.words ? "failed" : run.words && !run.voiceFixes?.length ? "approved" : "scheduled"}>{run.voiceFixes?.length && run.stage === "words_pending" ? "고친 곳 다시 만드는 중" : run.words ? "받아쓰기·자막 완료" : phase}</span>
-          {run.voiceOnPc ? <small>음성 {run.paragraphs}문단 · 영상 만드는 컴퓨터가 문장마다 만들어 고름</small> : <small>음성 {run.paragraphsReady}/{run.paragraphs}문단</small>}
+          {run.voiceOnPc ? <small>음성 {run.paragraphs}문단 · 영상 만드는 컴퓨터가 문단마다 한 번에 만들어요</small> : <small>음성 {run.paragraphsReady}/{run.paragraphs}문단</small>}
           {run.style ? <small>채널 모양 {run.style.name} · v{run.style.version}</small> : null}
           {!run.words && run.stage === "words_pending" && run.status !== "blocked" ? <RunWait run={run} /> : null}</div>
+        {voiceWaiting ? voiceButtons(run) : null}
         {run.status === "blocked" && !run.words ? <StopNote run={run} /> : null}
         {run.stage === "voice_pending" ? <progress max={run.paragraphs} value={run.paragraphsReady} aria-label="음성 진행" /> : null}
         {run.words ? <small>낭독 {Math.floor(run.words.durationSeconds / 60)}분 {Math.round(run.words.durationSeconds % 60)}초 · 받아쓴 단어 {run.words.words.toLocaleString()}개 · 자막 {run.words.subtitleLines}줄</small> : null}
@@ -474,7 +497,13 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
           {board.summary ? <><strong>{board.summary.title}</strong><ul className="yt-list">{board.summary.points.map((p) => <li key={p}>{p}</li>)}</ul></> : <p>없음</p>}
           <p className="yt-note">{board.reasons.summary}</p></details></>}
         <details className="yt-details"><summary>사진 후보 {board.assets.filter((a) => a.kind !== "bgm").length}개</summary>
-          <ul className="yt-list">{board.assets.filter((a) => a.kind !== "bgm").map((a) => <li key={a.file}>{KIND[a.kind] ?? a.kind} · {a.file} · {a.source} · {a.license} — {a.use} <a href={a.url} target="_blank" rel="noreferrer">출처</a></li>)}</ul></details>
+          <ul className="yt-list">{board.assets.filter((a) => a.kind !== "bgm").map((a) => a.ai ? <li key={a.file}>AI 사진 · {a.file} · {a.desc} — {a.use}</li>
+            : <li key={a.file}>{KIND[a.kind] ?? a.kind} · {a.file} · {a.source} · {a.license} — {a.use} <a href={a.url} target="_blank" rel="noreferrer">출처</a></li>)}</ul></details>
+        {run.aiPhotos ? <div className={`yt-note${run.aiPhotos.state === "failed" ? " yt-warn" : ""}`} role="status">{run.aiPhotos.state === "drawing" && Date.now() - Date.parse(run.aiPhotos.at) < 5 * 60_000
+          ? `AI 사진 ${run.aiPhotos.files.length}장을 만들고 있어요(1분쯤). 다 되면 기획표가 저절로 이어져요.`
+          : <>AI 사진 {run.aiPhotos.files.length}장을 {run.aiPhotos.state === "drawing" ? "5분 넘게 만들지 못하고 있어요" : "만들지 못했어요"}: {run.aiPhotos.files.join(", ")} <button type="button" className="secondary-button" disabled={Boolean(busy)}
+            onClick={() => void cost.confirm({ model: MYIN_AI_PHOTO_MODEL, amount: run.aiPhotos!.files.length * AI_PHOTO_KRW, detail: `${run.aiPhotos!.files.length}장 · 1536×1024`, ok: "확인하고 만들기" })
+              .then((ok) => { if (ok) void act("ai_photos", () => post("/myin", "PATCH", { action: "ai_photos", runId: run.id })); })}>{busy === "ai_photos" ? "만드는 중…" : "AI 사진 다시 만들기"}</button></>}</div> : null}
         {run.renderer === "web" ? <WebShortSceneEdit runId={run.id} token={accessToken} storyboardAt={board.at} onSaved={() => void load()} onScene={(scene) => void showSheet(scene)} /> : null}
         <MyinOurImages key={run.id} runId={run.id} token={accessToken} open={Boolean(run.waitingPhotos?.length)} onSaved={() => void load()} onScene={(scene) => void showSheet(scene)} />
         {board.fuzzy.length ? <details className="yt-details"><summary>받아쓰기와 비슷한 구간으로만 찾은 문구 {board.fuzzy.length}개</summary>
@@ -577,7 +606,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
         <div className="yt-run"><div className="yt-run-head">
           <span><strong>다 확인했으면 전체 영상을 만들어요</strong><br /><small>{finalWhere(run)} · 저장하지 않은 사운드 변경은 들어가지 않아요</small></span>
           <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => {
-            if (!window.confirm(`지금 사진과 사운드로 1080p 60fps 전체 영상을 만들어요. ${finalWhere(run)}. 저장하지 않은 사운드 변경은 들어가지 않아요. 만들까요?`)) return;
+            if (!window.confirm(`지금 사진과 사운드로 1080p 30fps 전체 영상을 만들어요. ${finalWhere(run)}. 저장하지 않은 사운드 변경은 들어가지 않아요. 만들까요?`)) return;
             void act("final", () => post("/myin", "PATCH", { action: "final", runId: run.id }));
           }}>{busy === "final" ? "시작하는 중…" : "전체 영상 만들기"}</button></div></div>
       </> : null}

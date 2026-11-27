@@ -4,6 +4,7 @@ import type { CanonTrace } from "./canon-trace";
 import type { YpReviewer } from "./reviewers";
 import type { YpKind, YpRef } from "./project";
 import type { ThumbSavedEdit } from "./thumb-edit.ts";
+import { THUMB_STYLES, thumbLayout } from "./thumb-style.ts";
 import type { AdResult } from "./ad-results";
 import type { CardDraft, CardFormatId } from "../cardnews/formats.ts";
 import { narrationFromMarkdown } from "../youtube-narration-document.ts";
@@ -29,15 +30,20 @@ export const slotOf = (index: number): YpSlot | "예비" => index < SLOTS.length
 
 /** pick: a 롱폼 애니메이션 썸네일 picked from the AI's candidates — which picture, the copy and its blue word set on it, and what A and B
  *  differ in (카피 · 그림 · 배치) — so 제작 can set it again. path is then the composite PNG. */
-export interface YpThumbPick { candidate: string; accent?: string; diff?: "카피" | "그림" | "배치" }
+export interface YpThumbPick { candidate: string; accent?: string; diff?: "카피" | "그림" | "배치"; frame?: "person"; flip?: boolean }
+/** The frame a picked thumbnail was made in, carried into 제작's 다듬기 (인물형 2026-11-24). */
+export const pickFrame = (pick?: YpThumbPick | null) => pick?.frame === "person" ? { frame: "person" as const, ...(pick.flip ? { flip: true } : {}) } : {};
 export interface YpThumb { id: string; mode: "img" | "text"; path?: string; screen?: string; copy?: string; pick?: YpThumbPick }
 export interface YpPick { title: string; thumb: YpThumb | null }
 /** One national figure the staff AI read from KOSIS for the 기획안 (owner decision 2026-11-01): the PD keeps or removes it,
  *  and the 원고 and the 설명란 [인용 및 출처] use it as written. */
 export interface YpStat { fact: string; value: string; unit: string; period: string; table: string; organization: string; sourceUrl: string }
+/** 롱폼 형식 (원고 공정 정본 §10, 대표 2026-11-24): 키풀링형 = 진단으로 잇는 설명형(기본), 풀링형 = 원리 하나를 쉽게 푸는 낭독형. */
+export type YpFormat = "keypulling" | "pulling";
+export const ypFormat = (plan: Pick<YpPlan, "format"> | null | undefined): YpFormat => plan?.format === "pulling" ? "pulling" : "keypulling";
 export interface YpPlan {
   titles: { id: string; text: string }[]; thumbs: YpThumb[];
-  opening: string; body: string; closing: string; note: string; extraRefs: YpRef[]; stats?: YpStat[];
+  opening: string; body: string; closing: string; note: string; extraRefs: YpRef[]; stats?: YpStat[]; format?: YpFormat;
   /** The staff AI's last draft: who made it, and (when the PD had already written) the draft waiting beside the fields. */
   ai?: { by: string; model: string; at: string; jobId: string; patterns?: YpPatterns };
   aiDraft?: Pick<YpPlan, "titles" | "thumbs" | "opening" | "body" | "closing" | "note" | "stats">;
@@ -115,11 +121,13 @@ export interface YpUpload {
   privacy: "private" | "unlisted" | "public";
   /** 예약 (로건 요청 10/30): goes up private and YouTube makes it public at this time. */
   publishAt?: string | null;
+  /** AI 사용 공개 (직원 요청 11-19): YouTube's altered or synthetic content label, sent as status.containsSyntheticMedia. Unset = not chosen yet. */
+  ai?: "yes" | "no" | null;
   /** 광고 성과 1단계 (로건 QA 10/30): an ad's numbers per period, copied from Meta Ads Manager. */
   ads?: AdResult[];
   run: { at: string; by: string; status: "done" | "failed"; videoId?: string; videoUrl?: string; finalV?: number; /** Which final was sent (its time), 유쓰 요청 공통 조건 3. */ finalAt?: string; thumbnail?: "ok" | "fail" | "skip"; error?: string;
     /** What YouTube reports after the upload: a project not yet audited by YouTube can only upload private. */
-    privacy?: string; publishAt?: string } | null;
+    privacy?: string; publishAt?: string; /** What YouTube reports for the AI label after the upload. */ ai?: boolean } | null;
 }
 /** One SEO 칼럼 (owner request 2026-10-25): the staff AI's HTML from the 구성안 원고 (lib/seo-column.ts), and what fills its image places. */
 export interface YpColumnItem {
@@ -224,19 +232,19 @@ export interface YpStageRecord<K extends YpStageKind = YpStageKind> { id: string
 export type YpStages = { [K in YpStageKind]: YpStageRecord<K> };
 
 const id = () => (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`).slice(0, 12);
-// 로건 QA 10/30: animation is made at 60 fps (meeting decision; Logan's engine renders 60 fps since 2026-10-29), and each kind marks
+// 대표 2026-11-25: animation is made at 30 fps again (60 fps from 2026-10-29 doubled the render time); each kind marks
 // only its own default — both 4K and FHD read 「기본」 before.
 export const SPEC_DEFAULT: Record<YpKind, YpOutline["spec"]> = {
   // 로건 QA 10/30: the 러닝타임 was the one field typed again every time — a new longform starts at the usual length.
   live: { runtimeMin: 10, res: "4K (선명 · 기본)", fps: "30fps (기본)", ratio: "16:9 가로 (롱폼 · 기본)" },
-  anim: { runtimeMin: 12, res: "FHD 1080p (기본)", fps: "60fps (기본)", ratio: "16:9 가로 (롱폼 · 기본)" },
+  anim: { runtimeMin: 12, res: "FHD 1080p (기본)", fps: "30fps (기본)", ratio: "16:9 가로 (롱폼 · 기본)" },
   short: { runtimeMin: null, res: "720 × 1280", fps: "30fps (기본)", ratio: "9:16 세로" },
   card: { runtimeMin: null, res: "1080 × 1350", fps: "—", ratio: "4:5 세로" },
 };
 const LONG_RATIOS = ["16:9 가로 (롱폼 · 기본)", "9:16 세로", "1:1 정사각"];
 export const SPEC_OPTIONS: Record<YpKind, Record<"res" | "fps" | "ratio", string[]>> = {
   live: { res: ["4K (선명 · 기본)", "FHD 1080p", "QHD 1440p"], fps: ["30fps (기본)", "24fps", "60fps"], ratio: LONG_RATIOS },
-  anim: { res: ["FHD 1080p (기본)", "4K (선명)", "QHD 1440p"], fps: ["60fps (기본)", "30fps", "24fps"], ratio: LONG_RATIOS },
+  anim: { res: ["FHD 1080p (기본)", "4K (선명)", "QHD 1440p"], fps: ["30fps (기본)", "60fps", "24fps"], ratio: LONG_RATIOS },
   short: { res: ["720 × 1280", "1080 × 1920"], fps: ["30fps (기본)", "60fps"], ratio: ["9:16 세로"] },
   // 카드뉴스 (설계서 2026-10-30): one size, no 구성안 screen reads these.
   card: { res: ["1080 × 1350"], fps: ["—"], ratio: ["4:5 세로"] },
@@ -255,9 +263,12 @@ export const UTM_DEFAULT_URL = UTM_DESTS[0][1];
 export const utmBase = (utm: Pick<YpUpload["utm"], "url">) => /^https:\/\/[^\s]+$/.test(utm.url?.trim() ?? "") ? utm.url!.trim() : UTM_DEFAULT_URL;
 /** utm_content: the project code, known before the upload, so the 단축 링크 can be made from the start. */
 export const utmCode = (projectId: string) => `yp-${projectId.slice(0, 8)}`;
+/** The campaign that goes with a 보낼 곳 preset (정밀 진단 → sales, 무료 진단 → leed); other places keep the one chosen. */
+export const campaignFor = (url: string, current: string) => url.endsWith("/services/n6") ? "sales" : url.endsWith("/services/free") ? "leed" : current;
 export const UTM_OPTIONS = {
   cat: [["키", "키"], ["풀링", "풀링"], ["키+풀링", "키+풀링"]],
-  camp: [["jindan_report", "jindan_report (기본)"], ["keycontent", "keycontent (키 콘텐츠)"], ["lecture", "lecture (강의)"], ["community", "community (커뮤니티)"]],
+  // 링크 대장의 캠페인 값 (로건 요청 2026-11-24): the same codes 링크관리 offers, so a video's row reads like every other one.
+  camp: [["sales", "정밀검사 (sales)"], ["leed", "무료검사 (leed)"], ["core", "핵심보고서 (core)"], ["free", "무료강의 (free)"]],
 } as const;
 
 export function emptyStage<K extends YpStageKind>(kind: K, projectKind: YpKind | null): YpStageData[K] {
@@ -266,7 +277,7 @@ export function emptyStage<K extends YpStageKind>(kind: K, projectKind: YpKind |
       opening: "", body: "", closing: "", note: "", extraRefs: [] },
     outline: { spec: { ...SPEC_DEFAULT[projectKind ?? "anim"] }, script: "", versions: [] },
     make: { editDue: "", status: "prep", statusAt: {}, log: [], finals: [], thumbs: {}, aTitle: "", aReason: "" },
-    upload: { utm: { cat: "키", dest: "진단", camp: "jindan_report", next: "", short: "" }, srt: null, desc: "", pinned: "", hiddenTags: [], descBy: null, privacy: "private", run: null },
+    upload: { utm: { cat: "키", dest: "진단", camp: "sales", next: "", short: "" }, srt: null, desc: "", pinned: "", hiddenTags: [], descBy: null, privacy: "private", run: null },
     column: { items: [] },
     shortTopics: { items: [] },
     shortScript: { query: "", refs: [], text: "", hooks: [], insight: "", formula: "", headCopy: "" },
@@ -309,7 +320,14 @@ export function draftMissing(plan: YpPlan, kind?: YpKind | null) {
   for (const [index, name] of [[0, "첫째"], [1, "둘째"]] as const) if (!plan.titles[index]?.text.trim()) return `${name} 줄 제목(${slotOf(index)})을 써 주세요`;
   // 롱폼 애니메이션 (썸네일 자동 제작 2026-11-09): the 기획안 confirm fixes the thumbnails themselves, so A and B are pictures —
   // picked from the candidates or put in by hand.
-  if (kind === "anim") { if (!plan.thumbs[0]?.path || !plan.thumbs[1]?.path || plan.thumbs[0].mode !== "img" || plan.thumbs[1].mode !== "img") return "썸네일 A · B 필요"; }
+  if (kind === "anim") for (const index of [0, 1] as const) {
+    const thumb = plan.thumbs[index];
+    if (thumb?.path && thumb.mode === "img") continue;
+    // 대표 2026-11-24 (풀링형 3편): the button only said 「썸네일 A · B 필요」 while the 기획안 copy was too long for the frame — say why.
+    const broken = thumb?.copy?.trim() ? thumbLayout({ text: thumb.copy }, THUMB_STYLES.anim).checks.filter(check => !check.ok) : [];
+    return broken.length ? `썸네일 ${slotOf(index)} 문구가 기본형 틀에 안 들어가요(${broken.map(check => check.text).join(" · ")}) — 줄을 나누거나 줄이거나, 인물형 틀로 골라요`
+      : `썸네일 ${slotOf(index)}를 후보에서 골라 넣어 주세요`;
+  }
   else for (const [index, name] of [[0, "첫 번째"], [1, "두 번째"]] as const) if (!thumbFilled(plan.thumbs[index])) return `${name} 썸네일 후보(${slotOf(index)})를 넣어 주세요`;
   if (!plan.opening.trim()) return "오프닝을 써 주세요";
   if (!plan.body.trim()) return "본론을 써 주세요";
@@ -327,12 +345,16 @@ export function confirmPlan(plan: YpPlan, at: string): NonNullable<YpPlan["confi
   return confirmed;
 }
 /** Plan fields → the keys the approver ticks in 수정 요청 (GATE_FIELDS.draft). */
-export const PLAN_FIELD_KEY: Record<"titles" | "thumbs" | "opening" | "body" | "closing" | "note" | "extraRefs" | "stats", string> = {
-  titles: "draft.tt", thumbs: "draft.tt", opening: "draft.opening", body: "draft.body", closing: "draft.closing", note: "draft.note", extraRefs: "draft.note", stats: "draft.note",
+export const PLAN_FIELD_KEY: Record<"titles" | "thumbs" | "format" | "opening" | "body" | "closing" | "note" | "extraRefs" | "stats", string> = {
+  titles: "draft.tt", format: "draft.format", thumbs: "draft.tt", opening: "draft.opening", body: "draft.body", closing: "draft.closing", note: "draft.note", extraRefs: "draft.note", stats: "draft.note",
 };
 
 // ── 구성안 (S4) ──
-export const CHARS_PER_MINUTE_V1 = 350;
+export const CHARS_PER_MINUTE_V1 = 390;   // 공백 뺀 350자 = 1분이던 것을 낭독 D(1.1배 · 짧은 문단 사이, 대표 2026-11-25)로
+/** 풀링형 낭독 D (대표 2026-11-25, 풀링형 정본 v0.5): 공백 뺀 글자 × 0.148초. Fish 0.94배 그대로 낭독한 실측은 0.165초
+ *  (원리 1편 3,254자 538초 · 2편 3,077자 508초 · 3편 리메이크 4,343자 713초); D는 문단 사이 0.3초 + 1.1배라 3편이 636초. */
+export const PULLING_SEC_PER_CHAR = 0.148;
+const secPerChar = (pulling: boolean) => pulling ? PULLING_SEC_PER_CHAR : 60 / CHARS_PER_MINUTE_V1;
 /** Spoken letters (no spaces, headings, tables or images) — the 예상 길이 count (3차 결정 12). */
 export function scriptChars(markdown: string) {
   // The editor writes [ ] as \[ \] — the backslashes are not letters anyone says.
@@ -374,9 +396,9 @@ export const minSec = (seconds: number) => { const s = Math.round(seconds); retu
  * The 원고's length against the 러닝타임: by its letters, or by the made voice once there is one (`voiceSec`). 로건 QA 10/30: ±20%
  * called 13분 6초 「맞아요」 for 12분 and rounded a 9분 35초 gap to 10분 — now within 30초 (or 5%) passes and the gap is exact.
  */
-export function lengthEstimate(markdown: string, runtime: number | null, voiceSec?: number | null) {
+export function lengthEstimate(markdown: string, runtime: number | null, voiceSec?: number | null, pulling = false) {
   const chars = scriptChars(markdown);
-  const minutes = chars / CHARS_PER_MINUTE_V1;
+  const minutes = chars * secPerChar(pulling) / 60;
   const label = !chars ? "—" : minutes < 1 ? `약 ${Math.round(minutes * 60)}초` : `약 ${Math.floor(minutes)}분${Math.round((minutes % 1) * 60) >= 30 ? " 30초" : ""}`;
   if (!chars || !runtime || runtimeError(runtime)) return { chars, label, verdict: null as null | { ok: boolean; text: string } };
   const gap = (voiceSec ?? minutes * 60) - runtime * 60, what = voiceSec ? "실제 음성이 " : "";
@@ -384,9 +406,9 @@ export function lengthEstimate(markdown: string, runtime: number | null, voiceSe
     : { ok: false, text: `${what}정한 러닝타임(${runtime}분)보다 ${minSec(Math.abs(gap))} ${gap < 0 ? "짧아요" : "길어요"} · 내용이 필요하면 러닝타임을 고쳐요` } };
 }
 /** 원고 문단 번호 · 예상 시각 (로건 QA 10/30): each spoken paragraph's start, spread over the made voice's length when there is one. */
-export function paragraphTimes(spoken: string[], voiceSec?: number | null) {
+export function paragraphTimes(spoken: string[], voiceSec?: number | null, pulling = false) {
   const sizes = spoken.map(text => text.replace(/\s/g, "").length), total = sizes.reduce((sum, size) => sum + size, 0);
-  const length = voiceSec || total / CHARS_PER_MINUTE_V1 * 60;
+  const length = voiceSec || total * secPerChar(pulling);
   let before = 0;
   return spoken.map((text, index) => { const at = total ? before / total * length : 0; before += sizes[index]; return { n: index + 1, at, text }; });
 }

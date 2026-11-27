@@ -82,21 +82,30 @@ export function overlapWith(source: string) {
   return (line: string) => canonOverlap(line, windows);
 }
 // 원고 공정 정본 §8 (정본 묶음 v2.0, 2026-10-26): 공백 포함 490자 = 1분, measured on the v13 voice (6,669자 → 13분 40초).
-export const CHARS_PER_MINUTE = 490;
+// 낭독 D (대표 2026-11-25: every longform 1.1× with short paragraph gaps, as 풀링형 364 → 405): 공백 포함 545자 = 1분. 숏폼 keeps 490.
+export const CHARS_PER_MINUTE = 545;
+const PARTICLE = "(?:에서|에게|에|를|을|보다|와|과|으로|로|의|는|은|도|만|까지|부터|처럼|이랑|랑|하고|가|이)";
+/** A number ending in 2 with a particle right after it (「2에서」 「12를」), not a unit (「2단」 「2가지」) or a decimal part (「1.2」 stays as it is read). */
+export const TWO_PARTICLE = new RegExp(`(?<![0-9.,])[0-9]*2${PARTICLE}(?=$|[\\s,.!?」"')…])`, "g");
+/** 대답 「네」 with a particle (「네나」 「네와」 「네라고」) or 너 as 「네가」: the voice reads it 「니」. */
+export const NE_PARTICLE = new RegExp(`(?<=^|[\\s"「'(“])네(?:가|게|나|와|로|를|도|만|라고|랑|하고)(?=$|[\\s,.!?」"')…])`, "g");
+// 풀링형 낭독 D (대표 2026-11-25, 풀링형 정본 v0.5 §2): Fish 0.94 → 문단 사이 0.3초 → 1.1배. 공백 뺀 글자 0.148초 → 1분 405자, 9분 ≈ 3,645자.
+export const PULLING_CHARS_PER_MINUTE = 405;
 
 /**
  * Body rules that also apply when a staff member edits the narration text directly (no headings left to check).
  * `canon` is the text of the four 원고 정본 for the 정본 겹침 count; without it that count is skipped.
  */
-export function checkScriptBody(paragraphs: string[], targetMinutes: number | null, sourced: Set<number> | null = null, canon = "") {
+export function checkScriptBody(paragraphs: string[], targetMinutes: number | null, sourced: Set<number> | null = null, canon = "", pulling = false) {
   const issues: string[] = [];
   // Length is a note, not a refusal (owner decision 2026-10-26): good content is not cut or padded to fit; the 러닝타임 follows the 원고.
   const notes: string[] = [];
-  const chars = paragraphs.reduce((sum, paragraph) => sum + paragraph.length, 0);
+  const perMinute = pulling ? PULLING_CHARS_PER_MINUTE : CHARS_PER_MINUTE, spaces = pulling ? "공백 제외 " : "";
+  const chars = paragraphs.reduce((sum, paragraph) => sum + (pulling ? paragraph.replace(/\s/g, "").length : paragraph.length), 0);
   if (targetMinutes) {
-    const target = targetMinutes * CHARS_PER_MINUTE;
+    const target = targetMinutes * perMinute;
     if (Math.abs(chars - target) > target * 0.15)
-      notes.push(`총 ${chars}자(약 ${Math.round(chars / CHARS_PER_MINUTE)}분) — 목표 ${targetMinutes}분(${target}자)과 15% 넘게 다릅니다. 내용에 필요한 길이면 러닝타임을 원고에 맞춰 고칩니다.`);
+      notes.push(`총 ${spaces}${chars}자(약 ${Math.round(chars / perMinute)}분) — 목표 ${targetMinutes}분(${spaces}${target}자)과 15% 넘게 다릅니다. 내용에 필요한 길이면 러닝타임을 원고에 맞춰 고칩니다.`);
   }
   let subscribe = 0;
   const windows = canon ? canonWindows(canon) : null;
@@ -105,6 +114,9 @@ export function checkScriptBody(paragraphs: string[], targetMinutes: number | nu
     if (paragraph.includes("\n")) issues.push(`${n}번 문단 안에 줄바꿈이 있습니다.`);
     if (paragraph.length < 80 || paragraph.length > 300) issues.push(`${n}번 문단 ${paragraph.length}자 — 80~300자여야 합니다.`);
     for (const [kind, words] of BANNED) for (const word of words) if (bannedAt(paragraph, word)) issues.push(`${n}번 문단 ${kind} "${word}"`);
+    // 낭독 규칙 (대표 2026-11-25, 가족 영상 낭독 규칙 6판): 숫자 2에 조사가 붙으면 「이에서」처럼, 대답 「네」에 조사가 붙으면 「니」로 읽힌다.
+    for (const m of paragraph.matchAll(TWO_PARTICLE)) issues.push(`${n}번 문단 「${m[0].trim()}」 — 숫자 2 뒤에 조사를 붙이면 「이」로 읽혀요. 「2단」「2분의 1」처럼 단위를 붙이거나 말을 바꿔요.`);
+    for (const m of paragraph.matchAll(NE_PARTICLE)) issues.push(`${n}번 문단 「${m[0].trim()}」 — 「네」에 조사를 붙이면 「니」로 읽혀요. 대답이면 「네, 아니면 아니요로」처럼 쉼표로 떼고, 상대를 가리키면 「너」를 써요.`);
     const concept = paragraph.match(CONCEPT_NAME);
     if (concept) issues.push(`${n}번 문단 작업어 "${concept[0]}" — '축'·'결'을 개념 이름으로 쓰지 않습니다.`);
     const links = CHAIN.filter((link) => link.test(paragraph)).length;
@@ -147,7 +159,8 @@ export function checkScriptBody(paragraphs: string[], targetMinutes: number | nu
   return { chars, issues, notes };
 }
 
-export function checkManuscript(text: string, options: { title: string; targetMinutes: number; canon?: string }): ManuscriptCheck {
+/** pulling = 풀링형 (풀링형 정본 §2: 소제목 8~10개) — sections up to 10 instead of 5; every other rule is the same. */
+export function checkManuscript(text: string, options: { title: string; targetMinutes: number; canon?: string; pulling?: boolean }): ManuscriptCheck {
   const lines = text.replace(/\r\n?/g, "\n").trim().split("\n");
   const issues: string[] = [];
   const heading = lines[0]?.match(/^#\s+(.+)$/);
@@ -179,9 +192,10 @@ export function checkManuscript(text: string, options: { title: string; targetMi
   }
   if (orphan) issues.push("첫 문단 앞에 \"## 섹션 제목\"이 있어야 합니다.");
   if (perSection.includes(0)) issues.push("문단이 없는 섹션이 있습니다.");
-  if (sections.length < 2 || sections.length > 5) issues.push(`섹션(##)이 ${sections.length}개입니다. 2~5개여야 합니다.`);
+  const most = options.pulling ? 10 : 5;
+  if (sections.length < 2 || sections.length > most) issues.push(`섹션(##)이 ${sections.length}개입니다. 2~${most}개여야 합니다.`);
   for (const name of sections) if (name.length > 8) issues.push(`섹션 제목 "${name}"이 ${name.length}자입니다(8자 이내).`);
-  const body = checkScriptBody(paragraphs, options.targetMinutes, sourced, options.canon);
+  const body = checkScriptBody(paragraphs, options.targetMinutes, sourced, options.canon, options.pulling);
   const all = [...issues, ...body.issues];
   return { narration: paragraphs.join("\n\n"), sections, paragraphs, chars: body.chars, notes: body.notes,
     issues: all.length > MAX_ISSUES ? [...all.slice(0, MAX_ISSUES), `외 ${all.length - MAX_ISSUES}건`] : all };

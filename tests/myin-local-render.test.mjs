@@ -42,7 +42,7 @@ test("④ on a member's computer: the render PC makes the 구독 대사 first, t
   assert.match(worker, /rendered \|\| processMyinCta\(\)\)\.then\(\(rendered\) => rendered \|\| processMyinRedraw\(\)\)\.then\(\(rendered\) => rendered \|\| processMyinPrep\(\)\)/, "the render PC makes the lines");
   assert.match(worker, /action: "myin_final_claim", \.\.\.\(local \? \{ engine: engine\(\) \} : \{ \.\.\.shortClaim, \.\.\.pcField \}\)/);
   const route = readFileSync("app/api/v1/content/youtube-automation/local-render/route.ts", "utf8");
-  assert.match(route, /input\.action === "myin_final_claim" \|\| input\.action === "myin_redraw_claim"\) await assertLocalEngine/, "only on the render PC's engine");
+  assert.match(route, /input\.action === "myin_final_claim" \|\| input\.action === "myin_redraw_claim" \|\| input\.action === "myin_claim"\) await assertLocalEngine/, "only on the render PC's engine");
 });
 
 test("내 컴퓨터 can take drafts only while on and on the render PC's engine", () => {
@@ -85,7 +85,7 @@ test("the engine fingerprint follows the worker's own files, wherever the releas
   const release = (extra) => {
     const root = mkdtempSync(path.join(os.tmpdir(), "myin-release-"));
     mkdirSync(path.join(root, "tools")); mkdirSync(path.join(root, "lib"));
-    for (const name of ["youtube-media-worker.mjs", "shortform-diagrams.mjs", "shortform-renderer.mjs", "image-ad-renderer.mjs"]) copyFileSync(path.join("tools", name), path.join(root, "tools", name));
+    for (const name of ["youtube-media-worker.mjs", "myin-split.mjs", "shortform-diagrams.mjs", "shortform-renderer.mjs", "image-ad-renderer.mjs"]) copyFileSync(path.join("tools", name), path.join(root, "tools", name));
     copyFileSync(path.join("lib", "shortform-diagram-catalog.json"), path.join(root, "lib", "shortform-diagram-catalog.json"));
     if (extra) writeFileSync(path.join(root, "tools", "extra.mjs"), extra);
     return root;

@@ -1,4 +1,5 @@
 "use client";
+import { CountUp } from "@/components/count-up";
 
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -109,8 +110,8 @@ export function TaxInvoicePanel({ token, mode }: { token: string | null; mode: "
     </div><button type="button" className="secondary-button compact" disabled={!invoices.length} onClick={download}>CSV 내보내기</button></div>
     {mode === "sales" && data ? <div className="fin-tiles fin-t5">
       {([["토스 결제", "취소 뺀 금액", data.totals.toss], ["세금계산서", "홈택스에서 올린 것", data.totals.invoices], ["외부 매출", "직접 입력한 매출", data.totals.external], ["겹친 매출", "같은 매출이라 한 번만 셈", data.totals.linkedExcluded ? -data.totals.linkedExcluded : 0]] as const).map(([label, hint, value]) =>
-        <div key={label} className="fin-tile"><span className="fin-l">{label}</span><span className="fin-v">{won(value)}</span><span className="fin-d">{hint}</span></div>)}
-      <div className="fin-tile fin-total"><span className="fin-l">합계</span><span className="fin-v">{won(data.totals.total)}</span><span className="fin-d">겹친 매출은 한 번만</span></div>
+        <div key={label} className="fin-tile"><span className="fin-l">{label}</span><span className="fin-v"><CountUp>{won(value)}</CountUp></span><span className="fin-d">{hint}</span></div>)}
+      <div className="fin-tile fin-total"><span className="fin-l">합계</span><span className="fin-v"><CountUp>{won(data.totals.total)}</CountUp></span><span className="fin-d">겹친 매출은 한 번만</span></div>
     </div> : null}
     {mode === "sales" && data && data.totals.suspect ? <div className="fin-callout fin-warn" role="status"><b>확인 필요</b><span className="fin-grow">「같은 매출 의심 · 검토 필요」 계산서 {won(data.totals.suspect)}이 합계에 아직 두 번 들어가 있어요. 아래 표에서 같은 매출인지 골라 주세요.</span></div> : null}
     {mode === "sales" ? <div className="fin-upload">

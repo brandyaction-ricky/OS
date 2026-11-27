@@ -48,13 +48,13 @@ test("unchanged paragraphs come from the earlier voice under their new numbers; 
 
 test("the OS names earlier voices of the same video and voice, and the cost asks only for the changed paragraphs", () => {
   const run = read("lib/server/myin-run.ts");
-  assert.match(run, /async function voiceDonors[\s\S]{0,700}m\.voiceOn && m\.words && m\.voiceModel === like\.voiceModel[\s\S]{0,120}m\.voiceReferenceFingerprint === like\.voiceReferenceFingerprint/);
-  assert.match(run, /const earlier = run\.voiceOn && !run\.words && !run\.voiceFixes\?\.length \? \(await voiceDonors\(service, run\.sourceId, run, record\.created_at\)/);
+  assert.match(run, /async function voiceDonors[\s\S]{0,900}m\.voiceOn && m\.words && m\.voiceModel === like\.voiceModel[\s\S]{0,120}m\.voiceReferenceFingerprint === like\.voiceReferenceFingerprint/);
+  assert.match(run, /const earlier = run\.voiceOn && !run\.words && !run\.voiceFixes\?\.length \? \(await voiceDonors\(service, run\.sourceId, run, tempo, record\.created_at\)/);
   assert.match(run, /\.\.\.\(changed \? \{ voiceReuse: await voiceReuse\(/);
   const panel = read("components/myin-v13-panel.tsx");
   assert.match(panel, /const reuse = run\?\.scriptChanged \? run\.voiceReuse : null;/);
   assert.match(panel, /바뀐 문단 \$\{reuse\.make\}개만 새로 만들어요/);
   const worker = read("tools/youtube-media-worker.mjs");
-  assert.match(worker, /reuseEarlierVoice\(work, job\.paragraphs\.map\(\(p\) => p\.text\), earlier\)/);
+  assert.match(worker, /reuseEarlierVoice\(work, job\.paragraphs\.map\(\(p\) => p\.text\), earlier, tempo\)/);
   assert.match(worker, /finally \{ for \(const name of readdirSync\(voiceDir\)\) if \(name\.endsWith\(REUSE_MARK\)\) rmSync/);
 });

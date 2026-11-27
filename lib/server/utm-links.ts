@@ -4,8 +4,8 @@ import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { UTM_BRANDS, UTM_KINDS, buildUtmUrl, normalizeUtmCode, parseOriginUrl, utmCodeRule, utmConflicts, utmOptionClash, validUtmCode, type UtmKind } from "@/lib/utm";
 import { UTM_LEDGER, utmLedgerMarkdown, type UtmLedgerRow } from "@/lib/utm-ledger";
-import { makeMyinShortLink } from "./myin-short-links";
-import { makeEduLink } from "./edu-short-links";
+import { changeMyinShortLink, makeMyinShortLink } from "./myin-short-links";
+import { changeEduLink, makeEduLink } from "./edu-short-links";
 import { authenticateRequest } from "./auth";
 
 // Staff (not partners, not AI keys) use 링크관리; admins also rename or turn off shared choices (기능요청서 2026-10-28 §5).
@@ -79,10 +79,10 @@ export const utmLinkSchema = z.object({
   target: memo(200), location: memo(200), etc: memo(500), confirmOverwrite: z.boolean().default(false),
 }).strict();
 
-export async function createUtmLink(input: z.infer<typeof utmLinkSchema>, actor: UtmActor) {
+type UtmTarget = { originUrl: string; sourceId: string; mediumId: string; campaignId: string; contentId: string | null; confirmOverwrite: boolean };
+/** The checked UTM address for a destination and four choices. A turned-off choice is refused unless the link already had it (`kept`). */
+async function resolveUtm(input: UtmTarget, kept: string[] = []) {
   const db = createServiceSupabase();
-  const { data: again } = await db.from("os_utm_links").select(LINK_COLUMNS).eq("request_id", input.requestId).maybeSingle();
-  if (again) return { link: again as UtmLink, repeated: true };
   const parsed = parseOriginUrl(input.originUrl);
   if ("error" in parsed) throw new ApiError(400, "UTM_ORIGIN_INVALID", parsed.error);
   const wanted: Record<UtmKind, string | null> = { source: input.sourceId, medium: input.mediumId, campaign: input.campaignId, content: input.contentId };
@@ -94,16 +94,23 @@ export async function createUtmLink(input: z.infer<typeof utmLinkSchema>, actor:
     const id = wanted[kind], option = (options as UtmOption[]).find(row => row.id === id);
     if (!id) { params[kind] = null; continue; }
     if (!option || option.kind !== kind) throw new ApiError(400, "UTM_OPTION_INVALID", "선택값을 다시 골라 주세요.");
-    if (!option.active) throw new ApiError(400, "UTM_OPTION_INACTIVE", `꺼진 선택값이에요: ${option.label}. 다른 값을 고르세요.`);
+    if (!option.active && !kept.includes(option.id)) throw new ApiError(400, "UTM_OPTION_INACTIVE", `꺼진 선택값이에요: ${option.label}. 다른 값을 고르세요.`);
     params[kind] = { code: option.code, label: option.label };
   }
   const codes = { source: params.source!.code, medium: params.medium!.code, campaign: params.campaign!.code, content: params.content?.code ?? null };
   const conflicts = utmConflicts(parsed.url, codes);
   if (conflicts.length && !input.confirmOverwrite) throw new ApiError(409, "UTM_OVERWRITE_CONFIRM", "원본 주소에 이미 UTM 값이 있어요. 바뀌는 값을 확인해 주세요.", { conflicts });
+  return { origin_url: parsed.url.href, source_id: input.sourceId, medium_id: input.mediumId, campaign_id: input.campaignId, content_id: input.contentId, params, utm_url: buildUtmUrl(parsed.url, codes) };
+}
+
+export async function createUtmLink(input: z.infer<typeof utmLinkSchema>, actor: UtmActor) {
+  const db = createServiceSupabase();
+  const { data: again } = await db.from("os_utm_links").select(LINK_COLUMNS).eq("request_id", input.requestId).maybeSingle();
+  if (again) return { link: again as UtmLink, repeated: true };
+  const utm = await resolveUtm(input);
   const { data: link, error: insertError } = await db.from("os_utm_links").insert({
-    request_id: input.requestId, brand: input.brand, usage: input.usage, origin_url: parsed.url.href,
-    source_id: input.sourceId, medium_id: input.mediumId, campaign_id: input.campaignId, content_id: input.contentId, params,
-    target: input.target, location: input.location, etc: input.etc, utm_url: buildUtmUrl(parsed.url, codes), created_by: actor.id,
+    request_id: input.requestId, brand: input.brand, usage: input.usage, ...utm,
+    target: input.target, location: input.location, etc: input.etc, created_by: actor.id,
   }).select(LINK_COLUMNS).single();
   if (unique(insertError)) {
     const { data: same } = await db.from("os_utm_links").select(LINK_COLUMNS).eq("request_id", input.requestId).single();
@@ -113,17 +120,59 @@ export async function createUtmLink(input: z.infer<typeof utmLinkSchema>, actor:
   return { link: link as UtmLink, repeated: false };
 }
 
-// 링크 사용처·관리 메모 고치기 (수정 요청 2026-11-11): only the human notes change. The id, addresses, UTM values, short link
-// (and so its clicks) stay; the row's updated_at guards a simultaneous edit, and the 링크 대장 document's versions keep each earlier text.
-export const utmLinkUpdateSchema = z.object({ usage: z.string().trim().min(1).max(200), target: memo(200), location: memo(200), etc: memo(500), expectedUpdatedAt: z.string().min(1).max(64) }).strict();
+// 링크 고치기 (수정 요청 2026-11-11 → 전체 고치기 11-26): the notes always; with `originUrl` also the brand, destination and UTM values.
+// The id stays, and so does the short link: when the UTM address changes, the short link is pointed at the new one first (an
+// address already handed out keeps working, now with the right values). The row's updated_at guards a simultaneous edit, and the
+// 링크 대장 document's versions keep each earlier text.
+export const utmLinkUpdateSchema = z.object({
+  usage: z.string().trim().min(1).max(200), target: memo(200), location: memo(200), etc: memo(500), expectedUpdatedAt: z.string().min(1).max(64),
+  brand: z.enum(UTM_BRANDS.map(row => row.brand) as [string, ...string[]]).optional(), originUrl: z.string().max(2000).optional(),
+  sourceId: z.string().uuid().optional(), mediumId: z.string().uuid().optional(), campaignId: z.string().uuid().optional(), contentId: z.string().uuid().nullable().optional(),
+  confirmOverwrite: z.boolean().default(false),
+}).strict();
+const changedElsewhere = () => new ApiError(409, "UTM_LINK_CHANGED", "그사이 다른 곳에서 이 링크를 고쳤어요. 새로 불러온 내용을 보고 다시 고쳐 주세요.");
+const EDU_BRAND = "브랜디액션 에듀";
+
+/** Points the link's short link somewhere else or turns it off, on the site that owns it (EDU or MYIN). */
+async function changeShort(link: UtmLink, change: { url?: string; active?: boolean }) {
+  if (!link.short_key) return;
+  if (link.brand === EDU_BRAND) await changeEduLink({ key: link.short_key, ...change });
+  else await changeMyinShortLink({ key: link.short_key, ...(change.url ? { target: change.url } : {}), ...(change.active === undefined ? {} : { active: change.active }) });
+}
+
 export async function updateUtmLink(id: string, input: z.infer<typeof utmLinkUpdateSchema>) {
-  const { expectedUpdatedAt, ...notes } = input;
-  const { data, error } = await createServiceSupabase().from("os_utm_links").update({ ...notes, ledger_status: "pending", updated_at: new Date().toISOString() })
+  const { expectedUpdatedAt, confirmOverwrite, brand, originUrl, sourceId, mediumId, campaignId, contentId, ...notes } = input;
+  const current = await readUtmLink(id);
+  if (current.updated_at !== expectedUpdatedAt) throw changedElsewhere();
+  let full: Partial<UtmLink> = {};
+  if (originUrl !== undefined) {
+    if (!brand || !sourceId || !mediumId || !campaignId) throw new ApiError(400, "UTM_LINK_INVALID", "브랜드·원본 주소·필수 선택값 3개를 모두 넣어 주세요.");
+    if (brand !== current.brand && current.short_url) throw new ApiError(409, "UTM_BRAND_LOCKED", "단축링크가 있는 링크는 브랜드를 바꿀 수 없어요. 이 링크를 지우고 새로 만들어 주세요.");
+    const kept = [current.source_id, current.medium_id, current.campaign_id, current.content_id].filter((value): value is string => Boolean(value));
+    full = { brand, ...await resolveUtm({ originUrl, sourceId, mediumId, campaignId, contentId: contentId ?? null, confirmOverwrite }, kept) };
+  }
+  const moved = Boolean(full.utm_url && full.utm_url !== current.utm_url && current.short_key);
+  if (moved) await changeShort(current, { url: full.utm_url });
+  const { data, error } = await createServiceSupabase().from("os_utm_links").update({ ...notes, ...full, ledger_status: "pending", updated_at: new Date().toISOString() })
     .eq("id", id).eq("updated_at", expectedUpdatedAt).select(LINK_COLUMNS).maybeSingle();
-  if (error) throw new ApiError(503, "UTM_LINK_SAVE_FAILED", "링크를 저장하지 못했어요.");
   if (data) return data as UtmLink;
-  await readUtmLink(id);
-  throw new ApiError(409, "UTM_LINK_CHANGED", "그사이 다른 곳에서 이 링크를 고쳤어요. 새로 불러온 내용을 보고 다시 고쳐 주세요.");
+  // ponytail: best-effort undo of the short link move; a failed undo leaves it on the new address, which the person meant anyway.
+  if (moved) await changeShort(current, { url: current.utm_url }).catch(() => undefined);
+  if (error) throw new ApiError(503, "UTM_LINK_SAVE_FAILED", "링크를 저장하지 못했어요.");
+  throw changedElsewhere();
+}
+
+/** 링크 지우기 (수정 요청 11-26): the person who made it or an admin. Its short link is turned off first, so it stops opening. */
+export async function deleteUtmLink(id: string, expectedUpdatedAt: string, actor: UtmActor) {
+  const link = await readUtmLink(id);
+  if (!actor.isAdmin && link.created_by !== actor.id) throw new ApiError(403, "UTM_DELETE_FORBIDDEN", "링크를 만든 사람이나 관리자만 지울 수 있어요.");
+  if (link.updated_at !== expectedUpdatedAt) throw changedElsewhere();
+  await changeShort(link, { active: false });
+  const { data, error } = await createServiceSupabase().from("os_utm_links").delete().eq("id", id).eq("updated_at", expectedUpdatedAt).select("id");
+  if (data?.length) return;
+  await changeShort(link, { active: true }).catch(() => undefined);
+  if (error) throw new ApiError(503, "UTM_LINK_DELETE_FAILED", "링크를 지우지 못했어요.");
+  throw changedElsewhere();
 }
 
 /** Rebuilds the company 링크 대장 document from every row; true when the document holds them all. */
@@ -172,4 +221,45 @@ export async function shortenUtmLink(id: string, actor: UtmActor) {
   const { error } = await createServiceSupabase().from("os_utm_links").update({ short_key: short.key, short_url: short.url, updated_at: new Date().toISOString() }).eq("id", id).is("short_url", null);
   if (error) throw new ApiError(503, "UTM_SHORT_SAVE_FAILED", "단축링크는 만들었지만 대장에 연결하지 못했어요. 다시 눌러 주세요.");
   return readUtmLink(id);
+}
+
+/**
+ * 업로드 링크를 링크 대장에 (로건 요청 2026-11-24): after a video goes up, the 진단 link the upload screen made is one ledger row —
+ * written as it really is (utm_content stays the OS code yp-…, 대표 11-24: the short link was made before the video had an id), with
+ * the video id in 사용처. A value the ledger has no choice for (the code, an older campaign) is added turned off, so it never shows in
+ * 링크관리's pickers. Once per video (request_id from project + video); the 링크 대장 document is rebuilt after.
+ */
+export async function ledgerUploadLink(input: { requestId: string; videoId: string; title: string; channelTitle: string; originUrl: string;
+  campaign: string; content: string; utmUrl: string; shortUrl: string; by: string }) {
+  const db = createServiceSupabase();
+  const { data: again } = await db.from("os_utm_links").select("id").eq("request_id", input.requestId).maybeSingle();
+  if (again) return { saved: false, id: again.id as string };
+  const parsed = parseOriginUrl(input.originUrl);
+  if ("error" in parsed) throw new ApiError(400, "UTM_ORIGIN_INVALID", parsed.error);
+  const { data: rows, error } = await db.from("os_utm_options").select(OPTION_COLUMNS);
+  if (error) throw new ApiError(503, "UTM_OPTIONS_UNAVAILABLE", "선택값을 불러오지 못했어요.");
+  const list = rows as UtmOption[];
+  const option = async (kind: UtmKind, code: string, label: string) => {
+    const found = list.find(row => row.kind === kind && row.code === code);
+    if (found) return found;
+    const { data, error: insertError } = await db.from("os_utm_options").insert({ kind, label: label.slice(0, 80), code, active: false, created_by: input.by }).select(OPTION_COLUMNS).single();
+    if (insertError) throw new ApiError(503, "UTM_OPTION_SAVE_FAILED", "선택값을 저장하지 못했어요.");
+    return data as UtmOption;
+  };
+  const source = await option("source", "youtube", "유튜브"), medium = await option("medium", "organic", "오가닉");
+  const campaign = await option("campaign", input.campaign, `${input.campaign} (업로드 화면)`);
+  const content = await option("content", input.content, `${input.title.slice(0, 60)} · ${input.videoId}`);
+  const params = Object.fromEntries(([["source", source], ["medium", medium], ["campaign", campaign], ["content", content]] as const)
+    .map(([kind, row]) => [kind, { code: row.code, label: row.label }])) as UtmLedgerRow["params"];
+  const host = parsed.url.hostname, brand = host.endsWith("brandyaction-edu.com") ? "브랜디액션 에듀" : host.endsWith("myinlab.co.kr") ? "마이인" : "브랜디액션";
+  const short = /^https:\/\/(?:www\.)?myinlab\.co\.kr\/r\/([A-Za-z0-9_-]+)$/.exec(input.shortUrl.trim());
+  const { data: link, error: insertError } = await db.from("os_utm_links").insert({
+    request_id: input.requestId, brand, usage: `유튜브 ${input.channelTitle || "채널"} | ${input.title} | ${input.videoId}`.slice(0, 200), origin_url: parsed.url.href,
+    source_id: source.id, medium_id: medium.id, campaign_id: campaign.id, content_id: content.id, params, target: "", location: "설명란, 고정댓글",
+    etc: "OS 업로드 화면에서 만든 링크(자동 기록)", utm_url: input.utmUrl, ...(short ? { short_key: short[1], short_url: input.shortUrl.trim() } : {}), created_by: input.by,
+  }).select("id").single();
+  if (unique(insertError)) return { saved: false, id: "" };
+  if (insertError) throw new ApiError(503, "UTM_LINK_SAVE_FAILED", "링크를 대장에 저장하지 못했어요.");
+  await syncUtmLedger(input.by);
+  return { saved: true, id: link.id as string };
 }

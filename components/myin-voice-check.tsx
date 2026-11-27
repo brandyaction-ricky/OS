@@ -13,6 +13,8 @@ interface VoiceCheckData {
   takes?: { p: number; text: string; state: "pending" | "listing" | "ready" | "failed"; code: string | null; files: { name: string; url: string; current: boolean }[] } | null;
   /** 발음 확인 (2026-11-22): words both transcriptions heard differently from the script (none for a voice made before it). */
   misreads?: { p: number; at: number; said: string; small: string; medium: string }[] | null;
+  /** 쉼 검사 (로건 11-24): 띄워 읽음 · 덩어리 끊김 · 붙여 읽음 · 낱말 안 끊김, ‖ marking the place. */ pauses?: { p: number; at: number; kind: string; gap: number; text: string }[] | null;
+  /** 쉼 점검 → 다시 낭독 (대표 11-24): how many times the caught sentences were voiced again by themselves (2 at most). */ pauseRounds?: number;
 }
 type Line = { at: number; p?: number; sentence: string };
 /** Where 「음성 확인 · 수정」 may change a sentence: stage 1, and wherever the video waits for a person after it (the server says where it goes back to). */
@@ -20,9 +22,9 @@ const FIXABLE_AT = ["words_ready", "storyboard_review", "clips_review", "prep_re
 const takeNo = (name: string) => Number(/_(\d+)_t\.wav$/.exec(name)?.[1] ?? 0) + 1;
 export interface MyinVoiceFixView { memo: string; say: string | null; read: string | null; name: string }
 export interface MyinVoiceCheckView { skipped: boolean; name: string; at: string }
-type Memo = { memo: string; say?: string; read?: string; video?: true };
+type Memo = { memo: string; say?: string; read?: string; video?: true; p?: number };
 /** 음성 고치기 범위 (0dfd9a37 보완 ①): what the memos make again, as the OS finds the sentences (lib/myin-voice-plan). */
-export interface VoiceFixPlan { targets: { at: number; text: string; memos: Memo[] }[]; unplaced: Memo[][]; conflicts: string[][]; fixes: Memo[]; keep: number; sentences: number; final: boolean }
+export interface VoiceFixPlan { targets: { at: number; text: string; memos: Memo[] }[]; unplaced: Memo[][]; conflicts: string[][]; fixes: Memo[]; keep: number; sentences: number; final: boolean; patch?: boolean }
 /** What Fish reads: the sentences found, and 120 letters for each one the render PC still has to find (as before this plan). */
 export const planText = (plan: VoiceFixPlan) => [...plan.targets.map((target) => target.text), ...plan.unplaced.map(() => "가".repeat(120))].join("\n");
 export const askVoicePlan = (token: string | null, runId: string, fixes: Memo[]) => apiRequest<VoiceFixPlan>("/api/v1/content/youtube-automation/myin",
@@ -36,7 +38,7 @@ export function VoiceFixScope({ plan }: { plan: VoiceFixPlan }) {
     <ul>{plan.targets.map((target) => <li key={`${target.at}-${target.text}`}>{mmss(target.at)} · {target.text}{target.memos.length > 1 ? ` (메모 ${target.memos.length}개)` : ""}</li>)}
       {plan.unplaced.map((group) => <li key={group[0].memo}>{group[0].memo} · 여기서는 문장을 못 찾았어요. 영상 만드는 컴퓨터가 시각으로 찾아요(확인 필요)</li>)}</ul>
     <small>그대로 두는 문장 {plan.unplaced.length ? "약 " : ""}{plan.keep}개{plan.sentences ? ` (전체 ${plan.sentences}문장)` : ""} · 받아쓰기 · 자막은 새 음성으로 저절로 다시 만들어요
-      {plan.final ? " · 완성 영상은 [전체 영상 만들기]로 다시 만들어야 새 음성이 들어가요" : ""}</small>
+      {plan.patch ? " · 완성 영상은 다시 그리지 않고 그 문단 소리만 바꿔 몇 분 안에 새로 나와요(길이가 많이 달라지면 [전체 영상 만들기])" : plan.final ? " · 완성 영상은 [전체 영상 만들기]로 다시 만들어야 새 음성이 들어가요" : ""}</small>
     {plan.conflicts.length ? <p className="yt-warn" role="alert">같은 문장에 읽는 글이나 발음이 둘 이상이에요. 하나만 남겨 주세요: {plan.conflicts[0].join(" / ")}</p> : null}
   </div>;
 }
@@ -56,6 +58,7 @@ export function MyinVoiceCheck({ runId, stage, fixable, pending, check, token, o
   const [memos, setMemos] = useState<Memo[]>([]);
   const [time, setTime] = useState(""), [text, setText] = useState(""), [say, setSay] = useState(""), [read, setRead] = useState("");
   const [busy, setBusy] = useState(""), [error, setError] = useState("");
+  const [para, setPara] = useState<number | undefined>();   // the row the memo came from (cleared when the time is typed)
   const [plan, setPlan] = useState<VoiceFixPlan | null>(null);
   const audio = useRef<HTMLAudioElement>(null);
   const open = FIXABLE_AT.includes(stage);
@@ -65,8 +68,8 @@ export function MyinVoiceCheck({ runId, stage, fixable, pending, check, token, o
   const play = (at: number) => { const el = audio.current; if (!el) return; el.currentTime = Math.max(0, at - 0.3); void el.play(); };
   const add = (memo = `${time.trim()} ${text.trim()}`.trim()) => {
     if (!memo) return;
-    setMemos(list => [...list, { memo, ...(say.trim() ? { say: say.trim() } : {}), ...(read.trim() ? { read: read.trim() } : {}) }]);
-    setTime(""); setText(""); setSay(""); setRead("");
+    setMemos(list => [...list, { memo, ...(say.trim() ? { say: say.trim() } : {}), ...(read.trim() ? { read: read.trim() } : {}), ...(para !== undefined ? { p: para } : {}) }]);
+    setPara(undefined); setTime(""); setText(""); setSay(""); setRead("");
   };
   const act = async (label: string, body: Record<string, unknown>) => {
     setBusy(label); setError("");
@@ -128,8 +131,16 @@ export function MyinVoiceCheck({ runId, stage, fixable, pending, check, token, o
         <ul className="yt-take-list yt-all-lines">{data.misreads.map((row, at) => <li key={at}>
           <button type="button" className="secondary-button compact" disabled={!data.previewUrl} onClick={() => play(row.at)}>▶ {mmss(row.at)}</button>
           <span className="yt-line-text" title={`작은 모델: ${row.small || "(안 들림)"} · 큰 모델: ${row.medium || "(안 들림)"}`}>대본 「{row.said}」 → 들린 소리 「{row.medium || row.small || "안 들림"}」</span>
-          {open && fixable ? <button type="button" className="secondary-button compact" onClick={() => { setTime(mmss(row.at)); setText(`「${row.said}」가 「${row.medium || row.small}」로 들림`.slice(0, 250)); }}>메모</button> : null}
+          {open && fixable ? <button type="button" className="secondary-button compact" onClick={() => { setPara(row.p); setTime(mmss(row.at)); setText(`「${row.said}」가 「${row.medium || row.small}」로 들림`.slice(0, 250)); }}>메모</button> : null}
         </li>)}</ul></div> : data.misreads ? <p><small>발음 확인: 잘못 읽은 것 같은 곳이 없어요.</small></p> : null}
+      {data.pauses?.length ? <div className="yt-note"><strong>어색하게 쉰 곳 {data.pauses.length}곳</strong>
+        {data.pauseRounds ? <small><b>걸린 문장을 저절로 {data.pauseRounds}번 다시 낭독했어요.</b> {data.pauseRounds >= 2 ? "그래도 남은 곳은 낭독 탓이 아니라 문장 탓이에요. 문장을 바꿔 주세요(예: 「첫 번째 결과」 → 「내 첫 결과」)." : ""}</small> : null}
+        <small>‖ 자리에서 쉼이 어색해요. 띄워 읽음 = 붙여 읽을 곳에서 쉼, 덩어리 끊김 = 붙어야 할 두 낱말 사이에서 쉼, 붙여 읽음 = 문장 끝에서 안 쉼. 들어 보고 어색하면 [메모]로 그 문장만 다시 만들어요(두 번 넘게 남으면 문장을 바꿔요).</small>
+        <ul className="yt-take-list yt-all-lines">{data.pauses.map((row, at) => <li key={at}>
+          <button type="button" className="secondary-button compact" disabled={!data.previewUrl} onClick={() => play(row.at)}>▶ {mmss(row.at)}</button>
+          <span className="yt-line-text">{row.kind} {row.gap.toFixed(2)}초 · {row.text}</span>
+          {open && fixable ? <button type="button" className="secondary-button compact" onClick={() => { setPara(row.p); setTime(mmss(row.at)); setText(`${row.kind}(${row.gap.toFixed(2)}초): ${row.text}`.slice(0, 250)); }}>메모</button> : null}
+        </li>)}</ul></div> : data.pauses ? <p><small>쉼 검사: 어색하게 쉰 곳이 없어요.</small></p> : null}
       {data.listen === null ? <p>이 영상은 들어 볼 문장 목록이 없어요(10/30 이전에 만든 음성).</p>
         : <><p><strong>들어 볼 문장 {data.listen.length}개</strong>{data.sentences ? <small> · 전체 {data.sentences}문장 중</small> : null}</p>
           {data.listen.length ? <ul className="yt-voice-list" style={{ listStyle: "none", padding: 0, display: "grid", gap: 6 }}>{data.listen.map((row, at) => <li key={at} style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
@@ -137,7 +148,7 @@ export function MyinVoiceCheck({ runId, stage, fixable, pending, check, token, o
             <span style={{ flex: "1 1 260px", minWidth: 0 }}>{row.sentence}<br /><small>{[row.score >= 0.8 ? `끊김 의심 ${row.issues.map(issue => issue.split(" ")[0]).join(" · ")}` : "", row.long ? `긴 한 호흡 ${row.long}음절` : "",
               row.joins?.length ? `이음 고침 ${row.joins.join(" · ")}` : ""].filter(Boolean).join(" · ")}</small></span>
             {tools(row)}
-            {open && fixable ? <button type="button" className="secondary-button compact" onClick={() => { setTime(mmss(row.at)); setText(row.sentence.slice(0, 40)); }}>메모</button> : null}
+            {open && fixable ? <button type="button" className="secondary-button compact" onClick={() => { setPara(row.p); setTime(mmss(row.at)); setText(row.sentence.slice(0, 40)); }}>메모</button> : null}
           </li>)}</ul> : <p>기계가 찾은 어색한 문장이 없어요. 무작위로 두 문단만 들어 봐요.</p>}
           {data.all?.length ? <details><summary>모든 문장 {data.all.length}개 — 테이크 고르기 · 쉼 더하기</summary>
             <ul className="yt-take-list yt-all-lines">{data.all.map((row) => <li key={`${row.p}-${row.at}`}>
@@ -146,11 +157,11 @@ export function MyinVoiceCheck({ runId, stage, fixable, pending, check, token, o
             </li>)}</ul></details> : null}
           {takesBox}</>}
       {open && !fixable ? <p>이 영상은 10/30 16시 전에 시작해 문장만 다시 만들 수 없어요. 고칠 곳은 최종 검토 피드백에 남겨요.</p> : null}
-      {open && fixable && stage !== "words_ready" ? <p><small>여기서 고치면 받아쓰기 · 자막을 다시 만들어요. 장면 그림 단계면 장면 그림도 다시, 완성 영상이 있으면 ④로 돌아가 「전체 영상 만들기」로 새 음성을 넣어요.</small></p> : null}
+      {open && fixable && stage !== "words_ready" ? <p><small>여기서 고치면 받아쓰기 · 자막을 다시 만들어요. 장면 그림 단계면 장면 그림도 다시, 완성 영상이 나온 뒤면 그 문단 소리만 바꿔 몇 분 안에 새 완성 영상이 나와요(④에서 고치면 「전체 영상 만들기」로 새 음성을 넣어요).</small></p> : null}
       {open && fixable ? <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <input className="input" style={{ width: 80 }} value={time} placeholder="02:03" aria-label="시각" onChange={event => setTime(event.target.value)} />
-          {data.previewUrl ? <button type="button" className="secondary-button compact" onClick={() => { const el = audio.current; if (el) setTime(mmss(el.currentTime)); }}>지금 위치</button> : null}
+          <input className="input" style={{ width: 80 }} value={time} placeholder="02:03" aria-label="시각" onChange={event => { setPara(undefined); setTime(event.target.value); }} />
+          {data.previewUrl ? <button type="button" className="secondary-button compact" onClick={() => { const el = audio.current; if (el) { setPara(undefined); setTime(mmss(el.currentTime)); } }}>지금 위치</button> : null}
           <input className="input" style={{ flex: "1 1 240px" }} value={text} maxLength={250} placeholder="들린 모양 (예: 사람과. 분위기는. 끊김)" aria-label="메모" onChange={event => setText(event.target.value)} />
         </div>
         <details><summary>읽는 글 · 발음 바꾸기 (선택)</summary>

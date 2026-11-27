@@ -27,4 +27,15 @@ test("a live meeting shows one step at a time, each with one main button (owner 
   for (const button of ["● 녹음하며 회의 시작", "회의 끝내기 · 자동 정리", "다음: 검토 · 확정 →"]) assert.ok(actions.includes(button), button);
   // the rarely used controls fold away under one line instead of sitting beside the steps
   assert.match(actions, /<summary>회의 정보 바꾸기 · 내려받기 · 삭제<\/summary>/);
+  // a meeting opened by mistake can be left (2026-11-23): delete it while empty, or step back from 2 to 1
+  assert.match(actions, /owner && empty \? <p className="tm-muted">잘못 열었으면/);
+  assert.ok(actions.includes("← 준비로 돌아가기"));
+});
+
+test("long meetings keep saving and two people opening at once share one meeting", async () => {
+  const [sql, prep, route] = await Promise.all([read("supabase/migrations/20261123070000_meeting_long_notes_one_open.sql"), read("components/team/prep-actions.tsx"), read("app/api/v1/team/command/route.ts")]);
+  assert.match(sql, /when record_type='meeting' then 200000 else 20000/);
+  assert.match(sql, /p->>'openToday'[\s\S]*pg_advisory_xact_lock\(pg_catalog\.hashtextextended\('os-meeting-today:'\|\|brand_value,0\)\)[\s\S]*'existing',true/);
+  assert.match(prep, /openToday: true[\s\S]*if \(made\.existing\) return made\.id;/);
+  assert.match(route, /"23514"[\s\S]*TEAM_TEXT_TOO_LONG/);
 });

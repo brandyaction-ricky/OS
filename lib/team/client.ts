@@ -3,7 +3,7 @@ import type { Meeting } from "../knowledge/model";
 import type { OsRecord, RecordType } from "../record-types";
 
 export async function teamCommand(token: string, input: Record<string, unknown>) {
-  return apiRequest<{ id: string; version?: number }>("/api/v1/team/command", { method: "POST", token, body: JSON.stringify(input) });
+  return apiRequest<{ id: string; version?: number; existing?: boolean }>("/api/v1/team/command", { method: "POST", token, body: JSON.stringify(input) });
 }
 
 export async function listTeamRange(token: string, type: RecordType, from: string, to: string) {

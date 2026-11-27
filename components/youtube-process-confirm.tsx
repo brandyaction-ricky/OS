@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Check } from "lucide-react";
 import { gateFields, gateName } from "@/lib/youtube-process/confirm";
 import { projectName, stepHref, YP_KIND_LABEL, type YpGate, type YpProject } from "@/lib/youtube-process/project";
-import { finalPair, SLOTS, type YpShortScript } from "@/lib/youtube-process/stages";
+import { finalPair, SLOTS, ypFormat, type YpShortScript } from "@/lib/youtube-process/stages";
 import { checkShortScript } from "@/lib/youtube-process/short-script";
 import { useSession } from "./session-provider";
 import { YP_CONFIRM_EVENT } from "./use-youtube-confirm";
@@ -199,7 +199,7 @@ function StepDetail({ project, gate, client }: { project: YpProject; gate: YpGat
       {gate === "review" ? "pair" in pair && pair.pair.changed ? <span className="yp-tag yp-warn">컨펌본과 다름</span> : <span className="yp-tag yp-ok">컨펌본 그대로</span> : null}</div>
       <YtCard page={media} thumb={pair.thumb} path={pair.path} title={pair.title} />
       {"pair" in pair && pair.pair.changed ? <p className="yp-hint" style={{ margin: 0 }}>컨펌본: {plan.confirmed?.[pair.slot]?.title}{plan.confirmed?.[pair.slot]?.thumb?.copy && plan.confirmed[pair.slot]!.thumb!.copy !== pair.pair.copy ? ` · 「${plan.confirmed[pair.slot]!.thumb!.copy}」` : ""}{pair.pair.reason ? <><br />바꾼 이유: {pair.pair.reason}</> : null}</p> : null}</div>)}</div>
-    {gate === "draft" ? <div className="yp-field"><div className="yp-fld-h"><b>영상 흐름</b></div><ul className="yp-fl2"><li><b>오프닝 (첫 30초)</b>{plan.opening || "—"}</li><li><b>본론</b><div style={{ whiteSpace: "pre-wrap" }}>{plan.body || "—"}</div></li><li><b>클로징 · 다음 행동</b>{plan.closing || "—"}</li></ul>
+    {gate === "draft" ? <div className="yp-field"><div className="yp-fld-h"><b>영상 흐름</b></div><ul className="yp-fl2">{project.yp.topic.type === "anim" ? <li><b>영상 형식</b>{ypFormat(plan) === "pulling" ? "풀링형 · 원리 하나를 쉽게" : "키풀링형 · 진단으로 잇는 설명"}</li> : null}<li><b>오프닝 (첫 30초)</b>{plan.opening || "—"}</li><li><b>본론</b><div style={{ whiteSpace: "pre-wrap" }}>{plan.body || "—"}</div></li><li><b>클로징 · 다음 행동</b>{plan.closing || "—"}</li></ul>
       {plan.note ? <><div className="yp-fld-h" style={{ marginTop: 8 }}><b>전달 사항</b></div><p style={{ margin: 0 }}>{plan.note}</p></> : null}</div>
       : <dl className="yp-kv" style={{ gridTemplateColumns: "110px minmax(0,1fr)", marginTop: 12 }}><dt>최종본</dt><dd>{final ? `v${final.v} · ${final.source === "myin" ? "자동 제작" : final.name}${final.durationSeconds ? ` · ${Math.floor(final.durationSeconds / 60)}분 ${Math.round(final.durationSeconds % 60)}초` : ""}` : "—"}</dd>
         <dt>남은 피드백</dt><dd>{open === null ? "—" : `${open}개`}</dd></dl>}

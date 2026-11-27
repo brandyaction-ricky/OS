@@ -16,11 +16,11 @@ test("제작 설정 places a step on the chooser's computer only where a staff c
 
 test("the start takes the settings and the confirms stop asking", () => {
   const run = read("lib/server/myin-run.ts");
-  assert.match(run, /settings: z\.object\(\{ place: z\.enum\(\["pc", "local"\]\), screenCheck: z\.boolean\(\), confirm: z\.enum\(\["auto", "person"\]\)\.optional\(\), by: z\.string\(\)\.uuid\(\), name: z\.string\(\), at: z\.string\(\)\.datetime\(\) \}\)\.strict\(\)\.optional\(\)/);
+  assert.match(run, /settings: z\.object\(\{ place: z\.enum\(\["pc", "local"\]\), voice: z\.enum\(\["pc", "local"\]\)\.optional\(\), screenCheck: z\.boolean\(\), confirm: z\.enum\(\["auto", "person"\]\)\.optional\(\), by: z\.string\(\)\.uuid\(\), name: z\.string\(\), at: z\.string\(\)\.datetime\(\) \}\)\.strict\(\)\.optional\(\)/);
   assert.match(run, /draftPlace\(run, settings \? \{ ownerId: settings\.by, name: settings\.name \} : actor, settingsPlace\(settings, run\)\)/, "「내 컴퓨터」 is the chooser's");
   assert.match(run, /export async function confirmMyinClips\(actor: RequestActor, runId: string, note: string, place\?: "pc" \| "local"\)/);
   const route = read("app/api/v1/content/youtube-automation/myin/route.ts");
-  assert.match(route, /action: z\.literal\("settings"\), runId: z\.string\(\)\.uuid\(\), place: z\.enum\(\["pc", "local"\]\), screenCheck: z\.boolean\(\)/);
+  assert.match(route, /action: z\.literal\("settings"\), runId: z\.string\(\)\.uuid\(\), place: z\.enum\(\["pc", "local"\]\), voice: z\.enum\(\["pc", "local"\]\)\.optional\(\), screenCheck: z\.boolean\(\)/);
   assert.match(route, /createMyinRun\(actor, input\.sourceId, input\.styleId, input\.settings, input\.paidOk\)/, "the paid steps approved once at the start (로건 11-13)");
   const panel = read("components/myin-v13-panel.tsx");
   assert.doesNotMatch(panel, /DraftPlacePicker/, "no step asks where any more");

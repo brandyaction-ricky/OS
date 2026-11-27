@@ -3,10 +3,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import type { OsRecord } from "@/lib/record-types";
-import { checkManuscript } from "@/lib/youtube-script-check";
+import { CHARS_PER_MINUTE, checkManuscript, PULLING_CHARS_PER_MINUTE } from "@/lib/youtube-script-check";
 import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
 import { projectFromRecord, projectName } from "@/lib/youtube-process/project";
-import { descWritten, diagnosisLink, finalPair, oneArrow, SLOTS, stageData, STAGE_RECORD, utmCode, withLinks, withScriptVersion, type YpSlot, type YpStageKind, type YpStageData } from "@/lib/youtube-process/stages";
+import { descWritten, diagnosisLink, finalPair, oneArrow, SLOTS, stageData, STAGE_RECORD, utmCode, withLinks, withScriptVersion, ypFormat, type YpSlot, type YpStageKind, type YpStageData } from "@/lib/youtube-process/stages";
 import type { RequestActor } from "./auth";
 import type { readPipeline } from "./content-pipeline";
 import { namedProcedures, procedureRefs, SHORTFORM_CANON_TITLE, withNamed } from "./content-generation";
@@ -107,26 +107,29 @@ export function v1ScriptInputKey(state: Pipeline) {
   return digest(["yp-v1-script", project.yp.topic, project.title, confirmed, opening, body, closing, note, ...(stats?.length ? [stats] : [])]);
 }
 /** What the job card hands the AI for a v1 project, in place of the pipeline's ① 기획 record. */
-export function v1ScriptCardInputs(state: Pipeline, card: { targetMinutes: number; role: string; attachments?: string; targetChars: number }) {
+export function v1ScriptCardInputs(state: Pipeline, card: { targetMinutes: number; role: string; attachments?: string }) {
   const { project, plan } = v1Stages(state);
   const confirmed = plan.data.confirmed;
+  const pulling = ypFormat(plan.data) === "pulling";
   return {
+    pulling,
     title: confirmed?.A?.title ?? projectName(project),
     inputs: {
       projectId: project.id, title: confirmed?.A?.title ?? "", thumbnailCopy: confirmed?.A?.thumb?.copy ?? "",
-      otherTitles: [confirmed?.B?.title, confirmed?.C?.title].filter(Boolean), targetMinutes: card.targetMinutes, targetChars: card.targetChars, role: card.role, format: "원고형",
+      otherTitles: [confirmed?.B?.title, confirmed?.C?.title].filter(Boolean), targetMinutes: card.targetMinutes, targetChars: card.targetMinutes * (pulling ? PULLING_CHARS_PER_MINUTE : CHARS_PER_MINUTE), role: card.role, format: pulling ? "풀링형" : "원고형",
       topic: projectName(project), audience: project.yp.topic.target, references: project.yp.topic.refs.map(ref => ref.url),
       plan: { opening: plan.data.opening, body: plan.data.body, closing: plan.data.closing, note: [project.yp.topic.note, plan.data.note].filter(Boolean).join("\n") },
       staffAttachments: card.attachments ?? null, officialStats: plan.data.stats ?? [],
     },
-    planNote: "- plan은 컨펌된 기획안(제목 A · B · C, 오프닝 · 본론 · 클로징)이며 이것이 정본 §2의 '① 기획 승인본'입니다. 따로 열 문서는 없습니다. audience는 정밀 타겟입니다.\n- officialStats는 담당 PD가 남긴 국가 공식 통계입니다. 원고에 숫자를 쓸 때는 이 값만, 기준 시점과 함께 씁니다.",
+    planNote: "- plan은 컨펌된 기획안(제목 A · B · C, 오프닝 · 본론 · 클로징)이며 이것이 정본 §2의 '① 기획 승인본'입니다. 따로 열 문서는 없습니다. audience는 정밀 타겟입니다.\n- officialStats는 담당 PD가 남긴 국가 공식 통계입니다. 원고에 숫자를 쓸 때는 이 값만, 기준 시점과 함께 씁니다."
+      + (pulling ? "\n- 이 영상은 풀링형입니다(원고 공정 정본 §10, 기획안에서 PD가 고름). 대본 뼈대 · 잠깐 멈춤 · 원리 한 줄 · 다음 편 예고는 [풀링형 정본]을 따르고, 입력 · 축 · 말투 · 관문 1 · 제출 묶음은 원고 공정 정본과 같습니다. 말로 구독 · 진단 · 가격을 권하지 않고, 「지난 영상에서 이어집니다」로 열지 않습니다." : ""),
   };
 }
 /** A submitted 원고 becomes the current 구성안 원고 (the previous one stays as a version). */
 export async function saveV1Script(client: { supabase: RequestActor["supabase"]; id: string }, state: Pipeline, bundle: { manuscript: string; materials: string; axis: string; design: string; review: string; canonBundle: string; suggestions: string[] }, author: { model: string; jobId?: string; targetMinutes: number; name: string; trace?: CanonTrace[] }, canon: string) {
   const stages = v1Stages(state);
   const title = stages.plan.data.confirmed?.A?.title ?? projectName(stages.project);
-  const check = checkManuscript(bundle.manuscript, { title, targetMinutes: author.targetMinutes, canon });
+  const check = checkManuscript(bundle.manuscript, { title, targetMinutes: author.targetMinutes, canon, pulling: ypFormat(stages.plan.data) === "pulling" });
   if (check.issues.length) throw new ApiError(422, "SCRIPT_FORMAT_INVALID", `원고 형식 검사에서 걸린 곳 ${check.issues.length}건: ${check.issues.join(" / ")}`);
   const now = new Date().toISOString();
   // The head comments (축 · 출처) stay with the AI notes; the editor gets the readable 원고.

@@ -1,4 +1,6 @@
 "use client";
+import { CountUp } from "@/components/count-up";
+import { FinanceTilesLoading } from "./tiles-loading";
 
 import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
@@ -94,7 +96,7 @@ export function ProfitLoss({ token, demo }: { token: string | null; demo: boolea
       {demo ? <span className="fin-small fin-muted">연습용 예시 자료예요. 실제 거래가 아니에요.</span> : null}
     </div>
     {error ? <p className="fin-callout fin-bad" role="alert"><span className="fin-grow">{error}</span><button type="button" className="secondary-button compact" onClick={() => setAttempt(value => value + 1)}>다시 시도</button></p> : null}
-    {!data && !error ? <p className="fin-small fin-muted" role="status">원장을 불러오는 중이에요…</p> : null}
+    {!data && !error ? <FinanceTilesLoading label="원장을 불러오는 중이에요…" /> : null}
     {cash ? <CashTab cash={cash} today={today} onDrill={setDrill} /> : null}
     {data && pnl ? !hasRows(data) ? <div className="fin-empty fin-pnl-start" role="status"><b>아직 손익을 계산할 기록이 없어요</b>
         <span>토스 결제를 동기화하거나 카드 · 통장 자료를 올리면 여기에 월별 손익이 나와요.</span>
@@ -186,7 +188,7 @@ function SalesTab({ pnl, previous }: { pnl: Pnl; previous: Pnl | null }) {
   return <div role="tabpanel" aria-label="매출·비용">
     <div className="fin-pnl-kpis">{kpis.map(([label, tone, value]) => <div className="fin-tile fin-pnl-kpi" key={label}>
       <b><Swatch tone={tone} size={14} />{label}</b>
-      <span className="fin-pnl-kpi-v"><span className="fin-l">총 합계</span><span className="fin-v">{value === null ? "–" : `${won(value)}원`}</span></span>
+      <span className="fin-pnl-kpi-v"><span className="fin-l">총 합계</span><span className="fin-v"><CountUp>{value === null ? "–" : `${won(value)}원`}</CountUp></span></span>
     </div>)}</div>
     <PnlChart title="매출·비용 요약" year={pnl.year} series={[
       { label: "매출", tone: "rev1", stack: "revenue", values: pnl.revenueTotal },
@@ -221,7 +223,7 @@ function CashTab({ cash, today, onDrill }: { cash: Cash; today: string; onDrill:
     </div>
     <div className="fin-pnl-kpis">{cash.accounts.map(account => <div className="fin-tile" key={account.id}>
       <span className="fin-l">{account.bank} {account.name}{account.last4 ? ` ••${account.last4}` : ""}</span>
-      <span className="fin-v">{account.balance === null ? "잔액 미확인" : `${won(account.balance)}원`}</span>
+      <span className="fin-v"><CountUp>{account.balance === null ? "잔액 미확인" : `${won(account.balance)}원`}</CountUp></span>
       <span className="fin-d">{account.asOf ? `지금 잔액 · ${dayOf(account.asOf).day} 거래까지` : "거래 없음"}</span>
     </div>)}</div>
     <PnlChart title="자금 흐름" year={cash.year} series={[

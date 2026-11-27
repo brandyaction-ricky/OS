@@ -1,4 +1,5 @@
 "use client";
+import { CountUp } from "@/components/count-up";
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -36,7 +37,7 @@ const labelOf = (key: string) => {
 /** 예상 납부세액 = 매출 합계 세액 (A) − 매입 합계 세액 (B), with the evidence behind (B). */
 export function VatPayableSummary({ salesTax, purchase, payable, cards = "/finance/cards" }: { salesTax: number; purchase: VatPurchase; payable: number; cards?: string }) {
   return <div className="fin-card fin-gap fin-payable">
-    <div className="fin-payable-top"><span className="fin-l">예상 납부세액</span><span className="fin-payable-v">{won(payable)}원</span><span className="status-pill" data-tone={payable < 0 ? "ok" : "progress"}>{payableLabel(payable)}</span></div>
+    <div className="fin-payable-top"><span className="fin-l">예상 납부세액</span><span className="fin-payable-v"><CountUp>{won(payable)}</CountUp>원</span><span className="status-pill" data-tone={payable < 0 ? "ok" : "progress"}>{payableLabel(payable)}</span></div>
     <div className="fin-tbl-wrap fin-payable-tbl"><table className="fin-tbl">
       <thead><tr><th>항목</th><th className="fin-r">세액</th></tr></thead>
       <tbody>
@@ -139,10 +140,10 @@ export function VatReference({ token }: { token: string | null }) {
         cards={cardsHref(result.period, biz, new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" }))} /> : null}
       {result.review ? <div className="fin-callout fin-warn"><b>확인 필요</b><span className="fin-grow">같은 매출인지 확인하지 않은 계산서가 {result.review}건 있어요. 확인 전에는 결제·외부 매출 줄과 계산서 줄에 둘 다 들어갈 수 있어요.</span><Link href="/finance/sales" className="secondary-button compact">매출내역에서 확인</Link></div> : null}
       <div className="fin-tiles fin-t4 fin-gap">
-        <div className="fin-tile"><span className="fin-l">공급가액</span><span className="fin-v">{won(sum("supply"))}원</span></div>
-        <div className="fin-tile"><span className="fin-l">세액</span><span className="fin-v">{won(sum("tax"))}원</span></div>
-        <div className="fin-tile fin-total"><span className="fin-l">합계</span><span className="fin-v">{won(sum("total"))}원</span></div>
-        <div className="fin-tile"><span className="fin-l">건수</span><span className="fin-v">{won(result.rows.length)}건</span><span className="fin-d">결제·발급 {count("payCount")} · 취소·수정 {count("cancelCount")}</span></div>
+        <div className="fin-tile"><span className="fin-l">공급가액</span><span className="fin-v"><CountUp>{won(sum("supply"))}</CountUp>원</span></div>
+        <div className="fin-tile"><span className="fin-l">세액</span><span className="fin-v"><CountUp>{won(sum("tax"))}</CountUp>원</span></div>
+        <div className="fin-tile fin-total"><span className="fin-l">합계</span><span className="fin-v"><CountUp>{won(sum("total"))}</CountUp>원</span></div>
+        <div className="fin-tile"><span className="fin-l">건수</span><span className="fin-v"><CountUp>{won(result.rows.length)}</CountUp>건</span><span className="fin-d">결제·발급 {count("payCount")} · 취소·수정 {count("cancelCount")}</span></div>
       </div>
       <div className="fin-tbl-wrap"><table className="fin-tbl">
         <thead><tr><th>증빙</th><th>기준일</th><th className="fin-r">결제·발급</th><th className="fin-r">취소·수정</th><th className="fin-r">공급가액</th><th className="fin-r">세액</th><th className="fin-r">합계</th></tr></thead>

@@ -1,13 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
+import { after } from "next/server";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { myinBreathText, myinCleanScript, myinRunMatchesScript, myinScriptMarkdown } from "@/lib/myin-script";
-import { localOwner, movePinned, pinnedElsewhere, placeFilter, settingsPlace } from "@/lib/myin-local";
+import { localOwner, localVoiceBlocker, movePinned, pinnedElsewhere, placeFilter, settingsPlace, voiceFilter } from "@/lib/myin-local";
 import { changedMaterials, type MyinMaterials } from "@/lib/myin-materials";
 import { myinStop } from "@/lib/myin-stop";
 import { planVoiceFix } from "@/lib/myin-voice-plan";
 import { applySubtitleEdits, subtitleIssues, subtitleLines, subtitleTextProblem } from "@/lib/myin-subtitles";
-import { applyMyinSoundPlan, MYIN_METAPHOR_TYPES, myinColumnMaterials, myinDriftPairs, myinOnlySoundChanged, myinTextPairs, myinPhotoFetchUrl, myinPhotoFolders, myinPhotoCreditLines, myinPrepPhotos, myinSceneStarts, myinSoundIssues, myinSoundPlan, myinCuesAsScript, myinStoryboardSchema, type MyinSoundPlan } from "@/lib/myin-storyboard";
+import { applyMyinSoundPlan, MYIN_AI_PHOTO_MODEL, MYIN_METAPHOR_TYPES, myinColumnMaterials, myinDriftPairs, myinOnlySoundChanged, myinTextPairs, myinPhotoFetchUrl, myinPhotoFolders, myinPhotoCreditLines, myinPrepPhotos, myinSceneStarts, myinSoundIssues, myinSoundPlan, myinCuesAsScript, myinStoryboardSchema, type MyinSoundPlan } from "@/lib/myin-storyboard";
 import { diagramCatalogTypes } from "@/lib/diagram-catalog";
 import { checkMyinStory } from "./myin-storyboard-job";
 import type { OsRecord } from "@/lib/record-types";
@@ -17,14 +18,16 @@ import { MYIN_VOICE_TUNING, synthesizeFishWav } from "./fish-audio";
 import { readDiagramCatalog } from "./diagram-catalog";
 import { readSoundCatalog } from "./sound-catalog";
 import { readYoutubeAutomationInput } from "./youtube-automation-input";
-import { RENDER_PC_NAME, renderPcEngine, renderPcGone, renderPcJobs } from "./youtube-render-pc";
+import { readLocalRenderStatus, RENDER_PC_NAME, renderPcEngine, renderPcGone, renderPcJobs } from "./youtube-render-pc";
 import { readChannelStyles } from "./youtube-channel-styles";
 import { channelOf, channelToneSchema, pinStyle, type ChannelStyle } from "@/lib/youtube-process/channel-style";
 import { assertSpokenScript } from "./youtube-script-canon";
 import { notify } from "./youtube-process";
+import { drawImageBytes } from "./card-draw";
 import { digestVoiceValue, voiceRunId, YOUTUBE_VOICE_BUCKET, YOUTUBE_VOICE_TIMING_BUCKET } from "./youtube-voice-run";
 import { readVoiceDictionary, reportVoiceDictionary } from "./youtube-voice-dictionary";
 import { dictionaryFiles, type VoiceDictionaryFiles } from "@/lib/youtube-process/voice-dictionary";
+import { STAGE_RECORD, ypFormat } from "@/lib/youtube-process/stages";
 
 // 마이인 v13 (owner decision 2026-10-19: the default format; design https://claude.ai/artifact/NCJ5qjYNeBYgfwjCnm1JgQ).
 // One run per approved script. Stage 1: the render PC picks each paragraph's breath commas with Logan's model (breath_pending, 로건
@@ -98,6 +101,8 @@ const runSchema = z.object({
   recycle: z.object({ from: z.string().uuid(), cuts: z.array(z.tuple([z.number().min(0), z.number().positive()])).min(1).max(8) }).strict().optional(),
   // 로건 사람 말투 음성 (2026-10-29): the render PC makes the voice itself, so the paragraphs never get OS files.
   voiceOn: z.literal("render_pc").optional(),
+  // 낭독 D (대표 2026-11-25): a longform voice made 1.1× with short paragraph gaps; runs from before keep their old pace.
+  voiceTempo: z.literal("1.1").optional(),
   voiceModel: z.literal(MYIN_VOICE_MODEL), voiceReferenceFingerprint: hex,
   // 채널 목소리 (다채널 2단계, 2026-11-07): the Fish voice of the video's channel, when its card names one; none = the OS's own voice.
   voiceReference: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).optional(),
@@ -122,6 +127,9 @@ const runSchema = z.object({
   // full video is made again.
   // Where a fix asked after the words goes back to: ④ (최종 검토 · after the preparation), the storyboard to confirm, or ③ drawn again (draft).
   voiceResume: z.enum(["prep_ready", "storyboard_review", "draft"]).optional(),
+  // 한 문장 고치기 ② (대표 2026-11-26): a fix on the finished video (⑤) whose render PC keeps every time mixes the new sound over the
+  // picture already drawn and comes back to ⑤ with that final; when the times move it goes to ④ as above.
+  voicePatch: z.literal(true).optional(),
   // 테이크 고르기 (요청 2번, 2026-11-17): one sentence's takes, put up to listen to by the render PC that made the voice (nothing paid).
   takes: z.object({ p: z.number().int().min(0).max(150), text: z.string().max(300), state: z.enum(["pending", "listing", "ready", "failed"]), at: z.string().datetime(),
     attempts: z.number().int().min(0).max(5), token: z.string().uuid().optional(), expiresAt: z.string().datetime().optional(), code: z.string().max(80).optional(),
@@ -134,7 +142,9 @@ const runSchema = z.object({
     cta: z.array(z.object({ after: z.string(), line: z.string() }).strict()),
     summary: z.object({ title: z.string(), points: z.array(z.string()) }).strict().nullable(),
     reasons: z.object({ metaphors: z.string(), cta: z.string(), summary: z.string() }).strict(),
-    assets: z.array(z.object({ kind: z.enum(["people", "situations", "bgm"]), file: z.string(), url: z.string(), source: z.string(), license: z.string(), use: z.string() }).strict()),
+    // ai: an AI 사진 (풀링형 요청, 대표 2026-11-24) — no address; the OS draws it from prompt and keeps it as ours.
+    assets: z.array(z.object({ kind: z.enum(["people", "situations", "bgm"]), file: z.string(), url: z.string(), source: z.string(), license: z.string(), use: z.string(),
+      ai: z.literal(true).optional(), prompt: z.string().max(1500).optional(), desc: z.string().max(300).optional() }).strict()),
     fuzzy: z.array(z.string()), notes: z.array(z.string()), reading: z.array(z.string()).optional(),
     // 고친 원고 (요청 3번, 2026-11-17): lent by the video's earlier run — how many paragraphs the edit changed, how many scenes went to the AI.
     carried: z.object({ changed: z.number().int().min(0), scenes: z.number().int().min(0) }).strict().optional() }).strict().optional(),
@@ -150,6 +160,8 @@ const runSchema = z.object({
   // credit (사진 후보, 2026-11-03): a candidate photo kept as ours, with the Unsplash · 위키미디어 credit it needs in the description.
   ours: z.record(z.string(), z.object({ path: z.string(), bytes: z.number().int().positive(), by: z.string().uuid(), name: z.string(), at: z.string().datetime(),
     credit: z.object({ source: z.string().max(300), license: z.string().max(120), url: z.string().url().max(600) }).strict().optional() }).strict()).optional(),
+  // AI 사진: being drawn after the storyboard came in, or the files that could not be drawn (「AI 사진 다시 만들기」).
+  aiPhotos: z.object({ state: z.enum(["drawing", "failed"]), at: z.string().datetime(), files: z.array(z.string()).max(20) }).strict().optional(),
   // `pc`: a line the render PC made with Logan's stage_cta for a member's own computer (a finished file, used as it is).
   cta: z.array(z.object({ index: z.number().int().min(0), textHash: hex, status: z.enum(["pending", "ready"]), path: z.string().optional(), pc: z.literal(true).optional() }).strict()).optional(),
   // storyboardPath: the storyboard file the sheets show, kept once a 장면 수정안 changes the storyboard under them (직원 요청 11-12).
@@ -189,12 +201,16 @@ const runSchema = z.object({
   // 직원 요청 2026-11-03: ④ 자료 준비 and the full video on a member's own computer too — both, since the video is drawn from the folder
   // the preparation filled. The render PC still makes the 구독 대사 voice (the Fish key and Logan's voice tools live only there).
   localFinish: z.object({ by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict().optional(),
+  // 음성도 내 컴퓨터에서 (로건 요청 11-16): stage 1 and its 문장 고치기 on this member's own computer, which said it has the voice tools.
+  localVoice: z.object({ by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict().optional(),
   // 제작 설정 (직원 요청 2026-11-05): where every later step is made and whether GPT checks the screens, chosen once when the video starts
   // (or changed later) instead of at each step. 「내 컴퓨터」 is the computer of whoever chose it.
   // 로건 11-13 (대표 11-16 「자동」): whether the storyboard waits for a person's 확인 or goes on by itself once the OS check passes (기본 자동, 롱폼).
-  settings: z.object({ place: z.enum(["pc", "local"]), screenCheck: z.boolean(), confirm: z.enum(["auto", "person"]).optional(), by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict().optional(),
+  settings: z.object({ place: z.enum(["pc", "local"]), voice: z.enum(["pc", "local"]).optional(), screenCheck: z.boolean(), confirm: z.enum(["auto", "person"]).optional(), by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict().optional(),
   // 로건 11-13: the paid steps (voice, 구독 대사 voice) approved once by a person when the video starts — 「완성」 then asks no more.
   paidOk: z.object({ by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict().optional(),
+  // 쉼 점검 → 다시 낭독 (풀링형 요청 ③, 대표 11-24): how many times the sentences the pause check caught were voiced again by themselves.
+  pauseRounds: z.number().int().min(0).max(5).optional(),
   // 렌더 전 관문 sends at ③ in a row (a person's 수정 요청 resets it); past MYIN_GATE_ROUNDS the video goes on and marks them 사람 확인 필요.
   gateRounds: z.number().int().min(0).max(50).optional(),
   // 사운드 창고 (2026-10-27): Logan's music match report from the ③ preparation, and who last changed the sound at ④.
@@ -273,12 +289,13 @@ export function presentMyinRun(record: OsRecord) {
     final: run.final ? { bytes: run.final.bytes, durationSeconds: run.final.durationSeconds, lufs: run.final.lufs, peak: run.final.peak, at: run.final.at, sizes: Boolean(run.final.sizes) } : null,
     feedSizes: Boolean(run.feedSizes),
     voiceFixes: (run.voiceFixes ?? []).map(({ memo, say, read, name }) => ({ memo, say: say ?? null, read: read ?? null, name })), voiceCheck: run.voiceCheck ?? null,
-    voiceFixable: voiceFixable(record, run), voiceChanged: run.voiceChanged ?? null, subtitleEdits: run.subtitleEdits ? run.subtitleEdits.lines.length : 0,
+    voiceFixable: voiceFixable(record, run), voiceChanged: run.voiceChanged ?? null, voicePatch: Boolean(run.voicePatch), subtitleEdits: run.subtitleEdits ? run.subtitleEdits.lines.length : 0,
     style: run.style ? { id: run.style.id, name: run.style.name, version: run.style.version, channel: run.style.channel } : null,
-    lastErrorCode: run.lastError?.code ?? null, waitingPhotos: (run.lastError?.files ?? []).filter((file) => !run.ours?.[file]), createdAt: record.created_at, local: run.local ? { by: run.local.by, name: run.local.name } : null,
+    aiPhotos: run.aiPhotos ?? null, lastErrorCode: run.lastError?.code ?? null, waitingPhotos: (run.lastError?.files ?? []).filter((file) => !run.ours?.[file]), createdAt: record.created_at, local: run.local ? { by: run.local.by, name: run.local.name } : null,
     localFinish: run.localFinish ? { by: run.localFinish.by, name: run.localFinish.name } : null, clipsStale: previewStale(run),
-    settings: run.settings ? { place: run.settings.place, screenCheck: run.settings.screenCheck, confirm: run.settings.confirm ?? "auto", name: run.settings.name } : null,
-    autoConfirm: autoConfirms(run), paidOk: Boolean(run.paidOk), gateRounds: run.gateRounds ?? 0,
+    localVoice: run.localVoice ? { by: run.localVoice.by, name: run.localVoice.name } : null, waitingSince: record.status === "backlog" ? record.updated_at : null,
+    settings: run.settings ? { place: run.settings.place, voice: run.settings.voice ?? "pc", screenCheck: run.settings.screenCheck, confirm: run.settings.confirm ?? "auto", name: run.settings.name } : null,
+    autoConfirm: autoConfirms(run), paidOk: Boolean(run.paidOk), gateRounds: run.gateRounds ?? 0, pauseRounds: run.pauseRounds ?? 0,
     photoCredits: Object.fromEntries(Object.entries(run.ours ?? {}).map(([file, image]) => [file, image.credit ? { source: image.credit.source, license: image.credit.license, url: image.credit.url }
       : { source: `우리 이미지 · ${image.name}`, license: "", url: null }])), localReady: Boolean(run.words?.voice) && !run.layout,
     // 로건 피드백 10/26-8: when the render PC took this step, so the screen can say how long it has been working.
@@ -322,11 +339,52 @@ export async function saveMyinStoryboard(service: Service, record: OsRecord, run
   const carried = value.carried ?? (run.review?.name === MYIN_CARRY_NAME ? run.storyboard?.carried : undefined);
   const next: MyinRun = { ...run, storyboard: storyboardEntry(await storyboardFile(service, record, run, value.storyboard), { ...value, carried }) };
   delete next.review;
+  delete next.aiPhotos;
+  const missing = aiPhotosMissing(next);
+  if (missing.length) next.aiPhotos = { state: "drawing", at: new Date().toISOString(), files: missing.map((asset) => asset.file) };
   const saved = await save(service, record, "backlog", "storyboard_review", next);
+  // AI 사진 are drawn after this answer (a few at once, ~1 minute); the storyboard goes on by itself once they are in.
+  if (missing.length) { after(() => drawMyinAiPhotos(saved.id).then(() => undefined, (error) => console.error(JSON.stringify({ event: "ai_photos_failed", runId: saved.id, message: error instanceof Error ? error.message : String(error) })))); return saved; }
   return autoConfirms(next) ? confirmByItself(service, saved).catch((error) => {
     console.error(JSON.stringify({ event: "storyboard_auto_confirm_failed", runId: record.id, message: error instanceof Error ? error.message : String(error) }));
     return saved;
   }) : saved;
+}
+
+const aiPhotosMissing = (run: MyinRun) => (run.storyboard?.assets ?? []).filter((asset) => asset.ai && asset.prompt && !run.ours?.[asset.file]);
+/**
+ * Draws the storyboard's AI 사진 that are not in yet and keeps each as the run's image for its file (as an uploaded 우리 이미지).
+ * One that fails stays listed for 「AI 사진 다시 만들기」; when all are in, a storyboard waiting for them goes on as it would have.
+ */
+export async function drawMyinAiPhotos(runId: string) {
+  const service = createServiceSupabase();
+  const first = await runRecord(service, runId);
+  const missing = aiPhotosMissing(first.run);
+  const folder = ourImageFolder(first.record, first.run);
+  const drawn = await Promise.allSettled(missing.map(async (asset) => {
+    const { bytes } = await drawImageBytes({ prompt: asset.prompt!, files: [], size: "1536x1024", quality: "high", model: MYIN_AI_PHOTO_MODEL });
+    const path = `${folder}/${md5(asset.file).slice(0, 12)}-${Date.now().toString(36)}.png`;
+    const { error } = await service.storage.from(OUTPUT_BUCKET).upload(path, bytes, { contentType: "image/png", upsert: true });
+    if (error) throw new ApiError(502, "MYIN_AI_PHOTO_SAVE", "AI 사진을 저장하지 못했어요.");
+    return [asset.file, path, bytes.length] as const;
+  }));
+  // Read again: the run may have moved while drawing (a minute or so).
+  const { record, run } = await runRecord(service, runId);
+  const at = new Date().toISOString(), ours = { ...run.ours };
+  for (const result of drawn) if (result.status === "fulfilled") ours[result.value[0]] = { path: result.value[1], bytes: result.value[2], by: run.settings?.by ?? record.owner_id ?? record.created_by ?? "", name: "AI 사진", at };
+  const next: MyinRun = { ...run, ours };
+  const failed = aiPhotosMissing(next).map((asset) => asset.file);
+  if (failed.length) next.aiPhotos = { state: "failed", at, files: failed }; else delete next.aiPhotos;
+  const saved = await save(service, record, record.status, record.stage ?? "", next);
+  return !failed.length && saved.stage === "storyboard_review" && autoConfirms(next) ? confirmByItself(service, saved) : saved;
+}
+/** 「AI 사진 다시 만들기」: the ones that failed (or were never drawn), by a member who can see the run. */
+export async function redrawMyinAiPhotos(actor: RequestActor, runId: string) {
+  const { record, run } = await visibleRun(actor, runId);
+  if (!aiPhotosMissing(run).length) return presentMyinRun(record);
+  const service = createServiceSupabase();
+  await save(service, record, record.status, record.stage ?? "", { ...run, aiPhotos: { state: "drawing", at: new Date().toISOString(), files: aiPhotosMissing(run).map((asset) => asset.file) } });
+  return presentMyinRun(await drawMyinAiPhotos(runId));
 }
 
 /** Who confirms a storyboard that went on by itself (the panel and the news name it in place of a person). */
@@ -415,7 +473,7 @@ function placeStep(run: MyinRun, actor: RequestActor, place?: "pc" | "local") {
 }
 
 /** 제작 설정 바꾸기: steps that start after this follow the new choice; a step already waiting is moved with 만드는 곳 buttons. */
-export async function setMyinSettings(actor: RequestActor, runId: string, choice: { place: "pc" | "local"; screenCheck: boolean; confirm?: "auto" | "person" }) {
+export async function setMyinSettings(actor: RequestActor, runId: string, choice: { place: "pc" | "local"; voice?: "pc" | "local"; screenCheck: boolean; confirm?: "auto" | "person" }) {
   const service = createServiceSupabase();
   const { record, run } = await visibleRun(actor, runId);
   if (run.final && record.stage === "final_ready") throw new ApiError(409, "MYIN_SETTINGS_DONE", "완성된 영상이에요. 다시 만들 때 바꿔 주세요.");
@@ -443,6 +501,37 @@ export async function setMyinDraftPlace(actor: RequestActor, runId: string, plac
   return presentMyinRun(await save(service, record, "backlog", record.stage!, next));
 }
 
+/**
+ * [내 컴퓨터로 돌리기] · [영상 만드는 컴퓨터로 보내기] (로건 요청 11-16): move a longform's first voice while it waits. Only the first one:
+ * 문장 고치기 work in the folder the voice was made in, so after that the voice stays where it is.
+ */
+export async function setMyinVoicePlace(actor: RequestActor, runId: string, place: "pc" | "local") {
+  const service = createServiceSupabase();
+  const { record, run } = await visibleRun(actor, runId);
+  if (record.stage !== "words_pending" || run.words || run.layout) throw new ApiError(409, "MYIN_VOICE_PLACE_NOT_OPEN", "롱폼의 첫 음성을 기다리는 동안에만 만들 곳을 바꿀 수 있어요.");
+  if (run.lease && Date.parse(run.lease.expiresAt) > Date.now()) throw new ApiError(409, "MYIN_PLACE_BUSY", "지금 만드는 중이에요. 끝난 뒤에 바꿔 주세요.");
+  const next: MyinRun = { ...run, attempts: 0 };
+  delete next.lease; delete next.lastError; delete next.localVoice;
+  if (place === "local") {
+    const blocker = localVoiceBlocker(await readLocalRenderStatus(actor.ownerId).catch(() => null));
+    if (blocker) throw new ApiError(409, "MYIN_LOCAL_VOICE_NOT_READY", blocker);
+    next.localVoice = { by: actor.ownerId, name: actor.name, at: new Date().toISOString() };
+  }
+  return presentMyinRun(await save(service, record, "backlog", record.stage, next));
+}
+
+/**
+ * 키 없이 Fish (로건 요청 11-16 · 2단계): a member's computer voicing a video it holds the lease of asks Fish through the OS, which calls it
+ * with the company key — only for that video, its voice and the pinned model. The computer never holds the key.
+ */
+export async function localFishVoice(ownerId: string, runId: string, token: string) {
+  const { record, run } = await leased(createServiceSupabase(), runId, token);
+  if (record.stage !== "words_pending" || run.localVoice?.by !== ownerId) throw new ApiError(403, "MYIN_LOCAL_VOICE_NOT_YOURS", "이 컴퓨터가 맡은 음성이 아니에요.");
+  const apiKey = process.env.FISH_API_KEY?.trim() ?? "", referenceId = runVoice(run);
+  if (!apiKey || !referenceId) throw new ApiError(503, "VOICE_WORKER_NOT_CONFIGURED", "Fish Audio 연결을 확인해 주세요.");
+  return { apiKey, referenceId, model: MYIN_VOICE_MODEL };
+}
+
 /** Everyone who can read the video sees its run: 로건 and 유쓰 confirm from their own accounts (RLS decides who reads). */
 /**
  * 원고를 고쳐 다시 누른 영상 (로건 11-16): a newer run of the same video exists, so the render PC stops this one. The render PC kept
@@ -460,13 +549,27 @@ export async function myinRunReplaced(runId: string, service: Service = createSe
  * 고친 문장만 다시 (2026-11-16): earlier runs of the video whose voice the render PC may borrow paragraphs from — made there,
  * finished (words), with the same voice — newest first. The PC that has one of their folders reuses each paragraph whose text is unchanged.
  */
-async function voiceDonors(service: Service, sourceId: string, like: Pick<MyinRun, "voiceReferenceFingerprint" | "voiceModel" | "layout">, before?: string) {
-  let query = service.from("os_records").select("id, metadata").eq("parent_id", sourceId).eq("record_type", "ai_job").eq("metadata->>kind", MYIN_RUN_KIND)
+// 낭독 D (대표 2026-11-25): every longform voice 1.1× with short paragraph gaps — 풀링형 from 09:46:17 KST that day (#680), every
+// longform from #681, which keeps the pace on the run (voiceTempo). The render PC never mixes paces (voice_tempo.txt), so an earlier
+// voice at another pace is not counted as kept in the cost or the wait either.
+const LONGFORM_TEMPO = "1.1" as const, PULLING_D_SINCE = "2026-11-25T00:46:17Z";
+const longformRun = (run: Pick<MyinRun, "layout" | "renderer" | "recycle">) => !run.layout && !run.renderer && !run.recycle;
+/** The pace a run's voice is made at: its own voiceTempo, else a 풀링형 run voiced after #680 went live, else the old pace. */
+async function runTempo(service: Service, run: MyinRun, createdAt: string, pulling?: boolean) {
+  if (run.voiceTempo) return run.voiceTempo;
+  if (!longformRun(run) || createdAt < PULLING_D_SINCE) return "1";
+  return (pulling ?? await pullingProject(run.sourceId, service).catch(() => false)) ? LONGFORM_TEMPO : "1";
+}
+async function voiceDonors(service: Service, sourceId: string, like: Pick<MyinRun, "voiceReferenceFingerprint" | "voiceModel" | "layout">, tempo: string, before?: string) {
+  let query = service.from("os_records").select("id, metadata, created_at").eq("parent_id", sourceId).eq("record_type", "ai_job").eq("metadata->>kind", MYIN_RUN_KIND)
     .is("archived_at", null);
   if (before) query = query.lt("created_at", before);
   const { data } = await query.order("created_at", { ascending: false }).limit(10);
-  return ((data ?? []) as { id: string; metadata: MyinRun }[]).filter(({ metadata: m }) => m.voiceOn && m.words && m.voiceModel === like.voiceModel
-    && m.voiceReferenceFingerprint === like.voiceReferenceFingerprint && (m.layout ?? null) === (like.layout ?? null)).slice(0, 3);
+  const pulling = await pullingProject(sourceId, service).catch(() => false);
+  const same = ((data ?? []) as { id: string; metadata: MyinRun; created_at: string }[]).filter(({ metadata: m }) => m.voiceOn && m.words && m.voiceModel === like.voiceModel
+    && m.voiceReferenceFingerprint === like.voiceReferenceFingerprint && (m.layout ?? null) === (like.layout ?? null));
+  const paces = await Promise.all(same.map((d) => runTempo(service, d.metadata, d.created_at, pulling)));
+  return same.filter((_, i) => paces[i] === tempo).slice(0, 3);
 }
 // 대기 순서 (로건 요청 94ba5545, 2026-11-17): the render PC makes one voice at a time and a new video's takes an hour, so a voice that
 // waits says what the PC is on and how many voices are ahead. Minutes as the panel's: 1.4 a paragraph made (two at a time, 11-13), the
@@ -478,10 +581,10 @@ const RENDER_STAGE_MIN: Record<string, number> = { breath_pending: 5, cta_pendin
 
 /** About how many minutes the render PC spends on a run's step now; a voice counts only the paragraphs it has to make. */
 async function stageMinutes(service: Service, record: OsRecord, run: MyinRun) {
-  if (record.stage === "final_pending") return Math.ceil((run.words?.durationSeconds ?? 780) / 60 * 5);
+  if (record.stage === "final_pending") return Math.ceil((run.words?.durationSeconds ?? 780) / 60 * 2.5);   // 30 fps (대표 2026-11-25): about 2.5 minutes a video minute
   if (record.stage !== "words_pending") return RENDER_STAGE_MIN[record.stage ?? ""] ?? 5;
   if (run.voiceFixes?.length) return VOICE_FIXED_MIN;
-  const [donor] = run.layout ? [] : await voiceDonors(service, run.sourceId, run, record.created_at);
+  const [donor] = run.layout ? [] : await voiceDonors(service, run.sourceId, run, await runTempo(service, run, record.created_at), record.created_at);
   const kept = new Set(donor?.metadata.paragraphs.map((p) => p.textHash) ?? []);
   return Math.ceil(VOICE_FIXED_MIN + VOICE_PARAGRAPH_MIN * run.paragraphs.filter((p) => !kept.has(p.textHash)).length);
 }
@@ -507,7 +610,7 @@ async function voiceQueue(service: Service, record: OsRecord) {
 /** Before 「바뀐 원고로 다시 만들기」: the paragraphs the newest earlier voice does not have, which are the ones Fish is paid for. */
 async function voiceReuse(service: Service, sourceId: string, run: MyinRun) {
   if (!run.voiceOn || run.layout) return null;
-  const [donor] = await voiceDonors(service, sourceId, run);
+  const [donor] = await voiceDonors(service, sourceId, run, LONGFORM_TEMPO);   // the new run is a longform: it is voiced at 낭독 D
   if (!donor) return null;
   const kept = new Set(donor.metadata.paragraphs.map((p) => p.textHash));
   const { spoken } = await currentInput(service, sourceId);
@@ -579,7 +682,7 @@ async function recycleFrom(recycle: { runId: string; cuts: [number, number][] })
   return { recycle: { from: recycle.runId, cuts: recycle.cuts }, pc: run.pc };
 }
 
-export async function createMyinRun(actor: RequestActor, sourceId: string, styleId?: string, settings?: { place: "pc" | "local"; screenCheck: boolean; confirm?: "auto" | "person" }, paidOk = false) {
+export async function createMyinRun(actor: RequestActor, sourceId: string, styleId?: string, settings?: { place: "pc" | "local"; voice?: "pc" | "local"; screenCheck: boolean; confirm?: "auto" | "person" }, paidOk = false) {
   const input = await currentInput(actor.supabase, sourceId);
   const cards = (await readChannelStyles()).styles;
   const picked = styleId ? cards.find((style) => style.id === styleId) : undefined;
@@ -602,8 +705,10 @@ export async function createMyinRun(actor: RequestActor, sourceId: string, style
   const id = voiceRunId(runKey);
   const run: MyinRun = { kind: MYIN_RUN_KIND, runKey, sourceId, inputKey: input.inputKey, script: input.script, scriptMarkdownHash: markdownHash,
     voiceModel: MYIN_VOICE_MODEL, voiceReferenceFingerprint: fingerprint, ...(channelVoice ? { voiceReference: channelVoice } : {}), attempts: 0, ...(input.layout ? { layout: input.layout } : {}), ...(input.renderer ? { renderer: input.renderer } : {}), ...(onPc ? { voiceOn: "render_pc" as const } : {}),
+    ...(longformRun({ layout: input.layout, renderer: input.renderer, recycle: recycled?.recycle }) ? { voiceTempo: LONGFORM_TEMPO } : {}),
     ...(picked ? { style: pinStyle(picked) } : {}), ...(recycled ? { recycle: recycled.recycle, pc: recycled.pc } : {}),
     ...(settings ? { settings: { ...settings, by: actor.ownerId, name: actor.name, at: new Date().toISOString() } } : {}),
+    ...(await voiceHere(actor, settings?.voice, input.layout) ? { localVoice: { by: actor.ownerId, name: actor.name, at: new Date().toISOString() } } : {}),
     ...(paidOk && actor.type === "user" ? { paidOk: { by: actor.ownerId, name: actor.name, at: new Date().toISOString() } } : {}),
     paragraphs: input.spoken.map((text, index) => ({ index, textHash: sha(text), status: "pending" })) };
   const { data, error } = await actor.supabase.from("os_records").insert({
@@ -768,8 +873,22 @@ export const fishVoice = (run?: { voiceReference?: string }) => ({ referenceId: 
 /** A 숏폼 run goes only to a render PC whose worker has the vertical engine (it says `short`); an older worker keeps taking longforms. */
 const fits = (short: boolean) => (run: MyinRun) => short || !run.layout;
 
-export async function claimMyinWords(service: Service = createServiceSupabase(), short = false, pc?: string) {
-  const claimed = await claim(service, "words_pending", wordsLeaseMs, fits(short), undefined, undefined, { name: pc });
+/** 음성도 내 컴퓨터에서: a longform's voice goes to the chooser's own computer only while that computer says it can make one. */
+async function voiceHere(actor: { ownerId: string }, choice: "pc" | "local" | undefined, layout?: string | null) {
+  return choice === "local" && !layout && !localVoiceBlocker(await readLocalRenderStatus(actor.ownerId).catch(() => null));
+}
+
+/** A render PC takes every voice no member's computer was given (`owner` absent); a member's computer (`owner`) takes only its own. */
+/** 기획안 영상 형식 of the project a 롱폼 run belongs to: a 풀링형 video gets no subscribe line in its 기획표 and is voiced faster (낭독 D). */
+export async function pullingProject(sourceId: string, service: Service = createServiceSupabase()) {
+  const plan = STAGE_RECORD.plan;
+  const { data } = await service.from("os_records").select("metadata").eq("parent_id", sourceId).eq("record_type", plan.recordType)
+    .eq(`metadata->>${plan.key}`, plan.value).is("archived_at", null).order("created_at", { ascending: false }).limit(1);
+  return ypFormat((data?.[0]?.metadata as { yp?: { format?: "keypulling" | "pulling" } } | undefined)?.yp) === "pulling";
+}
+
+export async function claimMyinWords(service: Service = createServiceSupabase(), short = false, pc?: string, owner?: string) {
+  const claimed = await claim(service, "words_pending", wordsLeaseMs, (run) => fits(short)(run) && voiceFilter(owner)(run), undefined, undefined, owner ? undefined : { name: pc });
   if (!claimed) return { idle: true as const };
   const { record, run, lease } = claimed;
   // 음성 시작 알림 (2026-11-17): a voice that waited for the render PC (another video's voice, a final render) tells who started it.
@@ -787,11 +906,14 @@ export async function claimMyinWords(service: Service = createServiceSupabase(),
     // 음성 사전 (phase ④): the render PC voices with what the OS keeps; until the OS has one, his package's files stand.
     const dictionary = await readVoiceDictionary(service).catch(() => null);
     // 고친 문장만 다시: a fresh voice names the earlier runs whose unchanged paragraphs its render PC may reuse.
-    const earlier = run.voiceOn && !run.words && !run.voiceFixes?.length ? (await voiceDonors(service, run.sourceId, run, record.created_at).catch(() => [])).map((d) => d.id) : [];
+    // 낭독 D: the render PC speeds a fresh longform voice up 1.1× with short paragraph gaps (an older worker reads it as 「pulling」).
+    const tempo = await runTempo(service, run, record.created_at);
+    const earlier = run.voiceOn && !run.words && !run.voiceFixes?.length ? (await voiceDonors(service, run.sourceId, run, tempo, record.created_at).catch(() => [])).map((d) => d.id) : [];
     return { runId: record.id, lease: lease.token, ...voice, bundleUploadUrl: upload.signedUrl, ...(voiceUploadUrls.length === MYIN_VOICE_PARTS ? { voiceUploadUrls } : {}),
-      ...(earlier.length ? { earlier } : {}), ...(run.recycle ? { recycle: run.recycle } : {}),
+      ...(earlier.length ? { earlier } : {}), ...(run.recycle ? { recycle: run.recycle } : {}), ...(tempo !== "1" ? { voiceTempo: tempo, pulling: true } : {}),
       ...(preview ? { previewUploadUrl: preview.signedUrl } : {}), ...(run.layout ? { layout: run.layout } : {}), ...(run.renderer ? { renderer: run.renderer } : {}),
       ...(dictionary?.exists ? { dictionary: dictionaryFiles(dictionary.dictionary) } : {}),
+      ...(run.voicePatch && run.final && !owner ? { patch: { videoUploadUrl: await uploadUrl(service, ASSET_VIDEO_BUCKET, finalFiles(record, run, lease.token).video) } } : {}),
       ...(run.voiceFixes?.length ? { fixes: run.voiceFixes.map(({ memo, say, read, video, take, pause }) => ({ memo, ...(say ? { say } : {}), ...(read ? { read } : {}), ...(video ? { video } : {}),
         ...(take ? { take } : {}), ...(pause ? { pause } : {}) })) } : {}) };
   } catch (error) {
@@ -892,7 +1014,9 @@ async function lendStoryboard(service: Service, record: OsRecord, loan: NonNulla
   return "scenes";
 }
 
-export async function completeMyinWords(input: { runId: string; lease: string; voice?: { parts: number; bytes: number; sha256: string }; preview?: { bytes: number } }, service: Service = createServiceSupabase()) {
+export const myinPatchedSchema = z.object({ bytes: z.number().int().positive(), durationSeconds: z.number().positive(), lufs: z.number(), peak: z.number() }).strict();
+export async function completeMyinWords(input: { runId: string; lease: string; voice?: { parts: number; bytes: number; sha256: string }; preview?: { bytes: number };
+  patched?: z.infer<typeof myinPatchedSchema> }, service: Service = createServiceSupabase()) {
   const { record, run } = await leased(service, input.runId, input.lease);
   const path = bundlePath(record, run, input.lease);
   const { data, error } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).download(path);
@@ -907,12 +1031,34 @@ export async function completeMyinWords(input: { runId: string; lease: string; v
     subtitleLines: (bundle.data.subtitlesAss.match(/^Dialogue:/gm) ?? []).length, durationSeconds: bundle.data.durationSeconds, at: new Date().toISOString(),
     ...(input.voice ? { voice: { path: voicePrefix(record, run, input.lease), ...input.voice } } : {}),
     ...(input.preview ? { preview: { path: previewPath(voicePrefix(record, run, input.lease)), bytes: input.preview.bytes } } : {}) } };
-  delete next.lease; delete next.lastError; delete next.voiceFixes; delete next.voiceResume;
+  delete next.lease; delete next.lastError; delete next.voiceFixes; delete next.voiceResume; delete next.voicePatch;
+  // 한 문장 고치기 ②: the render PC mixed the new sound over the drawn picture — that video is the newest final, back at ⑤.
+  const patched = run.voicePatch && run.final ? input.patched : undefined;
+  if (patched) {
+    retireFinal(next);
+    next.final = { ...run.final!, video: finalFiles(record, run, input.lease).video, ...patched, at: new Date().toISOString(), used: materials(next) };
+    const saved = await save(service, record, "done", "final_ready", next);
+    await syncDraftVersion(service, next, record.id, next.final.at);
+    await reportVoiceDictionary((bundle.data as { dictionary?: Partial<VoiceDictionaryFiles> }).dictionary, { id: record.owner_id ?? "", team: record.team ?? "" }, service).catch(() => undefined);
+    await dropOldVoice(service, run, next, input);
+    return { runId: saved.id, stage: "final_ready" };
+  }
   // A fix asked from 최종 검토 returns to ④, where 「전체 영상 만들기」 makes the video again with the new voice; one asked at ③ draws ③ again
   // (the storyboard's cues are words, so it stays); one asked while the storyboard waits for its 확인 waits there again.
   const resume = run.voiceResume;
   const stage = resume === "draft" ? "storyboard_confirmed" : resume ?? "words_ready";
   if (run.voiceResume) next.voiceChanged = { at: new Date().toISOString(), count: run.voiceFixes?.length ?? 0 };
+  // 쉼 점검 → 다시 낭독 (풀링형 요청 ③, 대표 11-24): a new voice whose pause check caught places has those sentences voiced again by
+  // themselves (voice_fix on the render PC, two takes, the better kept) — at most MYIN_PAUSE_ROUNDS times, only when the paid steps were
+  // approved at the start. What is left after that stays in 「어색하게 쉰 곳」 for a person to change the sentence.
+  const pauseFixes = stage === "words_ready" ? autoPauseFixes(record, run, bundle.data) : [];
+  if (pauseFixes.length) {
+    const by = run.paidOk!.by, at = new Date().toISOString();
+    const again: MyinRun = { ...next, pauseRounds: (run.pauseRounds ?? 0) + 1, voiceFixes: pauseFixes.slice(0, 20).map((fix) => ({ ...fix, by, name: MYIN_PAUSE_FIX_NAME, at })) };
+    delete again.voiceCheck;
+    await save(service, record, "backlog", "words_pending", again);
+    return { runId: record.id, stage: "words_pending" };
+  }
   // 고친 원고 (요청 3번): what the video's earlier run lends; when it cannot, the AI writes the storyboard as before.
   const failedLoan = (error: unknown) => {
     console.error(JSON.stringify({ event: "myin_storyboard_loan_failed", runId: record.id, message: error instanceof Error ? error.message : String(error) }));
@@ -929,11 +1075,33 @@ export async function completeMyinWords(input: { runId: string; lease: string; v
   // His dictionaries as the render PC left them (new lines from voice_fix, or his starting set): the OS keeps what it does not have.
   await reportVoiceDictionary((bundle.data as { dictionary?: Partial<VoiceDictionaryFiles> }).dictionary, { id: record.owner_id ?? "", team: record.team ?? "" }, service)
     .catch((error) => console.error(JSON.stringify({ event: "voice_dictionary_report_failed", message: error instanceof Error ? error.message : String(error) })));
-  // A fixed voice replaces the one before it: those parts (~75 MB for 13 minutes) are removed so storage holds one voice per video.
+  await dropOldVoice(service, run, next, input);
+  return { runId: record.id, stage };
+}
+
+/** A fixed voice replaces the one before it: those parts (~75 MB for 13 minutes) are removed so storage holds one voice per video. */
+async function dropOldVoice(service: Service, run: MyinRun, next: MyinRun, input: { voice?: unknown }) {
   const old = run.words?.voice;
   if (old && input.voice && old.path !== next.words?.voice?.path)
     await service.storage.from(YOUTUBE_VOICE_BUCKET).remove([...Array.from({ length: old.parts }, (_, n) => voicePartPath(old.path, n)), ...(run.words?.preview ? [run.words.preview.path] : [])]).catch(() => undefined);
-  return { runId: record.id, stage };
+}
+
+export const MYIN_PAUSE_ROUNDS = 2;
+// A run keeps the engine it was cloned with: before this the render PC's pause check still caught «» quotes (Logan's fix went live on the
+// render PC then), and voicing those again would only spend Fish.
+const MYIN_PAUSE_REVOICE_SINCE = "2026-11-24T10:26:00Z";
+export const MYIN_PAUSE_FIX_NAME = "쉼 점검";
+const pauseRow = z.object({ p: z.number(), at: z.number(), kind: z.string(), gap: z.number(), text: z.string() });
+const mmssDot = (seconds: number) => `${Math.floor(seconds / 60)}:${(seconds % 60).toFixed(1).padStart(4, "0")}`;
+/** The pause check's places as voice-fix memos (time + the words around the pause, as voice_fix finds a sentence), one per sentence. */
+function autoPauseFixes(record: OsRecord, run: MyinRun, bundle: Record<string, unknown>) {
+  if (!run.paidOk || run.layout || !voiceFixable(record, run) || (run.pauseRounds ?? 0) >= MYIN_PAUSE_ROUNDS
+    || Date.parse(record.created_at) < Date.parse(MYIN_PAUSE_REVOICE_SINCE)) return [];
+  const pauses = z.array(pauseRow).safeParse(bundle.pauses);
+  if (!pauses.success || !pauses.data.length) return [];
+  const audit = z.array(auditRow).safeParse(bundle.audit);
+  const sentences = audit.success ? audit.data.map((row) => ({ at: row.시각, text: row.문장 })) : [];
+  return planVoiceFix(pauses.data.map((row) => ({ memo: `${mmssDot(row.at)} ${row.text.replace(/‖/g, " ").replace(/\s+/g, " ").trim()} (쉼 점검: ${row.kind} ${row.gap}초)`.slice(0, 300) })), sentences).fixes;
 }
 
 export async function failMyinWords(input: { runId: string; lease: string; code: string }, service: Service = createServiceSupabase()) {
@@ -941,7 +1109,7 @@ export async function failMyinWords(input: { runId: string; lease: string; code:
   // A voice fix that cannot be done leaves the video where it was (the voice it had still stands) instead of stopping it at stage 1.
   if (run.voiceFixes?.length && run.words && (input.code === "MYIN_VOICE_FIX_NO_VOICE" || run.attempts >= 3)) {
     const next: MyinRun = { ...run, attempts: 0, lastError: { code: input.code.replace(/[^A-Z0-9_]/g, "").slice(0, 60) || "MYIN_FAILED", at: new Date().toISOString() } };
-    delete next.lease; delete next.voiceFixes; delete next.voiceResume;
+    delete next.lease; delete next.voiceFixes; delete next.voiceResume; delete next.voicePatch;
     await save(service, record, "done", run.voiceResume === "draft" ? "clips_review" : run.voiceResume ?? "words_ready", next);
     return { runId: record.id, retry: false };
   }
@@ -972,10 +1140,12 @@ export async function myinVoiceCheck(actor: RequestActor, runId: string) {
   const service = createServiceSupabase();
   const { data } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).download(run.words.path);
   if (!data) throw new ApiError(404, "MYIN_BUNDLE_MISSING", "받아쓰기 결과 파일을 찾지 못했습니다.");
-  const bundle = JSON.parse(await data.text()) as { audit?: unknown; fixes?: unknown; misreads?: unknown };
+  const bundle = JSON.parse(await data.text()) as { audit?: unknown; fixes?: unknown; misreads?: unknown; pauses?: unknown };
   const rows = z.array(auditRow).safeParse(bundle.audit);
   // 발음 확인 (2026-11-22): words both transcriptions heard differently from the script; none for a voice made before it.
   const misreads = z.array(z.object({ p: z.number(), at: z.number(), said: z.string(), small: z.string(), medium: z.string() })).safeParse(bundle.misreads);
+  // 쉼 검사 (로건 11-24): where the voice paused oddly (the engine's pause_check_myin.py); none for a voice made before it.
+  const pauses = z.array(z.object({ p: z.number(), at: z.number(), kind: z.string(), gap: z.number(), text: z.string() })).safeParse(bundle.pauses);
   // 이음 (2026-11-17, 영상 피드백 71): sentences whose join the engine fixed (끝소리 잘림 · 앞 조각) are worth a listen too.
   const joins = (row: z.infer<typeof auditRow>) => z.array(z.string()).catch([]).parse((row as { 이음?: unknown }).이음).slice(0, 4);
   const listen = rows.success ? rows.data.filter((row) => row.점수 >= 0.8 || row.긴호흡 > 0 || joins(row).length).sort((a, b) => a.시각 - b.시각).slice(0, 80)
@@ -987,7 +1157,8 @@ export async function myinVoiceCheck(actor: RequestActor, runId: string) {
     files: asked.state === "ready" ? await Promise.all((asked.files ?? []).map(async (file) => ({ name: file.name, current: file.current, url: await sign(service, YOUTUBE_VOICE_BUCKET, file.path) }))) : [] } : null;
   const fixes = z.array(z.object({ memo: z.string(), ok: z.boolean(), report: z.string() }).passthrough()).safeParse(bundle.fixes);
   return { sentences: rows.success ? rows.data.length : null, listen, all, takes,
-    misreads: misreads.success ? misreads.data.slice(0, 40).map(({ p, at, said, small, medium }) => ({ p, at, said: said.slice(0, 80), small: small.slice(0, 80), medium: medium.slice(0, 80) })) : null, fixes: fixes.success ? fixes.data.map(({ memo, ok, report }) => ({ memo, ok, report })) : [],
+    misreads: misreads.success ? misreads.data.slice(0, 40).map(({ p, at, said, small, medium }) => ({ p, at, said: said.slice(0, 80), small: small.slice(0, 80), medium: medium.slice(0, 80) })) : null,
+    pauses: pauses.success ? pauses.data.slice(0, 60).map(({ p, at, kind, gap, text }) => ({ p, at, kind: kind.slice(0, 20), gap, text: text.slice(0, 120) })) : null, pauseRounds: run.pauseRounds ?? 0, fixes: fixes.success ? fixes.data.map(({ memo, ok, report }) => ({ memo, ok, report })) : [],
     previewUrl: run.words.preview ? await sign(service, YOUTUBE_VOICE_BUCKET, run.words.preview.path) : null };
 }
 
@@ -1124,6 +1295,8 @@ export function myinReferencedFiles(storyboard: unknown) {
 function photosInUse(run: MyinRun, story: Awaited<ReturnType<typeof storyboardJson>>) {
   const byFile = new Map((run.storyboard?.assets ?? []).map((a) => [a.file, a]));
   const used = [...myinReferencedFiles(story)].filter((file) => byFile.has(file));
+  const drawing = used.filter((file) => byFile.get(file)!.ai && !run.ours?.[file]);
+  if (drawing.length) throw new ApiError(409, "MYIN_AI_PHOTOS_MISSING", `AI 사진 ${drawing.length}장이 아직 없어요(${drawing.join(", ")}). 「AI 사진 다시 만들기」를 눌러 주세요.`);
   const unreachable = used.filter((file) => !run.ours?.[file] && !myinPhotoFetchUrl(byFile.get(file)!.url));
   if (unreachable.length) throw new ApiError(409, "MYIN_PREP_ASSETS", `자동으로 받을 수 없는 사진입니다(위키미디어, Unsplash 사진 파일 주소만): ${unreachable.join(", ")}. 수정 요청으로 바꿔 주세요.`);
   return used;
@@ -1311,6 +1484,8 @@ export const myinVoiceFixSchema = z.object({ memo: z.string().trim().min(1).max(
   read: z.string().trim().max(100).regex(/^[^=]+=[^=]+$/, "「원래말=읽는소리」로 써 주세요").optional(),
   // 최종 검토 음성 피드백: the memo's time is the video's; the render PC turns it into the voice's with the time map his render left.
   video: z.literal(true).optional(),
+  // 2026-11-26: the paragraph of the 음성 확인 row the memo came from; the plan places it inside that paragraph, then drops it.
+  p: z.number().int().min(0).max(999).optional(),
   // 요청 2번 (2026-11-17): another take of the sentence the voice already made, or more pause around it — the render PC, no Fish.
   take: takeFix.optional(), pause: pauseFix.optional() }).strict();
 // The render PC's package with his voice_fix and voice_audit went live 2026-10-30 15:46 KST; a run keeps the engine it was cloned with,
@@ -1322,7 +1497,7 @@ const voiceFixable = (record: Pick<OsRecord, "created_at">, run: MyinRun) => Boo
 async function voiceSentences(service: Service, run: MyinRun) {
   const { data } = run.words ? await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).download(run.words.path) : { data: null };
   const rows = z.array(auditRow).safeParse(data ? (JSON.parse(await data.text()) as { audit?: unknown }).audit : undefined);
-  return rows.success ? rows.data.map((row) => ({ at: row.시각, text: row.문장 })) : [];
+  return rows.success ? rows.data.map((row) => ({ at: row.시각, text: row.문장, p: row.문단 })) : [];
 }
 
 /** The stages the 음성 확인 panel may fix a sentence at, and where the video goes back to once the words are made again (none = stage 1). */
@@ -1331,9 +1506,9 @@ const VOICE_FIX_STAGES: Record<string, MyinRun["voiceResume"] | null> = { words_
 
 /** 음성 고치기 범위 (0dfd9a37 보완 ①): what the memos would make again, before anything is sent or paid. Reading it changes nothing. */
 export async function myinVoiceFixPlan(actor: RequestActor, runId: string, fixes: z.infer<typeof myinVoiceFixSchema>[]) {
-  const { run } = await visibleRun(actor, runId);
+  const { record, run } = await visibleRun(actor, runId);
   const sentences = await voiceSentences(createServiceSupabase(), run);
-  return { ...planVoiceFix(fixes, sentences), sentences: sentences.length, final: Boolean(run.final) };
+  return { ...planVoiceFix(fixes, sentences), sentences: sentences.length, final: Boolean(run.final), patch: Boolean(run.final) && record.stage === "final_ready" && !run.layout && run.renderer !== "web" };
 }
 
 export async function requestMyinVoiceFix(actor: RequestActor, runId: string, memos: z.infer<typeof myinVoiceFixSchema>[]) {
@@ -1357,8 +1532,9 @@ export async function requestMyinVoiceFix(actor: RequestActor, runId: string, me
   if (!fixes.length) throw new ApiError(400, "MYIN_VOICE_FIX_EMPTY", "고칠 곳 메모를 하나 이상 남겨 주세요.");
   const at = new Date().toISOString();
   const back = video ? "prep_ready" as const : resume;
+  const patch = record.stage === "final_ready" && Boolean(run.final) && !run.layout && run.renderer !== "web";
   const next: MyinRun = { ...run, attempts: 0, voiceFixes: fixes.slice(0, 20).map((fix) => ({ ...fix, ...(video ? { video: true as const } : {}), by: actor.id, name: actor.name, at })),
-    ...(back ? { voiceResume: back } : {}) };
+    ...(back ? { voiceResume: back } : {}), ...(patch ? { voicePatch: true as const } : {}) };
   delete next.takes;
   if (!video) delete next.voiceCheck;
   return presentMyinRun(await save(service, record, "backlog", "words_pending", next));
@@ -1391,7 +1567,8 @@ export async function claimMyinTakes(service: Service = createServiceSupabase(),
     const takes = asked.attempts >= 3 ? { ...asked, state: "failed" as const, code: asked.code ?? "MYIN_TAKES_FAILED" }
       : { ...asked, state: "listing" as const, attempts: asked.attempts + 1, token, expiresAt: new Date(Date.now() + TAKES_LEASE_MS).toISOString() };
     const saved = await save(service, candidate, candidate.status ?? "done", candidate.stage ?? "", { ...run, takes }).catch(() => null);
-    if (saved && takes.state === "listing") return { runId: candidate.id, lease: token, p: takes.p, text: takes.text };
+    // 테이크 고르기 (4편 11-26: 「테이크를 꺼내지 못했어요」): the render PC keeps no Fish voice of its own, so the run's voice comes with the job.
+    if (saved && takes.state === "listing") return { runId: candidate.id, lease: token, p: takes.p, text: takes.text, fishVoice: fishVoice(run) };
   }
   return { idle: true as const };
 }
@@ -2052,9 +2229,12 @@ export async function completeMyinFinal(input: { runId: string; lease: string; b
   await save(service, record, "done", "final_ready", next);
   // A final made from the scene pictures as they were keeps them as its own version on the editor screen (로건 11-13: v1 opens there at once);
   // one made after anything changed replaces them, and an editing computer puts that final up as its own version, as before.
-  if (!run.layout) await import("./myin-edit").then((edit) => run.stills && (changedSince(run.stills.used, run) ?? ["?"]).length === 0
-    ? edit.linkDraftVersion(service, run.sourceId, record.id, next.final!.at) : edit.dropDraftVersion(service, run.sourceId, record.id)).catch(() => undefined);
+  await syncDraftVersion(service, run, record.id, next.final!.at);
   return { runId: record.id, stage: "final_ready" };
+}
+async function syncDraftVersion(service: Service, run: MyinRun, runId: string, at: string) {
+  if (!run.layout) await import("./myin-edit").then((edit) => run.stills && (changedSince(run.stills.used, run) ?? ["?"]).length === 0
+    ? edit.linkDraftVersion(service, run.sourceId, runId, at) : edit.dropDraftVersion(service, run.sourceId, runId)).catch(() => undefined);
 }
 
 export async function failMyinStage(input: { runId: string; lease: string; code: string }, service: Service = createServiceSupabase()) {

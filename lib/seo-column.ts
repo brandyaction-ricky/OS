@@ -12,7 +12,8 @@ export interface ColumnSlotInfo { slot: string; kind: "hero" | "image" | "video"
 /** A Short uploaded from this longform, listed at the column's end. */
 export interface ColumnShort { title: string; url: string }
 /** What goes into a slot when shown: an image address (or data: URI on export), or a YouTube link for the video slot. */
-export interface ColumnFill { src: string; alt?: string }
+/** `caption` replaces the place's own caption ("" = none: a picture the caption was not written for, e.g. the thumbnail in the hero place). */
+export interface ColumnFill { src: string; alt?: string; caption?: string }
 
 const FIGURE = /<figure\b([^>]*)>([\s\S]*?)<\/figure>/gi;
 const FORBIDDEN = /<\s*(script|style|iframe|object|embed|form|input|button|textarea|select|link|base|frame|frameset|img|video|audio|source|foreignobject)\b/gi;
@@ -137,11 +138,14 @@ function filledFigure(attrText: string, inner: string, fill: ColumnFill) {
   const attrs = attrsOf(attrText);
   const slot = escape(attrs["data-slot"] ?? "");
   const prompt = escape(unescape(attrs["data-prompt"] ?? ""));
-  const caption = inner.match(/<figcaption[^>]*>([\s\S]*?)<\/figcaption>/i)?.[1] ?? "";
+  // A filled place drops the writer's place label ("[대표 이미지] …", "[이미지 1] …"); the reader sees only the description.
+  const caption = (fill.caption ?? inner.match(/<figcaption[^>]*>([\s\S]*?)<\/figcaption>/i)?.[1] ?? "").replace(/^\s*\[[^\]<]{1,20}\]\s*/, "");
+  const figcaption = textOf(caption) ? `<figcaption>${caption}</figcaption>` : "";
   const video = parseYoutubeRef(fill.src);
-  if (video) return `<figure class="filled embed" data-slot="${slot}"><div class="col-embed"><iframe src="https://www.youtube.com/embed/${video.videoId}" title="${escape(textOf(caption) || "영상")}" loading="lazy" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div><figcaption>${caption}</figcaption></figure>`;
+  // The video place's caption is the writer's note ("[영상] 이 롱폼 자리"), never text for readers.
+  if (video) return `<figure class="filled embed" data-slot="${slot}"><div class="col-embed"><iframe src="https://www.youtube.com/embed/${video.videoId}" title="영상" loading="lazy" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div></figure>`;
   const hero = hasClass(attrs, "hero") || attrs["data-slot"] === "hero";
-  return `<figure class="filled${hero ? " hero" : ""}" data-slot="${slot}" data-prompt="${prompt}"><img src="${escape(fill.src)}" alt="${escape(fill.alt || textOf(caption))}"><figcaption>${caption}</figcaption></figure>`;
+  return `<figure class="filled${hero ? " hero" : ""}" data-slot="${slot}" data-prompt="${prompt}"><img src="${escape(fill.src)}" alt="${escape(fill.alt || textOf(caption))}">${figcaption}</figure>`;
 }
 
 /** The column with its places filled, h2/h3 anchors, the side 목차 and its JSON-LD (Article · FAQPage), before it becomes a page. */
@@ -189,7 +193,8 @@ export function renderColumn(html: string, fills: Partial<Record<string, ColumnF
  */
 export function columnForMyin(html: string, fills: Partial<Record<string, ColumnFill>>, shorts: ColumnShort[] = []) {
   const { doc, nav, ld, meta } = columnParts(html, fills, shorts);
-  const body = (doc.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i)?.[1] ?? doc).trim();
+  // An empty place (figure.ph) stays on the OS preview so the PD sees it, but readers on MYIN never see its note (직원 요청 11-25).
+  const body = (doc.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i)?.[1] ?? doc).replace(/<figure\b[^>]*\bclass="ph\b[^"]*"[^>]*>[\s\S]*?<\/figure>/gi, "").trim();
   return { meta, html: `<div class="col-wrap">${nav}${body}</div>`, jsonLd: ld };
 }
 

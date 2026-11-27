@@ -18,10 +18,13 @@ export const myinStoryboardSchema = z.object({
   end: z.number().positive(),
   scenes: z.array(scene).min(5).max(200),
   music_cues: z.record(z.object({ file: z.string().min(1), start: z.number().nonnegative().optional() }).passthrough()).optional(),
-  reel: z.object({ dur: z.number().positive() }).passthrough().optional(),
-  cta: z.array(z.object({ after: z.string().min(1), line: z.string().min(1) }).passthrough()).min(1).max(3),
+  reel: z.object({ dur: z.number().positive().optional(), after: z.string().min(1).optional() }).passthrough().optional(),
+  cta: z.array(z.object({ after: z.string().min(1), line: z.string().min(1) }).passthrough()).max(3),
 }).passthrough();
 export type MyinStoryboard = z.infer<typeof myinStoryboardSchema>;
+/** AI 사진 (풀링형 요청, 대표 2026-11-24 — the way 원리 1·2편 were made): GPT Image 2, 1536×1024, high, at most 6 a video. */
+export const MYIN_AI_PHOTO_MODEL = "gpt-image-2";
+export const MYIN_AI_PHOTOS_MAX = 6;
 
 /** Logan's _norm(): only digits, Latin letters and Hangul count. */
 export const myinNorm = (value: string) => value.replace(/[^0-9A-Za-z가-힣]/g, "");
@@ -121,6 +124,7 @@ export function myinCueMisses(story: MyinStoryboard, words: [number, number, str
     pos = scp + 1;
   });
   story.cta.forEach((cta, k) => { scene = 0; if (find(cta.after, 0, 400_000) === null) misses.push(`[구독 ${k + 1}] after 문구 못 찾음: ${cta.after}`); });
+  if (story.reel?.after && find(story.reel.after, 0, 400_000) === null) misses.push(`[쇼릴] after 문구 못 찾음: ${story.reel.after}`);
   return { misses, fuzzy };
 }
 
@@ -135,7 +139,7 @@ export function anchorMyinCues(raw: unknown, words: [number, number, string][], 
   const S = myinNorm(speech.split("\n").filter((line) => !line.startsWith("#SECTION")).join(""));
   const T = words.map(([, , word]) => myinNorm(word)).join("");
   if (!S || !T || !raw || typeof raw !== "object" || !Array.isArray((raw as { scenes?: unknown }).scenes)) return { storyboard: raw, changed };
-  const story = structuredClone(raw) as { scenes: Record<string, unknown>[]; cta?: { after?: unknown }[] };
+  const story = structuredClone(raw) as { scenes: Record<string, unknown>[]; cta?: { after?: unknown }[]; reel?: { after?: unknown } };
   const blocks = matchingBlocks(S, T);
   const toT = (si: number) => {
     let pe = 0, te = 0;
@@ -185,6 +189,7 @@ export function anchorMyinCues(raw: unknown, words: [number, number, string][], 
     pos = tStart + 1; spos = sStart + 1;
   });
   (story.cta ?? []).forEach((cta, k) => { if (typeof cta.after === "string") cta.after = fix(cta.after, 0, 0, 400_000, `[구독 ${k + 1}] after 문구`); });
+  if (story.reel && typeof story.reel.after === "string") story.reel.after = fix(story.reel.after, 0, 0, 400_000, "[쇼릴] after 문구");
   return { storyboard: story as unknown, changed };
 }
 
@@ -200,7 +205,7 @@ export function myinCuesAsScript(raw: unknown, words: [number, number, string][]
   for (let r = 0; r < text.length; r++) if (myinNorm(text[r])) at.push(r);
   const S = myinNorm(text), T = words.map(([, , word]) => myinNorm(word)).join("");
   if (!S || !T || !raw || typeof raw !== "object" || !Array.isArray((raw as { scenes?: unknown }).scenes)) return raw;
-  const story = structuredClone(raw) as { scenes: Record<string, unknown>[]; cta?: { after?: unknown }[] };
+  const story = structuredClone(raw) as { scenes: Record<string, unknown>[]; cta?: { after?: unknown }[]; reel?: { after?: unknown } };
   const blocks = matchingBlocks(T, S);
   const toS = (ti: number) => {
     let pe = 0, se = 0;
@@ -242,6 +247,7 @@ export function myinCuesAsScript(raw: unknown, words: [number, number, string][]
     pos = from + 1;
   });
   (story.cta ?? []).forEach((cta) => { if (typeof cta.after === "string") cta.after = back(cta.after, 0, 400_000).phrase; });
+  if (story.reel && typeof story.reel.after === "string") story.reel.after = back(story.reel.after, 0, 400_000).phrase;
   return story as unknown;
 }
 
@@ -437,6 +443,39 @@ function photoFocusIssues(story: MyinStoryboard) {
 const ctaWordingIssues = (story: MyinStoryboard) => story.cta.flatMap((cta, k) => /눌러\s*두/.test(cta.line) ? [`[구독 ${k + 1}] 「눌러 두…」 대신 「눌러 주세요」로 써요`] : []);
 
 /**
+ * 쇼릴 · 구독 자리 (로건 2026-11-24 재요청 · 대표 OK, 91편 시청 지속률): the deck reel is a 「오늘 볼 ①②③」 map early in the body —
+ * reel.after between 1:00 and 3:00 of the voice (no fitting spot = no reel), 3–4 s, at most 3 cards — and the one subscribe request stays
+ * apart, 60 s into the body and past 35% of the voice. New storyboards only (the AI's), so an older one lent to an edited script still renders.
+ * A 풀링형 video (기획안 영상 형식, 풀링형 정본 §2) asks for nothing out loud: no subscribe line at all.
+ */
+export function reelCtaIssues(story: MyinStoryboard, words: [number, number, string][], pulling = false) {
+  if (!words.length) return [];
+  const issues = pulling
+    ? story.cta.length ? [`[구독] 풀링형 영상은 말로 구독을 권하지 않아요 — cta를 빈 목록 []으로 둬요`] : []
+    : !story.cta.length ? ["[구독] 구독 대사 cta 1개가 필요해요(after, line, clicks, head)"]
+    : story.cta.length > 1 ? [`[구독] 구독 요청은 영상당 한 곳이에요 — cta ${story.cta.length}개를 1개로 줄여요`] : [];
+  const find = myinCueFinder(words);
+  const ends: number[] = [];
+  words.reduce((n, [, , word]) => { ends.push(n + myinNorm(word).length); return n + myinNorm(word).length; }, 0);
+  const timeAt = (at: number) => words[Math.max(0, ends.findIndex((end) => end > at))][0];
+  const body = story.scenes[0]?.type === "opening" && story.scenes.length > 1 ? timeAt(sceneStarts(story, find)[1]) : words[0][0];
+  const earliest = Math.max(body + 60, words[words.length - 1][1] * 0.35);
+  const cta = story.cta[0] ? find(story.cta[0].after, 0, 400_000) : null;
+  const ctaAt = cta ? timeAt(cta.at) : null;
+  if (ctaAt !== null && ctaAt < earliest) issues.push(`[구독] 구독 자리(${mmss(ctaAt)})가 너무 앞이에요 — ${mmss(earliest)} 뒤(본론 시작 60초 뒤 · 영상 35% 뒤), 앞 화제의 결론 문장이 끝난 곳으로 옮겨요(질문 뒤 답 직전은 안 돼요)`);
+  const reel = story.reel as { after?: string; dur?: number; picks?: unknown[] } | undefined;
+  if (!reel) return issues;
+  if (!reel.after) return [...issues, "[쇼릴] reel.after(그 문장이 끝난 뒤 쇼릴)가 없어요 — 1:00~3:00 사이 첫 사례 · 반전 비트가 끝나는 문장을 적거나, 맞는 자리가 없으면 reel을 빼요"];
+  const hit = find(reel.after, 0, 400_000);
+  const reelAt = hit ? timeAt(hit.at) : null;
+  if (reelAt !== null && (reelAt < 60 || reelAt > 180)) issues.push(`[쇼릴] 쇼릴 자리(${mmss(reelAt)})가 1:00~3:00 밖이에요 — 그 사이 첫 사례 · 반전 비트가 끝나는 문장으로 옮기고, 맞는 자리가 없으면 reel을 빼요`);
+  if (reel.dur !== undefined && (reel.dur < 3 || reel.dur > 4)) issues.push(`[쇼릴] 쇼릴은 3~4초예요(지금 ${reel.dur}초)`);
+  if (Array.isArray(reel.picks) && reel.picks.length > 3) issues.push(`[쇼릴] 쇼릴 카드는 3장까지예요(지금 ${reel.picks.length}장)`);
+  if (reelAt !== null && ctaAt !== null && Math.abs(ctaAt - reelAt) < 10) issues.push("[구독] 구독 카드는 쇼릴과 다른 자리에 둬요 — 쇼릴에는 구독 대사를 붙이지 않아요");
+  return issues;
+}
+
+/**
  * A stage (lib_stage_) at most twice a video, never twice in a row — but a 나열형 기준 판 brought back for its next item (덱 배치 기준 v2 §4:
  * the same board, its rooms re-added with the same ids) is that one board again, not another use of the stage.
  */
@@ -497,7 +536,8 @@ export function checkMyinStoryboard(value: unknown, words: [number, number, stri
   const story = parsed.data;
   const issues: string[] = [];
   const types = story.scenes.map((sc) => sc.type);
-  if (types[0] !== "opening") issues.push("첫 장면은 opening이어야 합니다.");
+  // 풀링형 (cta [] — reelCtaIssues holds it to that) starts with the body, no opening (매뉴얼 2026-11-24); the engine starts either way.
+  if (types[0] !== "opening" && story.cta.length) issues.push("첫 장면은 opening이어야 합니다.");
   for (const required of ["outro", "summary", "endscreen"]) if (!types.includes(required)) issues.push(`${required} 장면이 없습니다.`);
   const cues = myinCueMisses(story, words);
   issues.push(...cues.misses);

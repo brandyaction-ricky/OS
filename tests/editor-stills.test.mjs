@@ -68,7 +68,7 @@ test("a computer whose engine can draw them makes the scene pictures instead of 
   assert.match(section(worker, "async function drawStills", "/** v13 stage 4a"), /action: "myin_stills_upload"[\s\S]*action: "myin_clips_complete", \.\.\.lease, stills: \{ files: files\.length \}/);
   for (const route of ["app/api/v1/content/youtube-automation/media/route.ts", "app/api/v1/content/youtube-automation/local-render/route.ts"])
     assert.match(read(route), /input\.action === "myin_stills_upload" \? await myinStillsUpload\(input\)/, route);
-  assert.match(read("lib/server/myin-run.ts"), /if \(!run\.layout\) await import\("\.\/myin-edit"\)\.then\(\(edit\) => run\.stills && \(changedSince\(run\.stills\.used, run\) \?\? \["\?"\]\)\.length === 0\n\s+\? edit\.linkDraftVersion\(service, run\.sourceId, record\.id, next\.final!\.at\) : edit\.dropDraftVersion/, "a final made from v0 as it was keeps v0 as its version; else it replaces the run's pictures");
+  assert.match(read("lib/server/myin-run.ts"), /await syncDraftVersion\(service, run, record\.id, next\.final!\.at\);[\s\S]*if \(!run\.layout\) await import\("\.\/myin-edit"\)\.then\(\(edit\) => run\.stills && \(changedSince\(run\.stills\.used, run\) \?\? \["\?"\]\)\.length === 0\n\s+\? edit\.linkDraftVersion\(service, run\.sourceId, runId, at\) : edit\.dropDraftVersion/, "a final made from v0 as it was keeps v0 as its version; else it replaces the run's pictures");
   assert.match(section(read("lib/server/myin-edit.ts"), "export async function dropDraftVersion", "export const draftFinishSchema"), /screen\?\.lockId !== runId\) return;/, "only this run's v0, never an editing computer's versions");
 });
 

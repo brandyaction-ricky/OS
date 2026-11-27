@@ -122,7 +122,7 @@ function EditorScreen({ token, projectId, title, first, onState, onFinal, onClos
     if (op === "cancel") return post("edit_cancel", { orderId: body.id });
     if (op === "save") {
       if (beforeFinal.current && !paidOk && !await cost.confirm({ model: myinVoice, amount: voiceEstimate("가".repeat(600), myinVoice).krw, upTo: true,
-        detail: "구독 대사 음성(300자까지, 끊긴 문장은 한 번 더)을 만들고 1080p 60fps 전체 영상까지 이어서 만들어요", ok: "완성하기" }))
+        detail: "구독 대사 음성(300자까지, 끊긴 문장은 한 번 더)을 만들고 1080p 30fps 전체 영상까지 이어서 만들어요", ok: "완성하기" }))
         throw new Error("완성을 취소했어요.");
       return post("save", {});
     }

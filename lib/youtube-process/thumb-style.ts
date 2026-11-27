@@ -47,6 +47,10 @@ export interface ThumbCopy { text: string; accent?: string }
  * photo: the picture moved (px on the 1280×720 frame), scaled and brightened. extras: lines added anywhere on the frame.
  */
 export interface ThumbEdit {
+  /** 인물형 (마이인 가이드, 대표 확정 2026-11-24): the photo fills the frame, the copy sits in a blue and a black box on its left. */
+  frame?: "person";
+  /** The photo mirrored, so the person stands on the right of the boxes. */
+  flip?: boolean;
   size?: number;
   photo?: { scale: number; x: number; y: number; brightness: number };
   extras?: ThumbExtra[];
@@ -62,7 +66,8 @@ export const THUMB_PHOTO_LIMITS = { scale: [0.5, 1.6], x: [-640, 640], y: [-360,
 export interface ThumbSubject { box: [number, number, number, number]; size: [number, number] }
 export interface ThumbBox { left: number; top: number; width: number; height: number }
 /** photoBox: where the picture goes (objectFit contain inside it); clipBottom: the picture is cut there, just above the title's letters. */
-export interface ThumbLayout { lines: string[]; size: number; titleTop: number; subjectBox: { top: number; height: number }; photoBox: ThumbBox; clipBottom: number; checks: ThumbCheck[] }
+export interface ThumbLayout { lines: string[]; size: number; titleTop: number; subjectBox: { top: number; height: number }; photoBox: ThumbBox; clipBottom: number; checks: ThumbCheck[];
+  person?: { band: { text: string; top: number; size: number } | null; boxes: { text: string; top: number; height: number; bg: string }[] } }
 export interface ThumbCheck { id: "bottom" | "phone" | "lines" | "chars" | "extras"; ok: boolean; text: string }
 
 /** Glyph width in em (Pretendard Black): Hangul and wide symbols ≈ 1, Latin and digits narrower, spaces a third. */
@@ -80,8 +85,51 @@ export function thumbLines(text: string, style: ThumbStyle) {
   return [clean.slice(0, cut).trim(), clean.slice(cut).trim()].filter(Boolean);
 }
 
+/**
+ * 인물형 틀 (마이인 유튜브 스타일 가이드, 대표가 1·2·3편으로 확정 2026-11-24): the situation photo over the whole frame (darker on the
+ * left), the copy's lines from the bottom-left — a small band (when there are three lines), a blue box, a black box — white Pretendard.
+ * Measured on the local tool: 72 px letters in boxes 34 px taller, 48 px wider, the black box ending 114 px above the bottom.
+ */
+export const THUMB_PERSON = { blue: "#315FFA", black: "#000000", text: "#FFFFFF", sidePx: 64, bottomPx: 114, minPx: 56, maxPx: 84, padX: 48, padY: 34, gap: 4,
+  band: { size: 34, gap: 26 }, maxLines: 3, phoneMinPx: 16, maxChars: 14,
+  prompt: {
+    flow: "Documentary photo, natural light, candid, 35mm, full colour, the person on the right third of the frame, the left half calm and uncluttered, face turned to the side or partly away (no straight-on close-up), no text, no logos, no frame, 16:9.",
+    chatgpt: "다큐 사진, 자연광, 꾸미지 않은 순간, 35mm, 전체 컬러, 사람은 화면 오른쪽 3분의 1에, 왼쪽 절반은 차분하고 비어 있게, 얼굴은 옆이나 반쯤 돌린 구도(정면 클로즈업 금지), 글자 · 로고 · 테두리 없이, 3:2.",
+  } satisfies Record<ThumbTool, string>,
+  rules: [
+    "타겟 본인이 그 고민을 하는 실제 순간(장소 · 행동 · 표정) 한 장. 사람은 오른쪽, 왼쪽은 글자 박스 자리라 비워 둬요.",
+    "실사 · 전체 컬러. 실존 인물을 AI로 만들지 않고 대표 얼굴 · 회사 로고 · 괄호 꼬리표를 넣지 않아요.",
+    "그림에는 글자를 넣지 않아요 — 작은 띠 · 파랑 박스(#315FFA) · 검정 박스는 OS가 Pretendard 900 흰 글자로 얹어요.",
+  ],
+} as const;
+
+function personLayout(copy: ThumbCopy, style: ThumbStyle, edit?: ThumbEdit): ThumbLayout {
+  const P = THUMB_PERSON;
+  // 기획안 문구 칸은 한 줄이라 「 / 」로 나눠 쓰기도 한다(서율 3편 리메이크 2026-11-25) — 인물형에서는 줄바꿈과 같게 센다.
+  const all = copy.text.replace(/\r/g, "").split(/\n|\s\/\s/).map((line) => line.trim()).filter(Boolean);
+  const band = all.length >= 3 ? all[0] : null, lines = (band ? all.slice(1) : all).slice(0, 2);
+  const widest = Math.max(1, ...lines.map((line) => thumbLineEm(line, 0)));
+  const fit = Math.floor((style.width - 2 * P.sidePx - P.padX) / widest);
+  const size = Math.max(P.minPx, Math.min(P.maxPx, fit, edit?.size ?? 72));
+  const height = size + P.padY;
+  const top0 = style.height - P.bottomPx - lines.length * height - (lines.length - 1) * P.gap;
+  const boxes = lines.map((text, i) => ({ text, top: top0 + i * (height + P.gap), height, bg: i === 0 && lines.length > 1 ? P.blue : P.black }));
+  const bandRow = band ? { text: band, top: top0 - P.band.gap - P.band.size, size: P.band.size } : null;
+  const full = { left: 0, top: 0, width: style.width, height: style.height };
+  const photoBox = scalePhoto(full, edit?.photo, null);
+  const phonePx = size * style.phone.widthPx / style.width;
+  const checks: ThumbCheck[] = [
+    { id: "lines", ok: lines.length >= 1 && all.length <= P.maxLines, text: `${all.length}줄 (인물형은 최대 ${P.maxLines}줄: 작은 띠 · 파랑 박스 · 검정 박스)` },
+    { id: "chars", ok: fit >= P.minPx, text: fit >= P.minPx ? `박스 글자 ${size}px` : `글자가 길어 박스가 화면 밖으로 나가요 — 한 줄을 줄여 주세요` },
+    { id: "phone", ok: phonePx >= P.phoneMinPx, text: `휴대폰 피드 글자 ${Math.round(phonePx)}px (기준 ${P.phoneMinPx}px 이상)` },
+    ...(edit?.extras?.length ? [extrasCheck(edit.extras, style)] : []),
+  ];
+  return { lines, size, titleTop: bandRow?.top ?? top0, subjectBox: { top: 0, height: style.height }, photoBox, clipBottom: style.height, checks, person: { band: bandRow, boxes } };
+}
+
 /** Where everything goes on the 1280×720 frame, and the checks that follow from it (the 50 px bottom, the phone text size, the line rules). */
 export function thumbLayout(copy: ThumbCopy, style: ThumbStyle, edit?: ThumbEdit, subject?: ThumbSubject | null): ThumbLayout {
+  if (edit?.frame === "person") return personLayout(copy, style, edit);
   const t = style.title, lines = thumbLines(copy.text, style);
   const widest = Math.max(1, ...lines.map((line) => thumbLineEm(line, t.tracking)));
   const fit = Math.floor((style.width - 2 * t.sidePx) / widest);
@@ -137,8 +185,10 @@ const clamp = (value: number, [low, high]: readonly [number, number]) => Math.mi
 export function cleanThumbEdit(edit: ThumbEdit | undefined, style: ThumbStyle): ThumbEdit {
   if (!edit) return {};
   const L = THUMB_PHOTO_LIMITS;
+  const person = edit.frame === "person";
   return {
-    ...(edit.size ? { size: clamp(Math.round(edit.size), [style.title.minPx, style.title.maxPx]) } : {}),
+    ...(person ? { frame: "person" as const } : {}), ...(person && edit.flip ? { flip: true } : {}),
+    ...(edit.size ? { size: clamp(Math.round(edit.size), person ? [THUMB_PERSON.minPx, THUMB_PERSON.maxPx] : [style.title.minPx, style.title.maxPx]) } : {}),
     ...(edit.photo ? { photo: { scale: clamp(edit.photo.scale, L.scale), x: Math.round(clamp(edit.photo.x, L.x)), y: Math.round(clamp(edit.photo.y, L.y)), brightness: clamp(edit.photo.brightness, L.brightness) } } : {}),
     ...(edit.extras?.length ? { extras: edit.extras.slice(0, 4).map((x) => ({ ...x, size: clamp(Math.round(x.size), [36, 140]), x: Math.round(x.x), y: Math.round(x.y) })) } : {}),
   };

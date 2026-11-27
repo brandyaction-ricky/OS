@@ -23,3 +23,12 @@ test("음성 확인 lists the misreads with a play button and a memo that names 
   assert.match(screen, /잘못 읽은 것 같은 곳 \{data\.misreads\.length\}곳/);
   assert.match(screen, /setText\(`「\$\{row\.said\}」가 「\$\{row\.medium \|\| row\.small\}」로 들림`/);
 });
+
+test("쉼 검사: the render PC runs the engine's pause check when its package has it, and 음성 확인 lists 어색하게 쉰 곳", () => {
+  const worker = read("tools/youtube-media-worker.mjs");
+  assert.match(worker, /const pauseScript = path\.join\(timing, "pause_check_myin\.py"\)/);
+  assert.match(worker, /process\.env\.MYIN_PAUSE_CHECK !== "off" && existsSync\(pauseScript\)/);
+  assert.match(worker, /\.\.\.\(Array\.isArray\(pauses\) \? \{ pauses \} : \{\}\)/);
+  assert.match(read("lib/server/myin-run.ts"), /pauses: pauses\.success \? pauses\.data\.slice\(0, 60\)/);
+  assert.match(read("components/myin-voice-check.tsx"), /어색하게 쉰 곳 \{data\.pauses\.length\}곳/);
+});

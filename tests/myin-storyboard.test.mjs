@@ -264,3 +264,53 @@ test("photo credits: ④-approved photos for a longform, every listed photo for 
   assert.deepEqual(myinPhotoCreditLines({ renderer: "web", storyboard: { assets } }).map((l) => l.split(" — ")[0]), ["a.jpg", "b.jpg"]);
   assert.deepEqual(myinPhotoCreditLines({ renderer: "web", storyboard: { assets }, ours: { "b.jpg": {} } }).map((l) => l.split(" — ")[0]), ["a.jpg"]);
 });
+
+test("쇼릴 · 구독 자리: the reel is a map at 1:00–3:00 apart from the one subscribe request past 60 s and 35%", async () => {
+  const { reelCtaIssues } = await import("../lib/myin-storyboard.ts");
+  // 300 words, one a second: the body starts at 2 s, the voice ends at 299.9 s → subscribe not before 1:44 (35%).
+  const long = Array.from({ length: 300 }, (_, i) => [i, i + 0.9, `말${i}`]);
+  const board = (cta, reel) => ({ end: 310, cta: cta.map((after) => ({ after, line: "구독 눌러 주세요" })), ...(reel ? { reel } : {}), scenes: [{ type: "opening", at: "말0" }, { type: "hero", at: "말2" }] });
+  assert.deepEqual(reelCtaIssues(board(["말200"], { after: "말90", dur: 3.5 }), long), []);
+  assert.deepEqual(reelCtaIssues(board(["말200"]), long), [], "no fitting spot: no reel");
+  assert.match(reelCtaIssues(board(["말65"]), long)[0], /^\[구독\] 구독 자리\(1:05\)가 너무 앞이에요 — 1:44 뒤/);
+  assert.match(reelCtaIssues(board(["말200", "말250"]), long)[0], /한 곳이에요.*2개를 1개로/);
+  assert.match(reelCtaIssues(board(["말200"], { after: "말200", dur: 3.5 }), long).join(" "), /쇼릴 자리\(3:20\)가 1:00~3:00 밖.*다른 자리/);
+  assert.match(reelCtaIssues(board(["말200"], { dur: 7 }), long)[0], /reel\.after/);
+  assert.match(reelCtaIssues(board(["말200"], { after: "말90", dur: 7, picks: [3, 4, 5, 6] }), long).join(" "), /3~4초.*3장까지/);
+});
+
+test("풀링형: no subscribe line at all; 키풀링형 still needs exactly one", async () => {
+  const { reelCtaIssues } = await import("../lib/myin-storyboard.ts");
+  const long = Array.from({ length: 300 }, (_, i) => [i, i + 0.9, `말${i}`]);
+  const board = (cta) => ({ end: 310, cta: cta.map((after) => ({ after, line: "구독 눌러 주세요" })), reel: { after: "말90", dur: 3.5 }, scenes: [{ type: "opening", at: "말0" }, { type: "hero", at: "말2" }] });
+  assert.deepEqual(reelCtaIssues(board([]), long, true), []);
+  assert.match(reelCtaIssues(board(["말200"]), long, true)[0], /풀링형.*빈 목록/);
+  assert.match(reelCtaIssues(board([]), long)[0], /구독 대사 cta 1개가 필요해요/);
+  const { readFileSync } = await import("node:fs");
+  const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+  assert.match(read("lib/server/myin-storyboard-job.ts"), /\$\{input\.pulling \? `- 이 영상은 풀링형[^`]*cta는 빈 목록 \[\]으로 둡니다/);
+  const jobs = read("lib/server/youtube-ai-jobs.ts");
+  assert.match(jobs, /pulling: await pullingProject\(myin\.run\.sourceId\)/, "the card asks with the project's 기획안 형식");
+  assert.match(jobs, /checkMyinStoryboardResult\(input\.result, myin\.words, catalogTypes, myin\.speech, pulling\)/, "and the check uses the same");
+});
+
+test("AI 사진: the storyboard may ask for up to 6; the OS draws them with GPT Image 2 and the storyboard goes on once they are in", async () => {
+  const { readFileSync } = await import("node:fs");
+  const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+  const { MYIN_AI_PHOTO_MODEL, MYIN_AI_PHOTOS_MAX } = await import("../lib/myin-storyboard.ts");
+  assert.equal(MYIN_AI_PHOTO_MODEL, "gpt-image-2");
+  assert.equal(MYIN_AI_PHOTOS_MAX, 6);
+  const job = read("lib/server/myin-storyboard-job.ts");
+  assert.match(job, /kind: z\.literal\("ai_photo"\)[\s\S]*?\.transform\(\(\{ file, prompt, desc, use \}\) => \(\{ kind: "situations" as const, file, url: "",[\s\S]*?ai: true as const, prompt, desc \}\)\)/);
+  assert.match(job, /assets\.filter\(\(a\) => "ai" in a\)\.length <= MYIN_AI_PHOTOS_MAX/);
+  assert.match(job, /실존 인물\(연구자 · 저자 등\)은 AI로 만들지 않고/);
+  const run = read("lib/server/myin-run.ts");
+  assert.match(run, /if \(missing\.length\) \{ after\(\(\) => drawMyinAiPhotos\(saved\.id\)/, "drawn after the answer, not inside it");
+  assert.match(run, /drawImageBytes\(\{ prompt: asset\.prompt!, files: \[\], size: "1536x1024", quality: "high", model: MYIN_AI_PHOTO_MODEL \}\)/);
+  assert.match(run, /!failed\.length && saved\.stage === "storyboard_review" && autoConfirms\(next\) \? confirmByItself\(service, saved\) : saved/);
+  assert.match(run, /throw new ApiError\(409, "MYIN_AI_PHOTOS_MISSING"/, "③ never starts without them");
+  assert.match(read("app/api/v1/content/youtube-automation/myin/route.ts"), /input\.action === "ai_photos" \? \{ run: await redrawMyinAiPhotos\(actor, input\.runId\) \}/);
+  const panel = read("components/myin-v13-panel.tsx");
+  assert.match(panel, /cost\.confirm\(\{ model: MYIN_AI_PHOTO_MODEL, amount: run\.aiPhotos!\.files\.length \* AI_PHOTO_KRW/, "the retry shows its cost");
+  assert.match(panel, /photos = MYIN_AI_PHOTOS_MAX \* AI_PHOTO_KRW/, "the start confirm counts them");
+});
