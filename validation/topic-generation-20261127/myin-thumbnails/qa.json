@@ -1,0 +1,72 @@
+{
+  "empty": {
+    "message": "세 줄의 제목을 모두 입력해 주세요.",
+    "disabled": true
+  },
+  "long": {
+    "message": "제목이 너무 깁니다. 각 줄을 조금 줄여 주세요.",
+    "disabled": true
+  },
+  "persist": {
+    "ready": "true",
+    "lines": [
+      "지금 하는 일이",
+      "내게 맞는지",
+      "궁금하다면"
+    ],
+    "selection": "질문 중심 디자인"
+  },
+  "feed": [
+    240,
+    240,
+    240
+  ],
+  "mobile": {
+    "width": 390,
+    "scrollWidth": 375,
+    "overflow": false,
+    "buttonHeights": [
+      42,
+      42,
+      42,
+      42,
+      42,
+      42,
+      48
+    ]
+  },
+  "exports": [
+    {
+      "id": "character",
+      "width": 1080,
+      "height": 1350,
+      "sha256": "c9429bb9bc1fdb71dd3ddf4b2ed309d2d48972fb9a82df4acaeb88138f6081e4",
+      "downloadMatchesPreview": true
+    },
+    {
+      "id": "report",
+      "width": 1080,
+      "height": 1350,
+      "sha256": "7cf9f6a749a9d370e42b8e3565ae9e25c9a5d259a3872e5b32fe7e7f3aeea777",
+      "downloadMatchesPreview": true
+    },
+    {
+      "id": "question",
+      "width": 1080,
+      "height": 1350,
+      "sha256": "2b9c7848c88f0465f46cc9bbcf24ca27460ad48ffc8810c7887a079157b69691",
+      "downloadMatchesPreview": true
+    }
+  ],
+  "testRun": {
+    "environmentCheck": "pass",
+    "lint": "pass with existing warnings",
+    "typecheck": "pass",
+    "tests": {
+      "pass": 1945,
+      "fail": 1,
+      "skip": 10
+    },
+    "blocker": "Existing killTree test cannot spawn ps in the sandbox (EPERM). Build step not reached."
+  }
+}
