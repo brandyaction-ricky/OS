@@ -414,7 +414,17 @@ test("project platform selector filters every kind, retains search and can leave
   for (const [value, label] of [["card", "카드뉴스"], ["ad", "광고"], ["short", "숏폼 · 릴스"], ["longform", "롱폼"]]) {
     await platform.selectOption(value);
     await expect(page).toHaveURL(new RegExp(`platform=${value}`));
-    await expect.poll(async () => { const tags = await page.locator(".yp-mv-list .yp-pf-tag").allTextContents(); return tags.length > 0 && tags.every(tag => tag === label); }).toBe(true);
+    if (value === "card") {
+      const cards = page.locator(".yp-library-list .yp-mv");
+      await expect(cards).toHaveCount(1);
+      await expect(cards.getByRole("link", { name: /카드 만들기/ })).toHaveAttribute("href", /project=demo-p13/);
+      await expect(cards.locator(".yp-library-format")).toHaveText(/정리형/);
+    } else {
+      await expect.poll(async () => {
+        const tags = await page.locator(".yp-mv-list .yp-pf-tag").allTextContents();
+        return tags.length > 0 && tags.every(tag => tag === label);
+      }).toBe(true);
+    }
   }
   await page.getByLabel("영상 검색").fill("QA 없는 주제");
   await platform.selectOption("card");
