@@ -121,6 +121,10 @@ export function CardProductionStart({ initial, thumbnail, save, upload, resolveP
     <fieldset disabled={busy} className="yp-production-fields" aria-labelledby="yp-production-content">
       <h3 id="yp-production-content" className="yp-production-heading">제작 내용</h3>
       <label className="yp-production-field"><span>작업명 <small className="yp-production-meta">필수</small></span><input required className="yp-in" value={data.title} maxLength={200} onChange={e => change({ title: e.target.value })} /></label>
+      {type === "information" && <label className="yp-production-field"><span>정본에서 가져올 관점 <small className="yp-production-meta">선택</small></span>
+        <textarea className="yp-in" rows={2} maxLength={800} value={data.canonInsight ?? ""} onChange={e => change({ canonInsight: e.target.value })} placeholder="예) 강점은 반복·숙련·가치의 단서로 살핀다. 독자가 자기 일에서 이 세 가지를 찾도록 한다." />
+        <small className="yp-production-meta">위의 제작 기준을 열어 이번 주제에 쓸 관점을 적어 주세요. 이어서 원문·메모에 이를 보여 줄 사례를 넣으면 장별 기획에 함께 전달돼요.</small>
+      </label>}
       <label className="yp-production-field"><span>원문·메모 <small className="yp-production-meta">필수</small></span><textarea required className="yp-in" rows={3} value={data.memo} maxLength={16000} placeholder="핵심 사례나 문장을 한 줄씩 적어 주세요." onChange={e => change({ memo: e.target.value })} /></label>
       <div className="yp-production-pair">
         <label className="yp-production-field"><span>{input.label} <small className="yp-production-meta">선택</small></span><textarea className="yp-in" value={data.detail} maxLength={2000} placeholder={input.hint} onChange={e => change({ detail: e.target.value })} /></label>

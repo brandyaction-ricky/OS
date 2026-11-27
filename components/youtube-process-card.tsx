@@ -519,6 +519,7 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
       </div>
       {saveError && <button className="yp-btn" onClick={() => { if (conflict.current) location.reload(); else void persistDraft(); }}>{conflict.current ? "내 변경을 버리고 최신 저장본 열기" : "다시 저장"}</button>}
       {draft.outline && <div className="yp-outline"><p>각 장을 선택해 문구와 장면을 확인해 주세요. 표지와 마무리는 포맷이 정한 위치에 두고, 본문은 허용된 장 수 안에서 이동할 수 있어요.</p>
+        {draft.production?.canonInsight && <p><b>정본에서 가져온 관점</b> · {draft.production.canonInsight}</p>}
         {draft.production?.direction && <p>제작 요청 · {draft.production.direction}</p>}
         <ol>{draft.slides.map((s,i) => <li key={i}><button className="yp-btn" onClick={() => selectSlide(i)}>{i+1}장 · {slideSpec(draft.format,s.type)?.label} · {firstCardLine(draft.format,s) || "문구 입력"}</button></li>)}</ol>
         <button className="yp-btn yp-pri" disabled={!editable || busy || Boolean(problems.blocking.length) || Boolean(saveError)} onClick={async () => {
@@ -529,6 +530,10 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
         <CardRegeneration key={`rewrite-${draft.id}`} page={page} draft={draft} index={current} version={stage!.version}
           disabled={dirty || busy || (!page.demo && !gptConfigured)} apply={next => structure(next,current)}
           preview={(d,i) => <CandidatePreview page={page} draft={d} index={i} />} />}
+      {draft.slides.some(s => s.scene?.action) && <details className="yp-production-block">
+        <summary>장별 장면 기획 · 이미지 {draft.slides.filter(s => s.photo).length}/{draft.slides.length}장</summary>
+        <ol>{draft.slides.map((s, i) => <li key={i}><button type="button" className="yp-btn yp-sm" aria-current={current === i ? "step" : undefined} onClick={() => selectSlide(i)}>{i + 1}장 · {s.photo ? "이미지 보기" : "장면 확인"}</button> {s.scene?.character} {s.artDirection || s.scene?.action || "장면 미작성"}</li>)}</ol>
+      </details>}
       {editable && !draft.outline && draft.format === "webtoon" ? <CardDrawBatch key={`draw-${draft.id}`} page={page} projectId={project.id} draft={draft} onPlace={(index, photo) => placePhoto(photo, index)} onFile={(index, file) => putPhoto(file, index)} /> : null}
       <div className="yp-card-edit">
         <div className="yp-card-list" aria-label="카드 순서">{draft.slides.map((row, index) => <div key={index} className="yp-card-item" draggable={editable && (slideSpec(draft.format, row.type)?.max ?? 0) > 1}
@@ -549,7 +554,7 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
         <div className="yp-card-fields">
           <h3>{current + 1}장 · {spec?.label}</h3>
           {editable && <div className="yp-row-btns">{(["textLocked","imageLocked"] as const).map((key,i) => <label key={key}><input type="checkbox" checked={Boolean(draft.slides[current][key])} onChange={e => edit({ ...draft, slides: draft.slides.map((s,n) => n === current ? { ...s, [key]: e.target.checked } : s) })} /> {i ? "이미지 잠금" : "문구 잠금"}</label>)}</div>}
-          {editable && spec?.photo && draft.format !== "webtoon" && <label className="yp-field">이미지 영역 · 장면과 행동<textarea className="yp-in" maxLength={400} value={draft.slides[current].artDirection ?? scene?.action ?? ""} onChange={e => edit({ ...draft, slides: draft.slides.map((s,n) => n === current ? { ...s, artDirection: e.target.value } : s) })} /></label>}
+          {editable && (spec?.photo || scene?.action) && draft.format !== "webtoon" && <label className="yp-field">이미지 영역 · 장면과 행동<textarea className="yp-in" maxLength={400} value={draft.slides[current].artDirection ?? scene?.action ?? ""} onChange={e => edit({ ...draft, slides: draft.slides.map((s,n) => n === current ? { ...s, artDirection: e.target.value } : s) })} /></label>}
           {editable ? <p className="yp-hint">가장 먼저 읽힐 구절 하나를 *별표*로 감싸면 파란색으로 보여요 (표지 · 마무리는 노란색).</p> : null}
           {editable && draft.format === "list" && ["cover", "item", "end"].includes(draft.slides[current].type) && <fieldset className="yp-field"><legend>장면 디자인</legend>
             <label>캐릭터 <select value={scene?.kind === "character" ? scene.character : ""} onChange={event => setScene(event.target.value ? { side: "right", size: "large", ...scene, kind: "character", character: event.target.value as MyinCharacter } : undefined)}>

@@ -14,6 +14,19 @@ import { readStages, writeStage } from "./youtube-process-stages";
 
 type Supabase = RequestActor["supabase"];
 export const CARD_CANON_TITLE = "카드뉴스 정본";
+/** Only shared documents can become references for a company generation job. A
+ * preview may also use its DEV working copy, labelled as such in the editor. */
+export async function cardDesignSource(supabase: Supabase) {
+  const statuses = ["canonical", "reviewed", "team"];
+  if (process.env.VERCEL_ENV === "preview" || process.env.NODE_ENV === "development") statuses.push("draft");
+  const { data, error } = await supabase.from("os_documents").select("id,title,current_version,status")
+    .eq("title", "카드뉴스 디자인 정본").eq("reader_scope", "all").eq("owner_only", false)
+    .in("status", statuses).order("updated_at", { ascending: false }).limit(2);
+  if (error) throw new ApiError(503, "CARD_DESIGN_READ_FAILED", "디자인 정본을 읽지 못했어요.");
+  if ((data?.length ?? 0) > 1) throw new ApiError(409, "CARD_DESIGN_AMBIGUOUS", "공유된 디자인 정본이 여러 개예요. 사용할 문서를 확인해 주세요.");
+  const doc = data?.[0];
+  return doc ? { id: String(doc.id), title: String(doc.title), version: Number(doc.current_version), status: String(doc.status) } : null;
+}
 export const VOICE_CANON_TITLE = "원고 말투 정본";
 export const MYIN_CANON_TITLES = ["BRANDYACTION 핵심 컨텍스트", "카드뉴스 디자인 정본", "마이인 캐릭터 정본 · 2026-11-24"];
 /** 웹툰형's people: the three 동기, the 강점 낙서 and how one 화 runs. */
@@ -85,10 +98,10 @@ export function cardFormatSpec(formats: CardFormatId[], myin = false) {
 }
 
 export function cardJobCard(input: { project: Pick<YpProject, "title" | "yp">; cards: Pick<YpCards, "source" | "focus" | "brief" | "production">; formats: CardFormatId[];
-  canon: { id: string } | null; voice: { id: string; title: string }[]; cast?: { id: string; title: string } | null; brand?: { id: string; title: string }[]; leaseMinutes: number }) {
+  canon: { id: string } | null; design?: { id: string; title: string } | null; voice: { id: string; title: string }[]; cast?: { id: string; title: string } | null; brand?: { id: string; title: string }[]; leaseMinutes: number }) {
   const { project, cards, formats } = input;
   const names = formats.map(id => CARD_FORMATS[id].name).join(" · ");
-  const data = { source: { kind: cards.source.kind, title: cards.source.title, text: cards.source.text }, focus: cards.focus, approvedPlan: cards.brief, production: cards.production && formats.includes(cards.production.format) ? { workTitle: cards.production.title, sourceText: cards.production.memo, direction: cards.production.direction, formatDetail: cards.production.detail, design: cards.production.design } : undefined,
+  const data = { source: { kind: cards.source.kind, title: cards.source.title, text: cards.source.text }, focus: cards.focus, approvedPlan: cards.brief, production: cards.production && formats.includes(cards.production.format) ? { workTitle: cards.production.title, sourceText: cards.production.memo, direction: cards.production.direction, formatDetail: cards.production.detail, design: cards.production.design, canonInsight: cards.production.canonInsight } : undefined,
     topic: { title: project.title, target: project.yp.topic.target, note: project.yp.topic.note } };
   return `이 작업 하나만 처리합니다. 승인 · 업로드 · 게시 · 삭제는 하지 않습니다.
 
@@ -100,6 +113,7 @@ export function cardJobCard(input: { project: Pick<YpProject, "title" | "yp">; c
 - 원본에 없는 사실 · 숫자 · 사례를 만들지 않습니다. 숫자를 쓰면 출처를 근거 칸이나 캡션에 적습니다.
 - 진단은 유료예요. ‘무료 진단’이라고 쓰지 않습니다.
 - ‘여러분’은 쓰지 않습니다. 사람이 말하듯 자연스럽게 씁니다.
+- production.canonInsight가 있으면 정본 원문과 대조하고, 독자의 질문에 답하는 사례와 장별 행동으로 풀어 씁니다. 강점에 관한 글은 반복된 부탁·익숙해진 판단·상대에게 생긴 변화로 근거를 보여 줍니다.
 - approvedPlan이 있으면 승인된 기획과 장 순서를 따릅니다. 각 본문 장은 서로 다른 관찰이나 행동을 전달하고, 포맷의 시각 구조에 맞게 문구를 나눕니다. 마지막 장에는 오늘 시도할 행동 하나를 씁니다.
 - item·step·part 중 핵심 행동을 강조할 장에는 slide.layout을 "spotlight"로 지정합니다. 나머지는 layout을 생략합니다.
 - 한 장에 한 메시지만. 표지는 처음 보는 사람이 멈추게 씁니다.
@@ -107,6 +121,7 @@ export function cardJobCard(input: { project: Pick<YpProject, "title" | "yp">; c
 
 ## 먼저 끝까지 열 문서 (doc_id로 엽니다)
 ${input.canon ? `- ${CARD_CANON_TITLE} (doc_id: ${input.canon.id}) — 이 정본을 그대로 따릅니다.` : `- search_knowledge로 「${CARD_CANON_TITLE}」을 찾아 엽니다.`} 열지 못하면 쓰지 말고 fail로 끝냅니다.
+${input.design ? `- ${input.design.title} (doc_id: ${input.design.id}) — 장별 그림과 기록 공간의 기준` : ""}
 ${input.voice.map(doc => `- ${doc.title} (doc_id: ${doc.id}) — 문장과 목소리`).join("\n")}${formats.includes("webtoon")
   ? `\n- ${input.cast ? `${input.cast.title} (doc_id: ${input.cast.id})` : `search_knowledge로 찾는 「${WEBTOON_CAST_TITLE}」`} — 웹툰형의 주인공 셋 · 강점 낙서 · 한 화 구성을 그대로 따릅니다` : ""}
 

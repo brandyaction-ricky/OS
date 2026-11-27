@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
-import { cardCanon, MYIN_CANON_TITLES, VOICE_CANON_TITLE } from "@/lib/server/youtube-process-card-job";
+import { cardCanon, cardDesignSource, MYIN_CANON_TITLES, VOICE_CANON_TITLE } from "@/lib/server/youtube-process-card-job";
 import { namedProcedures } from "@/lib/server/content-generation";
 import { youtubeActor } from "@/lib/server/youtube-process";
 import { cardCreateSchema, createCardProject, listCardSources, readCardCovers } from "@/lib/server/youtube-process-cards";
@@ -14,10 +14,10 @@ export async function GET(request: Request) {
     const actor = await youtubeActor(request);
     const params = new URL(request.url).searchParams;
     if (params.has("canon")) {
-      const [canon, voice] = await Promise.all([cardCanon(actor.supabase), namedProcedures(actor.supabase, [VOICE_CANON_TITLE, ...MYIN_CANON_TITLES])]);
+      const [canon, design, voice] = await Promise.all([cardCanon(actor.supabase), cardDesignSource(actor.supabase), namedProcedures(actor.supabase, [VOICE_CANON_TITLE, ...MYIN_CANON_TITLES])]);
       const originals = await actor.supabase.from("os_documents").select("id,title,content_md,current_version").in("id", [...(canon ? [canon.id] : []), ...voice.map(doc => doc.id)]);
       if (originals.error) throw new ApiError(503, "CARD_CANON_UNAVAILABLE", "정본 원문을 읽지 못했어요.");
-      return NextResponse.json({ canon, voice: voice.find(doc => doc.title === VOICE_CANON_TITLE) ?? null, originals: originals.data ?? [] }, { headers: { "cache-control": "private, no-store" } });
+      return NextResponse.json({ canon, design, voice: voice.find(doc => doc.title === VOICE_CANON_TITLE) ?? null, originals: originals.data ?? [] }, { headers: { "cache-control": "private, no-store" } });
     }
     const result = params.has("covers")
       ? { covers: await readCardCovers(actor, z.array(z.string().uuid()).max(40).parse((params.get("covers") ?? "").split(",").filter(Boolean))) }

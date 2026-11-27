@@ -5,7 +5,7 @@ import { apiRequest } from "@/lib/api-client";
 import type { YpCardSource } from "@/lib/youtube-process/stages";
 import { useSession } from "./session-provider";
 
-type CanonInfo = { canon: { id: string; title: string; version: string; approval: string } | null; voice: { id: string; title: string; version: number } | null };
+type CanonInfo = { design?: { id: string; title: string; version: number; status: string } | null; canon: { id: string; title: string; version: string; approval: string } | null; voice: { id: string; title: string; version: number } | null };
 export function CardCanonContext({ source, focus }: { source?: YpCardSource; focus?: string }) {
   const { accessToken, demo } = useSession();
   const [info, setInfo] = useState<CanonInfo | null>(null);
@@ -21,6 +21,7 @@ export function CardCanonContext({ source, focus }: { source?: YpCardSource; foc
     {demo ? <span>카드뉴스 정본 v0.1 · 데모 예시</span> : info?.canon
       ? <Link href={`/knowledge/doc/${info.canon.id}`}>{info.canon.title} {info.canon.version} · {info.canon.approval}</Link>
       : <span>{error ? "정본 확인 실패" : info ? "정본을 찾을 수 없어요" : "정본 확인 중…"}</span>}
+    {info?.design && <Link href={`/knowledge/doc/${info.design.id}`}>{info.design.title} · 문서 v{info.design.version}{info.design.status === "draft" ? " · 작업본" : ""}</Link>}
     {info?.voice ? <Link href={`/knowledge/doc/${info.voice.id}`}>{info.voice.title} · 문서 v{info.voice.version}</Link>
       : <span>원고 말투 정본{demo ? " · 데모" : " · 미확인"}</span>}
     {source && <span>{source.kind === "none" ? "새 주제" : "원본"} · {source.title}</span>}

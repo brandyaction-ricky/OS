@@ -50,7 +50,7 @@ import { assertScriptNotesInputs, saveScriptNotes, scriptNotesCard, scriptNotesI
 import { markSceneNotesSent, sceneNoteInputs, sceneNotesCard, sceneNotesInputKey, saveSceneNotes } from "./myin-scene-notes";
 import { addThumbCandidate, assertV1ThumbsInputs, keepThumbFeed, THUMB_TOOLS, thumbsByJob, thumbsMadeCount, thumbUploadUrl, v1ThumbsCard, v1ThumbsInputKey } from "./youtube-thumbs";
 import { channelContext } from "./channel-canon";
-import { assertCardJobOpen, cardCanon, cardFormatsSchema, cardInputKey, cardJobCard, cardJobSource, checkCardResult, saveCardDrafts, MYIN_CANON_TITLES, VOICE_CANON_TITLE, WEBTOON_CAST_TITLE } from "./youtube-process-card-job";
+import { assertCardJobOpen, cardCanon, cardDesignSource, cardFormatsSchema, cardInputKey, cardJobCard, cardJobSource, checkCardResult, saveCardDrafts, MYIN_CANON_TITLES, VOICE_CANON_TITLE, WEBTOON_CAST_TITLE } from "./youtube-process-card-job";
 
 /** The name a job carries: the adopted title, or a v1 project's confirmed A. */
 const jobTitle = (state: Awaited<ReturnType<typeof readPipeline>>) => isYoutubeV1(state.source) ? v1Title(v1Stages(state)) : state.writing.packageTitle || state.source.title;
@@ -852,12 +852,13 @@ async function claimJob(agent: RequestActor, jobId: string, byGpt: boolean) {
     if (!canon) throw new ApiError(409, "CARD_CANON_MISSING", "「카드뉴스 정본」을 찾지 못했어요.");
     const titles = formats.includes("webtoon") ? [VOICE_CANON_TITLE, WEBTOON_CAST_TITLE] : [VOICE_CANON_TITLE];
     if (cards.production?.design?.startsWith("myin-")) titles.push(...MYIN_CANON_TITLES);
-    const references = await namedProcedures(service(), titles, true);
+    const [references, design] = await Promise.all([namedProcedures(service(), titles, true), cardDesignSource(service())]);
+    if (design && !references.some(doc => doc.id === design.id)) references.push(design);
     const voice = references.filter(doc => doc.title === VOICE_CANON_TITLE);
     const cast = references.find(doc => doc.title === WEBTOON_CAST_TITLE);
     const lease = await take([{ id: canon.id, title: canon.title, version: canon.docVersion, bundle: canon.version }, ...references]);
     return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt,
-      ...(byGpt ? { documentRefs: [{ id: canon.id, title: canon.title, version: canon.docVersion }, ...references] } : {}), instructions: cardJobCard({ project, cards, formats, canon, voice, cast, brand: references.filter(doc => MYIN_CANON_TITLES.includes(doc.title)), leaseMinutes: minutes }) };
+      ...(byGpt ? { documentRefs: [{ id: canon.id, title: canon.title, version: canon.docVersion }, ...references] } : {}), instructions: cardJobCard({ project, cards, formats, canon, design, voice, cast, brand: references.filter(doc => MYIN_CANON_TITLES.includes(doc.title)), leaseMinutes: minutes }) };
   }
   if (m.task === "column") {
     const state = await currentColumnInput(job);
