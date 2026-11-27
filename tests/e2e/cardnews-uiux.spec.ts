@@ -378,7 +378,7 @@ test("URL bookmarks persist per account, load without posting, undo removal and 
   await expect(page.locator(".yp-fl-status")).toContainText("끝난 카드뉴스");
   await page.locator(".yp-fl-proj").click();
   await page.getByRole("link", { name: "주제 찾기", exact: true }).last().click();
-  await page.getByRole("tab", { name: /카드뉴스/ }).click();
+  await page.getByRole("tablist", { name: "무엇을 만드나요" }).getByRole("tab", { name: /카드뉴스/ }).click();
   await page.getByRole("tab", { name: /완료된 카드뉴스/ }).click();
   await expect(page.locator(".yp-card-catalog li")).toHaveCount(1);
   await page.locator(".yp-card-catalog").getByRole("link", { name: "열기", exact: true }).click();
