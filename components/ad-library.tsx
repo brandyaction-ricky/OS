@@ -15,6 +15,7 @@ import { ImageProductFields } from "./image-product-fields";
 import { loadDemoImages, saveNewDemoAd, demoImageRow } from "./image-creative-demo";
 import type { ImageProjectRow, ImageProjectBundle } from "./image-creative-workspace";
 import "./ad-production.css";
+import { AdSourceStudio } from "./ad-source-studio";
 
 type Kind = "video" | "image";
 type Bucket = "open" | "stalled" | "done" | "trash";
@@ -169,9 +170,11 @@ export function AdLibrary({
             setCreate(true);
           }}
         >
-          <Plus size={16} /> 새 광고
+          <Plus size={16} /> 단계별 광고 기획
         </button>
       </header>
+      <AdSourceStudio />
+      <h2>기존 단계별 광고</h2>
       <div className="ad-library-tools">
         <div className="yp-seg2" aria-label="광고 상태">
           {tabs.map(([key, label]) => (
