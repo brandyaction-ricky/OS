@@ -145,7 +145,8 @@ test("기획안 영상 형식: the PD picks 키풀링형 or 풀링형 and the �
   assert.match(ai, /checkManuscript\(bundle\.manuscript, \{ title, targetMinutes: author\.targetMinutes, canon, pulling: ypFormat\(stages\.plan\.data\) === "pulling" \}\)/);
   const job = read("lib/server/youtube-script-job.ts");
   assert.match(job, /\.ilike\("title", "풀링형 롱폼%"\)\.neq\("status", "archived"\)/, "found by title, so its doc id is not in the code");
-  assert.match(job, /\$\{await canonRefs\(supabase, pulling\)\}/);
+  assert.match(job, /card\.trace \?\? await scriptCanonTrace\(supabase\)/, "keeps the versioned canon trace");
+  assert.match(job, /pulling \? `\\n\$\{await pullingCanonRef\(supabase\)\}/, "adds the pulling canon only for pulling videos");
 });
 
 test("원고 작업 지시문 follows 원고 공정 정본 v2.9: one axis + one alternative, one independent review, no comment quota (대표 2026-11-24)", () => {

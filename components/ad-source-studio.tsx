@@ -204,8 +204,8 @@ export function AdSourceStudio() {
   const missingRefs = project ? project.input.referenceCount - project.references.length : 0;
   const retryable = project?.items.some(item => item.status !== "done" && item.attempts < 3);
   return <section className="ad-studio" aria-label="광고 소재 만들기">
-    <div className="ad-studio-heading"><div><span className="ad-studio-eyebrow">광고 소재 만들기</span><h2 ref={resultHeading} tabIndex={project ? -1 : undefined}>{project ? "만든 소재 확인하기" : "어떤 소재가 필요한가요?"}</h2>
-      <p>{project ? "저장된 결과를 비교하고 필요한 소재를 내려받으세요." : "참고 이미지와 전달할 내용을 넣으면, 바로 제작을 시작할 수 있어요."}</p></div>
+    <div className="ad-studio-heading"><div><span className="ad-studio-eyebrow">광고 소재 만들기</span><h2 ref={resultHeading} tabIndex={project ? -1 : undefined}>{project ? demo ? "소재 구성 확인" : "만든 소재 확인하기" : "어떤 소재가 필요한가요?"}</h2>
+      <p>{project ? demo ? "장면과 제작 방향을 확인하세요. 실제 이미지는 아직 생성되지 않았습니다." : "저장된 결과를 비교하고 필요한 소재를 내려받으세요." : "참고 이미지와 전달할 내용을 넣으면, 바로 제작을 시작할 수 있어요."}</p></div>
       {project && <button className="yp-btn" disabled={working} onClick={() => fresh()}>새 소재 만들기</button>}
     </div>
     {demo && <p className="ad-studio-notice">데모 화면 · 입력과 장면 구성을 확인할 수 있어요. 실제 AI 이미지는 생성되지 않습니다.</p>}

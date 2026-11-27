@@ -10,7 +10,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "./session-provider";
 import { apiRequest } from "@/lib/api-client";
 import { CREATIVE_SIZES, IMAGE_FORMATS, IMAGE_FORMAT_IDS, WAREHOUSE_FORMAT_IDS, isImageFormat, isWarehouseFormat, recommendImageFormats, type ImageFormatId } from "@/lib/image-creative/formats";
-import { activeImageWinner, attachReferencePhoto, imageExperimentCandidateIds, imageExperimentSummary, latestImageExperimentBatch, recordImageWinner, approveImageFormat, formatApprovalKey, startImageCopyBatch, reviewImageBatch, returnImageReview, canSaveImageBrief, createImageBatch, reviseImageDesign, applyImagePromptEdit, type ImageDesign, emptyImageCreative, productionBrief, imageCreativePrompt, imageBriefProblems, type ImageBatchRequest, type ImageCreativeState, type CreativeVariant, type ImageAsset } from "@/lib/image-creative/model";
+import { activeImageWinner, attachReferencePhoto, imageExperimentCandidateIds, imageExperimentSummary, latestImageExperimentBatch, recordImageWinner, approveImageFormat, formatApprovalKey, startImageCopyBatch, reviewImageBatch, returnImageReview, canSaveImageBrief, sameImageBrief, createImageBatch, reviseImageDesign, applyImagePromptEdit, type ImageDesign, emptyImageCreative, productionBrief, imageCreativePrompt, imageBriefProblems, type ImageBatchRequest, type ImageCreativeState, type CreativeVariant, type ImageAsset } from "@/lib/image-creative/model";
 import { LocalConnect, useLocalRender } from "./myin-local-render";
 import { GuidedImageCreative, type ImagePreviewProduct } from "./guided-image-creative";
 import { ImageReferenceSteps } from "./reference-image-creation";
@@ -101,12 +101,18 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
   const selectedReviewed = selected && saved?.batches.some(b=>b.variantIds.includes(selected.id) && b.review?.final);
   const boardFormats = isNew ? formatIds : (selected ? [selected.formatId] : []);
   let approvalKey = "";
+  let approvalProblem = saved ? imageBriefProblems(saved.brief,saved.formatRecommendation?.appealFirst).join(" · ") : "작업을 먼저 만들어 주세요.";
+  if (saved && !sameImageBrief(brief,saved.brief)) approvalProblem = "수정한 상품·고객 정보를 먼저 저장해 주세요.";
+  else if (saved && !boardFormats.length) approvalProblem = "광고 디자인을 먼저 선택해 주세요.";
+  else if (saved && !isNew && !selectedReviewed) approvalProblem = "최종 검수를 마친 기준 시안을 먼저 선택해 주세요.";
   if (saved && (isNew || selectedReviewed) && boardFormats.length && imageBriefProblems(saved.brief,saved.formatRecommendation?.appealFirst).length===0 && JSON.stringify(brief) === JSON.stringify(saved.brief)) {
-    try { approvalKey = formatApprovalKey(saved, request); } catch { /* The input form reports incomplete requests. */ }
+    try { approvalKey = formatApprovalKey(saved, request); } catch (issue) { approvalProblem = issue instanceof Error ? issue.message : "포맷과 사진 선택을 확인해 주세요."; }
   }
   const approved = Boolean(approvalKey && saved?.formatApproval?.key === approvalKey);
   const directPossible = approved && isNew && boardFormats.every(isWarehouseFormat) && request.count === boardFormats.length &&
     (boardFormats.length === 1 || request.compareFormats === true);
+  const manualLimits = Object.fromEntries((["headline","body","cta"] as const).map(field => [field, Math.min(...boardFormats.map(id => IMAGE_FORMATS[id].limits[field]))])) as Record<"headline"|"body"|"cta",number>;
+  const manualTooLong = (["headline","body","cta"] as const).some(field => manual[field].length > manualLimits[field]);
   const readList = async (signal?:AbortSignal) => {
     if (!demo && !accessToken) return;
     const list = new URLSearchParams(window.location.search).get("view") === "tests" ? "?experiment=true" : "";
@@ -128,7 +134,7 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
     if (ids.some(isWarehouseFormat)) setSize("portrait");
     if (mode !== "standalone" && mode !== "initial") setMode("initial");
     setFormatIds(ids);
-    if (ids.length && ids.every(isWarehouseFormat)) { setFixFormatInputs(ids.length > 1); setCount(ids.length); }
+    if (ids.length && ids.every(isWarehouseFormat)) { setFixFormatInputs(ids.length > 1); setCount(ids.length); if (ids.length > 1) setAssetPaths(old => old.slice(0,1)); }
     if (!ids.length) { setFixFormatInputs(false); setCount(5); }
   }
   const toggleFormat = (id: ImageFormatId) => selectToolFormats(formatIds.includes(id) ? formatIds.filter(item => item !== id) : [...formatIds,id]);
@@ -168,7 +174,8 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
       setProjects(all.filter(row=>!row.project.archivedAt).map(projectRow));
     }
     setBundle(next);
-    setBrief(next.state.brief);
+    // A photo/job refresh must not overwrite unsaved input for this same project.
+    setBrief(current => bundle?.project.id === next.project.id && sameImageBrief(bundle.state.brief, next.state.brief) ? current : next.state.brief);
     setAssetPaths(old=>old.filter(path=>next.assets.some(asset=>asset.path===path)));
   };
   const inFlight = useRef(false);
@@ -524,7 +531,7 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
         const uploaded = {path,w,h,url,subjectBox};
         applyBundle({...bundle,assets:[...bundle.assets,uploaded]});
         if (onReferenceUploaded) await onReferenceUploaded(uploaded);
-        else setAssetPaths(old=>[...old,path]);
+        else setAssetPaths(old=>compareFormats ? [path] : [...old,path]);
       } finally { bitmap.close(); }
       return;
     }
@@ -539,7 +546,7 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
     const uploaded = next.assets.find(asset=>asset.path===prepared.path);
     if (!uploaded) throw new Error("등록된 이미지를 확인하지 못했어요. 작업을 새로고침해 주세요.");
     if (onReferenceUploaded) await onReferenceUploaded(uploaded);
-    else setAssetPaths(old=>old.includes(uploaded.path)?old:[...old,uploaded.path]);
+    else setAssetPaths(old=>compareFormats ? [uploaded.path] : old.includes(uploaded.path)?old:[...old,uploaded.path]);
   });
   async function storedExport(id: string, kind: "variant" | "batch", aspect?: import("@/lib/ad-production").AdAspect) {
     if (!bundle || !accessToken) throw new Error("로그인 후 내보낼 수 있어요.");
@@ -652,17 +659,19 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
       {["initial","standalone"].includes(mode)&&<section className="panel panel-pad-lg ic-panel"><h2>3. 포맷 고르기</h2><p className="ic-muted">입력 내용에 맞춘 구조 추천이에요. 광고 성과를 예측한 결과는 아닙니다.</p><fieldset className="ic-checks"><legend>창고 디자인 · 피드 4:5</legend>
         {WAREHOUSE_FORMAT_IDS.map(id=><label key={id} className="ic-check"><input type="checkbox" checked={formatIds.includes(id)} onChange={()=>toggleFormat(id)}/>{IMAGE_FORMATS[id].name}{recommendations.some(row=>row.id===id) ? " · 추천" : ""}</label>)}
       </fieldset><div className="ic-preview-grid">{displayedFormats.map(item=>{const f=IMAGE_FORMATS[item.id];const example:CreativeVariant={id:"format-preview",formatId:item.id,formatVersion:1,size,appeal:{id:"preview",meaning:"구성 확인"},copy:{headline:"여기에 제목이 들어갑니다",body:"짧은 설명을 넣어 주세요",cta:"자세히 보기"},at:"",by:"preview"};return <article key={item.id} className={`ic-card ${formatIds.includes(item.id)?"ic-selected":""}`}>{item.id === "thumbnail_subject" ? <ImageFormatSample id={item.id} size={size}/> : <LegacyPreview variant={example}/>}<div className="ic-card-body"><h3>{item.name}</h3><p className="ic-muted">{item.reason}</p>{f.assetRequired&&<p className="ic-muted">이미지 필요</p>}<button className="secondary-button" type="button" aria-pressed={formatIds.includes(item.id)} onClick={()=>setFormatIds(old=>old.includes(item.id)?old.filter(x=>x!==item.id):[...old,item.id])}>{formatIds.includes(item.id)?"선택됨":"이 포맷 선택"}</button></div></article>;})}</div><details className="ic-details"><summary>다른 포맷 보기</summary><div className="ic-row ic-actions">{IMAGE_FORMAT_IDS.filter(id=>!isWarehouseFormat(id)&&!recommendations.some(r=>r.id===id)).map(id=><button className="secondary-button" aria-pressed={formatIds.includes(id)} key={id} onClick={()=>setFormatIds(old=>old.includes(id)?old.filter(x=>x!==id):[...old,id])}>{IMAGE_FORMATS[id].name}</button>)}</div></details></section>}
-      <section className="panel panel-pad-lg ic-panel"><h2>이미지 준비</h2><p className="ic-muted">공개 가능한 이미지만 올려 주세요. 시안이 이미지를 요구하면 업로드한 파일을 선택합니다.</p>{formatIds.some(isWarehouseFormat) && <details className="ic-details"><summary>선택한 디자인에 맞는 사진 구도</summary><ul>{formatIds.filter(isWarehouseFormat).map(id=><li key={id}><strong>{IMAGE_FORMATS[id].name}</strong> · {IMAGE_FORMATS[id].photoGuide}</li>)}</ul></details>}<div className="ic-row"><label className="secondary-button">이미지 올리기<input className="ic-sr" type="file" accept="image/png,image/jpeg" onChange={e=>{upload(e.target.files?.[0]||null);e.target.value="";}} /></label><fieldset className="ic-checks"><legend>사용할 이미지</legend>{bundle.assets.length ? bundle.assets.map((a,i)=><label key={a.path} className="ic-check"><input type="checkbox" checked={assetPaths.includes(a.path)} onChange={e=>setAssetPaths(old=>e.target.checked?[...old,a.path]:old.filter(p=>p!==a.path))} /> 이미지 {i+1} · {a.w}×{a.h}</label>):<span className="ic-muted">아직 올린 이미지가 없어요.</span>}</fieldset>{["initial","standalone"].includes(mode)&&<label className="ic-field">광고 크기<select className="field" value={size} disabled={formatIds.some(isWarehouseFormat)} onChange={e=>setSize(e.target.value as CreativeVariant["size"])}>{Object.entries(CREATIVE_SIZES).map(([id,s])=><option value={id} key={id}>{s.label}</option>)}</select></label>}</div></section>
-      <section className="panel panel-pad-lg ic-panel"><h2>포맷 승인</h2><div className="ic-row"><label className="ic-field">후보 수<input className="field" type="number" min={1} max={20} value={compareFormats ? formatIds.length : count} disabled={compareFormats} onChange={e=>setCount(Math.min(20,Math.max(1,Number(e.target.value)||1)))} /></label>{canCompareFormats && <label className="ic-check"><input type="checkbox" checked={fixFormatInputs} onChange={event=>setFixFormatInputs(event.target.checked)}/>공통 소구·카피·사진으로 포맷만 비교</label>}{mode==="copy"&&<fieldset className="ic-checks"><legend>바꿀 카피</legend>{(["headline","body","cta"] as const).map(field=><label key={field} className="ic-check"><input type="checkbox" disabled={field==="cta" && Boolean(selected && isWarehouseFormat(selected.formatId))} checked={copyFields.includes(field) && !(field==="cta" && selected && isWarehouseFormat(selected.formatId))} onChange={e=>setCopyFields(old=>e.target.checked?[...old,field]:old.filter(x=>x!==field))}/>{({headline:"제목",body:"본문",cta:"버튼"})[field]}</label>)}</fieldset>}</div>{["initial","standalone"].includes(mode)&&<p className="ic-muted">선택한 포맷마다 최소 1장씩 만듭니다{formatIds.length ? ` · 현재 ${formatIds.length}개 선택` : ""}.</p>}{formatCountProblem&&<p className="os-callout" data-tone="danger" role="alert">{formatCountProblem}</p>}{boardFormats.length > 0 && <div className="ic-preview-grid ic-actions">{boardFormats.map(id=>
+      <section className="panel panel-pad-lg ic-panel"><h2>이미지 준비</h2><p className="ic-muted">공개 가능한 이미지만 올려 주세요. 시안이 이미지를 요구하면 업로드한 파일을 선택합니다.</p>{formatIds.some(isWarehouseFormat) && <details className="ic-details"><summary>선택한 디자인에 맞는 사진 구도</summary><ul>{formatIds.filter(isWarehouseFormat).map(id=><li key={id}><strong>{IMAGE_FORMATS[id].name}</strong> · {IMAGE_FORMATS[id].photoGuide}</li>)}</ul></details>}<div className="ic-row"><label className="secondary-button">이미지 올리기<input className="ic-sr" type="file" accept="image/png,image/jpeg" onChange={e=>{upload(e.target.files?.[0]||null);e.target.value="";}} /></label><fieldset className="ic-checks"><legend>사용할 이미지</legend>{bundle.assets.length ? bundle.assets.map((a,i)=><label key={a.path} className="ic-check"><input type={compareFormats ? "radio" : "checkbox"} name={compareFormats ? "common-ad-image" : undefined} checked={assetPaths.includes(a.path)} onChange={e=>setAssetPaths(old=>compareFormats ? [a.path] : e.target.checked?[...old,a.path]:old.filter(p=>p!==a.path))} /> 이미지 {i+1} · {a.w}×{a.h}</label>):<span className="ic-muted">아직 올린 이미지가 없어요.</span>}</fieldset>{["initial","standalone"].includes(mode)&&<label className="ic-field">광고 크기<select className="field" value={size} disabled={formatIds.some(isWarehouseFormat)} onChange={e=>setSize(e.target.value as CreativeVariant["size"])}>{Object.entries(CREATIVE_SIZES).map(([id,s])=><option value={id} key={id}>{s.label}</option>)}</select></label>}</div></section>
+      <section className="panel panel-pad-lg ic-panel"><h2>포맷 승인</h2><div className="ic-row"><label className="ic-field">후보 수<input className="field" type="number" min={1} max={20} value={compareFormats ? formatIds.length : count} disabled={compareFormats} onChange={e=>setCount(Math.min(20,Math.max(1,Number(e.target.value)||1)))} /></label>{canCompareFormats && <label className="ic-check"><input type="checkbox" checked={fixFormatInputs} onChange={event=>{setFixFormatInputs(event.target.checked);if(event.target.checked)setAssetPaths(old=>old.slice(0,1));}}/>공통 소구·카피·사진으로 포맷만 비교</label>}{mode==="copy"&&<fieldset className="ic-checks"><legend>바꿀 카피</legend>{(["headline","body","cta"] as const).map(field=><label key={field} className="ic-check"><input type="checkbox" disabled={field==="cta" && Boolean(selected && isWarehouseFormat(selected.formatId))} checked={copyFields.includes(field) && !(field==="cta" && selected && isWarehouseFormat(selected.formatId))} onChange={e=>setCopyFields(old=>e.target.checked?[...old,field]:old.filter(x=>x!==field))}/>{({headline:"제목",body:"본문",cta:"버튼"})[field]}</label>)}</fieldset>}</div>{["initial","standalone"].includes(mode)&&<p className="ic-muted">선택한 포맷마다 최소 1장씩 만듭니다{formatIds.length ? ` · 현재 ${formatIds.length}개 선택` : ""}.</p>}{formatCountProblem&&<p className="os-callout" data-tone="danger" role="alert">{formatCountProblem}</p>}{boardFormats.length > 0 && <div className="ic-preview-grid ic-actions">{boardFormats.map(id=>
         <FormatBoard key={id} id={id} size={isNew ? size : selected?.size || size}/>)}</div>}
+        {approvalProblem && !approved && <p className="os-callout" data-tone="info" role="status">{approvalProblem}</p>}
+        {compareFormats && <p className="ic-muted">공통 사진은 1장만 선택합니다. 사진을 바꾸려면 사용할 사진을 눌러 주세요.</p>}
         <button type="button" className="primary-button ic-actions" onClick={approveRequest} disabled={busy || !approvalKey || approved}>{approved?"포맷 승인됨":"포맷 승인"}</button>
       </section>
       {directPossible && <section className="panel panel-pad-lg ic-panel" aria-label="창고 디자인 제작">
         <h2>공통 카피 입력</h2>
-        <div className="ic-grid">{([["appeal","공통 소구",160],["headline","광고 제목",IMAGE_FORMATS[formatIds[0]].limits.headline],["body","광고 본문",IMAGE_FORMATS[formatIds[0]].limits.body],["cta","광고 버튼 문구",IMAGE_FORMATS[formatIds[0]].limits.cta]] as const).map(([field,name,max])=>
-          <label key={field} className="ic-field">{name}<input className="field" maxLength={max} value={manual[field]} onChange={e=>setManual({...manual,[field]:e.target.value})}/></label>
+        <div className="ic-grid">{([["appeal","공통 소구",160],["headline","광고 제목",manualLimits.headline],["body","광고 본문",manualLimits.body],["cta","광고 버튼 문구",manualLimits.cta]] as const).map(([field,name,max])=>
+          <label key={field} className="ic-field">{name}<input className="field" aria-label={name} maxLength={max} value={manual[field]} onChange={e=>setManual({...manual,[field]:e.target.value})}/><span className="ic-field-hint">{manual[field].length}/{max}자 · 선택한 모든 디자인에 맞는 길이</span></label>
         )}</div>
-        <button type="button" className="primary-button ic-actions" disabled={busy} onClick={makeWarehouse}>선택한 포맷 {formatIds.length}장 카피 저장</button>
+        <button type="button" className="primary-button ic-actions" disabled={busy || manualTooLong} onClick={makeWarehouse}>선택한 포맷 {formatIds.length}장 카피 저장</button>
       </section>}
       <section className="panel panel-pad-lg ic-panel"><h2>카피 준비</h2>
         {!approved && <p className="ic-muted">포맷과 작업 입력을 저장·승인하면 카피 후보를 준비할 수 있습니다.</p>}

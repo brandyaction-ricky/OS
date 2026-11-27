@@ -55,6 +55,14 @@ jobs:
           NEXT_PUBLIC_DEMO_MODE: "false"
           NEXT_PUBLIC_SUPABASE_URL: "https://image-ui-test.supabase.co"
           NEXT_PUBLIC_SUPABASE_ANON_KEY: "fixture-public-key"
+      - name: Verify ad image batches, script scenes, retry and ZIP with isolated fixtures
+        run: npm run test:e2e -- tests/e2e/ad-source-studio.mock.spec.ts
+        env:
+          YOUTUBE_V1_ENABLED: "true"
+          AD_SOURCE_MOCK_E2E: "true"
+          NEXT_PUBLIC_DEMO_MODE: "false"
+          NEXT_PUBLIC_SUPABASE_URL: "https://image-ui-test.supabase.co"
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: "fixture-public-key"
       # A flaky end-to-end check is only diagnosable from its trace (playwright keeps traces of failed tests in test-results/).
       - name: Keep Playwright traces of a failed run
         if: failure()
