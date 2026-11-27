@@ -74,7 +74,7 @@ test("일반 프로젝트가 업로드 사진과 브랜드로 창고 디자인�
   const first=results.locator("article").first();
   await first.getByRole("button",{name:"기준 시안 선택"}).click();
   const id=await page.getByLabel("기존 작업").inputValue();
-  await page.goto("/content/images?project="+encodeURIComponent(id)+"#image-creative-results");
+  await page.goto("/content/images?view=tools&project="+encodeURIComponent(id)+"#image-creative-results");
   await expect(images).toHaveCount(5,{timeout:30000});
   expect(await preview()).toEqual(original);
   await expect(first.getByRole("button",{name:"기준으로 선택됨"})).toBeVisible();
