@@ -665,3 +665,15 @@ test("production reference picker works with the keyboard and preserves the imag
   await page.reload();
   await expect(panel.getByRole("button", { name: "이미지 교체" })).toHaveCount(0);
 });
+
+test("information production retains its canon insight on reopening", async ({ page }) => {
+  await editor(page);
+  const form = page.getByRole("region", { name: "유형별 카드 제작" });
+  await form.getByRole("button", { name: /정보형/ }).click();
+  const insight = form.getByLabel(/정본에서 가져올 관점/);
+  const text = "반복된 부탁과 동료가 혼자 할 수 있게 된 일을 한 장면으로 보여 준다.";
+  await insight.fill(text);
+  await expect(form.getByText("저장 완료", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(insight).toHaveValue(text);
+});
