@@ -305,6 +305,7 @@ export function CardSlideView(props: CardViewProps) {
 }
 function renderV1({ draft, index, photos, characterSrc, theme = CARD_THEME }: CardViewProps) {
   const slide = draft.slides[index];
+  if (draft.format === "list" && draft.production?.design?.startsWith("myin-")) return renderMyin(draft, index, photos);
   if (slide?.scene?.action && draft.format !== "webtoon" && draft.format !== "steps") {
     const plan = slide.scene;
     const spec = slideSpec(draft.format, slide.type);
@@ -356,5 +357,33 @@ function renderV1({ draft, index, photos, characterSrc, theme = CARD_THEME }: Ca
     {slide ? <Body draft={draft} slide={slide} index={index} theme={theme} src={slide.photo ? photos?.[slide.photo.path] : undefined} /> : null}
     <div style={{ display: "flex", position: "absolute", left: PAD, right: PAD, bottom: 64, justifyContent: "space-between", alignItems: "center", fontSize: 16, color: onBlue ? theme.white : theme.sub }}>
       <Logo color={onBlue ? theme.white : theme.title} height={28} /><span>{cardPage(draft, index)}</span></div>
+  </div>;
+}
+
+
+/** Opt-in MYIN report/character design. Legacy cards retain their original renderer. */
+function renderMyin(draft: CardDraft, index: number, photos?: Record<string, string>) {
+  const slide = draft.slides[index], f = slide.fields;
+  const cover = slide.type === "cover", end = slide.type === "end", worksheet = slide.type === "summary";
+  const blue = end || (cover && draft.production?.design === "myin-question");
+  const report = (cover && draft.production?.design === "myin-report") || slide.myinVisual === "report";
+  const ink = blue ? "#FFFFFF" : "#1E2430", accent = blue ? "#DCE7FF" : "#2F65D9";
+  const src = (name: string) => photos?.["/myin-cards/" + name] ?? "/myin-cards/" + name;
+  const label = (text: string) => <div style={{ display: "flex", fontSize: 24, color: accent, fontWeight: 500, marginBottom: 24 }}>{text}</div>;
+  const field = (key: string, size: number, weight = 400) => f[key] ? <div data-card-field={key} style={{ display: "flex", flexDirection: "column", fontSize: size, fontWeight: weight, lineHeight: 1.4, color: ink, whiteSpace: "pre-wrap", wordBreak: "keep-all" }}>{plainCardText(f[key]).split("\n").map((line, i) => <span key={i}>{line}</span>)}</div> : null;
+  return <div style={{ display: "flex", flexDirection: "column", width: 1080, height: 1350, padding: "76px 96px 56px", fontFamily: "Pretendard", textAlign: "left", letterSpacing: 0, color: ink, background: blue ? "#2F65D9" : cover ? draft.production?.design === "myin-report" ? "#FFFFFF" : "#EEF4FF" : worksheet ? "#FBF7EE" : "#FFFFFF" }}>
+    {label(cover ? "MYIN · 나를 알아가는 질문" : worksheet ? "SAVE THIS · 경험 기록" : end ? "MYIN · 다음 선택을 위한 자기이해" : `MYIN · 경험에서 찾는 강점`)}
+    {field(cover ? "head" : end || worksheet ? "line" : "title", cover ? 72 : 56, 600)}
+    {cover && <div style={{ display: "flex", marginTop: 28 }}>{field("sub", 32)}</div>}
+    <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", flex: 1, marginTop: 42, marginBottom: 36 }}>
+      {slide.photo && photos?.[slide.photo.path] ? <img alt="선택한 이미지" src={photos[slide.photo.path]} width={864} height={580} style={{ objectFit: "contain", alignSelf: "center" }} /> : worksheet ? <div style={{ display: "flex", flexDirection: "column", gap: 40 }}>{(f.worksheet || "").split("\n").map((line, i) => <div key={i} style={{ display: "flex", flexDirection: "column", gap: 42 }}><div style={{ display: "flex", fontSize: 36, fontWeight: 500 }}><span style={{ color: "#2F65D9", marginRight: 24 }}>0{i+1}</span><span>{line}</span></div><div style={{ height: 2, background: "#D9DFEA", width: "100%" }} /></div>)}</div>
+        : report ? <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}><div style={{ display: "flex", width: 420, height: 574, overflow: "hidden", border: "1px solid #D9DFEA", borderRadius: 12 }}><img alt="MYIN 공개 보고서 견본" src={src("report-sample.jpg")} width={420} height={614} /></div><span style={{ fontSize: 22, color: "#5B6472", marginTop: 16 }}>MYIN 공식 홈페이지 · 공개 견본</span></div>
+        : cover || end ? <img alt="마이인 안내 캐릭터 원본" src={src("character.png")} width={540} height={620} style={{ objectFit: "contain", alignSelf: "center" }} />
+        : slide.myinVisual === "observation" ? <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>{label(f.before || "") }<img alt="업무 경험을 살펴보는 설명용 생성 일러스트" src={src("work-observation.png")} width={864} height={480} style={{ objectFit: "contain", alignSelf: "center" }} /></div>
+        : <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 36 }}><span style={{ fontSize: 96, fontWeight: 500, color: "#DCE7FF" }}>0{index - 1}</span><div data-card-field="before" style={{ display: "flex", fontSize: 44, fontWeight: 500, lineHeight: 1.4, color: "#2F65D9", wordBreak: "keep-all" }}>{f.before}</div><div style={{ width: 72, height: 4, background: "#2F65D9" }} /></div>}
+      {!cover && !end && !worksheet && <div style={{ display: "flex", marginTop: 48 }}>{field("body", 32)}</div>}
+      {end && <div style={{ display: "flex", alignSelf: "center", padding: "20px 32px", background: "#FFFFFF", borderRadius: 50, color: "#2F65D9", fontSize: 28 }}>{f.action}</div>}
+    </div>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: `1px solid ${blue ? "#7199EF" : "#D9DFEA"}`, paddingTop: 22 }}><Logo color={ink} height={28} /><span style={{ fontSize: 16 }}>{String(index + 1).padStart(2,"0")} / {String(draft.slides.length).padStart(2,"0")}</span></div>
   </div>;
 }

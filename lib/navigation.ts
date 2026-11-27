@@ -159,6 +159,7 @@ const matchesPath = (pathname: string, href: string) => pathname === href || (hr
 export function findPage(path: string): NavPage {
   const pathname = path.split(/[?#]/)[0];
   if (pathname === "/home") return HOME_PAGE;
+  if (pathname === "/content/cardnews/myin") return { label: "마이인 카드뉴스 제작", href: pathname, navHref: "/automation/cardnews", icon: Image, ready: true };
   if (pathname === "/organization/people") return { label: "팀 현황", href: pathname, navHref: "/organization/members", icon: Gauge, ready: true };
   if (pathname === "/knowledge") return { label: "문서 보관함", href: pathname, navHref: "/knowledge/vault", icon: BookOpen, ready: true };
   const legacyDocuments: Record<string, string> = {

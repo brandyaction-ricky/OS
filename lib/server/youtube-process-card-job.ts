@@ -15,6 +15,7 @@ import { readStages, writeStage } from "./youtube-process-stages";
 type Supabase = RequestActor["supabase"];
 export const CARD_CANON_TITLE = "카드뉴스 정본";
 export const VOICE_CANON_TITLE = "원고 말투 정본";
+export const MYIN_CANON_TITLES = ["BRANDYACTION 핵심 컨텍스트", "카드뉴스 디자인 정본", "마이인 캐릭터 정본 · 2026-11-24"];
 /** 웹툰형's people: the three 동기, the 강점 낙서 and how one 화 runs. */
 export const WEBTOON_CAST_TITLE = "웹툰형 캐릭터 설정";
 const DRAFTS_MAX = 12;
@@ -72,10 +73,10 @@ const MYIN_INFORMATION_COPY = `독자의 마음속 1인칭 질문으로 시작�
 각 장을 읽은 독자가 새로 알아낼 수 있는 것을 점검하세요. 마지막에는 오늘 할 행동 하나를 남기고, 저장용 양식은 독자가 자기 경험으로 채울 수 있게 쓰세요.`;
 
 /** Each requested format's slides and fields, written from CARD_FORMATS (the numbers live only there). */
-export function cardFormatSpec(formats: CardFormatId[]) {
+export function cardFormatSpec(formats: CardFormatId[], myin = false) {
   return formats.map(id => {
     const format = CARD_FORMATS[id];
-    const editorial = id === "webtoon" || id === "steps" ? "" : MYIN_SCENE_CANON + `\n각 장에 scene을 제출합니다. character는 ${GUIDE_CAST.join(" · ")} 중 선택, reason은 배역 이유, action은 해당 주제의 장소·손동작·시선·소품을 포함한 독립된 그림 설명입니다. kind는 일반 장면 character, 전후 대비 comparison, 기록 양식 worksheet입니다. 정리형 기록 장의 fields.worksheet는 짧은 질문 3개를 줄바꿈해 넣으세요. 예시에 나오는 회의·시계·달력은 입력과 관련 있을 때만 씁니다.`;
+    const editorial = id === "webtoon" || id === "steps" ? "" : (myin ? MYIN_SCENE_CANON.replace("검정 바탕, 연두색 제목, 흰 본문과 하단 장면.", "MYIN 선택 디자인: #2F65D9 블루, #EEF4FF·흰 배경, #1E2430 본문. 캐릭터 원본과 공개 보고서 견본을 쓰고 문구는 별도 조판.") : MYIN_SCENE_CANON) + `\n각 장에 scene을 제출합니다. character는 ${GUIDE_CAST.join(" · ")} 중 선택, reason은 배역 이유, action은 해당 주제의 장소·손동작·시선·소품을 포함한 독립된 그림 설명입니다. kind는 일반 장면 character, 전후 대비 comparison, 기록 양식 worksheet입니다. 정리형 기록 장의 fields.worksheet는 짧은 질문 3개를 줄바꿈해 넣으세요. 예시에 나오는 회의·시계·달력은 입력과 관련 있을 때만 씁니다.`;
     const informationCopy = id === "steps" || id === "webtoon" ? "" : MYIN_INFORMATION_COPY;
     const slides = format.slides.map(spec => `- ${spec.type} · ${spec.label}: ${spec.min === spec.max ? `${spec.min}장` : `${spec.min}~${spec.max}장`} — `
       + spec.fields.map(field => `${field.key}(${field.label}, ${field.max}자까지${field.optional ? ", 선택" : ""})`).join(", ") + (NOTES[spec.type] ? ` · ${NOTES[spec.type]}` : ""));
@@ -84,10 +85,10 @@ export function cardFormatSpec(formats: CardFormatId[]) {
 }
 
 export function cardJobCard(input: { project: Pick<YpProject, "title" | "yp">; cards: Pick<YpCards, "source" | "focus" | "brief" | "production">; formats: CardFormatId[];
-  canon: { id: string } | null; voice: { id: string; title: string }[]; cast?: { id: string; title: string } | null; leaseMinutes: number }) {
+  canon: { id: string } | null; voice: { id: string; title: string }[]; cast?: { id: string; title: string } | null; brand?: { id: string; title: string }[]; leaseMinutes: number }) {
   const { project, cards, formats } = input;
   const names = formats.map(id => CARD_FORMATS[id].name).join(" · ");
-  const data = { source: { kind: cards.source.kind, title: cards.source.title, text: cards.source.text }, focus: cards.focus, approvedPlan: cards.brief, production: cards.production && formats.includes(cards.production.format) ? { workTitle: cards.production.title, sourceText: cards.production.memo, direction: cards.production.direction, formatDetail: cards.production.detail } : undefined,
+  const data = { source: { kind: cards.source.kind, title: cards.source.title, text: cards.source.text }, focus: cards.focus, approvedPlan: cards.brief, production: cards.production && formats.includes(cards.production.format) ? { workTitle: cards.production.title, sourceText: cards.production.memo, direction: cards.production.direction, formatDetail: cards.production.detail, design: cards.production.design } : undefined,
     topic: { title: project.title, target: project.yp.topic.target, note: project.yp.topic.note } };
   return `이 작업 하나만 처리합니다. 승인 · 업로드 · 게시 · 삭제는 하지 않습니다.
 
@@ -109,8 +110,10 @@ ${input.canon ? `- ${CARD_CANON_TITLE} (doc_id: ${input.canon.id}) — 이 정�
 ${input.voice.map(doc => `- ${doc.title} (doc_id: ${doc.id}) — 문장과 목소리`).join("\n")}${formats.includes("webtoon")
   ? `\n- ${input.cast ? `${input.cast.title} (doc_id: ${input.cast.id})` : `search_knowledge로 찾는 「${WEBTOON_CAST_TITLE}」`} — 웹툰형의 주인공 셋 · 강점 낙서 · 한 화 구성을 그대로 따릅니다` : ""}
 
+${(input.brand ?? []).map(doc => `- ${doc.title} (doc_id: ${doc.id}) — 원문을 끝까지 읽고 브랜드·디자인·캐릭터 기준을 적용합니다.`).join("\n")}
+
 ## 포맷별 장과 칸 (OS가 공백 포함 글자 수를 셉니다)
-${cardFormatSpec(formats)}
+${cardFormatSpec(formats, Boolean(cards.production?.design?.startsWith("myin-")))}
 
 ## 캡션 · 해시태그
 - caption: 첫 두 줄(약 125자, ‘더 보기’ 전에 보이는 곳)에 핵심을 넣습니다. 300~800자를 권하고 ${CAPTION_MAX.toLocaleString("ko-KR")}자를 넘기지 않습니다. 링크는 넣지 않습니다(인스타 캡션 링크는 눌리지 않아요).

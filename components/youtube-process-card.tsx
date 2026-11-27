@@ -139,6 +139,7 @@ export function CardStart({ initial = "", sheet = false }: { initial?: string; s
     {(!sheet || entry === "new") &&
     <form className="yp-card yp-pf-start yp-pf-card" onSubmit={event => { event.preventDefault(); if (ready) void start(); }}>
       <div className="yp-card-h">카드뉴스 시작하기</div>
+      <Link className="yp-btn" href="/content/cardnews/myin">마이인 정본 기반 카드뉴스 · 완성 예시와 제작 흐름 ↗</Link>
       <div className="yp-card-b" style={{ display: "grid", gap: 10 }}>
         <p className="yp-hint" style={{ margin: 0 }}>새 주제를 직접 쓰거나 위에서 완료한 롱폼·숏폼·스레드 주제를 가져와 시작해요.</p>
         {channels.length > 1 ? <label className="yp-field" style={{ margin: 0 }}><span className="yp-fld-h"><b>채널</b></span>

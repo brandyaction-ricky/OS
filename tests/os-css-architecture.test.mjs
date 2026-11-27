@@ -25,6 +25,7 @@ const STAGE = "L1";
 export const ORDER = "@layer os.vendor, os.base, os.legacy, os.kit, os.screen;";
 // 파일 → 레이어. 새 CSS 파일을 만들면 여기에 먼저 적는다(적지 않으면 실패).
 const FILE_LAYER = {
+  "components/myin-card-workshop.css": "os.screen",
   "app/theme-tokens.css": null, // 색 토큰: 레이어 밖(어떤 레이어도 못 덮음)
   "app/os-foundation.css": "os.base+os.kit",
   "app/globals.css": "os.legacy",
@@ -71,6 +72,7 @@ const FILE_LAYER = {
 };
 // 화면 파일 → 메뉴 접두어 (공통 가이드 7장 등록표)
 const SCREEN_PREFIX = {
+  "components/myin-card-workshop.css": ["mw-"],
   "components/team-workspace.css": ["tm-"],
   "components/content-automation-v07.css": ["ca-"],
   "components/content-automation-worker.css": ["ca-"],
