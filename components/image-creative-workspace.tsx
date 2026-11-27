@@ -225,6 +225,7 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setExperimentList(params.get("view") === "tests");
+    if (params.get("view") === "tools") setShowTools(true);
     if(params.get("view")==="trash" && (demo || accessToken)) showTrash();
     const id = params.get("project");
     if (!id || linkedProject.current === id || (!demo && !accessToken)) return;
@@ -293,6 +294,10 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
       setCopyFields(pending.copyFields || ["headline"]); setFixFormatInputs(Boolean(pending.compareFormats));
     }
     setShowTools(!showTools);
+    const url = new URL(window.location.href);
+    if (!showTools) url.searchParams.set("view", "tools");
+    else if (url.searchParams.get("view") === "tools") url.searchParams.delete("view");
+    window.history.replaceState(window.history.state, "", url);
   }
   function updateDemo(state: ImageCreativeState, renders = bundle?.renders) {
     if (!bundle) return;
@@ -572,7 +577,14 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
       </section>
   );
   return <div className="ic-page">
-    <div className="ic-row"><Link href="/content/projects?platform=ad">내 광고</Link><h1>이미지 광고</h1><button type="button" className="secondary-button" disabled={busy} onClick={showTrash}>휴지통</button></div>
+    <header className="ic-workspace-header">
+      <div><Link className="ic-back-link" href="/content/projects?platform=ad">← 내 광고</Link><h1>이미지 광고</h1>
+        <p className="ic-page-description">상품과 메시지를 정하고, 원하는 디자인으로 광고를 완성하세요.</p></div>
+      <div className="ic-row">
+        {!flowPreview && (!experimentList || bundle) && <button type="button" className="secondary-button" disabled={busy} onClick={toggleTools}>{showTools?"단계별 제작으로 돌아가기":"작업 도구"}</button>}
+        <button type="button" className="secondary-button" disabled={busy} onClick={showTrash}>휴지통</button>
+      </div>
+    </header>
     {demo&&<p className="os-callout" data-tone="info">{flowPreview ? "반영 전 테스트 · 작업은 이 브라우저에만 저장됩니다. AI 생성과 Mac 출력은 실행하지 않습니다." : localDirectionPlanner
       ? "개발 화면 · 작업은 이 브라우저에 저장됩니다."
       : "체험 모드 · 시안과 PNG를 이 브라우저에서 만듭니다. 실제 AI와 Mac 작업은 연결된 OS에서 실행됩니다."}</p>}
@@ -583,7 +595,7 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
     {error&&<p role="alert" className="os-callout" data-tone="danger">{error}</p>}{message&&<p role="status" className="os-callout" data-tone="info">{message}</p>}
     {trashTarget && <ImageProjectTrashConfirm project={trashTarget} busy={busy} cancel={()=>setTrashTarget(undefined)} confirm={()=>changeTrash(trashTarget,"trash")}/>}
     {trashOpen && <ImageProjectTrash projects={trashProjects} busy={busy} restore={project=>changeTrash(project,"restore")} close={()=>setTrashOpen(false)}/>}
-    <div hidden={trashOpen}>
+    <div className="ic-workspace-content" hidden={trashOpen}>
     {!showTools && <>
       <GuidedImageCreative projects={projects} listReady={listReady} experimentList={experimentList}
         reloadList={()=>void run(readList)} openProject={open} flowPreview={demo ? flowPreview : undefined} previewProducts={demo ? previewProducts : undefined} localDirectionPlanner={localDirectionPlanner} key={wizardEpoch} bundle={bundle} brief={brief} setBrief={setBrief} demo={demo} busy={busy}
@@ -592,7 +604,19 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
         openTools={toggleTools} />
     </>}
     {showTools && <>
-    <section className="panel panel-pad-lg ic-panel"><h2>작업 선택</h2><div className="ic-row"><label className="ic-field">기존 작업<select className="field" aria-label="기존 작업" disabled={busy} value={bundle?.project.id||""} onChange={e=>{if(e.target.value)open(e.target.value);}}><option value="">작업을 선택하세요</option>{projects.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select></label><label className="ic-field">새 작업 이름<input className="field" value={title} onChange={e=>setTitle(e.target.value)} placeholder="예: 무료 진단 첫 소재" /></label><button className="primary-button" disabled={busy} onClick={create}>새 작업 만들기</button></div></section>
+    <section className="panel panel-pad-lg ic-panel ic-project-selector" aria-labelledby="ic-project-title">
+      <div className="ic-section-heading"><div><h2 id="ic-project-title">작업 선택</h2><p className="ic-muted">기존 작업을 이어서 편집하거나 새로운 광고 작업을 시작하세요.</p></div><span className="ic-status-badge">작업 도구</span></div>
+      <div className="ic-project-options">
+        <div className="ic-project-option"><h3>이어서 작업하기</h3>
+          <label className="ic-field">기존 작업<select className="field" aria-label="기존 작업" disabled={busy || !listReady} value={bundle?.project.id||""} onChange={e=>{if(e.target.value)open(e.target.value);}}><option value="">작업을 선택하세요</option>{projects.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select></label>
+          <p className="ic-field-hint">{!listReady ? "저장된 작업을 불러오고 있어요." : projects.length ? "작업을 선택하면 저장한 내용이 열립니다." : "아직 저장된 작업이 없어요. 새 작업을 만들어 시작하세요."}</p>
+        </div>
+        <form className="ic-project-option ic-project-new" onSubmit={event=>{event.preventDefault();create();}}><h3>새 광고 시작하기</h3>
+          <div className="ic-project-create"><label className="ic-field">새 작업 이름<input className="field" required disabled={busy} value={title} onChange={e=>setTitle(e.target.value)} placeholder="예: 무료 진단 첫 소재" /></label><button type="submit" className="primary-button" disabled={busy || !title.trim()}>새 작업 만들기</button></div>
+          <p className="ic-field-hint">찾기 쉬운 이름을 정한 뒤 광고 내용을 입력하세요.</p>
+        </form>
+      </div>
+    </section>
     <ImageFormatLibrary selected={formatIds} onSelect={bundle ? toggleFormat : undefined} local={localDirectionPlanner} />
     <div id="image-format-compare" className="ic-actions"><button className="secondary-button" onClick={startFormatComparison}>포맷만 비교하기</button></div>
     {saved?.formatTests?.length ? <details className="ic-details"><summary>이전에 저장한 포맷 비교</summary>
@@ -662,7 +686,6 @@ export function ImageCreativeWorkspace({previewProducts, localDirectionPlanner=f
           <p className="ic-muted">포맷을 승인하고 첫 카피 후보를 만들어 주세요.</p>}
       </section>
     </ImageSavedSteps>}
-    {!flowPreview && (!experimentList || bundle) && <button type="button" className="secondary-button ic-actions" disabled={busy} onClick={toggleTools}>{showTools?"단계별 제작으로 돌아가기":"작업 도구"}</button>}
     </div>
   </div>;
 }

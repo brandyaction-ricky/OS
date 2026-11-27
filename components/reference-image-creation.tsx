@@ -46,7 +46,7 @@ function closestSize({w,h}:ReferenceLayout["source"]):CreativeSize {
 
 export function ImageReferenceSteps({current,onBack,labels=steps}:{current:number;labels?:string[];onBack?:(step:number)=>void}) {
   return <ol className="ic-reference-steps" aria-label="제작 순서">{labels.map((label,index)=>
-    <li key={label} aria-current={current===index ? "step" : undefined}>{onBack && index<current ? <button type="button" className="ic-step-back" onClick={()=>onBack(index)}>✓ {label}</button> : <span title={index>current?"앞 단계를 끝내면 열려요":undefined} aria-disabled={index>current||undefined}>{label}</span>}</li>)}</ol>;
+    <li key={label} aria-current={current===index ? "step" : undefined} data-complete={index<current||undefined}><span className="ic-step-number" aria-hidden="true">{index<current ? "✓" : index+1}</span>{onBack && index<current ? <button type="button" className="ic-step-back" onClick={()=>onBack(index)}>{label}</button> : <span title={index>current?"앞 단계를 끝내면 열려요":undefined} aria-disabled={index>current||undefined}>{label}</span>}</li>)}</ol>;
 }
 
 export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sample,recheckProduct,localDirectionPlanner,demo,busy,createProject,patch,receive,run,refresh,
@@ -330,15 +330,15 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
     <details className="ic-details"><summary>이 광고에 쓰는 정본과 규칙</summary><p>상품 {brief.productSource ? "정본 v"+brief.productSource.source.version : "직접 입력"} · 타겟 {brief.productSource?.audienceSource ? "정본 v"+brief.productSource.audienceSource.version : "직접 입력"} · 광고 포맷 창고 · 운영 정본의 광고 규칙</p><p>광고 전용 정본 · 문서 없음</p><ul>{AD_COPY_RULES.map(rule=><li key={rule}>{rule}</li>)}</ul></details>
     {step>0 && <ProductCanonNotice brief={brief} catalog={catalog} disabled={busy} onRecheck={bundle && sameImageBrief(brief,bundle.state.brief) ? recheckProduct : undefined}
       onReview={!approved && !batch ? ()=>setStep(0) : undefined}/>}
-    {step===0 && <form className="panel panel-pad-lg ic-panel ic-guided-brief" onSubmit={e=>{e.preventDefault();submitProduct();}}>
-      <h2>상품 선택</h2>
+    {step===0 && <form className="panel panel-pad-lg ic-panel ic-guided-brief ic-product-form" onSubmit={e=>{e.preventDefault();submitProduct();}}>
+      <div className="ic-section-heading"><div><h2>상품 선택</h2><p className="ic-muted">광고할 상품을 고르고, 고객에게 전달할 핵심 정보를 확인하세요.</p></div><span className="ic-status-badge">1단계</span></div>
       <ImageProductFields brief={brief} setBrief={setBrief} catalog={catalog} sample={sample} disabled={busy}
         requireGoal={false}/>
       {!bundle && <label className="ic-field">프로젝트 이름 (선택)<input className="field" value={name} maxLength={120}
         onChange={e=>setName(e.target.value)} placeholder="예: 무료 진단 · 11월 소구점 테스트"/></label>}
-      <label className="ic-field">연결 페이지에서 확인한 근거<textarea className="field" value={brief.facts} onChange={e=>setBrief({...brief,facts:e.target.value})} /></label>
-      <div className="ic-row"><button className="primary-button" disabled={busy || !brief.product.trim() || !!catalog.result?.items.find(row=>row.id===brief.productSource?.productId)?.needsData}>소구점 선택하기</button>
-        <button className="secondary-button" type="button" disabled={busy} onClick={leave}>뒤로</button></div>
+      <div><label className="ic-field">연결 페이지에서 확인한 근거 (선택)<textarea className="field" rows={3} aria-describedby="ic-product-facts-hint" placeholder="상품의 특징이나 제공 조건 등 확인된 내용을 적어주세요." value={brief.facts} onChange={e=>setBrief({...brief,facts:e.target.value})} /></label><p id="ic-product-facts-hint" className="ic-field-hint">광고 문구에 활용할 수 있는 사실만 입력해주세요.</p></div>
+      <div className="ic-form-footer"><button className="secondary-button" type="button" disabled={busy} onClick={leave}>뒤로</button>
+        <button className="primary-button" disabled={busy || !brief.product.trim() || !!catalog.result?.items.find(row=>row.id===brief.productSource?.productId)?.needsData}>소구점 선택하기</button></div>
     </form>}
     {step===1 && <section className="panel panel-pad-lg ic-panel ic-guided-brief"><h2>{unified ? "구매 이유 고르기" : standaloneSteps[1]}</h2><p>{brief.product}</p>
       {!demo && !options?.length && !approved && !saved?.appeals?.length && <div className="ic-row"><button type="button" className="secondary-button" disabled={busy || pendingAppeals} onClick={requestAppeals}>구매 이유 {mode==="standalone"?3:5}개 제안받기</button>
