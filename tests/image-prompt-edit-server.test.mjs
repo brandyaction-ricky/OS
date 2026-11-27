@@ -1,3 +1,5 @@
+import * as adSchemas from "../lib/ad-production-schema.ts";
+import * as adProduction from "../lib/ad-production.ts";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import * as crypto from "node:crypto";
@@ -26,7 +28,7 @@ async function harness({approved=true,key=true,providerError,mutateDuringCall=fa
   let release,started;
   const providerGate=new Promise(resolve=>{release=resolve;}),providerStarted=new Promise(resolve=>{started=resolve;});
   let record={id:projectId,owner_id:owner,version:1,metadata:{state:{variants:[{id:"base",formatId:warehouse?"M01":"typography",size:"portrait",copy:{headline:"원본"}}],batches:[]},assets:[]}},calls=0,registered;
-  const modules={"next/dist/server/image-optimizer":sharpModule,"node:crypto":crypto,zod,"@/lib/http":{ApiError},
+  const modules={"@/lib/ad-production-schema":adSchemas,"@/lib/ad-production":adProduction,"next/dist/server/image-optimizer":sharpModule,"node:crypto":crypto,zod,"@/lib/http":{ApiError},
     "@/lib/cardnews/draw":{CARD_DRAW_SIZE:{width:1024,height:1280}},"@/lib/image-creative/storage":{imageFileInfo,IMAGE_FILE_MAX},
     "@/lib/image-creative/formats":{isWarehouseFormat:id=>id==="M01"},"@/lib/image-creative/placement":{resolvePlacement:()=>({width:20,height:25})},"./youtube-process-stages":{},
     "@/lib/supabase/server":{createServiceSupabase:()=>({})},"./card-draw":{drawImageBytes:async args=>{
@@ -115,7 +117,7 @@ test("pre-final warehouse edits use a real PNG bound to the current owner, sourc
 
 test("the authenticated endpoint accepts bound multipart PNGs and rejects oversized bodies and arbitrary source URLs",async()=>{
   const h=await harness({warehouse:true}),compiled={exports:{}};let called=0;
-  const modules={zod,"@/lib/http":{ApiError,parseJson:r=>r.json(),apiErrorResponse:error=>Response.json({code:error.code},{status:error.status ?? 500})},
+  const modules={"@/lib/ad-production-schema":adSchemas,"@/lib/ad-production":adProduction,zod,"@/lib/http":{ApiError,parseJson:r=>r.json(),apiErrorResponse:error=>Response.json({code:error.code},{status:error.status ?? 500})},
     "@/lib/server/auth":{authenticateRequest:async(_request,options)=>{assert.equal(options.allowAgent,false);return actor;}},
     "@/lib/server/image-creatives":{imageError:error=>error},"@/lib/image-creative/storage":{IMAGE_FILE_MAX},
     "@/lib/server/image-prompt-edit":{imagePromptEditRequest:h.api.imagePromptEditRequest,proposeImagePromptEdit:async(who,id,value,file)=>{
@@ -149,7 +151,7 @@ test("applying requires the exact server proposal and ownership; a saved request
   const proof={baseId:base.id,...edit,sourceHash:crypto.createHash("sha256").update(JSON.stringify(base)).digest("hex"),at:new Date().toISOString()};
   let record={id:projectId,owner_id:owner,version:4,metadata:{kind:IMAGE_CREATIVE_KIND,state,assets:[image],appliedJobs:{},promptEditProposals:[proof]}},writes=0;
   const db={from(){let update;const q={update(value){update=value;return q;},eq(){return q;},is(){return q;},select(){return q;},async maybeSingle(){writes++;record={...record,...update,version:record.version+1};return {data:record,error:null};}};return q;}};
-  const modules={"node:crypto":crypto,"next/dist/server/image-optimizer":sharpModule,zod,"@/lib/http":{ApiError},
+  const modules={"@/lib/ad-production-schema":adSchemas,"@/lib/ad-production":adProduction,"node:crypto":crypto,"next/dist/server/image-optimizer":sharpModule,zod,"@/lib/http":{ApiError},
     "@/lib/supabase/server":{createServiceSupabase:()=>db},"@/lib/image-creative/model":imageModel,"@/lib/image-creative/direction":imageDirection,
     "@/lib/image-creative/formats":imageFormats,"@/lib/image-creative/storage":{IMAGE_FILE_MAX,IMAGE_CREATIVE_KIND,imageFileInfo,ownsImageAsset}};
   const compiled={exports:{}};

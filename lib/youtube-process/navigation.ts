@@ -53,7 +53,7 @@ const platformStage = (id: string, label: string, page: string, platform: string
 export const YOUTUBE_V1_PLATFORM_STAGES: NavStage[] = [
   { ...platformStage("yt-longform", "롱폼 유튜브", "내 롱폼 영상", "longform", Youtube), pages: [...platformStage("yt-longform", "롱폼 유튜브", "내 롱폼 영상", "longform", Youtube).pages, SCRIPT_CANON_PAGE, COLUMN_CANON_PAGE] },
   { ...platformStage("yt-short", "숏폼 · 릴스", "내 숏폼 영상", "short", Smartphone), pages: [...platformStage("yt-short", "숏폼 · 릴스", "내 숏폼 영상", "short", Smartphone).pages, SHORT_CANON_PAGE] },
-  platformStage("yt-ad", "광고", "내 광고 영상", "ad", Megaphone),
+  platformStage("yt-ad", "광고", "내 광고", "ad", Megaphone),
   // 정본 다듬기 (정본 §9) sits beside the list: the same 시험 묶음 drawn under each 정본 version and scored.
   { ...platformStage("yt-card", "카드뉴스", "내 카드뉴스", "card", GalleryHorizontal),
     pages: [...platformStage("yt-card", "카드뉴스", "내 카드뉴스", "card", GalleryHorizontal).pages, CARD_CANON_PAGE] },

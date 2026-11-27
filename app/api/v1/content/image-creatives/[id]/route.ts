@@ -21,16 +21,16 @@ export async function PATCH(request: Request, { params }: Context) {
     const record = await imageRecord(actor.supabase, actor.ownerId, id);
     if (input.action === "generate") {
       if (record.version !== input.version) throw new ApiError(409, "IMAGE_VERSION_CONFLICT", "다른 곳에서 바뀌었어요. 새로 불러와 주세요.");
-      await requestImageApiJob(actor, { task: "image-creative", sourceId: id, request: input.request, target: input.target, guided: input.guided });
+      await requestImageApiJob(actor, { task: "image-creative", sourceId: id, request: input.request, target: input.target, guided: input.guided }, imageMeta(record).state.formatRecommendation?.referenceFirst ? input.tier??"saving" : undefined);
       return Response.json(await imageBundle(record), { headers });
     }
     const saved = await patchImageProject(actor, record, input);
     const plan = imageMeta(saved).state.formatRecommendation;
-    if ((input.action === "recommend-formats" && !(plan?.conceptFirst ? plan.appeals?.length : plan?.items?.length)) ||
+    if ((input.action === "suggest-appeals" && !plan?.appealOptions?.length) || (input.action === "recommend-formats" && !(plan?.conceptFirst ? plan.appeals?.length : plan?.items?.length)) ||
         (input.action === "plan-scene" && !plan?.scene))
-      await requestImageApiJob(actor, {task:"image-creative", sourceId:id, request:{phase:"formats"}});
+      await requestImageApiJob(actor, {task:"image-creative", sourceId:id, request:{phase:"formats"}}, input.action==="suggest-appeals" ? input.tier??"saving" : undefined);
     if (input.action === "approve-and-generate" && imageMeta(saved).state.formatApproval)
-      await requestImageApiJob(actor, {task:"image-creative", sourceId:id, request:input.request,guided:true});
+      await requestImageApiJob(actor, {task:"image-creative", sourceId:id, request:input.request,guided:true}, plan?.referenceFirst ? "saving" : undefined);
     return Response.json(await imageBundle(saved), { headers });
   } catch (error) { return apiErrorResponse(error instanceof ZodError ? new ApiError(422, "IMAGE_INPUT_INVALID", "요청할 항목과 개수를 확인해 주세요.") : imageError(error)); }
 }

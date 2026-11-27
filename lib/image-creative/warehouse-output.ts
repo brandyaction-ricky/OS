@@ -1,7 +1,8 @@
 import type { CreativeVariant } from "./model";
 import { isWarehouseFormat } from "./formats";
 import { renderFormatTestSvg, type FormatTestCopy, type WarehouseFormatId } from "./format-test-renderer.mjs";
-import { resolvePlacement } from "./placement.ts";
+import { adPlacementFrame, resolvePlacement } from "./placement.ts";
+import type { AdAspect } from "../ad-production.ts";
 import type { RenderDesign } from "./safe-artwork.mjs";
 import displayFiles from "./format-test-fonts.json";
 
@@ -86,6 +87,7 @@ export async function downloadWarehouseSelection(
   name: string,
   kind: "batch" | "variant",
   manifest: { brief?: unknown; batch?: unknown } = {},
+  aspects?: AdAspect[],
 ) {
   if (!variants.length || (kind === "variant" && variants.length !== 1)) throw new Error("내보낼 시안을 확인해 주세요.");
   const resolveBlob = async (variant: CreativeVariant) => {
@@ -94,15 +96,41 @@ export async function downloadWarehouseSelection(
     return blob;
   };
   if (kind === "variant") {
-    downloadBlob(await resolveBlob(variants[0]), name);
+    const master = await resolveBlob(variants[0]);
+    downloadBlob(aspects?.[0] ? await browserAdPlacement(master, aspects[0]) : master, name);
     return;
   }
   const { default: JSZip } = await import("jszip");
   const zip = new JSZip();
   for (const [index, variant] of variants.entries()) {
     const blob = await resolveBlob(variant);
-    zip.file(`${String(index + 1).padStart(2, "0")}-${variant.id}.png`, await blob.arrayBuffer());
+    const base = `${String(index + 1).padStart(2, "0")}-${variant.id}`;
+    if (aspects?.length) {
+      for (const aspect of aspects) {
+        zip.file(`${base}-${aspect}.png`, await (await browserAdPlacement(blob, aspect)).arrayBuffer());
+      }
+    } else zip.file(base + ".png", await blob.arrayBuffer());
   }
   zip.file("variants.json", JSON.stringify({ ...manifest, variants, placements: variants.map(v => ({ variantId: v.id, ...resolvePlacement(v.size, v.design?.placement, v.design?.outputWidth) })) }, null, 2));
   downloadBlob(await zip.generateAsync({ type: "blob", compression: "STORE" }), name);
+}
+
+async function browserAdPlacement(master: Blob, aspect: AdAspect) {
+  const { width, height, rect } = adPlacementFrame(aspect);
+  const image = await createImageBitmap(master);
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("출력용 이미지를 그릴 수 없어요.");
+    context.fillStyle = "white";
+    context.fillRect(0, 0, width, height);
+    const scale = Math.min(rect.width / image.width, rect.height / image.height);
+    const w = Math.round(image.width * scale), h = Math.round(image.height * scale);
+    context.drawImage(image, rect.x + Math.floor((rect.width - w) / 2), rect.y + Math.floor((rect.height - h) / 2), w, h);
+    return await new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("PNG를 만들지 못했어요.")), "image/png"));
+  } finally {
+    image.close();
+  }
 }

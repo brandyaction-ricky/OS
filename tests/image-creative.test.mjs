@@ -54,6 +54,8 @@ test('the 12 original candidate formats still support all three output sizes wit
       for (const glyph of ['꽉', 'W']) assert.deepEqual(imageVariantProblems(maximumContent(id, size, glyph)), [], `${id}/${size}/maximum ${glyph}`);
     }
   }
+  const available = ['steps', 'typography', 'reframe'];
+  assert.deepEqual(recommendImageFormats(state().brief, false, 'portrait', available).map(row => row.id).sort(), [...available].sort());
   assert.ok(recommendImageFormats(state().brief).length > 0);
   assert.ok(recommendImageFormats(state().brief).every(row => row.status === 'candidate'));
 });

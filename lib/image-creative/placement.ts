@@ -1,4 +1,5 @@
 import type { CreativeSize } from "./formats.ts";
+import type { AdAspect } from "../ad-production.ts";
 
 export const PLACEMENT_IDS = ["feed-square", "feed-portrait", "story", "reel"] as const;
 export type PlacementId = (typeof PLACEMENT_IDS)[number];
@@ -31,4 +32,11 @@ export function resolvePlacement(size: CreativeSize, placement: PlacementId = de
   const bottom = Math.ceil(height * (fullscreen ? 40 : 5) / 100);
   return { id: placement, label: spec.label, size: spec.size, width, height,
     safe: { x, y, width: width - 2 * x, height: height - y - bottom }, policyVersion: SAFE_ZONE_VERSION };
+}
+
+export function adPlacementFrame(aspect: AdAspect) {
+  const placement = resolvePlacement(aspect === "9x16" ? "story" : aspect === "1x1" ? "square" : "portrait");
+  const { width, height } = placement;
+  const rect = aspect === "9x16" ? placement.safe : { x: 0, y: 0, width, height };
+  return { width, height, rect };
 }

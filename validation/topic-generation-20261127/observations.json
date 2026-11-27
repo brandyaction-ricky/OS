@@ -1,0 +1,21 @@
+{
+  "environment": "local demo on product commit c6e217e",
+  "briefLostOnPhotoUpload": {
+    "reproduced": true,
+    "steps": ["create empty project", "fill brief without saving", "upload PNG"],
+    "before": {"brand": "새벽원두", "objective": "첫 구독 신청", "audience": "집에서 커피를 내려 마시는 직장인"},
+    "after": {"brand": "", "objective": "", "audience": ""},
+    "workaroundUsedForRemainingQa": "save brief before upload"
+  },
+  "copyLength": {
+    "rejectedBody": "2주마다 원두 200g 한 봉. 취향에 맞는 커피를 만나보세요.",
+    "length": 35,
+    "displayedError": "2번: body은 34자까지예요.",
+    "recoveredBody": "2주마다 원두 200g 한 봉. 취향에 맞게 받아보세요."
+  },
+  "comparePhotoSelection": {"twoPhotosSelected": "approve format disabled without explanation", "onePhotoSelected": "approve format enabled"},
+  "aiQueue": {"attempted": true, "displayedError": "체험 모드에서는 실제 AI 작업을 보내지 않아요. 요청문을 복사하고 결과를 가져와 주세요."},
+  "videoScript": {"blankLinesSkipped": true, "scenes": 3, "firstVisualPreservedWhenOnlyThirdLineChanged": true},
+  "mobileResultLayout": {"viewportWidth": 390, "documentWidth": 381, "images": 5, "enabledExports": 5},
+  "reviewArtifact": {"filterToCoffeeM09": 1, "dialogOpens": true, "resetShowsAll": 15, "mobileViewportWidth": 390, "mobileDocumentWidth": 375}
+}

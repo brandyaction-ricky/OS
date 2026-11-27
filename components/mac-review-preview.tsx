@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSession } from "./session-provider";
 
 type Props = {
+  aspect?: import("@/lib/ad-production").AdAspect;
   projectId: string;
   variantId: string;
   runId: string;
@@ -11,7 +12,7 @@ type Props = {
   onReady: (ready: boolean) => void;
 };
 
-export function MacReviewPreview({ projectId, variantId, runId, title, onReady }: Props) {
+export function MacReviewPreview({ projectId, variantId, runId, title, onReady, aspect }: Props) {
   const { accessToken } = useSession();
   const report = useRef(onReady);
   useEffect(() => { report.current = onReady; }, [onReady]);
@@ -27,7 +28,7 @@ export function MacReviewPreview({ projectId, variantId, runId, title, onReady }
     setIssue("");
     void (async () => {
       if (!accessToken) throw new Error("로그인 후 최종 출력물을 열 수 있어요.");
-      const query = new URLSearchParams({ variantId, runId });
+      const query = new URLSearchParams({ variantId, runId,...(aspect && {aspect}) });
       const response = await fetch(`/api/v1/content/image-creatives/${encodeURIComponent(projectId)}/preview?${query}`, {
         headers: { authorization: "Bearer " + accessToken }, signal: controller.signal, cache: "no-store",
       });
@@ -52,7 +53,7 @@ export function MacReviewPreview({ projectId, variantId, runId, title, onReady }
       if (objectUrl) URL.revokeObjectURL(objectUrl);
       report.current(false);
     };
-  }, [accessToken, projectId, variantId, runId, attempt]);
+  }, [accessToken, projectId, variantId, runId, attempt, aspect]);
 
   if (!url) return <div role="status">{issue || "Mac이 출력한 검수용 파일을 여는 중입니다."}
     {issue && <button type="button" className="secondary-button" onClick={() => setAttempt(n => n + 1)}>다시 불러오기</button>}

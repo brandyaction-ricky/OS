@@ -20,6 +20,12 @@ test("the next ad reads the best three and the weakest two, best return first", 
     .map(([name, roas, spend]) => ({ projectId: name, title: name, result: result({ spend, revenue: spend * roas, purchases: 1, impressions: 1000 }, name) }));
   rows.push({ projectId: "G", title: "G", result: result({}, "G") });
   assert.deepEqual(rankAds(rows).map(row => row.title), ["B", "D", "F", "A", "C", "E"]);
+  assert.equal(pastAdsForAi(rows), null);
+  for (const row of rows) {
+    row.released = true;
+    row.result.measurement = {...row.result, clicks:35, starts:0, completions:0, otherCosts:0, refundedOrders:0, refunds:0, cohortConfirmed:true};
+  }
+  assert.equal(pastAdsForAi(rows.map(row=>({...row,isTest:true}))),null);
   const forAi = pastAdsForAi(rows);
   assert.equal(forAi.best.length, 3); assert.equal(forAi.weak.length, 2);
   assert.match(forAi.best[0], /「B」 구매 이유: B · 헤드 카피: 카피 · ROAS 3.00배 · CPA 300원/);

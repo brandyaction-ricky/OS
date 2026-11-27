@@ -56,6 +56,7 @@ test("체험 모드에서 결과를 가져오고 새로고침 후 기준 소재�
   await page.getByRole("button",{name:"기준 시안 선택",exact:true}).click();
   await openWorkTools(page);
   await page.getByLabel("기존 작업").selectOption({label:"광고 테스트"});
+  await page.getByRole("button",{name:"작업 열기",exact:true}).click();
   await expect(page.getByRole("button",{name:"기준으로 선택됨"})).toBeVisible();
   await page.getByRole("button",{name:/소구점 비교/}).click();
   await expect(page.getByText("기준 시안: 일이 자꾸 미뤄진다면")).toBeVisible();

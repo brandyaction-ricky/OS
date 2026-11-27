@@ -84,7 +84,7 @@ export function ImageProductFields({brief,setBrief,catalog,sample,onProductChose
   const showGoalInput = editGoal || !brief.objective || !(isSample || (ref && selected?.objective));
   const manualField = (key:"product"|"audience"|"offer", label:string) =>
     <label key={key} className="ic-field">{label}<input className="field" value={brief[key] ?? ""} required maxLength={2000} onChange={event=>setBrief({...brief,[key]:event.target.value})}/></label>;
-  return <div>
+  return <div className="ic-product-fields">
     <label className="ic-field">상품 선택<select required disabled={disabled} className="field" value={selectedId}
       onChange={event=>choose(event.target.value)}>
       <option disabled value="">광고할 상품을 선택하세요</option>
@@ -99,12 +99,12 @@ export function ImageProductFields({brief,setBrief,catalog,sample,onProductChose
     {selectedId===manualOption ? <div className="ic-grid ic-actions">{manualField("product","상품명")}{manualField("audience","타겟")}{manualField("offer","제공 내용")}
       <label className="ic-field">브랜드명 (선택)<input className="field" maxLength={15} value={brief.brand ?? ""} onChange={event=>setBrief({...brief,brand:event.target.value})}/></label></div>
     : (ref || isSample) && <>
-      <dl className="ic-copy-lines">
-        <dt>타겟</dt><dd>{brief.audience || "직접 입력 필요"}</dd>
-        <dt>제공 내용</dt><dd>{brief.offer || "직접 입력 필요"}</dd>
-        {!showGoalInput && <><dt>광고 목표</dt><dd>{brief.objective}</dd></>}
+      <dl className="ic-copy-lines ic-product-summary">
+        <div><dt>타겟</dt><dd>{brief.audience || "직접 입력 필요"}</dd></div>
+        <div><dt>제공 내용</dt><dd>{brief.offer || "직접 입력 필요"}</dd></div>
+        {!showGoalInput && <div><dt>광고 목표</dt><dd>{brief.objective}</dd></div>}
       </dl>
-      {demo && <small>{isSample ? "체험용 예시 상품" : selected?.needsData ? "상품 원문 확인 필요" : "OS 정본 조회본"}</small>}
+      {demo && <small className="ic-product-source-note">{isSample ? "체험용 예시 상품" : selected?.needsData ? "상품 원문 확인 필요" : "OS 정본 조회본"}</small>}
       <ProductCanonNotice brief={brief} catalog={catalog} disabled={disabled} apply onReview={()=>choose(selectedId)}/>
       <details className="ic-details"><summary>{isSample ? "상품 정보 · 수정" : "정본 정보 · 수정"}</summary>
         {brief.funnel && <p>고객 단계 · {brief.funnel}</p>}

@@ -75,7 +75,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const variantId = uuid.parse(query.get("variantId"));
     const runId = uuid.parse(query.get("runId"));
     const record = await imageRecord(actor.supabase, actor.ownerId, id);
-    const review = await macReviewPng(record, variantId, runId);
+    const review = await macReviewPng(record, variantId, runId, z.enum(["4x5","1x1","9x16"]).optional().parse(query.get("aspect") ?? undefined));
     return new Response(new Uint8Array(review).buffer, { headers });
   } catch (error) {
     return apiErrorResponse(error instanceof z.ZodError ? new ApiError(422, "IMAGE_REVIEW_INVALID", "검수할 시안과 출력 작업을 확인해 주세요.") : imageError(error));

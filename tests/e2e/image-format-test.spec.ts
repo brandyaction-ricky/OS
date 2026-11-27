@@ -1,19 +1,25 @@
 import { openWorkTools } from "./image-approval-steps";
 import { expect, test } from "@playwright/test";
 
-test("포맷 창고의 5종 비교도 일반 작업의 포맷 승인을 거친다", async ({page})=>{
+test("작업 전에 고른 디자인을 새 작업으로 이어가고 기존 포맷 승인을 거친다", async ({page})=>{
   await openWorkTools(page);
-  const catalog=page.getByRole("region",{name:"포맷 창고"});
-  await expect(catalog.getByRole("status")).toHaveText("5개");
+  const catalog=page.getByRole("region",{name:"광고 디자인 고르기"});
+  await expect(catalog.getByRole("status")).toHaveText("5개 디자인");
+  await expect(catalog.getByRole("button",{name:"이 디자인으로 작업 시작"})).toBeDisabled();
   await catalog.getByRole("checkbox").uncheck();
-  await expect(catalog.getByRole("status")).toHaveText("73개");
-  await page.getByRole("button",{name:"포맷만 비교하기"}).click();
-  await expect(page.getByRole("alert").filter({hasText:"새 작업"})).toBeVisible();
+  await expect(catalog.getByRole("status")).toHaveText("73개 디자인");
+  await catalog.getByRole("checkbox").check();
+  await catalog.getByRole("button",{name:"5개 디자인 모두 선택"}).click();
+  await expect(catalog.getByText("선택한 디자인 5개",{exact:true})).toBeVisible();
+  await catalog.getByRole("button",{name:"이 디자인으로 작업 시작"}).click();
+  await expect(page.getByLabel("새 작업 이름",{exact:true})).toBeFocused();
   for(const [field,value] of Object.entries({"새 작업 이름":"포맷 비교","브랜드명":"공방","소재 목표":"예약 증가","퍼널":"첫 방문","대상":"직장인","상품":"공방 수업","제공 내용":"수업 예약"})) {
     await page.getByLabel(field,{exact:true}).fill(value);
   }
   await page.getByRole("button",{name:"새 작업 만들기"}).click();
-  await page.getByRole("button",{name:"포맷만 비교하기"}).click();
+  await expect(catalog.getByText("선택한 디자인 5개",{exact:true})).toBeVisible();
+  await catalog.getByRole("button",{name:"다음: 광고 내용 입력"}).click();
+  await expect(page.locator("#image-brief-title")).toBeFocused();
   await expect(page.getByRole("group",{name:"창고 디자인 · 피드 4:5"}).getByRole("checkbox",{checked:true})).toHaveCount(5);
   await expect(page.getByRole("button",{name:"내 AI에게 맡기기"})).toBeDisabled();
   await expect(page.getByRole("button",{name:"PNG 5장 ZIP"})).toHaveCount(0);

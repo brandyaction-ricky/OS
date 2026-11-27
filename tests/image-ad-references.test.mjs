@@ -43,6 +43,8 @@ test("승인한 창고 원문 버전을 카피에 사용하고 기존 승인과 
   const req = {mode:"standalone", count:1, formatIds:["M01"], size:"portrait"};
   state.formatRecommendation = selectedReferencePlan(state.brief, "standalone", "portrait", [{id:"angle",meaning:"직접 만든 잔"}]);
   const stamp = {by:"tester",at:"2026-11-12T01:00:00Z"};
+  assert.throws(()=>approveImageFormat(state, req, stamp), /사진/);
+  req.assetPaths=["image-creatives/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222.png"];
   const legacy = approveImageFormat(state, req, stamp);
   const entry = referenceSnapshot(referenceCatalogFromDocs([chapter]).entries[0]);
   const approved = approveImageFormat(state, req, stamp, entry);

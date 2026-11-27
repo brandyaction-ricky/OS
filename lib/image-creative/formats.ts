@@ -69,7 +69,7 @@ export const IMAGE_FORMATS: Record<ImageFormatId, ImageFormat> = {
     photoGuide: "흰 배경에서 표정이나 행동이 한눈에 읽히는 컬러 사진 한 장. 중앙에 피사체를 크게 담고 제목·로고·테두리는 넣지 않아요.",
     references: [{ title: "OS 유튜브 제작 · 썸네일 합성", sourceId: "youtube-anim-thumb", url: "https://github.com/brandyaction-ricky/OS/blob/6c235d463a2c19310fd49d2ea645e8c0f8620abc/lib/youtube-process/thumb-style.ts", basis: "단일 피사체, 두 줄 제목, 한 곳의 강조색" }],
   },
-  M01: warehouse("M01", "망설이는 순간을 인물 사진과 손글씨 말풍선으로 보여줄 때", "인물의 얼굴이 잘 보이고 주변에 말풍선을 놓을 여백이 있는 사진.", ["속마음", "독백", "고민", "공감", "망설", "계획"], "d5681399-e3e7-4275-ad08-f43754e12f88"),
+  M01: {...warehouse("M01", "망설이는 순간을 인물 사진과 손글씨 말풍선으로 보여줄 때", "인물의 얼굴이 잘 보이고 주변에 말풍선을 놓을 여백이 있는 사진.", ["속마음", "독백", "고민", "공감", "망설", "계획"], "d5681399-e3e7-4275-ad08-f43754e12f88"), limits:{headline:32,body:87,cta:12}},
   A04: warehouse("A04", "한 질문에서 갈라지는 두 선택지를 방향 표지로 보여줄 때", "작은 원형으로 크롭해도 인물의 표정이 남는 정면 또는 반측면 사진.", ["갈림길", "선택", "기준", "비교", "고르", "진단"], "29f424df-f389-4ee4-9ff7-45202cdde7f7"),
   A10: warehouse("A10", "찾고 있지만 답이 없는 상황을 빈 검색 결과로 보여줄 때", "렌즈 일부에 옅게 비쳐도 상황이 전달되는 한 피사체의 사진.", ["검색", "빈칸", "선택 기준", "찾는", "찾기"], "29f424df-f389-4ee4-9ff7-45202cdde7f7"),
   D12: warehouse("D12", "사람이 떠올린 질문을 미리 채운 입력창으로 보여줄 때", "인물의 얼굴이 오른쪽에 있고 눈길과 아래 입력창이 이어질 수 있는 사진.", ["입력", "질문", "참여", "신청", "지원"], "d344e918-a847-4f0a-b7b6-427ec26bb900"),
@@ -92,9 +92,9 @@ export function usesBackgroundPhoto(variant: {formatId: ImageFormatId; asset?: u
   return Boolean(variant.asset && IMAGE_FORMATS[variant.formatId].backgroundPhoto);
 }
 /** Rules-based suggestions, not a performance prediction. No candidate is silently approved. */
-export function recommendImageFormats(brief: { objective: string; funnel: string; audience: string; product: string; offer: string; facts: string; brand?: string }, hasAsset = false, size: CreativeSize = "portrait") {
+export function recommendImageFormats(brief: { objective: string; funnel: string; audience: string; product: string; offer: string; facts: string; brand?: string }, hasAsset = false, size: CreativeSize = "portrait", availableIds: readonly ImageFormatId[] = IMAGE_FORMAT_IDS) {
   const text = Object.values(brief).join(" ").toLocaleLowerCase("ko-KR");
-  return IMAGE_FORMAT_IDS.filter(id => !isWarehouseFormat(id) || (size === "portrait" && hasAsset && Boolean(brief.brand?.trim()))).map(id => {
+  return availableIds.filter(id => !isWarehouseFormat(id) || (size === "portrait" && hasAsset && Boolean(brief.brand?.trim()))).map(id => {
     const entry = IMAGE_FORMATS[id], matches = entry.keywords.filter(word => text.includes(word));
     return { id, name: entry.name, reason: matches.length ? `${matches.join(" · ")} 내용을 담기 좋은 구조예요. ${entry.when}.` : entry.when,
       score: matches.length, needsAsset: entry.assetRequired && !hasAsset, status: entry.status };

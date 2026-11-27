@@ -62,6 +62,8 @@ const FILE_LAYER = {
   "components/team/team-kpi.css": "os.screen",
   "components/threads-editorial-workspace.css": "os.screen",
   "components/threads-reference-workspace.css": "os.screen",
+  "components/ad-production.css": "os.screen",
+  "components/ad-source-studio.css": "os.screen",
   "components/youtube-process.css": "os.screen",
   "components/content-performance.css": "os.screen",
   "components/youtube-process-card.css": "os.screen",
@@ -73,6 +75,7 @@ const FILE_LAYER = {
 // 화면 파일 → 메뉴 접두어 (공통 가이드 7장 등록표)
 const SCREEN_PREFIX = {
   "components/myin-card-workshop.css": ["mw-"],
+  "components/ad-source-studio.css": ["ad-"],
   "components/team-workspace.css": ["tm-"],
   "components/content-automation-v07.css": ["ca-"],
   "components/content-automation-worker.css": ["ca-"],

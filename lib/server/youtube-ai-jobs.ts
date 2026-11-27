@@ -827,7 +827,7 @@ async function claimJob(agent: RequestActor, jobId: string, byGpt: boolean) {
     const { project } = v1Stages(state);
     const brief = project.yp.topic.purpose === "ad" ? (await shortJobInputs(service(), project)).brief : undefined;
     const facts = brief ? await productJobFacts() : null;
-    const references = await shortScriptRefs(service(), true);
+    const references = await shortScriptRefs(service(), true, project.yp.topic.purpose === "ad");
     if (!references.length) throw new ApiError(409, "SHORT_CANON_MISSING", "숏폼 대본 정본을 확인해 주세요.");
     const lease = await take(facts ? [...references, facts.ref] : references);
     return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, ...(byGpt ? { documentRefs: references } : {}), instructions: (facts ? facts.text + "\n\n" : "") + await shortScriptCard(service(), state, minutes, m.market, brief, false, references) };
@@ -879,7 +879,7 @@ async function claimJob(agent: RequestActor, jobId: string, byGpt: boolean) {
     const lease = await take(facts ? [facts.ref] : undefined);
     const lists = await Promise.all((brief.purpose === "ad" ? ["shorts_proposal", "appeal_candidates"] as const : ["shorts_proposal"] as const).map(action => procedureRefs(service(), action).catch(() => [])));
     const docs = withNamed(await namedProcedures(service(), [SHORTFORM_CANON_TITLE]), lists.flat(), 8);
-    const pastAds = brief.purpose === "ad" ? pastAdsForAi(await adHistory(service()).catch(() => [])) : null;
+    const pastAds = brief.purpose === "ad" ? pastAdsForAi(await adHistory(service(),project.ownerId).catch(() => []),project.yp.adSetup?.path) : null;
     return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: (facts ? facts.text + "\n\n" : "") + shortJobCard(project, brief, docs, minutes, script, pastAds) };
   }
   if (m.task === "thumbs") {

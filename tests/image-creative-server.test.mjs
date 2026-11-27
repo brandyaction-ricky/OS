@@ -1,3 +1,5 @@
+import * as adSchemas from "../lib/ad-production-schema.ts";
+import * as adProduction from "../lib/ad-production.ts";
 import * as referenceLayoutModule from "../lib/image-creative/reference-layout.ts";
 import * as promptEditRender from "../lib/image-creative/prompt-edit-render.mjs";
 const {draftReferenceLayout} = referenceLayoutModule;
@@ -32,7 +34,7 @@ let stored;
 function reset(){modules["@/lib/supabase/server"].createServiceSupabase=db;stored={id:projectId,owner_id:owner,version:1,record_type:"content_package",archived_at:null,title:"테스트",metadata:{kind:storage.IMAGE_CREATIVE_KIND,state:{...model.emptyImageCreative(),brief},assets:[{...baseAsset,sha256:"a".repeat(64)}],appliedJobs:{}}};}
 function db() { return {from(){let filters=[],update;const q={select(){return q},eq(k,v){filters.push([k,v]);return q},is(k,v){filters.push([k,v]);return q},update(v){update=v;return q},async maybeSingle(){const ok=filters.every(([key,value])=>key==="metadata->>kind"?stored.metadata.kind===value:stored[key]===value);if(!ok)return {data:null,error:null};if(update)stored={...stored,...update,version:stored.version+1};return {data:structuredClone(stored),error:null};}};return q;}};}
 const source=readFileSync(new URL("../lib/server/image-creatives.ts",import.meta.url),"utf8");
-const modules={"./youtube-process": {getYoutubeProject:async()=>({yp:{topic:{purpose:"ad"}}})},"@/lib/image-creative/reference-layout":referenceLayoutModule,"./image-ad-references":{readImageAdReferences:async()=>({entries:[]})},"@/lib/image-creative/reference-canon":referenceCanon,"@/lib/image-creative/products":products,"@/lib/image-creative/direction":direction,"@/lib/image-creative/subject-box":subjectBox,"./image-ad-products": {readImageAdProducts:async()=>[]}, "@/lib/image-creative/placement":placements,"@/lib/image-creative/format-test":formatTest,"node:crypto":crypto,"next/dist/server/image-optimizer":sharpModule,"node:fs/promises":{},"node:path":{},react:{createElement:()=>({})},"next/og":{ImageResponse:class { async arrayBuffer(){return new ArrayBuffer(0);} }},zod,"@/lib/http":{ApiError},"@/lib/supabase/server":{},"@/lib/cardnews/zip":{},"@/lib/image-creative/formats":formats,"@/lib/image-creative/format-test-fonts.json":{default:JSON.parse(readFileSync(new URL("../lib/image-creative/format-test-fonts.json",import.meta.url),"utf8"))},"@/lib/image-creative/model":model,"@/lib/image-creative/storage":storage,"@/lib/image-creative/view":{},"./youtube-process-stages":{}};
+const modules={"@/lib/ad-production-schema":adSchemas,"@/lib/ad-production":adProduction,"./youtube-process": {getYoutubeProject:async()=>({yp:{topic:{purpose:"ad"}}})},"@/lib/image-creative/reference-layout":referenceLayoutModule,"./image-ad-references":{readImageAdReferences:async()=>({entries:[]})},"@/lib/image-creative/reference-canon":referenceCanon,"@/lib/image-creative/products":products,"@/lib/image-creative/direction":direction,"@/lib/image-creative/subject-box":subjectBox,"./image-ad-products": {readImageAdProducts:async()=>[]}, "@/lib/image-creative/placement":placements,"@/lib/image-creative/format-test":formatTest,"node:crypto":crypto,"next/dist/server/image-optimizer":sharpModule,"node:fs/promises":{},"node:path":{},react:{createElement:()=>({})},"next/og":{ImageResponse:class { async arrayBuffer(){return new ArrayBuffer(0);} }},zod,"@/lib/http":{ApiError},"@/lib/supabase/server":{},"@/lib/cardnews/zip":{},"@/lib/image-creative/formats":formats,"@/lib/image-creative/format-test-fonts.json":{default:JSON.parse(readFileSync(new URL("../lib/image-creative/format-test-fonts.json",import.meta.url),"utf8"))},"@/lib/image-creative/model":model,"@/lib/image-creative/storage":storage,"@/lib/image-creative/view":{},"./youtube-process-stages":{}};
 const compiled={exports:{}};
 modules["@/lib/image-creative/prompt-edit-render.mjs"] = promptEditRender;
 vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{module:compiled,exports:compiled.exports,require:n=>{if(!(n in modules))throw Error(n);return modules[n];},Buffer,URL,Date,Uint8Array,TextEncoder,console});
@@ -51,7 +53,7 @@ test("창고 문서를 고친 뒤 이전 화면은 승인할 수 없고 새 원�
     const state = stored.metadata.state;
     state.brief = {...brief,brand:"공방"};
     state.formatRecommendation = direction.selectedReferencePlan(state.brief,"standalone","portrait",[{id:"angle",meaning:"직접 만든 잔"}]);
-    const request = {mode:"standalone", count:1, size:"portrait", formatIds:["M01"]};
+    const request = {mode:"standalone", count:1, size:"portrait", formatIds:["M01"],assetPaths:[baseAsset.path]};
     const approve = version=>decision({action:"approve-format", request, referenceSource:{documentId:other,version}});
     await assert.rejects(approve(4), e=>e.code==="IMAGE_REFERENCE_CHANGED");
     assert.equal(stored.version, 1);
@@ -1273,4 +1275,47 @@ test("prompt result upload never retries into a restored project; ordinary uploa
     assert.equal(stored.metadata.lifecycleRevision,"restored-generation");
   }
   reset();
+});
+
+test("a recommended photo keeps the provider credit with the actual saved file", async () => {
+  reset();
+  try {
+    const photo = await sharp({create:{width:30,height:40,channels:3,background:"#345678"}}).jpeg().toBuffer();
+    const credit = {source:"Unit test photographer",license:"CC0",url:"https://example.org/photo"};
+    modules["@/lib/supabase/server"].createServiceSupabase=()=>({...db(),storage:{from:()=>({upload:async()=>({error:null})})}});
+    const row=await server.registerImageBytes(stored,photo,undefined,undefined,{credit});
+    const saved=row.metadata.assets.at(-1);
+    assert.deepEqual({...saved.credit},credit);
+    assert.equal(saved.h,40);
+  } finally {reset();}
+});
+test("ad review and export use the same 1080-pixel placement PNGs for every selected size",async()=>{
+  const input=await sharp({create:{width:240,height:300,channels:3,background:"navy"}}).png().toBuffer();
+  for(const [aspect,height] of [["4x5",1350],["1x1",1080],["9x16",1920]]) {
+    const placed=await server.adPlacementPng(input,aspect);
+    const info=await sharp(placed).metadata();
+    assert.equal(info.width,1080);assert.equal(info.height,height);assert.equal(info.format,"png");
+  }
+});
+test("new standalone ads can request three reasons before choosing any appeal or supplying a message",async()=>{
+  reset();
+  await decision({action:"suggest-appeals",brief,mode:"standalone",size:"portrait",tier:"saving"});
+  assert.match(server.imageJobInstructions(stored,{phase:"formats"}),/3개만/);
+  const result={appeals:["처음 접하는 분","다시 시작하는 분","함께 하는 분"].map((meaning,i)=>({meaning,id:String(i)}))};
+  await server.importFormatRecommendations(db(),stored,result,"local-job");
+  assert.equal(stored.metadata.state.formatRecommendation.appealOptions.length,3);
+  assert.equal(stored.metadata.state.formatRecommendation.appeals,undefined);
+});
+test("delivery needs a reviewed image and a real disposition, then accepts measurements only for a released ad",async()=>{
+  reset();
+  const receipt={kind:"published",value:"1234567890123456"};
+  await assert.rejects(decision({action:"release-ad",batchId:"a",disposition:receipt}));
+  stored.metadata.state.batches=[{id:"a",review:{final:{runId:"verified"}},variantIds:[]}];
+  await assert.rejects(decision({action:"release-ad",batchId:"a",disposition:{...receipt,value:"123"}}));
+  await decision({action:"release-ad",batchId:"a",disposition:receipt});
+  assert.equal(stored.metadata.state.adRelease.value,receipt.value);
+  await assert.rejects(decision({action:"release-ad",batchId:"a",disposition:{kind:"withheld",value:"새 기록으로 덮기"}}));
+  const entry={from:"2026-01-01",to:"2026-01-07",impressions:1000,clicks:30,spend:30000,otherCosts:5000,purchases:2,refunds:5000,refundedOrders:1,revenue:60000,starts:8,completions:3,cohortConfirmed:true};
+  await decision({action:"measure-ad",measurement:entry});
+  assert.deepEqual({...stored.metadata.state.adMeasurement},entry);
 });

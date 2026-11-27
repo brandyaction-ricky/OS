@@ -1,14 +1,24 @@
 "use client";
+import Link from "next/link";
 
 import { useRef, useState } from "react";
 import { apiRequest, ApiRequestError } from "@/lib/api-client";
-import { CREATIVE_SIZES, IMAGE_FORMATS, isImageFormat, isWarehouseFormat, type CreativeSize, type ImageFormatId } from "@/lib/image-creative/formats";
+import { AdPlacementPicker, AdPlacementPreview } from "./ad-placement-preview";
+import { JobElapsed } from "./job-elapsed";
+import { AdReferencePhotos } from "./ad-reference-photos";
+import { SafeZoneOverlay } from "./image-design-editor";
+import type { AdAspect } from "@/lib/ad-production";
+import { WinnerArtwork } from "./image-approval-batch";
+import { CostTag,tokenEstimate } from "./cost-notice";
+import { GPT_TIERS } from "@/lib/youtube-process/gpt-draft";
+import { AD_IMAGE_STEPS,AD_COPY_RULES,adCopyIssues } from "@/lib/ad-production";
+import { recommendImageFormats, CREATIVE_SIZES, IMAGE_FORMATS, isImageFormat, isWarehouseFormat, type CreativeSize, type ImageFormatId } from "@/lib/image-creative/formats";
 import { referenceSnapshot, warehouseDocumentUrl } from "@/lib/image-creative/reference-canon";
 import { isReferenceLayout, usesReferenceDetailAsset, type ReferenceLayout } from "@/lib/image-creative/reference-layout";
 import { ReferenceLayoutEditor, prepareReferenceDesign, warehouseReferenceFile } from "./reference-layout-editor";
 import { useImageReferenceCatalog } from "./use-image-reference-catalog";
 import { selectedReferencePlan } from "@/lib/image-creative/direction";
-import { imageJobPending, approveImageFormat, confirmReferenceCopy, createImageBatch, imageBriefProblems, sameImageBrief, saveReferenceCopyDraft, startImageCopyBatch, type ImageBrief,
+import { imageJobPending, reopenReferenceDraft, approveImageFormat, confirmReferenceCopy, createImageBatch, imageBriefProblems, sameImageBrief, saveReferenceCopyDraft, startImageCopyBatch, type ImageBrief,
   type CreativeVariant, type ImageBatchRequest, type ImageCreativeState, type ImageFormatPlan } from "@/lib/image-creative/model";
 import { CampaignBriefPicker } from "./ad-campaign-picker";
 import { ImageProductFields, ProductCanonNotice } from "./image-product-fields";
@@ -22,8 +32,12 @@ import "./image-creative-flow-preview.css";
 type Props = Pick<GuidedImageProps, "brief"|"setBrief"|"bundle"|"localDirectionPlanner"|"demo"|"busy"|"createProject"|"patch"|"receive"|"run"|"refresh"|"assetPaths"|"setAssetPaths"|"upload"|"leave"> & {plan:ImageFormatPlan;catalog:ImageProductCatalog;sample:boolean;recheckProduct?:(brief:ImageBrief)=>void;flowPreview?:ImageFlowPreview};
 type Appeal = CreativeVariant["appeal"];
 type AdCopy = CreativeVariant["copy"];
-const steps = ["상품 선택","소구점 선택","레퍼런스 선택","카피 작성","디자인 수정","확정"];
-const exampleRefs: ImageFormatId[] = ["M01","typography","note","A04","A10","D12"];
+const steps = AD_IMAGE_STEPS;
+const standaloneSteps = ["상품 선택","소구점 선택","레퍼런스 선택","카피 작성","디자인 수정","확정"];
+const standaloneExamples: ImageFormatId[] = ["M01","typography","note","A04","A10","D12"];
+function ImageTier({value,change}:{value:"saving"|"precise";change:(v:"saving"|"precise")=>void}) {
+  return <label>회사 GPT 모델 <select value={value} onChange={e=>change(e.target.value as "saving"|"precise")}><option value="saving">절약</option><option value="precise">정밀</option></select></label>;
+}
 const stamp = () => ({by:"브라우저 체험",at:new Date().toISOString()});
 function closestSize({w,h}:ReferenceLayout["source"]):CreativeSize {
   const ratio=w/h;
@@ -31,18 +45,22 @@ function closestSize({w,h}:ReferenceLayout["source"]):CreativeSize {
   return (Object.keys(CREATIVE_SIZES) as CreativeSize[]).reduce((best,key)=>distance(key)<distance(best)?key:best);
 }
 
-export function ImageReferenceSteps({current}:{current:number}) {
-  return <ol className="ic-reference-steps" aria-label="제작 순서">{steps.map((label,index)=>
-    <li key={label} aria-current={current===index ? "step" : undefined}>{label}</li>)}</ol>;
+export function ImageReferenceSteps({current,onBack,labels=steps}:{current:number;labels?:string[];onBack?:(step:number)=>void}) {
+  return <ol className="ic-reference-steps" aria-label="제작 순서">{labels.map((label,index)=>
+    <li key={label} aria-current={current===index ? "step" : undefined} data-complete={index<current||undefined}><span className="ic-step-number" aria-hidden="true">{index<current ? "✓" : index+1}</span>{onBack && index<current ? <button type="button" className="ic-step-back" onClick={()=>onBack(index)}>{label}</button> : <span title={index>current?"앞 단계를 끝내면 열려요":undefined} aria-disabled={index>current||undefined}>{label}</span>}</li>)}</ol>;
 }
 
 export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sample,recheckProduct,localDirectionPlanner,demo,busy,createProject,patch,receive,run,refresh,
   assetPaths,setAssetPaths,upload,leave,flowPreview}:Props) {
   const preview = process.env.NODE_ENV === "development" && demo ? flowPreview : undefined;
+  const unified = Boolean(bundle?.state.adSetup);
+  const labels = unified ? steps : standaloneSteps;
   const saved = bundle?.state.formatRecommendation;
   const mode = plan.mode === "appeal" ? "appeal" : "standalone";
   const [name,setName] = useState("");
   const size = plan.size;
+  const [tier,setTier]=useState<"saving"|"precise">("saving");
+  const model=GPT_TIERS[tier].model;
   const [localStep,setStep] = useState<number>();
   const [showSaved,setShowSaved] = useState(false);
   const editingLegacyAppeals = saved?.appealFirst && !saved.referenceFirst;
@@ -55,6 +73,7 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
   const [previewReferenceId,setPreviewReferenceId] = useState(() => preview?.references.find(entry=>entry.layout.source.path===approved?.referenceLayout?.source.path)?.id);
   const [uploadedPreview,setUploadedPreview] = useState<{name:string;url:string}>();
   const [enlargedReference,setEnlargedReference] = useState<{name:string;imageUrl:string;source?:string}>();
+  const [galleryMode,setGalleryMode] = useState<"recommended"|"text"|"warehouse"|"myin">("recommended");
   const [warehouseFilter,setWarehouseFilter] = useState("approved");
   const [warehouseQuery,setWarehouseQuery] = useState("");
   const [failedReferences,setFailedReferences] = useState<string[]>([]);
@@ -73,7 +92,8 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
   const warehouse = useImageReferenceCatalog(Boolean(localDirectionPlanner), step === 2 && !preview);
   const sameBrief = bundle && sameImageBrief(brief,bundle.state.brief);
   const options = sameBrief ? saved?.appealOptions : undefined;
-  const pendingCopy = bundle?.jobs.some(job=>job.currentInput!==false && (job.phase ?? "copy")==="copy" && imageJobPending(job));
+  const copyJob = bundle?.jobs.find(job=>job.currentInput!==false && (job.phase ?? "copy")==="copy" && imageJobPending(job));
+  const pendingCopy = !!copyJob;
   const local = (current:ImageProjectBundle,state:ImageCreativeState):ImageProjectBundle =>
     ({...current,state,project:{...current.project,version:current.project.version+1}});
   async function project() {
@@ -133,7 +153,7 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
   const galleryGroups = [...new Set(galleryEntries.map(entry=>entry.group))];
   const shownGroup = galleryGroups.includes(galleryGroup) ? galleryGroup : galleryGroups[0] ?? "";
   const galleryText = galleryQuery.trim().toLowerCase();
-  const galleryShown = galleryEntries.filter(entry=>galleryText ? `${entry.id} ${entry.name} ${entry.group}`.toLowerCase().includes(galleryText) : entry.group===shownGroup);
+  const galleryShown = galleryEntries.filter(entry=>!unified || entry.originalImageUrl || entry.archivedThumbnail || entry.thumbnail).filter(entry=>galleryText ? `${entry.id} ${entry.name} ${entry.group}`.toLowerCase().includes(galleryText) : entry.group===shownGroup);
   const galleryEntry = galleryEntries.find(entry=>entry.id===galleryId);
   const imageOf = (entry:{archivedThumbnail?:string;originalImageUrl?:string;thumbnail:string}) => entry.archivedThumbnail || entry.originalImageUrl || entry.thumbnail;
   async function importWarehouseSource(entry = selectedEntry) {
@@ -150,7 +170,7 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
     } finally {setPreparing(false);}
   }
   function chooseReference() {
-    if (!bundle || !picked || !chosenRef || !saved?.appeals?.length) return;
+    if (!bundle || !picked || !chosenRef || !saved?.appeals?.length || !referenceReady) return;
     if (custom && (!isReferenceLayout(referenceLayout) || (photo && photo.path===referenceLayout.source.path) || (needsDetail && !detail))) return;
     const needsAsset = custom ? Boolean(referenceLayout?.photo) : chosenRef.supportsAsset;
     const request:ImageBatchRequest = {mode,count:saved.appeals.length,size:custom?outputSize:saved.size,formatIds:[picked],assetPaths:needsAsset && photo ? [photo.path] : [],
@@ -182,6 +202,7 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
   const copyDetail = bundle?.assets.find(asset=>asset.path===copyDetailPath);
   const editingCopy = step===3 && bundle && saved?.appeals && isImageFormat(format);
   const copyDraft = batch?.review?.copyDraft ?? bundle?.state.formatApproval?.copyDraft;
+  const initialCopies = copyDraft ?? (variants.length ? variants.map(v=>v.copy) : bundle?.state.previousCopies?.at(-1) ?? []);
   const previewReference = preview?.references.find(entry=>entry.id===previewReferenceId);
   const previewProductReady = !preview?.renderProductIds?.length || preview.renderProductIds.includes(brief.productSource?.productId ?? "");
   const approvedPreviewReference = preview?.references.find(entry=>entry.layout.source.path===copyLayout?.source.path);
@@ -232,6 +253,7 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
     const next = demo ? local(bundle,saveReferenceCopyDraft(bundle.state,copies)) :
       await patch({action:"save-reference-copy-draft",copies},bundle);
     receive(next,bundle.project.version);
+    return next;
   }
   async function confirm(copies:AdCopy[]) {
     if (!bundle || !saved?.appeals || !isImageFormat(format)) return;
@@ -254,8 +276,15 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
       await patch({action:"confirm-reference-copy",batchId:row.id,copies},current);
     receive(next);
   }
+  async function reopen(current = bundle) {
+    if (!current || !batch) return current;
+    const next=demo ? local(current,reopenReferenceDraft(current.state,batch.id)) : await patch({action:"reopen-reference-draft",batchId:batch.id},current);
+    receive(next,current.project.version);
+    return next;
+  }
   async function suggestCopy():Promise<AdCopy[]|undefined> {
-    if (!bundle || !saved?.appeals || !approved || !isImageFormat(format)) return;
+    const current=await reopen(),approved=current?.state.formatApproval?.request;
+    if (!current || !bundle || !saved?.appeals || !approved || !isImageFormat(format)) return;
     if (demo) {
       const photo=bundle.assets.find(a=>a.path===approved.assetPaths?.[0]);
       const res=await apiRequest<{variants:{copy:AdCopy}[]}>("/api/dev/image-ad-direction",{method:"POST",
@@ -265,11 +294,19 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
           ...(photo ? {asset:{path:photo.path,w:photo.w,h:photo.h}} : {})})});
       return res.variants.map(v=>v.copy);
     }
-    receive(await patch({action:"generate",request:approved,guided:true},bundle));
+    receive(await patch({action:"generate",request:approved,guided:true,tier},current));
   }
+  const suggested = recommendImageFormats({...brief,facts:[brief.facts,...(saved?.appeals??[]).map(a=>a.meaning)].join(" ")},true,size,availableIds).slice(0,3);
+  const appealJob = bundle?.jobs.find(j=>j.currentInput!==false && j.phase==="formats" && imageJobPending(j));
+  const pendingAppeals=!!appealJob;
+  const requestAppeals = () => runWithProduct(async()=>{
+    const current=await project();
+    const next=await patch({action:"suggest-appeals",mode,size,brief,tier},current);
+    setShowSaved(true);setChecked([]);receive(next);
+  });
   const sampleAssetInput=chosenRef && !custom && chosenRef.supportsAsset && <fieldset className="ic-checks">
     <legend>{chosenRef.assetRequired ? "소재에 사용할 원본 이미지" : "사진 추가 (선택)"}</legend>
-    {chosenRef.assetRequired && !photo && <p className="ic-muted">{demo || picked==="report_crop" ? "이 디자인에 넣을 원본 이미지 한 장을 선택해 주세요." : "원본을 올리거나 다음 단계에서 구독 AI로 이미지를 만들 수 있어요."}</p>}
+    {chosenRef.assetRequired && !photo && <p className="ic-muted">카피를 쓰려면 등록된 사진을 선택하거나 원본 이미지를 올려 주세요.</p>}
     {!chosenRef.assetRequired && <label className="ic-check"><input type="radio" name="ref-asset" checked={!photo} onChange={()=>setAssetPaths([])}/>사진 없이 제작</label>}
     {bundle?.assets.map((a,i)=><label key={a.path} className="ic-check">
       <input type="radio" name="ref-asset" checked={photo?.path===a.path} onChange={()=>setAssetPaths([a.path])}/>
@@ -278,30 +315,38 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
     </label>)}
     <label className="secondary-button">이미지 올리기<input className="ic-sr" type="file" accept="image/png,image/jpeg" disabled={referenceBusy}
       onChange={e=>{upload(e.target.files?.[0] ?? null);e.target.value="";}}/></label>
+    {bundle && <AdReferencePhotos key={picked} bundle={bundle} photoGuide={chosenRef.photoGuide} busy={referenceBusy} run={run} receive={receive} select={path=>setAssetPaths([path])}/>}
+    {photo?.credit && <p>선택한 사진 출처 · <a href={photo.credit.url} target="_blank" rel="noreferrer">{photo.credit.source} · {photo.credit.license}</a></p>}
   </fieldset>;
+  const needsPhotoAtSelection = unified || mode === "standalone";
   const referenceReady=!!chosenRef && (custom
-    ? isReferenceLayout(referenceLayout) && (!needsDetail || !!detail) && (!photo || photo.path!==referenceLayout.source.path)
-    : !chosenRef.assetRequired || !!photo || (!demo && picked!=="report_crop"));
+    ? isReferenceLayout(referenceLayout) && (!needsDetail || !!detail) && (!needsPhotoAtSelection || !referenceLayout.photo || referenceLayout.reproduction==="image-ai" || !!photo) && (!photo || photo.path!==referenceLayout.source.path)
+    : !chosenRef.assetRequired || !!photo || (!needsPhotoAtSelection && !demo && picked !== "report_crop"));
   const referenceDialogView = <dialog ref={referenceDialog} className="ic-flow-reference-dialog" onClose={()=>setEnlargedReference(undefined)}>
     <div><strong>{enlargedReference?.name}</strong><button className="secondary-button" type="button" onClick={()=>referenceDialog.current?.close()}>닫기</button></div>
     {/* eslint-disable-next-line @next/next/no-img-element -- same original image at a larger size */}
     {enlargedReference && <img src={enlargedReference.imageUrl} alt={`${enlargedReference.name} 원본 크게 보기`}/>}
   </dialog>;
-  return <><ImageReferenceSteps current={step}/>
+  return <><nav aria-label="광고 경로"><Link href="/content/projects?platform=ad">광고 › 내 광고</Link> › 이미지 › {labels[step]}</nav><ImageReferenceSteps current={step} labels={labels} onBack={batch?undefined:n=>{if(n===1)backToAppeals();else setStep(n);}}/>
+    <details className="ic-details"><summary>이 광고에 쓰는 정본과 규칙</summary><p>상품 {brief.productSource ? "정본 v"+brief.productSource.source.version : "직접 입력"} · 타겟 {brief.productSource?.audienceSource ? "정본 v"+brief.productSource.audienceSource.version : "직접 입력"} · 광고 포맷 창고 · 운영 정본의 광고 규칙</p><p>광고 전용 정본 · 문서 없음</p><ul>{AD_COPY_RULES.map(rule=><li key={rule}>{rule}</li>)}</ul></details>
     {step>0 && brief.campaignId && <CampaignBriefPicker brief={brief} setBrief={setBrief} locked />}
     {step>0 && <ProductCanonNotice brief={brief} catalog={catalog} disabled={busy} onRecheck={bundle && sameImageBrief(brief,bundle.state.brief) ? recheckProduct : undefined}
       onReview={!approved && !batch ? ()=>setStep(0) : undefined}/>}
-    {step===0 && <form className="panel panel-pad-lg ic-panel ic-guided-brief" onSubmit={e=>{e.preventDefault();submitProduct();}}>
-      <h2>상품 선택</h2>
+    {step===0 && <form className="panel panel-pad-lg ic-panel ic-guided-brief ic-product-form" onSubmit={e=>{e.preventDefault();submitProduct();}}>
+      <div className="ic-section-heading"><div><h2>상품 선택</h2><p className="ic-muted">광고할 상품을 고르고, 고객에게 전달할 핵심 정보를 확인하세요.</p></div><span className="ic-status-badge">1단계</span></div>
       <CampaignBriefPicker brief={brief} setBrief={setBrief} locked={busy || Boolean(bundle)} />
       <ImageProductFields brief={brief} setBrief={setBrief} catalog={catalog} sample={sample} disabled={busy}
         requireGoal={false}/>
-      {mode==="appeal" && !bundle && <label className="ic-field">프로젝트 이름 (선택)<input className="field" value={name} maxLength={120}
+      {!bundle && <label className="ic-field">프로젝트 이름 (선택)<input className="field" value={name} maxLength={120}
         onChange={e=>setName(e.target.value)} placeholder="예: 무료 진단 · 11월 소구점 테스트"/></label>}
-      <div className="ic-row"><button className="primary-button" disabled={busy || !brief.product.trim() || !!catalog.result?.items.find(row=>row.id===brief.productSource?.productId)?.needsData}>소구점 선택하기</button>
-        <button className="secondary-button" type="button" disabled={busy} onClick={leave}>뒤로</button></div>
+      <div><label className="ic-field">연결 페이지에서 확인한 근거 (선택)<textarea className="field" rows={3} aria-describedby="ic-product-facts-hint" placeholder="상품의 특징이나 제공 조건 등 확인된 내용을 적어주세요." value={brief.facts} onChange={e=>setBrief({...brief,facts:e.target.value})} /></label><p id="ic-product-facts-hint" className="ic-field-hint">광고 문구에 활용할 수 있는 사실만 입력해주세요.</p></div>
+      <div className="ic-form-footer"><button className="secondary-button" type="button" disabled={busy} onClick={leave}>뒤로</button>
+        <button className="primary-button" disabled={busy || !brief.product.trim() || !!catalog.result?.items.find(row=>row.id===brief.productSource?.productId)?.needsData}>소구점 선택하기</button></div>
     </form>}
-    {step===1 && <section className="panel panel-pad-lg ic-panel ic-guided-brief"><h2>소구점 선택</h2><p>{brief.product}</p>
+    {step===1 && <section className="panel panel-pad-lg ic-panel ic-guided-brief"><h2>{unified ? "구매 이유 고르기" : standaloneSteps[1]}</h2><p>{brief.product}</p>
+      {!demo && !options?.length && !approved && !saved?.appeals?.length && <div className="ic-row"><button type="button" className="secondary-button" disabled={busy || pendingAppeals} onClick={requestAppeals}>구매 이유 {mode==="standalone"?3:5}개 제안받기</button>
+      <ImageTier value={tier} change={setTier}/><CostTag kind="paid" amount={tokenEstimate(model,4000,600)} what={model+" · 약 30초"}/></div>}
+      {pendingAppeals && <p role="status">{appealJob?.status==="backlog" ? "구매 이유 제안 대기" : "구매 이유 작성 중"} · {appealJob?.requestedAt && <JobElapsed started={appealJob.requestedAt}/>} 다른 화면에 다녀와도 결과가 저장됩니다.</p>}
       {!!options?.length && <div className="ic-row">
         <button type="button" className="secondary-button" aria-pressed={!useSaved} disabled={busy} onClick={()=>setShowSaved(false)}>직접 작성</button>
         <button type="button" className="secondary-button" aria-pressed={useSaved} disabled={busy} onClick={()=>setShowSaved(true)}>저장된 소구점 보기</button>
@@ -311,13 +356,13 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
         : options?.length ? <fieldset className="ic-checks ic-direction-concepts"><legend>{mode==="appeal" ? "테스트할 소구점 선택" : "광고에 쓸 소구점 한 개 선택"}</legend>
           {options.map(a=><div key={a.id}><label className="ic-check"><input type={mode==="appeal"?"checkbox":"radio"} name="appeal-option" checked={checked.includes(a.id)} disabled={busy}
             onChange={e=>setChecked(old=>mode==="standalone" ? [a.id] : e.target.checked ? [...old,a.id] : old.filter(id=>id!==a.id))}/>{reword[a.id]?.trim() || a.meaning}</label>
-            {checked.includes(a.id) && <details className="ic-details"><summary>문구 수정</summary><label className="ic-field"><span className="ic-sr">선택한 소구점 수정</span><input className="field" maxLength={300} value={reword[a.id] ?? a.meaning}
+            {adCopyIssues(reword[a.id] || a.meaning,brief.facts).length>0 && <p>약속이 커요. 확인한 상품 근거에 맞게 문구를 점검해 주세요.</p>}{checked.includes(a.id) && <details className="ic-details"><summary>문구 수정</summary><label className="ic-field"><span className="ic-sr">선택한 소구점 수정</span><input className="field" maxLength={300} value={reword[a.id] ?? a.meaning}
               onChange={e=>setReword({...reword,[a.id]:e.target.value})}/></label></details>}</div>)}</fieldset> : null}
       <div className="ic-row"><button type="button" className="primary-button" disabled={busy || !chosen.length || chosen.length>20 ||
-        chosen.some(a=>!a.meaning) || (mode==="standalone" && chosen.length!==1)} onClick={chooseAppeals}>레퍼런스 선택하기</button>
+        chosen.some(a=>a.meaning.trim().length<(unified ? 6 : 1)) || (mode==="standalone" && chosen.length!==1)} onClick={chooseAppeals}>레퍼런스 선택하기</button>
         <button type="button" className="secondary-button" disabled={busy} onClick={()=>setStep(0)}>뒤로 · 상품 선택</button></div>
     </section>}
-    {step===2 && saved?.items && preview && <section className="panel panel-pad-lg ic-panel ic-guided-brief ic-flow-reference"><h2>레퍼런스 선택</h2>
+    {step===2 && saved?.items && preview && <section className="panel panel-pad-lg ic-panel ic-guided-brief ic-flow-reference"><h2>{labels[2]}</h2>
       {!previewProductReady && <p role="status" className="os-callout" data-tone="info">이 상품은 선택·정본 자동 채움·레퍼런스 탐색까지 확인할 수 있습니다. 지금 준비된 시안은 핵심 보고서 예시입니다. 카피부터 출력까지 테스트하려면 핵심 보고서를 선택해 주세요.</p>}
       <p>사용할 원본 디자인을 고르세요. {mode==="appeal" ? `${saved.appeals?.length ?? 0}개 소구점에 같은 디자인과 버튼 문구를 적용합니다.` : "이 디자인에 맞춰 카피를 준비합니다."}</p>
       <h3>레퍼런스 창고에서 고르기</h3>
@@ -377,12 +422,13 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
         <button type="button" className="secondary-button" disabled={referenceBusy} onClick={backToAppeals}>소구점으로 돌아가기</button></div>
       {referenceDialogView}
     </section>}
-    {step===2 && saved?.items && !preview && <section className="panel panel-pad-lg ic-panel ic-guided-brief"><h2>레퍼런스 선택</h2>
+    {step===2 && saved?.items && !preview && <section className="panel panel-pad-lg ic-panel ic-guided-brief"><h2>{labels[2]}</h2>
       <p>원본 디자인을 가져올 광고를 고르세요.{mode==="appeal" && " 고른 디자인과 버튼 문구는 모든 안에 공통으로 적용됩니다."}</p>
       {!custom && warehouse.offline && <p className="ic-muted">오프라인 체험용 예시</p>}
       {!custom && warehouse.error && <p role="alert">{warehouse.error} <button type="button" className="secondary-button" onClick={()=>void warehouse.refresh().catch(()=>{})}>다시 읽기</button></p>}
       {!custom && !warehouse.catalog && !warehouse.error && <p role="status">OS 포맷 창고를 읽고 있어요.</p>}
-      {!custom && galleryEntries.length>0 && <div className="ic-flow-reference">
+      {!custom && unified && <div className="ic-row" aria-label="디자인 견본 필터">{([["recommended","추천 3개"],["text","사진 없이 제작"],["myin","마이인 실제 광고"],["warehouse","창고 전체"]] as const).map(([id,label])=><button key={id} type="button" aria-pressed={galleryMode===id} className="secondary-button" onClick={()=>{setGalleryMode(id);setPicked(undefined);}}>{label}</button>)}</div>}
+      {!custom && (!unified || galleryMode==="warehouse") && galleryEntries.length>0 && <div className="ic-flow-reference">
         <h3>레퍼런스 창고에서 고르기</h3>
         <div className="ic-flow-warehouse-toolbar">
           <label className="ic-field">묶음<select className="field" value={shownGroup} disabled={!!galleryText} onChange={e=>setGalleryGroup(e.target.value)}>
@@ -432,8 +478,9 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
           <small>선택한 광고 규격으로 생성하며, 원본과 다른 비율은 결과를 확인해 주세요.</small>}
       </label>}
       {custom && <button type="button" className="secondary-button" disabled={referenceBusy} onClick={()=>setPicked(undefined)}>디자인 견본으로 돌아가기</button>}
-      {!custom && <ImageFormatPicker reference recommendations={exampleRefs.filter(id=>availableIds.includes(id)).map(id=>({id,reason:IMAGE_FORMATS[id].when}))}
-        availableIds={availableIds} references={warehouse.catalog?.entries} selected={picked?[picked]:[]} size={saved.size} disabled={referenceBusy} onSelect={id=>{setReferenceError("");setPicked(id);}}/>}
+      {!custom && galleryMode==="myin" && <section><h3>마이인 실제 광고</h3>{galleryEntries.filter(e=>e.id.startsWith("M")).map(e=><p key={e.id}>{e.name} · {e.originalImageUrl || e.thumbnail || e.archivedThumbnail ? <button type="button" className="secondary-button" onClick={()=>void importWarehouseSource(e)}>원본으로 제작</button> : <a href={warehouseDocumentUrl(e.documentId)} target="_blank" rel="noreferrer">창고에서 원본 등록</a>}</p>)}{!galleryEntries.some(e=>e.id.startsWith("M")) && <p>등록된 실제 광고가 없어요. 원본을 직접 올려 디자인을 선택할 수 있어요.</p>}</section>}
+      {!custom && galleryMode!=="myin" && <ImageFormatPicker reference recommendations={!unified ? standaloneExamples.filter(id=>availableIds.includes(id)).map(id=>({id,reason:IMAGE_FORMATS[id].when})) : galleryMode==="text" ? availableIds.filter(id=>!IMAGE_FORMATS[id].assetRequired).map(id=>({id,reason:IMAGE_FORMATS[id].when})) : suggested}
+        availableIds={!unified ? availableIds : galleryMode==="text"?availableIds.filter(id=>!IMAGE_FORMATS[id].assetRequired):galleryMode==="recommended"?suggested.map(r=>r.id):availableIds} references={warehouse.catalog?.entries} selected={picked?[picked]:[]} size={saved.size} disabled={referenceBusy} onSelect={id=>{setReferenceError("");setPicked(id);}}/>}
       {chosenRef && !custom && <><strong>선택한 디자인 · {selectedEntry?.name ?? chosenRef.name}</strong>
         {selectedEntry ? <>
           {hasWarehouseImage ? <button type="button" className="primary-button" disabled={referenceBusy} onClick={()=>void importWarehouseSource()}>
@@ -456,54 +503,88 @@ export function ReferenceImageCreation({plan,brief,setBrief,bundle,catalog,sampl
       <div className="ic-row">{!hasWarehouseImage && <button type="button" className="primary-button" disabled={referenceBusy || !referenceReady}
         onClick={chooseReference}>카피 작성하기</button>}{!approved && <button type="button" className="secondary-button" disabled={referenceBusy} onClick={backToAppeals}>소구점 변경</button>}</div>
     </section>}
-    {editingCopy && <ReferenceCopyEditor key={JSON.stringify([format,saved.appeals,batch?.id ?? approved])} format={format} size={approved?.size ?? variants[0]?.size ?? saved.size} referenceName={warehouseChoices.find(entry=>entry.id===approvedPreviewReference?.id)?.name ?? approvedPreviewReference?.name ?? saved.referenceSnapshot?.name}
-      flowPreview={!!preview} referenceImageUrl={approvedPreviewReference?.imageUrl}
-      appeals={saved.appeals!} draft={copyDraft} initial={copyDraft ?? variants.map(v=>v.copy)} busy={busy} canSuggest={!preview && !batch && (!demo || !!localDirectionPlanner)}
+    {editingCopy && <ReferenceCopyEditor tier={tier} setTier={setTier} evidence={brief.facts} renderPreview={words=>{
+      const asset=bundle.assets.find(a=>a.path===(approved?.assetPaths?.[0]??variants[0]?.asset?.path));
+      const variant:CreativeVariant={...variants[0],id:"working-copy",at:"",by:"",size:approved?.size??saved.size,formatId:format,formatVersion:IMAGE_FORMATS[format].version,
+        copy:words,appeal:saved.appeals![0],...(isWarehouseFormat(format) && {brand:brief.brand}),...(asset && {asset:{path:asset.path,w:asset.w,h:asset.h}}),...(copyLayout && {referenceLayout:copyLayout}),...(copyDetail && {detailAsset:{path:copyDetail.path,w:copyDetail.w,h:copyDetail.h}})};
+      return <WinnerArtwork demo projectId={bundle.project.id} variant={variant} photo={asset?.url} referenceUrl={bundle.assets.find(a=>a.path===copyLayout?.source.path)?.url} detailUrl={copyDetail?.url}/>;
+    }} key={JSON.stringify([format,saved.appeals,batch?.id ?? approved])} format={format} size={approved?.size ?? variants[0]?.size ?? saved.size} referenceName={warehouseChoices.find(entry=>entry.id===approvedPreviewReference?.id)?.name ?? approvedPreviewReference?.name ?? saved.referenceSnapshot?.name}
+      aspects={bundle.state.adSetup?.aspects} flowPreview={!!preview} referenceImageUrl={approvedPreviewReference?.imageUrl}
+      appeals={saved.appeals!} draft={copyDraft} initial={initialCopies} busy={busy} canSuggest={!preview && !batch?.review?.copy && (!demo || !!localDirectionPlanner)}
       sourceUrl={format==="reference_image" ? bundle.assets.find(a=>a.path===copyLayout?.source.path)?.url : undefined}
       hasBody={format!=="reference_image" || Boolean(copyLayout?.body)}
-      needsPhoto={!batch && format!=="reference_image" && !!IMAGE_FORMATS[format].assetRequired && !approved?.assetPaths?.length} pending={!!pendingCopy}
-      suggestCopy={suggestCopy} saveDraft={saveDraft} confirm={confirm} run={run} refresh={refresh}
-      changeReference={batch || pendingCopy ? undefined : ()=>{setPicked(format);setReferenceLayout(approved?.referenceLayout);setReferenceSize(approved?.size);setAssetPaths(approved?.assetPaths??[]);setDetailAssetPath(approved?.detailAssetPath);setStep(2);}}/>}
+      needsPhoto={!batch && format!=="reference_image" && !!IMAGE_FORMATS[format].assetRequired && !approved?.assetPaths?.length} pending={!!pendingCopy} job={copyJob}
+      suggestCopy={suggestCopy} saveDraft={async copies=>{await saveDraft(copies);}} confirm={confirm} run={run} refresh={refresh}
+      changeReference={batch?.review?.copy || pendingCopy ? undefined : async (copies) => {
+        const changed = copies.some((row,i)=>row.headline !== (initialCopies[i]?.headline ?? "") ||
+          row.body !== (initialCopies[i]?.body ?? "") || row.cta !== (initialCopies[i]?.cta ?? ""));
+        const current=await reopen(changed ? await saveDraft(copies) : bundle);
+        const request=current?.state.formatApproval?.request;
+        setPicked(format);setReferenceLayout(request?.referenceLayout);setReferenceSize(request?.size);
+        setAssetPaths(request?.assetPaths??[]);setDetailAssetPath(request?.detailAssetPath);setStep(2);
+      }}/>}
   </>;
 }
 
-function ReferenceCopyEditor({format,size,referenceName,sourceUrl,hasBody,appeals,draft,initial,busy,canSuggest,needsPhoto,pending,suggestCopy,saveDraft,confirm,run,refresh,changeReference,flowPreview,referenceImageUrl}:{
-  format:ImageFormatId;referenceName?:string;sourceUrl?:string;hasBody:boolean;size:ImageFormatPlan["size"];appeals:Appeal[];draft?:AdCopy[];initial:AdCopy[];busy:boolean;canSuggest:boolean;needsPhoto:boolean;pending:boolean;
-  suggestCopy:()=>Promise<AdCopy[]|undefined>;saveDraft:(copies:AdCopy[])=>Promise<void>;confirm:(copies:AdCopy[])=>Promise<void>;run:Props["run"];refresh:()=>void;changeReference?:()=>void;
+function ReferenceCopyEditor({job,aspects,tier,setTier,evidence,renderPreview,format,size,referenceName,sourceUrl,hasBody,appeals,draft,initial,busy,canSuggest,needsPhoto,pending,suggestCopy,saveDraft,confirm,run,refresh,changeReference,flowPreview,referenceImageUrl}:{
+  job?:ImageProjectBundle["jobs"][number];aspects?:AdAspect[];tier:"saving"|"precise";setTier:(v:"saving"|"precise")=>void; evidence:string;renderPreview:(words:AdCopy)=>React.ReactNode;format:ImageFormatId;referenceName?:string;sourceUrl?:string;hasBody:boolean;size:ImageFormatPlan["size"];appeals:Appeal[];draft?:AdCopy[];initial:AdCopy[];busy:boolean;canSuggest:boolean;needsPhoto:boolean;pending:boolean;
+  suggestCopy:()=>Promise<AdCopy[]|undefined>;saveDraft:(copies:AdCopy[])=>Promise<void>;confirm:(copies:AdCopy[])=>Promise<void>;run:Props["run"];refresh:()=>void;changeReference?:(copies:AdCopy[])=>Promise<void>;
   flowPreview?:boolean;referenceImageUrl?:string;
 }) {
   const [rows,setRows] = useState(appeals.map((_a,i)=>initial[i] ?? {headline:"",body:"",cta:""}));
   const [cta,setCta] = useState(initial[0]?.cta ?? "");
   const spec=IMAGE_FORMATS[format];
+  const [aspect,setAspect]=useState<AdAspect>(aspects?.[0]??"4x5");
+  const [guide,setGuide]=useState(true);
+  const [previewIndex,setPreviewIndex]=useState(0);
   const copies = rows.map(row=>({...row,cta:cta.trim()}));
+  const issues=[...new Set(copies.flatMap(c=>adCopyIssues([c.headline,c.body,c.cta].join("\n"),evidence)))];
+  const bubbles=format==="M01";
+  const bodyIssue=spec.bodyLines && copies.some(c=>c.body.split("\n").filter(s=>s.trim()).length!==spec.bodyLines || c.body.split("\n").some(s=>s.length>30)) ? `본문을 ${spec.bodyLines}개 항목으로 나누고, 각 줄은 30자 이내로 적어 주세요.` : "";
+  const incomplete=copies.some(c=>!c.headline.trim() || !c.cta || (bubbles && (c.body.split("\n").length!==4 || c.body.split("\n").some(s=>!s.trim()))));
   const isSaved = draft?.length === copies.length && copies.every((row,i)=>
     row.headline===draft[i].headline && row.body===draft[i].body && row.cta===draft[i].cta);
+  const headlineLabel = bubbles ? "고민 한 줄" : !aspects?.length ? "제목" : format==="note" ? "메모 문장" : format==="typography" ? "큰 문장" : "제목";
   function field(index:number,key:"body"|"headline",value:string) {setRows(old=>old.map((row,i)=>i===index?{...row,[key]:value}:row));}
   return <form className="panel panel-pad-lg ic-panel ic-guided-brief" onSubmit={e=>{e.preventDefault();void run(()=>confirm(copies));}}>
-    <h2>{flowPreview ? "카피 확인" : "카피 작성"}</h2>
+    <h2>{flowPreview ? "카피 확인" : aspects?.length ? "카피 · 디자인" : standaloneSteps[3]}</h2>
     {flowPreview && <p className="ic-muted">선택한 소구점을 제목으로 넣은 예시 카피입니다. 전체 문구를 확인·수정하고 확정하면 시안으로 이어집니다.</p>}
+    <div className={!flowPreview ? "ad-copy-columns" : undefined}><div className="ad-copy-fields">
     <div className="ic-reference-summary">{format!=="reference_image" && <ImageFormatSample id={format} size={size}/>}<strong>{referenceName ?? spec.name}</strong>
       {/* eslint-disable-next-line @next/next/no-img-element -- chosen original, not a generated result */}
       {(flowPreview ? referenceImageUrl : sourceUrl) && <img className="ic-flow-copy-reference" src={flowPreview ? referenceImageUrl : sourceUrl} alt="선택한 원본 디자인"/>}
-      {changeReference && <button className="secondary-button" type="button" disabled={busy} onClick={()=>flowPreview ? void run(async()=>{await saveDraft(copies);changeReference();}) : changeReference()}>{flowPreview ? "레퍼런스로 돌아가기" : "레퍼런스 변경"}</button>}</div>
-    {pending ? <div className="ic-row" role="status">AI가 초안을 준비하고 있어요.<button className="secondary-button" type="button" onClick={refresh}>상태 새로고침</button></div>
-      : canSuggest && <button className="secondary-button" type="button" disabled={busy || needsPhoto} onClick={()=>void run(async()=>{const values=await suggestCopy();
-        if(values){setRows(values);setCta(values[0]?.cta ?? "");}})}>{needsPhoto?"공통 이미지를 먼저 선택해 주세요":"AI 카피 초안 받기"}</button>}
+      {changeReference && <button className="secondary-button" type="button" disabled={busy} onClick={()=>void run(()=>changeReference(copies))}>{flowPreview ? "레퍼런스로 돌아가기" : "레퍼런스 변경"}</button>}</div>
+    {pending ? <div className="ic-row" role="status">{!aspects?.length && "AI가 초안을 준비하고 있어요. "}{job?.status==="backlog" ? "카피 생성 대기" : "AI가 초안 작성 중"} · {job?.requestedAt && <JobElapsed started={job.requestedAt}/>} 다른 화면에 다녀와도 결과가 저장됩니다.<button className="secondary-button" type="button" onClick={refresh}>상태 새로고침</button></div>
+      : canSuggest && <div className="ic-row"><button className="secondary-button" type="button" disabled={busy || needsPhoto} onClick={()=>void run(async()=>{const values=await suggestCopy();
+        if(values){setRows(values);setCta(values[0]?.cta ?? "");}})}>{needsPhoto?"공통 이미지를 먼저 선택해 주세요":initial.length ? "AI 카피 다시 받기" : "AI 카피 초안 받기"}</button><ImageTier value={tier} change={setTier}/><CostTag kind="paid" amount={tokenEstimate(GPT_TIERS[tier].model,6000,900)} what={GPT_TIERS[tier].model+" · 약 35초"}/></div>}
     {needsPhoto && <p>직접 쓰려면 레퍼런스 변경에서 원본 이미지를 올리세요.</p>}
     {appeals.map((appeal,i)=><fieldset disabled={busy || pending} key={appeal.id} className="ic-reference-copy">
       <legend>{appeal.meaning}</legend>
-      <label className="ic-field">제목<input className="field" value={rows[i]?.headline ?? ""} required maxLength={spec.limits.headline}
+      <label className="ic-field">{headlineLabel} <span aria-hidden="true">· {rows[i]?.headline.length??0}/{bubbles?22:spec.limits.headline}</span><input className="field" aria-label={headlineLabel} value={rows[i]?.headline ?? ""} required maxLength={bubbles?22:spec.limits.headline} onFocus={()=>setPreviewIndex(i)}
         onChange={e=>field(i,"headline",e.target.value)}/></label>
-      {hasBody && <label className="ic-field">본문<textarea className="field" value={rows[i]?.body ?? ""} rows={spec.bodyLines ?? 2} maxLength={spec.limits.body}
-        placeholder={spec.bodyLines ? `한 줄에 한 항목씩 ${spec.bodyLines}줄` : undefined} onChange={e=>field(i,"body",e.target.value)}/></label>}
+      {bubbles ? ["속마음 1","속마음 2","속마음 3","작은 설명"].map((label,n)=>{
+        const lines=(rows[i]?.body??"").split("\n"),limit=n===3?30:18;
+        return <label className="ic-field" key={label}>{label} <span aria-hidden="true">· {lines[n]?.length??0}/{limit}</span><input className="field" aria-label={label} required maxLength={limit} value={lines[n]??""} onFocus={()=>setPreviewIndex(i)}
+          onChange={e=>field(i,"body",Array.from({length:4},(_,j)=>j===n?e.target.value:lines[j]??"").join("\n"))}/></label>;
+      }) : hasBody && <label className="ic-field">본문<textarea className="field" value={rows[i]?.body ?? ""} rows={spec.bodyLines ?? 2} maxLength={spec.limits.body}
+        placeholder={spec.bodyLines ? `한 줄에 한 항목씩 ${spec.bodyLines}줄` : undefined} onFocus={()=>setPreviewIndex(i)} onChange={e=>field(i,"body",e.target.value)}/></label>}
     </fieldset>)}
-    <label className="ic-field">버튼 문구<input className="field" disabled={busy || pending} required maxLength={spec.limits.cta} value={cta}
+    <label className="ic-field">버튼 문구<input className="field" disabled={busy || pending} required maxLength={bubbles?10:spec.limits.cta} value={cta}
       placeholder="예: 무료 진단 시작하기" onChange={e=>setCta(e.target.value)}/></label>
+    </div>
+    {!flowPreview && <figure className="ad-copy-preview"><figcaption>현재 카피 미리보기</figcaption>
+      {aspects?.length && <AdPlacementPicker aspects={aspects} value={aspect} select={setAspect} guide={guide} setGuide={setGuide}/>}
+      {copies[previewIndex]?.headline ? aspects?.length ? <div className="ic-artboard">
+        <AdPlacementPreview aspect={aspect} sourceSize={size}>{renderPreview(copies[previewIndex])}</AdPlacementPreview>
+        {aspect==="9x16" && guide && <SafeZoneOverlay size="story"/>}</div> : renderPreview(copies[previewIndex]) : <p>제목을 입력하면 선택한 견본에 표시돼요.</p>}
+    </figure>}</div>
+    {bodyIssue && <p role="status">{bodyIssue}</p>}
+    {!!issues.length && <ul role="status">{issues.map(issue=><li key={issue}>{issue}</li>)}</ul>}
     <div className="ic-row">
       <button type="button" className="secondary-button" disabled={busy || pending || isSaved}
         onClick={()=>void run(()=>saveDraft(copies))}>초안 저장</button>
       {isSaved && <span role="status">초안 저장됨 · 카피 승인 대기</span>}
-      <button className="primary-button" disabled={busy || pending || needsPhoto || rows.some(r=>!r.headline.trim()) || !cta.trim()}>{flowPreview ? "카피 확정 · 시안 보기" : format==="reference_image" ? "카피 확정 · 시안 만들기로" : "카피 확정 · 디자인 수정하기"}</button>
+      <button className="primary-button" disabled={busy || pending || needsPhoto || incomplete || !!issues.length || !!bodyIssue}>{flowPreview ? "카피 확정 · 시안 보기" : format==="reference_image" ? "카피 확정 · 시안 만들기로" : "카피 확정 · 디자인 수정하기"}</button>
     </div>
   </form>;
 }
