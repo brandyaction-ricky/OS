@@ -37,6 +37,8 @@ export function DocumentStage({ document: doc, candidates, proposals = [], peopl
   const open = own.find(c => c.status === "open"), approved = own.find(c => c.status === "approved");
   const returned = doc.status === "team" ? own.find(c => c.status === "returned" && c === own[0]) : undefined;
   let note: ReactNode = null, action: ReactNode = null, second: ReactNode = null;
+  // 대표 11-28: an AI's change to a document it did not write waits as a proposal here too; the owner decides it on 정본 검토.
+  const aiWaiting = doc.status === "canonical" ? [] : proposals.filter(p => p.document_id === doc.id && p.status === "open");
   if (doc.status === "draft") {
     note = "나만 보는 초안이에요. 팀이 함께 보고 고치려면 공유하세요.";
     if (mine) action = <button className="kw-primary" onClick={onShare}>팀에 공유하기</button>;
@@ -61,6 +63,6 @@ export function DocumentStage({ document: doc, candidates, proposals = [], peopl
   return <section className="kw-stage" aria-label="정본으로 가는 단계">
     <ol>{STAGES.map((label, i) => <li key={label} data-state={i < at ? "done" : i === at ? "now" : "next"} aria-current={i === at ? "step" : undefined}>
       <b><span>{i < at ? <Check size={12} aria-hidden/> : i + 1}</span>{label}</b></li>)}</ol>
-    <div className="kw-stage-row"><p data-tone={returned ? "warn" : doc.status === "canonical" && proposals.some(p => p.document_id === doc.id && p.status === "open") ? "wait" : undefined}>{note}</p><div className="kw-actions">{second}{action}</div></div>
+    <div className="kw-stage-row"><p data-tone={returned ? "warn" : doc.status === "canonical" && proposals.some(p => p.document_id === doc.id && p.status === "open") ? "wait" : undefined}>{note}</p><div className="kw-actions">{aiWaiting.length > 0 && <Link className="kw-stage-link" href={`/knowledge/review?id=${aiWaiting[0].id}`}>AI 변경 제안 {aiWaiting.length}건 보기</Link>}{second}{action}</div></div>
   </section>;
 }

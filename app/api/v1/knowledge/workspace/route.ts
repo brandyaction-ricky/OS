@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { apiErrorResponse, ApiError, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
+import { decideTeamProposal } from "@/lib/server/document-proposals";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { knowledgeAccessContext } from "@/lib/server/knowledge-access";
 import { POLICY_FIELDS, readableKnowledgePages } from "@/lib/server/knowledge-page-access";
@@ -201,6 +202,8 @@ export async function POST(request: Request) {
       if(libraryError) throw databaseError(libraryError);
       return NextResponse.json({moved},{headers:{"Cache-Control":"no-store"}});
     }
+    // 대표 11-28: an AI's proposal on a team document is decided here (the database decides canon proposals).
+    if(parsed.data.action==="proposal.decide"&&parsed.data.id){const decided=await decideTeamProposal(actor,{...parsed.data,id:parsed.data.id});if(decided) return NextResponse.json(decided,{headers:{"Cache-Control":"no-store"}});}
     const {data,error}=parsed.data.action==="candidate.publish"
       ? await actor.supabase.rpc("os_publish_candidate",{p_id:parsed.data.id,p_expected_version:parsed.data.expectedVersion})
       : await actor.supabase.rpc("os_knowledge_command",{p:parsed.data});
