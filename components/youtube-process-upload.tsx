@@ -13,6 +13,7 @@ import { errorMessage } from "./youtube-process-data";
 import { JobLine, SendDialog, useStaffJob, type SendTab } from "./youtube-process-ai";
 import { draftTag, isGptModel } from "@/lib/youtube-process/gpt-draft";
 import { CostTag } from "./cost-notice";
+import { gptCard } from "./youtube-process-recycle";
 import { GateBanner, hhmm, LockedStep, stepAction, Subject, useYpBundle, YpFrame, YpSection, type YpPage } from "./youtube-process-frame";
 import { ShortExportScreen } from "./youtube-process-short";
 import { CardExportScreen } from "./youtube-process-card";
@@ -96,7 +97,7 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
     saving.current = true;
     const rev = editRev.current;
     try {
-      const result = await page.client.saveStage(project.id, "upload", upload.version, patch ?? { utm: next.utm, desc: next.desc, pinned: next.pinned, privacy: next.privacy, publishAt: next.publishAt ?? null, ai: next.ai ?? null });
+      const result = await page.client.saveStage(project.id, "upload", upload.version, patch ?? { utm: next.utm, desc: next.desc, pinned: next.pinned, privacy: next.privacy, publishAt: next.publishAt ?? null, ai: next.ai ?? null, autoOff: next.autoOff ?? false });
       page.setBundle(current => current ? { ...current, project: result.project, stages: { ...current.stages, upload: result.stage } } : current);
       setSavedAt(hhmm());
       if (editRev.current === rev) setDirty(false);
@@ -172,6 +173,7 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
         {form.run?.publishAt ? ` ${whenKo(form.run.publishAt)}에 공개돼요.` : ""}<br />
         {form.run?.privacy === "private" && !form.run.publishAt && form.privacy !== "private" ? <><b className="yp-warn-t">유튜브가 비공개로 올렸어요.</b> 스튜디오에서 공개 범위를 바꿔 주세요.<br /></> : null}
         {form.ai && form.run?.ai !== undefined && form.run.ai !== (form.ai === "yes") ? <><b className="yp-warn-t">유튜브의 AI 사용 표시가 고른 값과 달라요.</b> 스튜디오에서 「{form.ai === "yes" ? "예" : "아니요"}」로 바꿔 주세요.<br /></> : null}
+        {form.run?.follow ? <>숏폼 5편과 칼럼은 저절로 만들어요. 칼럼은 마이인에 공개되고 숏폼은 미리보기에서 기다려요(끝나면 알림).<br /></> : null}
         <Processing page={page} account={account} />
         {form.run?.videoUrl ? <a className="yp-lnk" href={form.run.videoUrl} target="_blank" rel="noreferrer">유튜브에서 보기 <ExternalLink size={12} /></a> : null}
         {project.yp.topic.type !== "short" && !page.demo ? <> · <button type="button" className="yp-lnk" disabled={ledgerBusy} onClick={() => void ledger()}>{ledgerBusy ? "남기는 중…" : "링크 대장에 남기기"}</button>{ledgerNote ? ` ${ledgerNote}` : ""}</> : null}</div></div> : <GateBanner page={page} gate="review" />}
@@ -270,6 +272,11 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
           <div style={{ marginTop: 12 }}>{channels.length ? <span className="yp-chan"><Youtube size={15} aria-hidden="true" /> 유튜브 채널 연결됨 · {chosen?.accountName}</span>
             : page.demo ? <span className="yp-hint">데모에서는 채널 연결이 없어요</span> : <span className="yp-hint">유튜브 채널이 연결되지 않았어요. <Link className="yp-lnk" href="/settings/account">내 계정 › 채널 연결</Link>에서 연결해요.</span>}</div>
         </YpSection>
+        {/* 업로드 뒤 저절로 (요청 11-25 D2): on unless the PD turns it off here, since each upload spends GPT on the 숏폼 구간 and the 칼럼. */}
+        {["live", "anim"].includes(project.yp.topic.type ?? "") ? <YpSection n={6} title="올린 뒤" need={false}>
+          <label className="yp-check"><input type="checkbox" checked={!form.autoOff} disabled={!editable} onChange={event => edit({ autoOff: !event.target.checked }, true)} /> 숏폼 5편과 칼럼을 저절로 만들기</label>
+          <p className="yp-hint">칼럼은 마이인 「칼럼」에 공개까지, 숏폼은 미리보기까지 가요. 칼럼에 빈 이미지 자리가 있으면 공개하지 않고 알려 드려요. <CostTag kind="paid" upTo amount={gptCard() * 2} what="GPT" /></p>
+        </YpSection> : null}
         <section className="yp-upgo"><div className="yp-upgo-l"><b>올라갈 영상</b><span>{last ? `v${last.v} · ${last.source === "myin" ? "자동 제작" : last.name}${project?.yp.gates.review.decidedAt && last.at > project.yp.gates.review.decidedAt ? " · 컨펌 뒤 올린 버전" : ""}` : "최종본이 없어요"}</span>
           {waiting.length ? <span className="yp-hint">컨펌 뒤 자동으로 만든 {waiting.map(item => `v${item.v}`).join(" · ")}는 후보로 있어요. 그걸 올리려면 최종 검토를 다시 열어 컨펌해 주세요.</span> : null}
           {handouts.deck || handouts.summary ? <span style={{ fontSize: 12 }}>{handouts.deck ? <a className="yp-lnk" href={handouts.deck} target="_blank" rel="noreferrer">덱 PDF</a> : null}{handouts.deck && handouts.summary ? " · " : ""}{handouts.summary ? <a className="yp-lnk" href={handouts.summary} target="_blank" rel="noreferrer">한 장 정리 이미지</a> : null}</span> : null}

@@ -14,7 +14,7 @@ import { YpSection, type YpPage } from "./youtube-process-frame";
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 const letters = (s: string) => s.replace(/\s/g, "").length;
 /** One GPT card's top cost as the GPT dialog shows it (정밀). */
-const gptCard = () => tokenEstimate(GPT_TIERS.precise.model, 60_000, 20_000) ?? 0;
+export const gptCard = () => tokenEstimate(GPT_TIERS.precise.model, 60_000, 20_000) ?? 0;
 
 /**
  * 쇼츠 · 칼럼 › 롱폼에서 뽑기 (「롱폼 재활용 숏폼 정본」 §1~§2): GPT or the staff AI picks stand-alone stretches of this longform; the PD checks

@@ -2,7 +2,7 @@
 /* eslint-disable @next/next/no-img-element -- private signed previews do not have stable optimizer URLs */
 import { useEffect, useMemo, useState } from "react";
 import { Check, Clipboard, Code2, Download, ImagePlus, Plus, Sparkles, Trash2 } from "lucide-react";
-import { checkColumnHtml, columnMeta, columnShorts, columnSlots, renderColumn, type ColumnFill, type ColumnShort } from "@/lib/seo-column";
+import { checkColumnHtml, columnEmptyPlaces, columnMeta, columnShorts, columnSlots, renderColumn, type ColumnFill, type ColumnShort } from "@/lib/seo-column";
 import { columnSignature, type YpColumnItem } from "@/lib/youtube-process/stages";
 import { JobLine, SendDialog, useStaffJob, type SendTab } from "./youtube-process-ai";
 import { draftTag } from "@/lib/youtube-process/gpt-draft";
@@ -187,6 +187,9 @@ function ColumnItemView({ page, item, index, videoUrl, heroPath: thumbPath, busy
 function ColumnMyin({ page, item, issues, blocked }: { page: YpPage; item: YpColumnItem; issues: number; blocked: boolean }) {
   const [busy, setBusy] = useState("");
   const sent = item.myin, published = sent?.status === "published", changed = Boolean(sent && sent.sig !== columnSignature(item));
+  // 업로드 뒤 저절로: an upload that went on by itself publishes the 칼럼 unless a place stays empty; then it waits here for the PD.
+  const run = page.bundle?.stages.upload.data.run;
+  const held = !sent && run?.follow ? columnEmptyPlaces(item.html, item.fills, { hero: Boolean(page.bundle?.stages.make.data.thumbs?.A), video: Boolean(run.videoUrl) }) : [];
   const act = async (action: "send" | "publish" | "unpublish") => {
     const bundle = page.bundle;
     if (!page.client || !bundle) return;
@@ -208,6 +211,7 @@ function ColumnMyin({ page, item, issues, blocked }: { page: YpPage; item: YpCol
       {sent && !published ? <button type="button" className="yp-btn yp-pri" disabled={Boolean(busy) || changed} title={changed ? "고친 내용을 먼저 보내 주세요" : undefined} onClick={() => void act("publish")}>{busy === "publish" ? "처리 중…" : "공개하기"}</button> : null}
       {published ? <button type="button" className="yp-btn" disabled={Boolean(busy)} onClick={() => void act("unpublish")}>{busy === "unpublish" ? "처리 중…" : "비공개로 돌리기"}</button> : null}
     </div>
+    {held.length ? <p className="yp-hint"><span className="yp-warn-t">빈 이미지 자리 {held.length}곳이 있어 업로드 뒤 저절로 공개하지 않았어요.</span> 위 「이미지 · 영상 자리」를 채운 뒤 올려 주세요.</p> : null}
     {blocked ? <p className="yp-hint">실행 코드가 있어 보낼 수 없어요. HTML을 고쳐 주세요.</p>
       : issues ? <p className="yp-hint">형식 점검에서 {issues}곳 확인이 필요해요. 고친 뒤 보내는 게 좋아요.</p> : null}
   </YpSection>;

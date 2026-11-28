@@ -120,11 +120,14 @@ export interface YpUpload {
   publishAt?: string | null;
   /** AI 사용 공개 (직원 요청 11-19): YouTube's altered or synthetic content label, sent as status.containsSyntheticMedia. Unset = not chosen yet. */
   ai?: "yes" | "no" | null;
+  /** 업로드 뒤 저절로 끄기 (요청 11-25 D2): true = after the upload nothing starts by itself (no GPT spend). Unset = on. */
+  autoOff?: boolean;
   /** 광고 성과 1단계 (로건 QA 10/30): an ad's numbers per period, copied from Meta Ads Manager. */
   ads?: AdResult[];
   run: { at: string; by: string; status: "done" | "failed"; videoId?: string; videoUrl?: string; finalV?: number; /** Which final was sent (its time), 유쓰 요청 공통 조건 3. */ finalAt?: string; thumbnail?: "ok" | "fail" | "skip"; error?: string;
     /** What YouTube reports after the upload: a project not yet audited by YouTube can only upload private. */
-    privacy?: string; publishAt?: string; /** What YouTube reports for the AI label after the upload. */ ai?: boolean } | null;
+    privacy?: string; publishAt?: string; /** What YouTube reports for the AI label after the upload. */ ai?: boolean;
+    /** 업로드 뒤 저절로 (요청 11-25): the 숏폼 5편 and the 칼럼 were started by themselves after this upload. */ follow?: boolean } | null;
 }
 /** One SEO 칼럼 (owner request 2026-10-25): the staff AI's HTML from the 구성안 원고 (lib/seo-column.ts), and what fills its image places. */
 export interface YpColumnItem {

@@ -60,6 +60,10 @@ export function columnSlots(html: string): ColumnSlotInfo[] {
   });
 }
 
+/** Places nothing fills on MYIN: an empty hero takes thumbnail A and an empty video place the uploaded longform when there is one (columnToMyin). */
+export const columnEmptyPlaces = (html: string, fills: Record<string, { path?: string; url?: string }>, auto: { hero: boolean; video: boolean }) =>
+  columnSlots(html).filter(({ slot }) => !fills[slot]?.path && !fills[slot]?.url && !(slot === "hero" && auto.hero) && !(slot === "video" && auto.video));
+
 /** The list items from a block's opening tag to its first </ul> (div.tldr / div.takeaways hold one list). */
 function blockItems(html: string, cls: string) {
   const block = html.match(new RegExp(`<div\\b[^>]*class=["'][^"']*\\b${cls}\\b[^"']*["'][^>]*>([\\s\\S]*?)<\\/ul>`, "i"));
