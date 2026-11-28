@@ -294,15 +294,18 @@ test("풀링형: no subscribe line at all; 키풀링형 still needs exactly one"
   assert.match(jobs, /checkMyinStoryboardResult\(input\.result, myin\.words, catalogTypes, myin\.speech, pulling\)/, "and the check uses the same");
 });
 
-test("AI 사진: the storyboard may ask for up to 6; the OS draws them with GPT Image 2 and the storyboard goes on once they are in", async () => {
+test("AI 사진: the storyboard may ask for up to 15 (대표 2026-11-29, was 6); the OS draws them with GPT Image 2 and the storyboard goes on once they are in", async () => {
   const { readFileSync } = await import("node:fs");
   const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
   const { MYIN_AI_PHOTO_MODEL, MYIN_AI_PHOTOS_MAX } = await import("../lib/myin-storyboard.ts");
   assert.equal(MYIN_AI_PHOTO_MODEL, "gpt-image-2");
-  assert.equal(MYIN_AI_PHOTOS_MAX, 6);
+  assert.equal(MYIN_AI_PHOTOS_MAX, 15);
   const job = read("lib/server/myin-storyboard-job.ts");
   assert.match(job, /kind: z\.literal\("ai_photo"\)[\s\S]*?\.transform\(\(\{ file, prompt, desc, use \}\) => \(\{ kind: "situations" as const, file, url: "",[\s\S]*?ai: true as const, prompt, desc \}\)\)/);
   assert.match(job, /assets\.filter\(\(a\) => "ai" in a\)\.length <= MYIN_AI_PHOTOS_MAX/);
+  assert.match(job, /영상 하나에 \$\{MYIN_AI_PHOTOS_MAX\}장까지/, "the card says the same number");
+  // 풀링형 화면 리듬 (대표 2026-11-29): only pulling videos get the 3–5 s picture rhythm, ahead of the beat rule.
+  assert.match(job, /\$\{input\.pulling \? `## 풀링형 화면 리듬 \(대표 2026-11-29[^`]*3~5초마다 그림이 바뀌게[^`]*흰 바탕에 작은 글자 몇 줄만 있는 장면은 쓰지 않습니다/);
   assert.match(job, /실존 인물\(연구자 · 저자 등\)은 AI로 만들지 않고/);
   const run = read("lib/server/myin-run.ts");
   assert.match(run, /if \(missing\.length\) \{ after\(\(\) => drawMyinAiPhotos\(saved\.id\)/, "drawn after the answer, not inside it");
