@@ -25,11 +25,13 @@ test("a line the editor rewrote and the person edited takes the edited text", ()
 
 test("the proposal editor keeps the original wording and the form survives a reload", () => {
   const canon = readFileSync("components/knowledge/canon.tsx", "utf8");
-  assert.match(canon, /onNormalize=\{value=>\{normalized\.current=value;\}\} onChange=\{value=>setContent\(keepOriginalLines\(opened\.current,normalized\.current,value\)\)\}/);
+  assert.match(canon, /<KnowledgeRichEditor key=\{editorKey\} markdown=\{content\} accessToken=\{token\} onChange=\{setContent\}/);
   assert.match(canon, /localStorage\.setItem\(formKey,JSON\.stringify\(\{reason,approver,due,folder,tags,ai\}\)\)/);
   assert.match(canon, /localStorage\.removeItem\(formKey\)/, "cleared once sent");
   const editor = readFileSync("components/knowledge-rich-editor-initialized.tsx", "utf8");
-  assert.match(editor, /if \(initialNormalize\) onNormalize\?\.\(preserveKnowledgeWikiLinks\(value\)\);\s*else onChange\(preserveKnowledgeWikiLinks\(value\)\);/);
+  // every screen keeps the original wording (11-28): the shared editor does it, so documents, meetings and scripts get it too
+  assert.match(editor, /if \(initialNormalize\) \{ normalized\.current = preserveKnowledgeWikiLinks\(value\); onNormalize\?\.\(normalized\.current\); \}\s*else onChange\(keepOriginalLines\(opened\.current, normalized\.current, preserveKnowledgeWikiLinks\(value\)\)\);/);
+  assert.match(editor, /setMarkdown: \(value: string\) => \{ opened\.current = value; normalized\.current = value;/);
 });
 
 // 2026-11-12 df1b5d54: what the rich editor writes for a table after one cell changed — every row re-padded, `~` escaped,
@@ -49,7 +51,7 @@ test("a workspace refresh does not reopen the proposal editor; the draft can be 
   const canon = readFileSync("components/knowledge/canon.tsx", "utf8");
   assert.match(canon, /setDoc\(current=>current\?\.id===id\?current:null\)/, "autosave and window focus refresh the workspace: keep the loaded page");
   assert.doesNotMatch(canon, /let live=true;setDoc\(null\)/);
-  assert.match(canon, /command\(\{action:"document\.discard",id:doc\.id\}\);lastSaved\.current="";setTitle\(doc\.title\);setContent\(doc\.content_md\);restart\(doc\.content_md\)/);
+  assert.match(canon, /command\(\{action:"document\.discard",id:doc\.id\}\);lastSaved\.current="";setTitle\(doc\.title\);setContent\(doc\.content_md\);restart\(\)/);
   assert.match(canon, />초안 버리기</);
   assert.match(canon, /aria-label="제안 본문 마크다운"[^>]*value=\{content\} onChange=\{e=>setContent\(e\.target\.value\)\}/);
 });

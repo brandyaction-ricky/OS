@@ -40,6 +40,7 @@ import { getKnowledgeAttachmentUrl } from "@/lib/api-client";
 import { attachmentForLinkText, parseKnowledgeAttachmentTarget } from "@/lib/knowledge-attachments";
 import { knowledgeToggleMarkdown } from "@/lib/knowledge-toggle";
 import { escapeLooseAngles } from "@/lib/knowledge-markdown";
+import { keepOriginalLines } from "@/lib/line-diff";
 import { matchesVaultName } from "@/lib/knowledge-vault-interactions";
 import { knowledgeImageDragPlugin } from "./knowledge-image-drag-plugin";
 import {KnowledgeInlineOptions, knowledgeInlinePickerPlugin, type InlineOptions} from "./knowledge/inline-picker-plugin";
@@ -174,6 +175,9 @@ export default function KnowledgeRichEditorInitialized({
   inlineOptions?: InlineOptions;
 }) {
   const localRef = useRef<MDXEditorMethods | null>(null);
+  // 원문 줄 보존 (11-28): the editor writes every line back in its own style (escaped `**`, `*` bullets, padded tables) even when
+  // one line changed, so every screen gets the text it opened with on the lines nobody touched (lib/line-diff keepOriginalLines).
+  const opened = useRef(markdown), normalized = useRef(markdown);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const pickerRef = useRef<HTMLDivElement | null>(null);
   const hasInlineOptions=Boolean(inlineOptions);
@@ -274,7 +278,7 @@ export default function KnowledgeRichEditorInitialized({
     <MDXEditor
     ref={editor => {
       // Every way Markdown enters the editor escapes prose "<" first (see escapeLooseAngles).
-      const instance = editor && { ...editor, setMarkdown: (value: string) => editor.setMarkdown(escapeLooseAngles(value)), insertMarkdown: (value: string) => editor.insertMarkdown(escapeLooseAngles(value)) };
+      const instance = editor && { ...editor, setMarkdown: (value: string) => { opened.current = value; normalized.current = value; editor.setMarkdown(escapeLooseAngles(value)); }, insertMarkdown: (value: string) => editor.insertMarkdown(escapeLooseAngles(value)) };
       localRef.current = instance; if (typeof editorRef === "function") editorRef(instance); else if (editorRef) editorRef.current = instance;
     }}
     markdown={escapeLooseAngles(markdown)}
@@ -287,8 +291,8 @@ export default function KnowledgeRichEditorInitialized({
     plugins={plugins}
     onChange={(value, initialNormalize) => {
       // The editor's own rewrite of the text it was opened with (nothing typed yet): a screen can keep the original wording with it.
-      if (initialNormalize) onNormalize?.(preserveKnowledgeWikiLinks(value));
-      else onChange(preserveKnowledgeWikiLinks(value));
+      if (initialNormalize) { normalized.current = preserveKnowledgeWikiLinks(value); onNormalize?.(normalized.current); }
+      else onChange(keepOriginalLines(opened.current, normalized.current, preserveKnowledgeWikiLinks(value)));
     }}
     onError={({ error }) => onError(`이 문서의 일부 Markdown을 편집 화면으로 바꾸지 못했습니다. 원문은 보존됩니다. (${error})`)}
     translation={(_key, defaultValue, interpolations) => {
