@@ -1,0 +1,28 @@
+{
+  "releaseCommit": "dcbeb82d1b7321906ef7b7fa617ed6714c58898d",
+  "testedCommit": "c8dcf04298fc67f93d494050656ac61adc31001f",
+  "status": "production verified",
+  "unit": {
+    "passed": 1999,
+    "skipped": 11,
+    "failed": 0
+  },
+  "browserPassed": 328,
+  "checks": {
+    "pagesRespond": true,
+    "unauthenticatedRequestsBlocked": true,
+    "cards": 8,
+    "dimensions": [
+      1080,
+      1350
+    ],
+    "imagesMatchReviewedFiles": true,
+    "zipImagesMatchIndividualImages": true,
+    "captionIncluded": true
+  },
+  "unverified": [
+    "Live AI regeneration",
+    "Authenticated DEV persistence/RLS",
+    "Actual company Mac output"
+  ]
+}
