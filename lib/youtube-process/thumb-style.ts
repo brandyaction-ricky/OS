@@ -116,6 +116,9 @@ export const THUMB_PERSON = { blue: "#315FFA", black: "#000000", text: "#FFFFFF"
  */
 export const THUMB_COLLAGE = {
   left: 43, right: 180, bottom: 40, lineHeight: 1.03, tracking: -0.052, gap: 8, stroke: "#111316",
+  // Pretendard's Hangul is 0.86 em wide (measured 2026-11-28) where thumbLineEm counts 1: lines are read at 0.9 of that, so a copy that
+  // fits on the frame is not refused and the size reaches the canon's 120–132 px.
+  widthK: 0.9,
   sub: { weight: 300, minPx: 72, maxPx: 94, color: "#F8F8F5", strokePx: 3 },
   main: { weight: 900, minPx: 104, maxPx: 132, color: "#FFFDF7", accent: "#F9FF98", strokePx: 5 },
   phoneMinPx: 26, maxLines: 2,
@@ -139,9 +142,9 @@ function collageLayout(copy: ThumbCopy, style: ThumbStyle, edit?: ThumbEdit): Th
   const all = copy.text.replace(/\r/g, "").split(/\n|\s\/\s/).map((line) => line.trim()).filter(Boolean);
   const [subText, mainText] = all.length >= 2 ? [all[0], all[1]] : [null, all[0] ?? ""];
   const room = style.width - C.left - C.right;
-  const fitMain = Math.floor(room / Math.max(1, thumbLineEm(mainText, C.tracking)));
+  const fitMain = Math.floor(room / Math.max(1, thumbLineEm(mainText, C.tracking) * C.widthK));
   const size = Math.max(C.main.minPx, Math.min(C.main.maxPx, fitMain, edit?.size ?? C.main.maxPx));
-  const fitSub = subText ? Math.floor(room / Math.max(1, thumbLineEm(subText, C.tracking))) : C.sub.maxPx;
+  const fitSub = subText ? Math.floor(room / Math.max(1, thumbLineEm(subText, C.tracking) * C.widthK)) : C.sub.maxPx;
   const subSize = Math.max(C.sub.minPx, Math.min(C.sub.maxPx, fitSub));
   const mainTop = Math.round(style.height - C.bottom - size * C.lineHeight);
   const sub = subText ? { text: subText, size: subSize, top: Math.round(mainTop - C.gap - subSize * C.lineHeight) } : null;

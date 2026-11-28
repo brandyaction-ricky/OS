@@ -163,9 +163,11 @@ test("인물형 틀 (대표 확정 2026-11-24): photo over the frame, band · bl
 
 test("콜라주형 틀 (썸네일 정본 2026-11-28): collage, noise, fade, silhouette and two outlined lines at the canon's numbers", async () => {
   const layout = thumbLayout({ text: "퇴사를 고민하고 있다면\n회사만 바꾸면 될까?", accent: "회사만" }, style, { frame: "collage" });
-  assert.deepEqual(layout.collage, { sub: { text: "퇴사를 고민하고 있다면", size: 94, top: 450 }, main: { text: "회사만 바꾸면 될까?", top: 555, size: 121 },
+  assert.deepEqual(layout.collage, { sub: { text: "퇴사를 고민하고 있다면", size: 94, top: 439 }, main: { text: "회사만 바꾸면 될까?", top: 544, size: 132 },
     silhouette: { left: 894, top: 122, width: 530, height: 620 } });
-  assert.equal(720 - layout.collage.main.top - Math.round(121 * THUMB_COLLAGE.lineHeight), THUMB_COLLAGE.bottom, "the heavy line ends 40 px above the bottom");
+  assert.equal(720 - layout.collage.main.top - Math.round(132 * THUMB_COLLAGE.lineHeight), THUMB_COLLAGE.bottom, "the heavy line ends 40 px above the bottom");
+  // Read at Pretendard's real Hangul width: a 10-letter line with three spaces fits (it was refused at 1 em a letter).
+  assert.ok(thumbLayout({ text: "두 경험을 나란히 보세요" }, style, { frame: "collage" }).checks.every((c) => c.ok));
   assert.deepEqual(layout.photoBox, { left: 0, top: 0, width: 1280, height: 720 });
   assert.ok(layout.checks.every((c) => c.ok), layout.checks.filter((c) => !c.ok).map((c) => c.text).join());
   assert.equal(thumbLayout({ text: "그만둘지 고민될 때 / 회사 탓? 일 탓?" }, style, { frame: "collage" }).collage.main.size, 132, "short lines stop at the canon's 132 px");
