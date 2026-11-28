@@ -595,5 +595,21 @@ export function descChecks(text: string, upload: Pick<YpUpload, "srt" | "utm">) 
     { ok: tags.length >= 6 && tags.length <= 12, text: tags.length >= 6 && tags.length <= 12 ? `히든 태그 ${tags.length}개예요` : `히든 태그가 ${tags.length}개예요 (6~12개)` },
   ];
 }
+/** What viewers see (요청 11-25): [히든 태그] only fills the tags field and 「[설명문 본문]」 is a writer's label, so both leave the public description. */
+export function publicDesc(text: string) {
+  let lines = text.split("\n");
+  const at = lines.findIndex(line => line.trim().startsWith("[히든 태그]"));
+  if (at >= 0) {
+    const next = lines.findIndex((line, i) => i > at && line.trim().startsWith("-----"));
+    let start = at;
+    while (start > 0 && !lines[start - 1].trim()) start--;
+    if (start > 0 && lines[start - 1].trim().startsWith("-----")) start--;
+    lines = [...lines.slice(0, start), ...(next < 0 ? [] : lines.slice(next))];
+  }
+  return lines.flatMap(line => line.trim().startsWith("[설명문 본문]") ? (line.replace(/^\s*\[설명문 본문\]\s*/, "") || []) : [line]).join("\n").trimEnd();
+}
+/** The description exactly as the upload sends it (before 마이인 credits): 1번 links, this video's UTM code, no input-only parts. */
+export const youtubeDesc = (desc: string, utm: YpUpload["utm"], code: string) =>
+  publicDesc(withLinks(desc, utm)).replaceAll("[업로드 후 영상 ID]", code).replaceAll(utmUrl(utm), utmUrl(utm, code));
 /** The hidden tags at the end of the description, for the YouTube tags field. */
 export const hiddenTagsOf = (text: string) => (section(text, "[히든 태그]") ?? []).join(",").split(",").map(tag => tag.trim().replace(/^#/, "")).filter(Boolean);

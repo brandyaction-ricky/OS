@@ -6,6 +6,7 @@ import { readPipeline } from "@/lib/server/content-pipeline";
 import { authorizeYoutubeConnection, getYoutubeAccessToken, youtubeConnectionStatus } from "@/lib/server/youtube-oauth";
 import { auditChannelAction } from "@/lib/server/channel-access";
 import { myinCreditsBlock, myinPhotoCreditLines } from "@/lib/myin-storyboard";
+import { publicDesc } from "@/lib/youtube-process/stages";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,7 +54,7 @@ export async function POST(request: Request) {
     const myinRun = myin?.[0]?.metadata as ({ prepared?: { credits?: string[] } } & Parameters<typeof myinPhotoCreditLines>[0]) | undefined;
     const creditLines = myinRun?.prepared?.credits?.length ? myinRun.prepared.credits : myinRun ? myinPhotoCreditLines(myinRun) : [];
     const credits = myin?.[0]?.stage === "final_ready" ? myinCreditsBlock(creditLines.slice(0, 40)).slice(0, 2500) : "";
-    const description = String(result.description ?? "").slice(0, 5000 - credits.length) + credits;
+    const description = publicDesc(String(result.description ?? "")).slice(0, 5000 - credits.length) + credits;
     const accessToken = await getYoutubeAccessToken(ownerId);
     const params = new URLSearchParams({ uploadType: "resumable", part: "snippet,status" });
     const google = await fetch(`https://www.googleapis.com/upload/youtube/v3/videos?${params}`, {

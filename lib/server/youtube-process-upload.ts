@@ -3,7 +3,7 @@ import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { myinCreditsBlock } from "@/lib/myin-storyboard";
 import { projectName } from "@/lib/youtube-process/project";
-import { descWritten, finalPair, publishAtProblem, reviewOkAt, uploadFinal, utmBase, utmCode, utmUrl, withLinks, type YpUpload } from "@/lib/youtube-process/stages";
+import { descWritten, finalPair, publishAtProblem, reviewOkAt, uploadFinal, utmBase, utmCode, utmUrl, youtubeDesc, type YpUpload } from "@/lib/youtube-process/stages";
 
 // utm_content (utmCode): the Data API cannot edit a video with the upload permission alone, so the link carries the project code from the start.
 export { utmCode };
@@ -66,7 +66,7 @@ export async function startYoutubeUpload(actor: RequestActor, id: string, input:
     credits = myinCreditsBlock((((data?.metadata as { prepared?: { credits?: string[] } } | undefined)?.prepared?.credits) ?? []).slice(0, 40)).slice(0, 2500);
   }
   // 로건 요청 10/30: the 이어서 볼 영상 and 다른 유입처 of 1번 always reach the description, also when it was written before they were.
-  const description = withLinks(upload.desc, upload.utm).replaceAll("[업로드 후 영상 ID]", utmCode(project.id)).replaceAll(utmUrl(upload.utm), utmUrl(upload.utm, utmCode(project.id))).slice(0, 5000 - credits.length) + credits;
+  const description = youtubeDesc(upload.desc, upload.utm, utmCode(project.id)).slice(0, 5000 - credits.length) + credits;
   const tags = short ? (upload.desc.match(/#[^\s#]+/g) ?? []).map(tag => tag.slice(1)).slice(0, 30) : upload.hiddenTags.slice(0, 60);
   const uploadUrl = await openUploadSession(ownerId, connectedChannel, input, { title, description, tags, categoryId: "22" }, uploadStatus(upload), origin);
   await auditChannelAction(actor.id, ownerId, "youtube", "업로드 세션 생성");
