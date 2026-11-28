@@ -8,7 +8,7 @@ import { ENDSCREEN_CARD_DEFAULT, type EndscreenCard } from "@/lib/youtube-proces
 import { channelMismatch } from "@/lib/youtube-process/channel-style";
 import { useUploadChannel } from "./youtube-channel-styles";
 import { projectName, stepHref } from "@/lib/youtube-process/project";
-import { campaignFor, DESC_TEMPLATE, descChecks, descWritten, diagnosisLink, finalPair, reviewOkAt, uploadFinal, linksMissing, pinnedDraft, publishAtProblem, shortLinkProblem, SLOTS, UTM_DESTS, UTM_OPTIONS, utmBase, utmCode, utmUrl, withLinks, type YpUpload } from "@/lib/youtube-process/stages";
+import { campaignFor, DESC_TEMPLATE, descChecks, descWritten, diagnosisLink, finalPair, reviewOkAt, uploadFinal, linksMissing, pinnedDraft, publishAtProblem, shortLinkProblem, SLOTS, UTM_DESTS, UTM_OPTIONS, utmBase, utmCode, utmUrl, withLinks, youtubeDesc, type YpUpload } from "@/lib/youtube-process/stages";
 import { errorMessage } from "./youtube-process-data";
 import { JobLine, SendDialog, useStaffJob, type SendTab } from "./youtube-process-ai";
 import { draftTag, isGptModel } from "@/lib/youtube-process/gpt-draft";
@@ -220,7 +220,7 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
             <button type="button" className="yp-way yp-rec" onClick={() => setSend("gpt")}><b><Sparkles size={14} aria-hidden="true" /> GPT로 바로 만들기</b><span>3~6분 · 설명란 · 고정 댓글 · 다른 채널 문안까지</span></button>
             <button type="button" className="yp-way" onClick={() => setSend("queue")}><b>내 AI에게 맡기기 <CostTag kind="ai" /></b><span>내 AI 구독으로 만들어요</span></button>
             <button type="button" className="yp-way" onClick={() => edit({ desc: DESC_TEMPLATE })}><b>직접 쓰기</b><span>정해진 구역 순서가 들어간 칸에 바로 써요</span></button></div> : null) : <>
-            <div className="yp-row-btns" style={{ margin: "0 0 6px" }}><button type="button" className="yp-btn yp-sm" onClick={() => void copy("desc", form.desc)}><Copy size={14} /> {copied === "desc" ? "복사됨" : "설명란 복사"}</button>
+            <div className="yp-row-btns" style={{ margin: "0 0 6px" }}><button type="button" className="yp-btn yp-sm" onClick={() => void copy("desc", youtubeDesc(form.desc, form.utm, utmCode(project.id)))}><Copy size={14} /> {copied === "desc" ? "복사됨" : "설명란 복사"}</button>
               {editable && !early ? <button type="button" className="yp-btn yp-sm" onClick={() => setSend("gpt")}><RefreshCw size={14} /> 다시 만들기</button> : null}
               {form.descBy ? <span className="yp-aitag"><Sparkles size={11} aria-hidden="true" /> {draftTag(form.descBy.name, form.descBy.model)}</span> : null}</div>
             {job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(job.status?.job?.executor === "gpt" ? "gpt" : "queue")} /> : null}
@@ -232,6 +232,8 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
             {missing.length ? <p className="yp-hint"><span className="yp-warn-t">1번의 링크 {missing.length}개가 설명란에 없어요.</span> 올릴 때 진단 링크 아래에 자동으로 들어가요.
               {editable ? <> <button type="button" className="yp-lnk" onClick={() => edit({ desc: withLinks(form.desc, form.utm) }, true)}>지금 넣기</button></> : null}</p> : null}
             <p className="yp-hint">점검은 참고용이에요. 업로드를 막지 않아요.</p>
+            <label className="yp-lbl">유튜브에 올라갈 설명란 <span className="yp-gq">[히든 태그]는 태그 칸에만 들어가고, 구역 이름 [설명문 본문]은 빠져요{myinSrt ? " · 끝에 사진·음악 출처가 붙어요" : ""}</span></label>
+            <pre className="yp-utm yp-pubdesc" aria-label="유튜브에 올라갈 설명란">{youtubeDesc(form.desc, form.utm, utmCode(project.id))}</pre>
             <label className="yp-lbl">태그 <span className="yp-gq">히든 태그에서 자동으로</span></label>
             <div className="yp-chips">{form.hiddenTags.length ? form.hiddenTags.map(tag => <span key={tag} className="yp-tag">{tag}</span>) : <span className="yp-hint">없음</span>}</div>
             <label className="yp-lbl">고정 댓글<span style={{ flex: 1 }} /><button type="button" className="yp-btn yp-sm" onClick={() => void copy("pin", form.pinned || pinnedDraft(form.utm))}><Copy size={14} /> {copied === "pin" ? "복사됨" : "복사"}</button></label>
