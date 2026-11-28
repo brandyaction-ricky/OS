@@ -83,6 +83,7 @@ test("after the 완성본 the 수정안 go to the editor as one edit order with 
   const order = notes.slice(notes.indexOf("export async function orderSceneNotes"), notes.indexOf("// ── 웹 숏폼"));
   assert.match(order, /if \(record\.stage !== "final_ready" \|\| !run\.clipsReview \|\| !run\.storyboard\) throw new ApiError\(409, "SCENE_ORDER_CLOSED"/);
   assert.match(order, /const order = await submitEditOrder\(actor, run\.sourceId, editOrderSchema\.parse\(/, "the editor's own order path (it checks the storyboard again)");
+  assert.doesNotMatch(notes, /^import [^\n]*from "\.\/myin-edit"/m, "loaded inside the function: a top-level import is a cycle that breaks the build");
   assert.match(order, /status: "done", doneBy: actor\.name, doneAt: now, ordered: \{ at: now, by: actor\.name, n, orderId: order\.orderId \}/);
   assert.doesNotMatch(order, /saveMyinSceneEdit/, "the storyboard the 완성본 was drawn from stays as it is");
   assert.match(read("app/api/v1/content/youtube-automation/myin/route.ts"), /input\.action === "scene_order" \? await orderSceneNotes\(actor, input\.runId, input\.noteIds\)/);

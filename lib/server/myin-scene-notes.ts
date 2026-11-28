@@ -10,7 +10,6 @@ import { editWebShortTexts, WEB_SHORT_SCENES, webShortTextSlots } from "@/lib/we
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { RequestActor } from "./auth";
 import { readDiagramCatalog } from "./diagram-catalog";
-import { editOrderSchema, submitEditOrder } from "./myin-edit";
 import { myinRunWords, presentMyinRun, saveMyinSceneEdit, sheetsStory, storyboardJson, visibleRun } from "./myin-run";
 
 // 점검 시트 장면 의견 (직원 요청 2026-11-12): a note is a content_feedback item with target "scene" (the 최종 검토 list leaves these out).
@@ -197,6 +196,8 @@ export async function orderSceneNotes(actor: RequestActor, runId: string, noteId
   }).sort((a, b) => a.n - b.n);
   if (new Set(picked.map((x) => x.n)).size !== picked.length) throw new ApiError(409, "SCENE_NOTES_SAME_SCENE", "같은 장면의 수정안이 둘 이상이에요. 하나만 골라 주세요.");
   const next = spliceScenes(story, picked.map((x) => ({ n: x.n, scenes: x.p.scenes })));
+  // Loaded here: myin-edit reaches back to the AI-job module that imports this file (a top-level import broke the build, 2026-11-28).
+  const { editOrderSchema, submitEditOrder } = await import("./myin-edit");
   const order = await submitEditOrder(actor, run.sourceId, editOrderSchema.parse({
     text: `점검 시트 장면 의견: ${picked.map((x) => `#${x.n} ${x.row.description.trim()}`).join(" / ")}`.slice(0, 2000),
     meaning: picked.map((x) => `#${x.n} ${x.p.why}`).join(" / ").slice(0, 2000), storyboard: next }));
