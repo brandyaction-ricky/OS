@@ -172,7 +172,9 @@ export async function PATCH(request: Request) {
     const service = createServiceSupabase();
     const { data: current, error: readError } = await service.from("os_documents").select("*").eq("id", input.documentId).single();
     if (readError || !current) throw new ApiError(404, "DOCUMENT_NOT_FOUND", "문서를 찾을 수 없습니다.");
-    if (!canAgentWriteDocument(actor, current.status)) throw new ApiError(403, "DOCUMENT_STATUS_FORBIDDEN", "이 키로 변경할 수 없는 문서 상태입니다.");
+    // A key that may only read a non-canon status still leaves a change proposal there (대표 11-28); it never writes it directly.
+    const direct = canAgentWriteDocument(actor, current.status);
+    if (!direct && !(actor.type === "agent" && current.status !== "canonical" && actor.allowedStatuses.includes(current.status))) throw new ApiError(403, "DOCUMENT_STATUS_FORBIDDEN", "이 키로 변경할 수 없는 문서 상태입니다.");
     const expectedVersion = input.expectedVersion ?? current.current_version;
     const next = {
       title: input.title ?? current.title,
@@ -215,7 +217,17 @@ export async function PATCH(request: Request) {
     }
 
     if (actor.type === "agent") {
-      if(!canAgentEditDraft(actor,current) && !(isAgentOwnSharedDocument(actor,current) && await isDesignatedApprover(actor.ownerId))) throw new ApiError(403,"AGENT_WRITE_DENIED","AI 키는 자신이 만든 AI 초안만 직접 수정할 수 있습니다. 정본은 변경 제안으로 검토합니다.");
+      if(!direct || (!canAgentEditDraft(actor,current) && !(isAgentOwnSharedDocument(actor,current) && await isDesignatedApprover(actor.ownerId)))) {
+        // 대표 11-28: instead of refusing, the change waits as a proposal the document's owner approves on 정본 검토.
+        const readable = (current.status !== "draft" || current.owner_id === actor.ownerId) && canReadKnowledgeDocument(actor, current)
+          && (await readableKnowledgePages(actor, [current])).has(current.id);
+        if (!readable) throw new ApiError(403,"AGENT_WRITE_DENIED","이 키 주인이 열 수 없는 문서라 고칠 수 없습니다.");
+        const proposal = await createCanonicalProposal(actor, current, expectedVersion, {
+          title: next.title, content_md: next.content, folder: next.folder, brand: next.brand ?? "", team: next.team, tags: next.tags,
+        }, input.reason);
+        return NextResponse.json({ documentId: current.id, document: current, proposalId: proposal.id, proposal, indexing: "queued",
+          message: "AI가 쓰지 않은 문서라 바로 고치지 않고 변경 제안으로 보냈어요. 문서 주인이 정본 검토에서 승인하면 반영돼요." }, { status: 202 });
+      }
       const { data, error } = await service.rpc("os_agent_update_document", {
         p_agent_key_id: actor.id,
         p_organization_id: input.organizationId,
