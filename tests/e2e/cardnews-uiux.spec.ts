@@ -338,6 +338,24 @@ async function exportCard(page: Page) {
   await expect(page.getByLabel("올린 주소", { exact: true })).toBeVisible();
 }
 
+test("closing without a publication requires a saved reason and keeps the card outside published totals", async ({ page }) => {
+  await exportCard(page);
+  await expect(page.getByRole("button", { name: "다 올렸으면 끝내기", exact: true })).toBeDisabled();
+  await page.getByLabel("올린 주소", { exact: true }).fill("https://www.instagram.com/");
+  await expect(page.getByRole("button", { name: "주소 남기기", exact: true })).toBeDisabled();
+  await page.getByLabel("올린 주소", { exact: true }).fill("");
+  await page.getByText("남은 화 게시 안 함", { exact: true }).click();
+  await page.getByLabel("게시 안 함 이유").fill("게시 일정 보류");
+  await page.getByRole("button", { name: "이유 저장" }).click();
+  await page.getByRole("button", { name: "게시 안 함으로 마치기", exact: true }).click();
+  await expect(page.locator(".yp-fl-status")).toContainText("게시 안 함");
+  await expect(page.getByText("게시 안 함 · 게시 일정 보류", { exact: true })).toBeVisible();
+  await page.locator(".yp-fl-proj").click();
+  await page.getByRole("link", { name: "주제 찾기", exact: true }).last().click();
+  await page.getByRole("tab", { name: "카드뉴스", exact: false }).first().click();
+  await expect(page.getByRole("tab", { name: /완료된 카드뉴스/ })).toContainText("0");
+});
+
 test("URL bookmarks persist per account, load without posting, undo removal and completed cards reopen", async ({ page }) => {
   await exportCard(page);
   const address = page.getByLabel("올린 주소", { exact: true });

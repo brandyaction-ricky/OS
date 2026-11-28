@@ -14,7 +14,7 @@ import type { YpPattern, YpPatterns } from "@/lib/youtube-process/stages";
 // running for ② 원고 · ⑦ 업로드 자료), so the screen talks to the same staff-AI queue instead of a Chrome extension.
 type Task = "thumbs" | "script" | "script-notes" | "kit" | "plan" | "shorts" | "short" | "niche" | "column" | "short-copy" | "retitle" | "short-topics" | "short-recycle" | "short-formula" | "short-script" | "topic-formula" | "card";
 /** What the job hooks read from a page; 주제 찾기 › 틈새 passes its shared board as the project. */
-type JobPage = Pick<YpPage, "demo" | "accessToken" | "profile"> & { bundle?: { project: { id: string; version: number } } | null; reload?: () => Promise<unknown> };
+type JobPage = Pick<YpPage, "demo" | "accessToken" | "profile"> & { bundle?: { project: { id: string; version: number; yp?: {topic:{purpose?:string|null}} } } | null; reload?: () => Promise<unknown> };
 const TASK: Record<Task, { name: string; result: string }> = {
   thumbs: { name: "썸네일 후보 만들기", result: "시장 영상이 왜 눌렸는지 읽고 우리 스타일로 그림과 문구 3개씩 만들어, 하나 만들 때마다 이 화면에 올려요. 그림은 고른 도구(Flow · ChatGPT)로 내 계정에서 만들어요." },
   card: { name: "카드뉴스 초안 뽑기", result: "고른 포맷마다 카드 글 · 캡션 · 해시태그 초안을 하나씩 만들어 줘요. 나란히 보고 하나를 골라 다듬어요." },
@@ -122,9 +122,10 @@ export function SendDialog({ page, task, open, onClose, job, defaults, extra, qu
   extra?: Record<string, unknown>;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
-  const gptOk = isGptTask(task) && (task !== "card" || job.status?.gptConfigured === true);
+  const ad = page.bundle?.project.yp?.topic.purpose === "ad";
+  const gptOk = isGptTask(task) && (task !== "card" || job.status?.gptConfigured === true) && (task !== "short-formula" || ad);
   const [tab, setTab] = useState<SendTab>(gptOk ? "gpt" : "queue");
-  const [tier, setTier] = useState<GptTier>("precise");
+  const [tier, setTier] = useState<GptTier>(ad ? "saving" : "precise");
   const [minutes, setMinutes] = useState(defaults?.minutes ?? 10);
   // 쇼츠 대본 · 칼럼: how many the PD asks for (owner request 2026-10-25; the 숏폼 정본 says 3~5 shorts per longform).
   const [count, setCount] = useState(task === "shorts" ? 3 : 1);
@@ -139,7 +140,7 @@ export function SendDialog({ page, task, open, onClose, job, defaults, extra, qu
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
-  useEffect(() => { if (open) { dialog.current?.showModal(); setError(""); setCopied(false); if (defaults?.minutes) setMinutes(defaults.minutes); setQuery(current => current || queryDefault || ""); setTab(initialTab ?? (gptOk ? "gpt" : "queue")); } else dialog.current?.close(); }, [open, defaults?.minutes, queryDefault, initialTab, gptOk]);
+  useEffect(() => { if (open) { dialog.current?.showModal(); setTier(ad ? "saving" : "precise"); setError(""); setCopied(false); if (defaults?.minutes) setMinutes(defaults.minutes); setQuery(current => current || queryDefault || ""); setTab(initialTab ?? (gptOk ? "gpt" : "queue")); } else dialog.current?.close(); }, [open, defaults?.minutes, queryDefault, initialTab, gptOk, ad]);
   const info = TASK[task];
   const projectId = page.bundle?.project.id;
   const running = job.status?.job?.status === "active";

@@ -131,6 +131,8 @@ async function mockWorkspace(page: Page, noRecommendations = false) {
     if (path === "jobs") return json({ jobs: [record(JOB, "가상 브리프 작업", { proc: "brief", targetId: TOPIC, jobNo: 1 }), ...state.queuedJobs].map(row => ({ ...row, record_type: "ai_job", status: "backlog" })) });
     if (path === `jobs/${JOB}/instructions`) return json({ target: { topic: { reference_items: [second] }, canonical: { title: "예시 집필 기준", version: 2, body: "원문의 장면과 독자의 질문을 이어 쓴다." } }, instructions: "확인한 근거만 사용한다.", skill: "개인 스킬 예시", resultFormat: { one: "한 줄 주제" } });
     if (path === "browsers") return json({ browsers: [] });
+    // An incomplete health response must not remove the usable job list.
+    if (path === "worker/health") return json({});
     if (path === "runs") return json({ runs: [], silent: false });
     return json({ records: [], notifications: [], requests: [], policies: [], ok: true });
   });
@@ -170,7 +172,7 @@ test("qualified Korean references propose a topic and preserve human edits until
   await page.getByText("선택한 참고 자료 1개", { exact: true }).click();
   await expect(page.locator(".tr-evidence").getByRole("heading", { name: "한 가지 일을 마치는 연습", exact: true })).toBeVisible();
   await expect(page.locator(".tr-evidence").getByText("The cost of a big plan", { exact: true })).toHaveCount(0);
-  await expect(page.getByLabel("쓰레드", { exact: true })).toBeChecked();
+  await expect(page.getByLabel("스레드", { exact: true })).toBeChecked();
   await page.setViewportSize({ width: 390, height: 900 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
   await page.goto("/automation/references");
@@ -193,7 +195,7 @@ test("reference planning starts with a draft and preserves edited fields, intent
   await expect(page.getByLabel("핵심 메시지", { exact: true })).toHaveValue("계획 크기와 시작 비용을 함께 살펴본다.");
   await expect(page.getByLabel("근거·자료", { exact: true })).toHaveValue(/https:\/\/example\.test\/example-two/);
   await expect(page.getByLabel("근거·자료", { exact: true })).toHaveValue(/읽은 범위: 전체 읽음/);
-  await expect(page.getByLabel("쓰레드", { exact: true })).toBeChecked();
+  await expect(page.getByLabel("스레드", { exact: true })).toBeChecked();
   await expect(page.locator(".ca-v07-board")).toHaveCount(0);
   await expect(page.locator(".tr-evidence")).not.toHaveAttribute("open");
   expect(state.writes).toEqual([]);
@@ -201,7 +203,7 @@ test("reference planning starts with a draft and preserves edited fields, intent
   await page.getByLabel("한 줄 주제", { exact: true }).fill("사람이 다시 정한 질문");
   await page.getByLabel("누구에게", { exact: true }).fill("");
   await page.getByLabel("주의할 표현", { exact: true }).fill("");
-  await page.getByLabel("쓰레드", { exact: true }).uncheck();
+  await page.getByLabel("스레드", { exact: true }).uncheck();
   await page.getByRole("button", { name: "기획만 저장", exact: true }).click();
   await expect.poll(() => state.topics[0].stage).toBe("brief");
   await expect(page.getByRole("button", { name: "기획만 저장", exact: true })).toBeEnabled();
@@ -209,7 +211,7 @@ test("reference planning starts with a draft and preserves edited fields, intent
   await expect(page.getByLabel("한 줄 주제", { exact: true })).toHaveValue("사람이 다시 정한 질문");
   await expect(page.getByLabel("누구에게", { exact: true })).toHaveValue("");
   await expect(page.getByLabel("주의할 표현", { exact: true })).toHaveValue("");
-  await expect(page.getByLabel("쓰레드", { exact: true })).not.toBeChecked();
+  await expect(page.getByLabel("스레드", { exact: true })).not.toBeChecked();
   expect(state.writes.map(write => write.path)).toEqual([`topics/${TOPIC}`]);
   expect(state.items).toEqual([]);
   expect(state.external).toEqual([]);
@@ -220,8 +222,8 @@ test("confirming a Threads plan opens its draft and a started topic resumes the 
   state.topics.push(importedTopic());
   await page.goto(`/automation/topics?sel=${TOPIC}`);
   await page.getByLabel("핵심 메시지", { exact: true }).fill("원고에서 끝까지 답할 관점을 사람이 확인했다.");
-  await page.getByLabel("쓰레드 마감", { exact: true }).fill("2026-12-01");
-  await page.getByRole("button", { name: "기획 확인하고 쓰레드 집필로 이동", exact: true }).click();
+  await page.getByLabel("스레드 마감", { exact: true }).fill("2026-12-01");
+  await page.getByRole("button", { name: "기획 확인하고 스레드 집필로 이동", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/automation/threads\\?sel=${ITEM_IDS.threads}`));
   await expect(page.getByRole("button", { name: "내 AI에 보낼 요청문 복사", exact: true })).toBeVisible();
   expect(state.items).toHaveLength(1);
@@ -234,8 +236,8 @@ test("confirming a Threads plan opens its draft and a started topic resumes the 
   await page.goto(`/automation/topics?sel=${TOPIC}`);
   await expect(page.getByLabel("한 줄 주제", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "기획만 저장", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "쓰레드 집필 계속하기", exact: true })).toHaveAttribute("href", `/automation/threads?sel=${ITEM_IDS.threads}`);
-  await page.getByRole("link", { name: "쓰레드 집필 계속하기", exact: true }).click();
+  await expect(page.getByRole("link", { name: "스레드 집필 계속하기", exact: true })).toHaveAttribute("href", `/automation/threads?sel=${ITEM_IDS.threads}`);
+  await page.getByRole("link", { name: "스레드 집필 계속하기", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/automation/threads\\?sel=${ITEM_IDS.threads}`));
   expect(state.writes.map(write => write.path)).toEqual([`topics/${TOPIC}/start`]);
   expect(state.external).toEqual([]);
@@ -246,19 +248,19 @@ test("missing planning fields block production and a failed start preserves edit
   state.topics.push(importedTopic());
   await page.goto(`/automation/topics?sel=${TOPIC}`);
   await page.getByLabel("핵심 메시지", { exact: true }).fill("");
-  await page.getByRole("button", { name: "기획 확인하고 쓰레드 집필로 이동", exact: true }).click();
+  await page.getByRole("button", { name: "기획 확인하고 스레드 집필로 이동", exact: true }).click();
   await expect(page.locator(".ca-v07-topic-editor").getByRole("alert")).toContainText("핵심 메시지");
   expect(state.writes).toEqual([]);
 
   await page.getByLabel("핵심 메시지", { exact: true }).fill("실패해도 남아 있어야 하는 수정한 관점");
   await page.getByLabel("주의할 표현", { exact: true }).fill("사람이 확인한 주의사항");
   state.startFailures = 1;
-  await page.getByRole("button", { name: "기획 확인하고 쓰레드 집필로 이동", exact: true }).click();
+  await page.getByRole("button", { name: "기획 확인하고 스레드 집필로 이동", exact: true }).click();
   await expect(page.locator(".ca-v07-topic-editor").getByRole("alert")).toContainText("시험용 제작 오류");
   await expect(page.getByLabel("핵심 메시지", { exact: true })).toHaveValue("실패해도 남아 있어야 하는 수정한 관점");
   await expect(page.getByLabel("주의할 표현", { exact: true })).toHaveValue("사람이 확인한 주의사항");
   expect(state.items).toHaveLength(0);
-  await page.getByRole("button", { name: "기획 확인하고 쓰레드 집필로 이동", exact: true }).click();
+  await page.getByRole("button", { name: "기획 확인하고 스레드 집필로 이동", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/automation/threads\\?sel=${ITEM_IDS.threads}`));
   expect(state.items).toHaveLength(1);
   expect(state.writes.map(write => write.path)).toEqual([`topics/${TOPIC}/start`, `topics/${TOPIC}/start`]);
@@ -302,7 +304,7 @@ test("multiple production channels stay on the plan with separate resume links",
   await page.getByLabel("카드뉴스", { exact: true }).check();
   await page.getByRole("button", { name: "기획 확인하고 제작 항목 만들기", exact: true }).click();
   await expect(page.getByRole("link", { name: "카드뉴스 제작 계속하기", exact: true })).toHaveAttribute("href", `/automation/cardnews?sel=${ITEM_IDS.card}`);
-  await expect(page.getByRole("link", { name: "쓰레드 집필 계속하기", exact: true })).toHaveAttribute("href", `/automation/threads?sel=${ITEM_IDS.threads}`);
+  await expect(page.getByRole("link", { name: "스레드 집필 계속하기", exact: true })).toHaveAttribute("href", `/automation/threads?sel=${ITEM_IDS.threads}`);
   await expect(page).toHaveURL(new RegExp(`/automation/topics\\?sel=${TOPIC}`));
   expect(state.items).toHaveLength(2);
   expect(state.writes.map(write => write.path)).toEqual([`topics/${TOPIC}/start`]);
@@ -314,11 +316,11 @@ test("mobile topic planning keeps native controls compact and its next action vi
   state.topics.push(importedTopic());
   await page.setViewportSize({ width: 390, height: 900 });
   await page.goto(`/automation/topics?sel=${TOPIC}`);
-  const checkbox = page.getByLabel("쓰레드", { exact: true });
+  const checkbox = page.getByLabel("스레드", { exact: true });
   await expect(checkbox).toBeChecked();
   await expect(checkbox).toHaveCSS("width", "18px");
   await expect(checkbox).toHaveCSS("height", "18px");
-  const next = page.getByRole("button", { name: "기획 확인하고 쓰레드 집필로 이동", exact: true });
+  const next = page.getByRole("button", { name: "기획 확인하고 스레드 집필로 이동", exact: true });
   await next.scrollIntoViewIfNeeded();
   await expect(next).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
@@ -348,7 +350,7 @@ test("low-reaction and pending references remain selectable with their status vi
   await expect(page.getByText("1개 선택됨", { exact: true })).toBeVisible();
   await weak.getByRole("checkbox").uncheck();
   await expect(page.locator(".tr-selection")).toHaveCount(0);
-  await page.getByRole("button", { name: "검증 대기 1개", exact: true }).click();
+  await page.getByRole("button", { name: "반응 확인 대기 1개", exact: true }).click();
   await expect(page.locator(".tr-reference").getByRole("checkbox")).toBeEnabled();
   await page.setViewportSize({ width: 390, height: 900 });
   await page.locator(".tr-reference").getByRole("checkbox").check();
@@ -426,6 +428,7 @@ test("incomplete evidence may be saved and comparison draft input is not discard
 test("Aside instructions copy the frozen source and personal writing guidance without running a job", async ({ page }) => {
   const state = await mockWorkspace(page);
   await page.goto("/automation/requests");
+  await expect(page.getByText("AI·렌더 PC 실행 이력을 불러오지 못했어요.")).toBeVisible();
   await page.getByRole("button", { name: "자세히", exact: true }).click();
   await page.getByRole("button", { name: "Aside용 작업 지침 복사" }).click();
   await expect(page.getByText("작업 지침을 복사했습니다. Aside에 붙여 넣고 받은 결과를 아래에 가져오세요.")).toBeVisible();

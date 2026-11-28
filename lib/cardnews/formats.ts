@@ -135,7 +135,7 @@ export interface CharacterScene {
 export function characterAsset(name: string) {
   return Object.hasOwn(MYIN_CAST, name) ? `/myin-card-cast/${name}.png` : undefined;
 }
-export interface CardSlide { textLocked?: boolean; imageLocked?: boolean; artDirection?: string; scene?: CharacterScene; layout?: "spotlight"; type: CardSlideType; fields: Record<string, string>; photo?: CardPhoto }
+export interface CardSlide { myinVisual?: "report" | "observation"; textLocked?: boolean; imageLocked?: boolean; artDirection?: string; scene?: CharacterScene; layout?: "spotlight"; type: CardSlideType; fields: Record<string, string>; photo?: CardPhoto }
 import type { CanonTrace } from "../youtube-process/canon-trace";
 export interface CardDraft {
   formatVersion?: 1; workTitle?: string; outline?: boolean; production?: import("./production").ProductionInput;

@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, Check, ChevronDown, ChevronUp, Clock, Info, PauseCircle } from "lucide-react";
 import { canReopen, editedSinceDecision, GATE_FIELDS, gateFields, gateName, reopenWhy } from "@/lib/youtube-process/confirm";
 import { mayTrash, projectHref, projectName, stepHref, stepName, YP_FLOW, YP_KIND_LABEL, YP_STAGE_INDEX, type YpGate, type YpProject } from "@/lib/youtube-process/project";
@@ -11,6 +11,9 @@ import { useYoutubeCanConfirm, YP_CONFIRM_EVENT } from "./use-youtube-confirm";
 import { ConfirmActions } from "./youtube-process-confirm";
 import { errorMessage, isConflict, youtubeProcessClient, type YpBundle, type YpClient, type YpMember } from "./youtube-process-data";
 import { YoutubeFlow, type YpAction } from "./youtube-process-flow";
+
+import { projectPlatform } from "@/lib/content-platforms";
+import { ProjectLocationContext } from "./content-project-navigation";
 
 export const LAST_KEY = "brandy-yp-last-project";
 export const md = (iso?: string) => { if (!iso) return ""; const date = new Date(iso); return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`; };
@@ -25,6 +28,9 @@ export function useYpBundle() {
   const id = params.get("project");
   const { accessToken, demo, profile } = useSession();
   const [bundle, setBundle] = useState<YpBundle | null>(null);
+  const reportLocation = useContext(ProjectLocationContext);
+  const platform = bundle?.project.id === id && bundle?.project.yp.topic.type ? projectPlatform(bundle.project.yp.topic) : null;
+  useEffect(() => { if (id && platform) reportLocation({ id, platform }); }, [id, platform, reportLocation]);
   const [members, setMembers] = useState<YpMember[]>([]);
   const [error, setError] = useState("");
   const [conflict, setConflict] = useState(false);
@@ -123,6 +129,9 @@ export function gateAction(page: YpPage, gate: YpGate, view: number, control: Re
   const project = page.bundle!.project;
   const current = project.yp.stage === "done" ? YP_FLOW.length : YP_STAGE_INDEX[project.yp.stage];
   if (view !== current && current < YP_FLOW.length) return { kind: "link", label: `이어서 하기 · ${stepName(current, project.yp.topic.type)}`, href: stepHref(current, project.id) };
+  if (gate === "review" && project.yp.gates.review.state === "wait" && page.canConfirm) {
+    return { kind: "status", status: "최종 검토 · 컨펌 결정 대기" };
+  }
   // The PD confirms; or asks an approver instead (2026-11-02), and may still confirm while the request waits.
   const cardDecision = project.yp.topic.type === "card" && (gate === "draft" || gate === "review");
   const ask = cardDecision && page.canConfirm

@@ -121,11 +121,23 @@ export const SHORTFORM_CANON_TITLE = "숏폼 콘텐츠 스킬";
  * Procedures a card names by title, read whether canonical or shared with the team (owner request 2026-10-25: 숏폼 cards must open
  * the 숏폼 정본, which became a team document that day). Empty when none is found; the card still says what to search for.
  */
-export async function namedProcedures(supabase: RequestActor["supabase"], titles: string[]) {
-  const { data, error } = await supabase.from("os_documents").select("id,title").in("title", titles).in("status", ["canonical", "team", "reviewed"])
-    .order("updated_at", { ascending: false }).limit(titles.length * 2);
-  if (error) return [];
-  return [...new Map(((data ?? []) as { id: string; title: string }[]).map(doc => [doc.title, doc])).values()];
+export async function namedProcedures(supabase: RequestActor["supabase"], titles: string[], required = false) {
+  const query = supabase.from("os_documents").select("id,title,current_version,status").in("title", titles).in("status", ["canonical", "team", "reviewed"])
+    .order("updated_at", { ascending: false });
+  const { data, error } = await (required ? query : query.limit(titles.length * 2));
+  if (error) {
+    if (required) throw new ApiError(503, "PROCEDURE_READ_FAILED", "제작에 적용할 정본을 확인하지 못했어요.");
+    return [];
+  }
+  return titles.flatMap(title => {
+    const matches = (data ?? []).filter(doc => doc.title === title);
+    const approved = matches.filter(doc => doc.status === "canonical");
+    const eligible = required && approved.length ? approved : matches;
+    if (required && eligible.length !== 1)
+      throw new ApiError(409, "PROCEDURE_UNRESOLVED", `「${title}」 문서가 ${eligible.length ? "여러 개" : "미등록"}예요. 회사 문서에서 사용할 정본을 확인해 주세요.`);
+    const doc = eligible[0];
+    return doc ? [{ id: String(doc.id), title: String(doc.title), version: Number(doc.current_version) }] : [];
+  });
 }
 /** Named procedures first, then the matched ones, without repeats. */
 export const withNamed = (named: { id: string; title: string }[], found: { id: string; title: string }[], limit: number) =>
@@ -133,10 +145,10 @@ export const withNamed = (named: { id: string; title: string }[], found: { id: s
 
 export async function procedureRefs(supabase: RequestActor["supabase"], action: keyof typeof PROCEDURE_TERMS) {
   const filter = PROCEDURE_TERMS[action].flatMap((term) => [`title.ilike.%${term}%`, `source_ref.ilike.%${term}%`]).join(",");
-  const { data, error } = await supabase.from("os_documents").select("id,title").eq("status", "canonical").or(filter).order("updated_at", { ascending: false }).order("id").limit(10);
+  const { data, error } = await supabase.from("os_documents").select("id,title,current_version").eq("status", "canonical").or(filter).order("updated_at", { ascending: false }).order("id").limit(10);
   if (error) throw new ApiError(500, "PROCEDURE_READ_FAILED", "절차 문서를 읽지 못했습니다.");
   if (!data?.length) throw new ApiError(409, "CONTENT_PROCEDURE_MISSING", "실행할 정본 절차 문서가 없습니다. 문서 작업공간에서 확인해 주세요.");
-  return data as { id: string; title: string }[];
+  return data.map(doc => ({ id: String(doc.id), title: String(doc.title), version: Number(doc.current_version) }));
 }
 
 async function procedures(actor: RequestActor, action: keyof typeof PROCEDURE_TERMS, platforms: string[]) {

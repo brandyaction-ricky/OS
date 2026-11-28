@@ -84,15 +84,21 @@ async function resolve(provider: "unsplash" | "wikimedia", id: string) {
 
 /** [사용하기]: the photo becomes this run's image for `file` (as an uploaded 우리 이미지 would, with its credit kept). */
 export async function applyMyinPhotoCandidate(actor: RequestActor, runId: string, file: string, provider: "unsplash" | "wikimedia", id: string) {
-  const { url, credit } = await resolve(provider, id);
-  if (!IMAGE_HOSTS.has(new URL(url).hostname)) throw new ApiError(400, "MYIN_PHOTO_SOURCE", "Unsplash · 위키미디어 사진만 쓸 수 있어요.");
-  const response = await fetch(url, { headers: { "user-agent": UA }, signal: AbortSignal.timeout(30_000) });
-  const type = (response.headers.get("content-type") ?? "").split(";")[0].trim();
-  if (!response.ok || !TYPES.has(type)) throw new ApiError(502, "MYIN_PHOTO_DOWNLOAD", "사진을 받지 못했어요. 다른 후보를 골라 주세요.");
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  if (bytes.length > MAX_BYTES) throw new ApiError(400, "MYIN_OUR_IMAGE_SIZE", "20MB가 넘는 사진이에요. 다른 후보를 골라 주세요.");
+  const { bytes, type, credit } = await downloadPhotoCandidate(provider, id);
   const { path, uploadUrl } = await myinOurImageUpload(actor, runId, file, type);
   const put = await fetch(uploadUrl, { method: "PUT", headers: { "content-type": type, "x-upsert": "true" }, body: bytes });
   if (!put.ok) throw new ApiError(502, "MYIN_PHOTO_UPLOAD", "사진을 OS에 넣지 못했어요. 다시 해 주세요.");
   return saveMyinOurImage(actor, runId, file, path, credit);
+}
+
+export async function downloadPhotoCandidate(provider: "unsplash" | "wikimedia", id: string) {
+  const { url, credit } = await resolve(provider, id);
+  if (new URL(url).protocol !== "https:" || !IMAGE_HOSTS.has(new URL(url).hostname)) throw new ApiError(400, "MYIN_PHOTO_SOURCE", "Unsplash · 위키미디어 사진만 쓸 수 있어요.");
+  const response = await fetch(url, { redirect: "error", headers: { "user-agent": UA }, signal: AbortSignal.timeout(30_000) });
+  const type = (response.headers.get("content-type") ?? "").split(";")[0].trim();
+  if (!response.ok || !TYPES.has(type)) throw new ApiError(502, "MYIN_PHOTO_DOWNLOAD", "사진을 받지 못했어요. 다른 후보를 골라 주세요.");
+  if (Number(response.headers.get("content-length")) > MAX_BYTES) throw new ApiError(400, "MYIN_OUR_IMAGE_SIZE", "20MB 이하의 사진을 골라 주세요.");
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes.length > MAX_BYTES) throw new ApiError(400, "MYIN_OUR_IMAGE_SIZE", "20MB가 넘는 사진이에요. 다른 후보를 골라 주세요.");
+  return { bytes, type, credit };
 }

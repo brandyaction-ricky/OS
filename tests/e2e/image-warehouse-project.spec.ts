@@ -27,10 +27,9 @@ test("일반 프로젝트가 업로드 사진과 브랜드로 창고 디자인�
     return c.toDataURL("image/png").split(",")[1];
   });
   await page.locator('input[type="file"]').setInputFiles({name:"cup.png",mimeType:"image/png",buffer:Buffer.from(illustration,"base64")});
-  const catalog=page.getByRole("region",{name:"포맷 창고"});const group=page.getByRole("group",{name:"창고 디자인 · 피드 4:5"});
-  await catalog.getByLabel("찾을 포맷").fill("M01");
-  await catalog.getByText("속마음 말풍선",{exact:true}).click();
-  await catalog.getByRole("button",{name:"이 작업에 사용"}).click();
+  const catalog=page.getByRole("region",{name:"광고 디자인 고르기"});const group=page.getByRole("group",{name:"창고 디자인 · 피드 4:5"});
+  await catalog.getByLabel("디자인 검색").fill("M01");
+  await catalog.getByRole("button",{name:"속마음 말풍선 선택",exact:true}).click();
   for (const box of (await group.getByRole("checkbox").all()).slice(1)) await box.check();
   await approveFormat(page);
   const make=page.getByRole("region",{name:"창고 디자인 제작"});
@@ -58,7 +57,7 @@ test("일반 프로젝트가 업로드 사진과 브랜드로 창고 디자인�
   const fontData = await fontUrl("public/fonts/pretendard/PretendardVariable.woff2");
   for (const [index,format] of FORMAT_TEST_FORMATS.entries()) {
     const face = displayFonts[format.id as keyof typeof displayFonts];
-    const svg = renderFormatTestSvg({formatId:format.id,copy,photo:"data:image/png;base64,"+illustration,fontData,
+    const svg = renderFormatTestSvg({formatId:format.id,copy,...(["M09","D12"].includes(format.id) ? {design:{font:"original",card:"original",placement:"feed-portrait",photoFit:"contain"}} : {}),photo:"data:image/png;base64,"+illustration,fontData,
       displayFontData:face ? await fontUrl("public/image-format-test/fonts/"+face) : undefined});
     const expected = await page.evaluate(async source => {
       const u=URL.createObjectURL(new Blob([source],{type:"image/svg+xml;charset=utf-8"}));
@@ -75,7 +74,7 @@ test("일반 프로젝트가 업로드 사진과 브랜드로 창고 디자인�
   const first=results.locator("article").first();
   await first.getByRole("button",{name:"기준 시안 선택"}).click();
   const id=await page.getByLabel("기존 작업").inputValue();
-  await page.goto("/content/images?project="+encodeURIComponent(id)+"#image-creative-results");
+  await page.goto("/content/images?view=tools&project="+encodeURIComponent(id)+"#image-creative-results");
   await expect(images).toHaveCount(5,{timeout:30000});
   expect(await preview()).toEqual(original);
   await expect(first.getByRole("button",{name:"기준으로 선택됨"})).toBeVisible();

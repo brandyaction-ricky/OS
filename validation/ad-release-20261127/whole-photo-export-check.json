@@ -1,0 +1,16 @@
+[
+  {
+    "format": "M09",
+    "sha256": "9ffc6fcdf5bfd4d493b1c06992b6d67edbcbbcff5d6fdfd1b62f19c0ab7481fa",
+    "previewMatchesZip": true,
+    "width": 1080,
+    "height": 1350
+  },
+  {
+    "format": "D12",
+    "sha256": "3f0f720fabb20ddc7619a9fbc0013b45e45b4ee84826eb0c5143a23aad0cc45d",
+    "previewMatchesZip": true,
+    "width": 1080,
+    "height": 1350
+  }
+]

@@ -1,5 +1,6 @@
 "use client";
 /* eslint-disable @next/next/no-img-element -- private signed previews do not have stable optimizer URLs */
+import { CanonRail } from "./canon-rail";
 import { useEffect, useMemo, useState } from "react";
 import { Check, Clipboard, Code2, Download, ImagePlus, Plus, Sparkles, Trash2 } from "lucide-react";
 import { checkColumnHtml, columnEmptyPlaces, columnMeta, columnShorts, columnSlots, renderColumn, type ColumnFill, type ColumnShort } from "@/lib/seo-column";
@@ -36,6 +37,9 @@ export function YoutubeColumnPanel({ page }: { page: YpPage }) {
   const job = useStaffJob(page, "column", () => void page.reload());
   const current = items.find(item => item.id === pick) ?? items[0] ?? null;
 
+  const initialCheck = useMemo(() => current ? checkColumnHtml(current.html) : null, [current]);
+  const issueCount = initialCheck ? initialCheck.unsafe.length + initialCheck.issues.length : 0;
+
   const save: Save = async (patch, label) => {
     if (!page.client) return false;
     setBusy(label); page.setError("");
@@ -51,6 +55,7 @@ export function YoutubeColumnPanel({ page }: { page: YpPage }) {
   };
 
   return <>
+    <CanonRail refs={current?.ai?.trace} check={initialCheck ? (issueCount ? `HTML 검사 · 수정 ${issueCount}건` : "HTML 검사 통과") : undefined} pending={!current} />
     <YpSection n={1} title="SEO 칼럼" gq={items.length ? `${items.length}편 · 편마다 다른 검색 질문` : "원고로 검색용 칼럼을 써요"} extra={<>
       <button type="button" className="yp-btn yp-sm yp-pri" disabled={page.demo || job.open} onClick={() => setSend("gpt")}><Sparkles size={14} /> {items.length ? "다시 쓰기" : "AI로 칼럼 쓰기"}</button>
       <button type="button" className="yp-btn yp-sm" onClick={() => setPasting(pasting === null ? "" : null)}><Plus size={14} /> HTML 붙여 넣기</button></>}>

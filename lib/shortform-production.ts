@@ -9,7 +9,7 @@ export const shortformBriefSchema=z.object({
   purpose:z.enum(["organic","ad"]),
   duration:z.union([z.literal(15),z.literal(30),z.literal(60)]),
   product:memo,audience:memo,goal:memo,landingUrl:z.string().trim().max(2000).default(""),
-  evidence:memo,assets:memo,appeal:memo,
+  evidence:memo,assets:memo,appeal:memo, hypothesis:memo.optional(), successCriterion:memo.optional(), budget:memo.optional(),
 }).strict();
 export type ShortformBrief=z.infer<typeof shortformBriefSchema>;
 export const DEFAULT_SHORTFORM_BRIEF:ShortformBrief={

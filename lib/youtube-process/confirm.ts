@@ -87,7 +87,7 @@ type GateState = YpGateInfo & { prev?: Prev; remindAt?: string; pdReply?: string
 export function applyGateAction(project: Pick<YpProject, "yp">, gate: YpGate, action: YpPdAction | YpApproverAction, input: YpGateInput): YpMeta {
   const yp = project.yp;
   const info = yp.gates[gate] as GateState;
-  const put = (next: GateState, stage: YpStage = yp.stage): YpMeta => ({ ...yp, stage, gates: { ...yp.gates, [gate]: next } });
+  const put = (next: GateState, stage: YpStage = yp.stage): YpMeta => ({ ...yp, stage, ...(stage !== yp.stage ? { stageEnteredAt: input.now } : {}), gates: { ...yp.gates, [gate]: next } });
   const waitingNeeded = () => { if (info.state !== "wait") throw new GateError("INVALID_TRANSITION", "대표 컨펌을 기다리는 요청이 없어요."); };
   switch (action) {
     case "request": {

@@ -236,14 +236,14 @@ export function CanonGrindScreen({ kind }: { kind: GrindKind }) {
       {runs.length ? <div className="yp-grind-table" style={{ gridTemplateColumns: `minmax(140px, 200px) repeat(${runs.length}, minmax(260px, 1fr))` }}>
         <div />
         {runs.map(run => { const sum = runSummary(run, kind);
-          return <div key={run.id} className="yp-grind-head"><b>정본 {run.canon}</b><small>{day(run.at)} · {run.byName} · {run.model.startsWith("gpt-6-astra") ? "정밀" : "절약"}</small>
+          return <div key={run.id} className="yp-grind-head"><b>정본 {run.canon}</b><small>{day(run.at)} · {run.byName.includes("@") ? "담당자" : run.byName} · {run.model.startsWith("gpt-6-astra") ? "정밀" : "절약"}</small>
             {run.prompts && Object.keys(run.prompts).length > 0 ? <details><summary>사용한 실험 프롬프트</summary>
               <pre>{experimentPrompt(run.prompts)}</pre><button className="yp-btn yp-sm" onClick={() => {
                 setSettings(previous => ({ ...Object.fromEntries(Object.entries(previous).filter(([id]) => !run.formats.includes(id))), ...run.prompts }));
                 if (kind === "card") setFormats(CARD_FORMAT_IDS.filter(id => run.formats.includes(id)));
               }}>이 설정으로 다시 실험</button></details> : <small>기본 정본 지시</small>}
             {run.state === "running" ? <span className="yp-tag yp-warn">뽑는 중</span> : run.state === "failed" ? <span className="yp-tag yp-bad">못 뽑음 · {run.error}</span>
-              : <small>채점 {sum.scored}/{sum.drafts} · 통과 {sum.passed} ({Math.round(sum.passRate * 100)}%) · 자동 검사 {sum.findings}{sum.failed ? ` · 실패 ${sum.failed}` : ""}{sum.graduated ? " · 졸업 기준 ✓" : ""}</small>}</div>; })}
+              : <small>채점 {sum.scored}/{sum.drafts} · 통과 {sum.passed} {sum.scored < GRADUATION.minimum ? `· 판단 보류 ${sum.scored}건` : `(${Math.round(sum.passRate * 100)}%)`} · 자동 검사 {sum.findings}{sum.failed ? ` · 실패 ${sum.failed}` : ""}{sum.graduated ? " · 졸업 기준 ✓" : ""}</small>}</div>; })}
         {keys.map(key => { const format = key.split(":")[1]; const title = runs.map(run => result(run, key)?.title).find(Boolean) ?? key;
           return [<div key={`${key}-h`} className="yp-grind-row-h"><b>{title}</b><small>{formatName(format)}</small></div>,
             ...runs.map(run => <GrindCell key={`${key}-${run.id}`} kind={kind} run={run} result={result(run, key)} me={view.me} active={open?.runId === run.id && open.key === key} onOpen={() => setOpen({ runId: run.id, key })} />)]; })}
@@ -257,7 +257,7 @@ export function CanonGrindScreen({ kind }: { kind: GrindKind }) {
     <YpSection n={4} title="고칠 점" gq={latest ? `정본 ${latest.canon} · ${day(latest.at)} 결과에서` : "채점한 결과가 생기면 보여요"}>
       {fixes.length ? <ul className="yp-grind-fix">{fixes.map(row => <li key={row.n}>
         <div><b>{row.n}. {row.name}</b> <span className={row.canonIssue ? "yp-tag yp-bad" : "yp-tag"}>{row.canonIssue ? `초안 ${row.drafts}개에서 · 정본 문제` : "초안 1개에서 · 그 초안 문제"}</span></div>
-        <ul>{row.notes.map((note, at) => <li key={at}><span className={note.grade === "하" ? "yp-bad" : "yp-warn"}>{note.grade}</span> {note.title} · {formatName(note.format)} — {note.note || "이유 없음"} <small className="yp-muted">({note.by})</small></li>)}</ul></li>)}</ul>
+        <ul>{row.notes.map((note, at) => <li key={at}><span className={note.grade === "하" ? "yp-bad" : "yp-warn"}>{note.grade}</span> {note.title} · {formatName(note.format)} — {note.note || "이유 없음"} <small className="yp-muted">({note.by.includes("@") ? "담당자" : note.by})</small></li>)}</ul></li>)}</ul>
         : <p className="yp-pempty">아직 지적이 없어요.</p>}
       <ol className="yp-grind-how">
         <li>‘정본 문제’로 표시된 지적만 골라, 정본에 넣을 문장(지금 문장 → 새 문장)을 정해요.</li>
@@ -325,7 +325,7 @@ function ScoreBody({ kind, run, result, me, busy, error, place, prev, next, onSa
             className={`yp-btn yp-sm${grades[c.n] === grade ? " yp-pri" : ""}`} onClick={() => setGrades(current => ({ ...current, [c.n]: grade }))}>{grade}</button>)}</div>
           <input className="yp-in" value={notes[c.n] ?? ""} maxLength={300} onChange={event => { const text = event.target.value; setNotes(current => ({ ...current, [c.n]: text })); }}
             placeholder={grades[c.n] && grades[c.n] !== "상" ? "이유 한 줄 (필수)" : "이유 한 줄"} aria-label={`${c.name} 이유`} /></div>)}</div>
-        {others.length ? <p className="yp-hint">다른 사람 채점: {others.map(([, score]) => `${score.name} (${tally(score.grades)})`).join(" · ")}</p> : null}
+        {others.length ? <p className="yp-hint">다른 사람 채점: {others.map(([, score]) => `${score.name.includes("@") ? "담당자" : score.name} (${tally(score.grades)})`).join(" · ")}</p> : null}
         {error ? <div className="yp-note yp-warn" role="alert"><div>{error}</div></div> : null}
       </div>
     </div>
@@ -368,7 +368,7 @@ function ColumnDraftView({ draft, title }: { draft: ColumnDraft; title: string }
   </>;
 }
 
-interface ScriptView { verdicts: ScriptVerdict[]; canon: { id: string; version: string } | null; me: string }
+interface ScriptView { excluded?: number; verdicts: ScriptVerdict[]; canon: { id: string; version: string } | null; me: string }
 const DEMO_VERDICT = (projectId: string, title: string, at: string, bundle: string, failed: (2 | 3 | 4 | 5 | 6)[]): ScriptVerdict => ({ projectId, title, at, by: "[예시] 유쓰", bundle,
   pass: !failed.length, gates: ([2, 3, 4, 5, 6] as const).map(gate => ({ gate, pass: !failed.includes(gate),
     items: failed.includes(gate) ? [{ paragraph: gate * 3, quote: "[예시] 문장", grade: "상" as const, reason: `[예시] 관문 ${gate}에서 비었던 것`, fix: "" }] : [] })) });
@@ -401,11 +401,12 @@ export function ScriptCanonScreen() {
     </div></section>
 
     <YpSection n={1} title="정본 묶음끼리 비교" gq="원고마다 받은 두 번째 검수(관문 2~6)를 모아요 · 다시 뽑지 않아 비용이 들지 않아요">
+      {view.excluded ? <p className="yp-muted">검수 원고와 생성 정본을 확인할 수 없거나 사람이 수정한 원고 {view.excluded}건은 통계에서 제외했어요.</p> : null}
       {bundles.length ? bundles.map(row => <div key={row.bundle} className="yp-grind-bundle">
-        <div className="yp-grind-head"><b>정본 묶음 {row.bundle}</b><small>원고 {row.scripts.length} · 통과 {row.passed} ({Math.round(row.passRate * 100)}%)</small></div>
+        <div className="yp-grind-head"><b>정본 묶음 {row.bundle}</b><small>원고 {row.scripts.length} · 통과 {row.passed} {row.scripts.length < GRADUATION.minimum ? `· 판단 보류 ${row.scripts.length}건` : `(${Math.round(row.passRate * 100)}%)`}</small></div>
         <div className="yp-chips">{row.gates.map(gate => <span key={gate.gate} className={gate.failed ? "yp-tag yp-bad" : "yp-tag yp-ok"}>관문 {gate.gate} {gate.name} {row.scripts.length - gate.failed}/{row.scripts.length}</span>)}</div>
         <ul className="yp-hist">{row.scripts.map(script => { const back = script.gates.filter(gate => !gate.pass).map(gate => gate.gate);
-          return <li key={script.projectId}><span className="yp-grow"><Link className="yp-lnk" href={stepHref(2, script.projectId)}><b>{script.title}</b></Link> <small className="yp-muted">{day(script.at)}{script.by ? ` · ${script.by}` : ""}</small></span>
+          return <li key={script.projectId}><span className="yp-grow"><Link className="yp-lnk" href={stepHref(2, script.projectId)}><b>{script.title}</b></Link> <small className="yp-muted">{day(script.at)}{script.by ? ` · ${script.by.includes("@") ? "담당자" : script.by}` : ""}</small></span>
             <span className={script.pass ? "yp-tag yp-ok" : "yp-tag yp-bad"}>{script.pass ? "통과" : `반려 · 관문 ${back.join("·")}`}</span></li>; })}</ul>
       </div>) : <p className="yp-pempty">아직 두 번째 검수를 받은 원고가 없어요. 롱폼 구성안 단계에서 두 번째 검수를 받으면 여기에 모여요.</p>}
     </YpSection>

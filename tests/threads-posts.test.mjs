@@ -32,3 +32,16 @@ test("roles follow the reply chain and a trailing bare link is the source link",
   assert.equal(threadsPostRole(four,1),"1번 글에 답글");
   assert.equal(threadsPostRole(four,3),"원문 링크 · 3번 글에 답글");
 });
+
+test("facts keep the evidence of the exact reviewed sentence; opinions and bare link replies need no source",async()=>{
+  const {threadsClaims,threadsClaimsProblem}=await import("../lib/threads-posts.ts");
+  const posts=["신청 기간은 7일입니다. 짧다고 생각합니다.","https://example.com/info"];
+  const claims=threadsClaims(posts,[]);
+  assert.equal(claims.length,2);
+  claims[0].kind="fact";
+  claims[1].kind="interpretation";
+  assert.match(threadsClaimsProblem(posts,claims),/출처/);
+  claims[0].source="https://example.com/info";
+  assert.equal(threadsClaimsProblem(posts,claims),null);
+  assert.match(threadsClaimsProblem(["신청 기간은 8일입니다. 짧다고 생각합니다."],claims),/구분/);
+});

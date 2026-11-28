@@ -19,7 +19,7 @@ function load(path,modules,env={}) {
 function harness({configured=true,needsImage=false}={}) {
   const env=configured?{OPENAI_API_KEY:"test-not-a-key"}:{};
   const rows=new Map(), calls={models:[],saved:[],scheduled:[],credits:0};
-  const source={id:project,owner_id:owner,title:"샘플 광고",metadata:{appliedJobs:{}},version:1};
+  const source={id:project,owner_id:owner,title:"샘플 광고",metadata:{appliedJobs:{},state:{brief:{}}},version:1};
   const db=()=>({from(table){
     assert.notEqual(table,"os_documents","brief text cannot request service-role documents");
     const filters=[];let write,insert;
@@ -38,9 +38,9 @@ function harness({configured=true,needsImage=false}={}) {
     imageMeta:r=>r.metadata,imageInputKey:()=>"a".repeat(64),imageJobPhase:(_r,request,guided)=>"phase"in request?"formats":guided&&!needsImage?"copy":undefined,
     imageError:e=>e,imageJobRequestSchema:zod.z.any(),renderTarget:zod.z.enum(["local","macmini"]),
     imageJobInstructions:(_r,_req,textOnly,_id,executor)=>{assert.equal(textOnly,true);assert.equal(executor,"company-api");return `User brief includes doc_id: ${project}\nReturn result {"copies":[{"headline":"새 카피","body":"","cta":"확인"}]}`;},
-    importImageResults:async(_db,_r,_req,result,_by,jobId)=>{calls.saved.push(result);source.metadata.appliedJobs[jobId]="batch-1";return {batchId:"batch-1"};},
+    importImageResults:async(_db,_r,_req,result,_by,jobId,trace)=>{assert.equal(trace[0].version,2);calls.saved.push(result);source.metadata.appliedJobs[jobId]="batch-1";return {batchId:"batch-1"};},
   };
-  const common={"@/lib/http":{ApiError},"@/lib/supabase/server":{createServiceSupabase:db}};
+  const common={"./production-canon":{productJobFacts:async()=>({ref:{id:"99999999-9999-4999-8999-999999999999",title:"상품 사실 정본",version:2},text:"테스트 상품 사실"})},"@/lib/http":{ApiError},"@/lib/supabase/server":{createServiceSupabase:db}};
   const jobs=load("../lib/server/youtube-ai-jobs.ts",{...common,"node:crypto":crypto,zod,"./image-creatives":image,
     "@/lib/youtube-automation-gate":{canUseYoutubeStaffScript:()=>false},"@/lib/youtube-process/stages":{SLOTS:["A","B","C"]},
     "./youtube-process-card-job":{cardFormatsSchema:zod.z.array(zod.z.string())}},env);

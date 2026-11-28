@@ -95,8 +95,8 @@ export function ThreadsAsideHandoff({ item, dirty, onRefresh, onJobsLoaded, jobR
     setNotice("이전 요청을 닫았습니다. 요청문을 새로 복사해 Aside에 보내 주세요. 이전 요청의 결과를 다시 붙여 넣지 마세요.");
   });
 
-  return <section className="ca-v07-aside" aria-label="내 AI로 쓰레드 집필" aria-busy={busy || loading}>
-    <h2>내 AI로 쓰레드 집필</h2>
+  return <section className="ca-v07-aside" aria-label="내 AI로 스레드 집필" aria-busy={busy || loading}>
+    <h2>내 AI로 스레드 집필</h2>
     <ol className="ca-v07-aside-steps" aria-label="집필 진행 순서">
       <li aria-current={step === 1 ? "step" : undefined}>1. 요청문 복사</li>
       <li aria-current={step === 2 ? "step" : undefined}>2. Aside에서 실행</li>

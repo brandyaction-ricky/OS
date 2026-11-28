@@ -67,3 +67,31 @@ export function parseReview2(text: string, paragraphs: number): Pick<YpReview2, 
     .map((it) => ({ ...it, quote: cut(it.quote), reason: cut(it.reason), fix: cut(it.fix) })) }));
   return { pass: kept.every((row) => row.pass), gates: kept, doubts: parsed.doubts.slice(0, 5).map(cut) };
 }
+
+/** Match unchanged paragraphs only when their position or unique content is unambiguous. */
+export function reviewDelta(previous: YpReview2, keys: string[]) {
+  const old = previous.paragraphKeys;
+  if (previous.state !== "done" || !old?.length || !keys.length || previous.gates.some(gate => !gate.pass && !gate.items.length)) return null;
+  const positions = new Map<number, number>();
+  const changed: number[] = [];
+  keys.forEach((key, index) => {
+    const oldIndex = old.length === keys.length && old[index] === key ? index : old.indexOf(key);
+    if (oldIndex < 0 || (oldIndex !== index && (old.lastIndexOf(key) !== oldIndex || keys.indexOf(key) !== keys.lastIndexOf(key))) || positions.has(oldIndex + 1)) changed.push(index + 1);
+    else positions.set(oldIndex + 1, index + 1);
+  });
+  if (!changed.length || changed.length === keys.length) return null;
+  return { positions, changed };
+}
+
+export function mergeDelta(previous: YpReview2, fresh: NonNullable<ReturnType<typeof parseReview2>>, delta: NonNullable<ReturnType<typeof reviewDelta>>) {
+  const gates = fresh.gates.map(gate => {
+    const before = previous.gates.find(old => old.gate === gate.gate);
+    const retained = (before?.items ?? []).flatMap(item => {
+      const paragraph = delta.positions.get(item.paragraph);
+      return paragraph ? [{ ...item, paragraph }] : [];
+    });
+    const items = [...retained, ...gate.items.filter(item => delta.changed.includes(item.paragraph))].sort((a, b) => a.paragraph - b.paragraph);
+    return { ...gate, items, pass: gate.pass && !(before?.pass === false && retained.some(item => item.grade !== "하")) };
+  });
+  return { ...fresh, gates, pass: gates.every(gate => gate.pass), doubts: [...new Set([...previous.doubts, ...fresh.doubts])].slice(-5) };
+}

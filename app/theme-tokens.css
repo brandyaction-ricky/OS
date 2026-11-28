@@ -122,3 +122,31 @@ html[data-theme="light"] {
 }
 
 ::selection { background: var(--accent-soft); color: var(--text); }
+
+:root {
+  --myin-studio-color-1: #2f65d9;
+  --myin-studio-color-2: #1e2430;
+  --myin-studio-color-3: #5b6472;
+  --myin-studio-color-4: white;
+  --myin-studio-color-5: #e9f2ed;
+  --myin-studio-color-6: #316447;
+  --myin-studio-color-7: #dce7ff;
+  --myin-studio-color-8: #f5f8ff;
+  --myin-studio-color-9: #d9dfea;
+  --myin-studio-color-10: #fff;
+  --myin-studio-color-11: #91b2ff;
+  --myin-studio-color-12: #e7eaf0;
+  --myin-studio-color-13: #eef4ff;
+  --myin-studio-color-14: #c4d6ff;
+  --myin-studio-color-15: #e1e5ed;
+  --myin-studio-color-16: #1e243005;
+  --myin-studio-color-17: #f6f8fc;
+  --myin-studio-color-18: #e8ebf0;
+  --myin-studio-color-19: #a53630;
+  --myin-studio-color-20: #edceca;
+  --myin-studio-color-21: #fff6f5;
+  --myin-studio-color-22: #2f65d91c;
+  --myin-studio-color-23: #f6f9ff;
+  --myin-studio-color-24: #1e24300e;
+  --myin-studio-color-25: #c1cee6;
+}

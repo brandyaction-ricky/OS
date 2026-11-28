@@ -11,7 +11,7 @@ export const COPIED_STAGES = ["plan", "outline", "make", "shortScript"] as const
 /** The copy's project meta: same step (제작 at most), the 주제 · 기획안 컨펌 kept, everything after the video left behind. */
 export function copiedMeta(yp: YpMeta, now: string): YpMeta {
   const kept = { ...yp };
-  delete kept.shortsConfirmed; delete kept.shortsLog;
+  delete kept.adRelease; delete kept.shortsConfirmed; delete kept.shortsLog;
   return { ...kept, stage: AFTER_MAKE.includes(yp.stage) ? "make" : yp.stage, gates: { ...emptyGates(), topic: yp.gates.topic, draft: yp.gates.draft }, contentUpdatedAt: now };
 }
 

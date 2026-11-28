@@ -11,7 +11,13 @@ test("한눈에 보기 groups open work, confirms from the panel and switches to
   const pane = page.getByRole("complementary", { name: "확인 필요" });
   await expect(pane.getByRole("heading", { name: "확인 필요 2" })).toBeVisible();
   await expect(page.getByRole("region", { name: "AI 일하는 중" })).toContainText("분째");
-  await expect(page.getByRole("region", { name: "막힘" })).toContainText("참고 영상 주소를 열지 못했어요");
+  const blocked = page.getByRole("region", { name: "막힘" });
+  await expect(blocked).toContainText("다시 확인 필요");
+  await expect(blocked).not.toContainText("참고 영상 주소를 열지 못했어요");
+  await blocked.getByRole("button").first().click();
+  await page.getByText("오류 상세", { exact: true }).click();
+  await expect(page.getByRole("complementary", { name: "고른 일" })).toContainText("참고 영상 주소를 열지 못했어요");
+  await page.getByRole("button", { name: "확인 필요로 돌아가기" }).click();
   await expect(page.getByRole("link", { name: /한눈에 보기/ }).first()).toBeVisible();
   // The state cards are 주제 찾기's platform cards; one narrows the list to its group.
   await page.getByRole("button", { name: /^사람 작업 중/ }).click();
@@ -37,6 +43,30 @@ test("한눈에 보기 groups open work, confirms from the panel and switches to
 });
 
 // 시안 P3: 지도 (never the default), a branch per channel, 채널 확대 with 어제 · 오늘 · 다음, and 지켜보기.
+test("marking a project as a test hides it in decisions and schedules until each view includes tests", async ({ page }) => {
+  await page.goto("/content/projects?platform=card");
+  const title = "[예시] 월요일마다 무거운 사람의 공통점";
+  const card = page.locator(".yp-mv").filter({ hasText: title });
+  await card.getByRole("button", { name: "시험 표시", exact: true }).click();
+  await expect(card).toHaveCount(0);
+  await page.getByRole("checkbox", { name: "시험·복사본 포함" }).check();
+  await expect(card.getByRole("button", { name: "시험 해제" })).toHaveAttribute("aria-pressed", "true");
+  const overview = page.getByRole("link", { name: /^한눈에 보기/ }).first();
+  if (!await overview.isVisible()) await page.getByRole("button", { name: /^공통/ }).first().click();
+  await overview.click();
+  const decisions = page.locator(".yp-ov-list");
+  await expect(decisions).toBeVisible();
+  await expect(decisions).not.toContainText(title);
+  await page.getByRole("checkbox", { name: "시험 포함" }).check();
+  await expect(decisions).toContainText(title);
+  await page.getByRole("link", { name: "스케줄", exact: true }).first().click();
+  const undated = page.getByRole("complementary", { name: "날짜 없는 콘텐츠" });
+  await expect(undated).toBeVisible();
+  await expect(undated).not.toContainText(title);
+  await page.getByRole("checkbox", { name: "시험 포함" }).check();
+  await expect(undated).toContainText(title);
+});
+
 test("지도 shows a branch per channel, zooms into one and watches for changes", async ({ page }) => {
   await page.goto("/content/overview");
   await page.getByRole("button", { name: "지도" }).click();

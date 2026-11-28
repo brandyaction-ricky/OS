@@ -23,7 +23,7 @@ const lease = { renderId: z.string().uuid(), lease: z.string().uuid() };
 const pc = z.string().regex(RENDER_PC_NAME).optional();
 const inputSchema = z.discriminatedUnion("action", [
   ...imageMacActions,
-  z.object({action:z.literal("shorts_claim"),layoutVersion:z.union([z.literal(2),z.literal(3),z.literal(4)]),renderId:z.string().uuid().optional(),diagramTypes:z.array(z.enum(DIAGRAM_TYPES)).max(70).optional()}).strict(),
+  z.object({action:z.literal("shorts_claim"),layoutVersion:z.union([z.literal(2),z.literal(3),z.literal(4),z.literal(5)]),renderId:z.string().uuid().optional(),diagramTypes:z.array(z.enum(DIAGRAM_TYPES)).max(70).optional()}).strict(),
   z.object({action:z.literal("shorts_voice"),...lease,index:z.number().int().min(0).max(19)}).strict(),
   z.object({action:z.literal("shorts_complete"),...lease,bytes:z.number().int().positive().max(50_000_000),
     sha256:z.string().regex(/^[a-f0-9]{64}$/),duration:z.number().positive().max(61)}).strict(),

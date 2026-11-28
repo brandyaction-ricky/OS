@@ -1,0 +1,84 @@
+{
+  "images": [
+    {
+      "file": "card-01.png",
+      "sha256": "037de13e2818d93d33e89d1a922509153407012ebdb5d374e5a7bc181c033faa",
+      "w": 1080,
+      "h": 1350
+    },
+    {
+      "file": "card-02.png",
+      "sha256": "203f34e0a07d1a43fab75aaf26b44ad2b678c04ba36e58665ad083e26d593a0b",
+      "w": 1080,
+      "h": 1350
+    },
+    {
+      "file": "card-03.png",
+      "sha256": "af2a8fea7a78173957b01d14c091c104acbba202f47490b17591bcb6ae3e908c",
+      "w": 1080,
+      "h": 1350
+    },
+    {
+      "file": "card-04.png",
+      "sha256": "34e3d3c2ab1271a09578d90ad062cf8e92960fedb711ae9fb85c268b69c1bd21",
+      "w": 1080,
+      "h": 1350
+    },
+    {
+      "file": "card-05.png",
+      "sha256": "80613fd057dc5a07dc3824bbc6ee7a27a0df58547943fdb9b0bac36dacf9c8de",
+      "w": 1080,
+      "h": 1350
+    },
+    {
+      "file": "card-06.png",
+      "sha256": "b23dc0161b6da894f8985e077abdd44724453fbe063f9afe25f281eb1e45f675",
+      "w": 1080,
+      "h": 1350
+    },
+    {
+      "file": "card-07.png",
+      "sha256": "9c78c8609de874345c841d123de3d08a4dd472daa83e24819f447852d6a659a1",
+      "w": 1080,
+      "h": 1350
+    },
+    {
+      "file": "card-08.png",
+      "sha256": "788ab944d6b541edd6e5210ade6f9a83381ab51a623164a66612583111d0a0ab",
+      "w": 1080,
+      "h": 1350
+    }
+  ],
+  "previewEqualsExport": true,
+  "uiChecks": [
+    "원문 5종 확인",
+    "정본 2문서 저장·재열람",
+    "기획 8장 필드·글자수 통과",
+    "초과 원고 진행 차단",
+    "원고 수정·새로고침 복원",
+    "생성 그림 업로드·PNG 재생성",
+    "디자인 변경 시 이전 출력 다운로드 차단",
+    "PNG 8장 1080x1350",
+    "ZIP 8장 순서·캡션·미리보기 SHA256 일치",
+    "390px 모바일 가로 넘침 없음",
+    "편집 원본 JSON 복원 및 이전 내용 자동 백업"
+  ],
+  "notRun": [
+    "회사 AI API 연결 환경 실행",
+    "운영 화면 배포"
+  ],
+  "tests": {
+    "relatedCards": "44 passed",
+    "styles": "13 passed",
+    "fullSuite": {
+      "tests": 1940,
+      "passed": 1929,
+      "failed": 1,
+      "skipped": 10
+    },
+    "remainingFailure": "기존 myin-replaced-run-stop: sandbox에서 ps spawn EPERM",
+    "lint": "0 errors; 20 warnings",
+    "typecheck": "passed",
+    "build": "passed"
+  }
+}

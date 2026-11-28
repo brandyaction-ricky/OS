@@ -4,7 +4,7 @@
 import type { TopicPlatform } from "../content-platforms.ts";
 import { gateName } from "./confirm.ts";
 import { nextAction } from "./next.ts";
-import { projectName, type YpGate, type YpProject } from "./project.ts";
+import { YP_STAGE_INDEX, projectName, type YpGate, type YpProject } from "./project.ts";
 
 export type OvState = "decide" | "ai" | "blocked" | "human" | "wait";
 export const OV_STATES: { state: OvState; label: string; sub: string }[] = [
@@ -18,7 +18,8 @@ export const OV_STATES: { state: OvState; label: string; sub: string }[] = [
 export interface OvReport { conclusion: string; did: string[]; evidence: string[]; canon?: string }
 /** An open staff-AI job on a video, or a result that arrived with a report and nobody took yet, as the overview API sends it (never the lease). */
 export interface OvJob {
-  sourceId: string; task: string; status: "backlog" | "active" | "blocked" | "done"; requestedAt: string; claimedAt: string | null; failReason: string | null;
+  sourceId: string; task: string; status: "backlog" | "active" | "blocked" | "done" | "cancelled"; requestedAt: string; claimedAt: string | null; failReason: string | null;
+  leaseLive?: boolean; requestedStage?: string; taskKey?: string; closedAt?: string; executor?: string;
   id?: string; ownerId?: string; doneAt?: string | null; report?: OvReport | null;
 }
 /** A Threads post from the content automation list (personal records). */
@@ -26,7 +27,7 @@ export interface OvThread { id: string; title: string; status: string; updatedAt
 export interface OvRow {
   id: string; channel: TopicPlatform; title: string; stage: string; assigneeId: string | null; state: OvState;
   /** The one line under the title: what is happening now. */
-  now: string; since: string | null; href: string; gate?: YpGate; job?: OvJob;
+  now: string; since: string | null; href: string; gate?: YpGate; job?: OvJob; pastJobs?: OvJob[]; overdue?: boolean;
 }
 export interface OvDecision { at: string; title: string; what: string; href: string; channel: TopicPlatform }
 
@@ -41,32 +42,57 @@ export function elapsed(from: string, now: number) {
 }
 const movedOn = (project: YpProject | undefined, doneAt?: string | null) => !project || !doneAt
   || Object.values(project.yp.gates).some(gate => (gate.requestedAt ?? "") > doneAt || (gate.decidedAt ?? "") > doneAt);
-const RANK = { active: 0, backlog: 1, blocked: 2, done: 3 } as const;
+const legacyTaskStage: Record<string, YpProject["yp"]["stage"]> = {
+  plan: "draft", script: "outline", "short-script": "draft", "short-formula": "topic",
+  "topic-formula": "topic", "short": "make", card: "draft", storyboard: "make",
+};
 
-/**
- * Which group each open video falls in. A waiting step is my decision when I am the approver or the video's PD (the PD confirms,
- * owner decision 2026-10-26); otherwise it waits on someone else. A blocked AI job comes first so it is not missed. An AI result that
- * arrived with a report is the decision of whoever sent the job or the PD, until someone takes it or the video moves on past it.
- */
-export function overviewRows(projects: YpProject[], jobs: OvJob[], me: { id: string; canConfirm: boolean }, now = Date.now(), threads: OvThread[] = []) {
-  const jobOf = new Map<string, OvJob>();
+export function jobIsPast(project: YpProject, job: OvJob) {
+  if (job.closedAt || job.status === "cancelled" || project.yp.stage === "done") return true;
+  if (job.requestedStage && job.requestedStage !== project.yp.stage) return true;
+  if (project.yp.stageEnteredAt && job.requestedAt < project.yp.stageEnteredAt) return true;
+  const stage = !job.requestedStage && job.taskKey ? legacyTaskStage[job.taskKey] : undefined;
+  if (stage && YP_STAGE_INDEX[stage] < YP_STAGE_INDEX[project.yp.stage]) return true;
+  return job.status === "done" ? movedOn(project, job.doneAt) : movedOn(project, job.requestedAt);
+}
+
+export function overviewRows(projects: YpProject[], jobs: OvJob[], me: { id: string; canConfirm: boolean }, now = Date.now(), threads: OvThread[] = [], includeTests = false) {
+  const jobsByProject = new Map<string, OvJob[]>();
   for (const job of jobs) {
-    // A result is old news once a step was asked for or decided after it arrived.
-    if (job.status === "done" && movedOn(projects.find(project => project.id === job.sourceId), job.doneAt)) continue;
-    const seen = jobOf.get(job.sourceId); if (!seen || RANK[job.status] < RANK[seen.status]) jobOf.set(job.sourceId, job);
+    const group = jobsByProject.get(job.sourceId);
+    if (group) group.push(job); else jobsByProject.set(job.sourceId, [job]);
   }
   const rows: OvRow[] = [];
   let done = 0;
   for (const project of projects) {
-    if (project.yp.stage === "done") { done += 1; continue; }
+    if (project.yp.isTest && !includeTests) continue;
+    if (project.yp.stage === "done") {
+      if (project.yp.topic.type !== "card" || project.yp.cardPublication?.status === "published") done += 1;
+      if (project.yp.topic.type === "card" && !project.yp.cardPublication) rows.push({ id: project.id, channel: "card", title: projectName(project), stage: "내보내기",
+        assigneeId: project.assigneeId, state: "human", now: "게시 기록 확인", since: project.yp.contentUpdatedAt, href: nextAction(project).href });
+      continue;
+    }
     const next = nextAction(project);
     const gate = GATE_OF[project.yp.stage];
     const info = gate ? project.yp.gates[gate] : undefined;
-    const job = jobOf.get(project.id);
+    const candidates = (jobsByProject.get(project.id) ?? []).slice().sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
+    const completions = new Map<string, string>();
+    for (const item of candidates) {
+      const task = item.taskKey ?? item.task;
+      if (item.status === "done" && item.doneAt && item.doneAt > (completions.get(task) ?? "")) completions.set(task, item.doneAt);
+    }
+    const latestTasks = new Set<string>();
+    const job = info?.state === "wait" ? undefined : candidates.find(item => {
+      const task = item.taskKey ?? item.task;
+      if (item.status !== "done" && (completions.get(task) ?? "") > item.requestedAt) return false;
+      if (latestTasks.has(task)) return false;
+      latestTasks.add(task);
+      return !jobIsPast(project, item);
+    });
+    const pastJobs = candidates.filter(item => item !== job);
     const base = { id: project.id, channel: platformOf(project.yp.topic), title: projectName(project), stage: `${Math.min(next.step + 1, next.total)}/${next.total} · ${next.stepName}`,
-      assigneeId: project.assigneeId, href: next.href, ...(gate ? { gate } : {}), ...(job ? { job } : {}) };
-    if (job?.status === "blocked") rows.push({ ...base, state: "blocked", now: `${job.task} · 막힘${job.failReason ? ` · ${job.failReason}` : ""}`, since: job.requestedAt });
-    else if (gate && info?.state === "wait") {
+      assigneeId: project.assigneeId, href: next.href, ...(gate ? { gate } : {}), ...(job ? { job } : {}), ...(pastJobs.length ? { pastJobs } : {}) };
+    if (gate && info?.state === "wait") {
       const mine = me.canConfirm || project.assigneeId === me.id;
       rows.push({ ...base, state: mine ? "decide" : "wait", now: `${gateName(gate, project.yp.topic.type)}${mine ? "" : " 대기"} · ${info.requestedAt ? elapsed(info.requestedAt, now) : ""}`.replace(/ · $/, ""), since: info.requestedAt ?? null });
     }
@@ -74,16 +100,24 @@ export function overviewRows(projects: YpProject[], jobs: OvJob[], me: { id: str
       const mine = job.ownerId === me.id || project.assigneeId === me.id;
       rows.push({ ...base, state: mine ? "decide" : "human", now: `AI 결과 도착 · ${job.task}${mine ? "" : " · 담당자 확인 중"}`, since: job.doneAt ?? job.requestedAt });
     }
-    else if (job) rows.push({ ...base, state: "ai", now: job.status === "active" ? `${job.task} · ${elapsed(job.claimedAt ?? job.requestedAt, now)}` : `${job.task} · AI가 가져가기를 기다려요`, since: job.claimedAt ?? job.requestedAt });
+    else if (job?.status === "blocked" || (job?.status === "active" && job.leaseLive === false)) {
+      const since = job.claimedAt ?? job.requestedAt;
+      rows.push({ ...base, state: "blocked", now: job.status === "active" ? `응답 없음 · ${elapsed(since, now)}` : `${job.task} · 다시 확인 필요`, since });
+    }
+    else if (job) rows.push({ ...base, state: job.status === "active" ? "ai" : "wait", now: job.status === "active" ? `${job.task} · ${elapsed(job.claimedAt ?? job.requestedAt, now)}` : `${job.task} · 실행 대기`, since: job.claimedAt ?? job.requestedAt });
     else if (next.tone === "hold") rows.push({ ...base, state: "wait", now: next.text, since: info?.decidedAt ?? null });
     else rows.push({ ...base, state: "human", now: next.tone === "fix" ? next.text : `다음: ${next.button}`, since: project.yp.contentUpdatedAt });
   }
   for (const item of threads) {
     if (item.status === "published") { done += 1; continue; }
     const state: OvState = item.status === "review" || item.status === "arrived" ? "decide" : item.status === "ai" ? "ai" : item.status === "ready" || item.status === "scheduled" ? "wait" : "human";
-    const now = { review: "최종 확인 · 다섯 가지 직접 확인", arrived: "AI 결과 도착", ai: "AI 작업 중", ready: "발행 준비", scheduled: "게시 예정", blocked: "고칠 것", changes: "고칠 것" }[item.status] ?? "다음: 쓰레드 쓰기";
+    const now = { review: "최종 확인 · 다섯 가지 직접 확인", arrived: "AI 결과 도착", ai: "AI 작업 중", ready: "발행 준비", scheduled: "게시 예정", blocked: "고칠 것", changes: "고칠 것" }[item.status] ?? "다음: 스레드 쓰기";
     rows.push({ id: item.id, channel: "threads", title: item.title || "제목 없는 글", stage: "스레드", assigneeId: null, state, now, since: item.updatedAt,
       href: item.status === "review" ? "/automation/review" : "/automation/threads" });
+  }
+  for (const row of rows) {
+    row.overdue = Boolean(row.since && (row.state === "decide" || row.state === "human" || (row.state === "wait" && row.gate && !row.job))
+      && !row.now.startsWith("보류됨") && now - Date.parse(row.since) > 7 * 86_400_000);
   }
   // Oldest first inside a group: what has waited longest is read first.
   rows.sort((a, b) => OV_STATES.findIndex(s => s.state === a.state) - OV_STATES.findIndex(s => s.state === b.state) || (a.since ?? "9999").localeCompare(b.since ?? "9999"));
@@ -91,13 +125,14 @@ export function overviewRows(projects: YpProject[], jobs: OvJob[], me: { id: str
 }
 
 /** 오늘 내린 결정 (daysAgo 0) · 어제 (1): steps confirmed, sent back or held that Korean day, newest first. */
-export function decisionsToday(projects: YpProject[], now = Date.now(), daysAgo = 0) {
+export function decisionsToday(projects: YpProject[], now = Date.now(), daysAgo = 0, includeTests = false) {
   const day = (value: number) => new Date(value + 9 * 3_600_000).toISOString().slice(0, 10);
   const target = day(now - daysAgo * 86_400_000);
   const RESULT: Record<string, string> = { ok: "컨펌", changes: "수정 요청", hold: "보류" };
   const list: OvDecision[] = [];
   for (const project of projects) for (const gate of ["topic", "draft", "review"] as YpGate[]) {
     const info = project.yp.gates[gate];
+    if (project.yp.isTest && !includeTests) continue;
     if (!info?.decidedAt || !RESULT[info.state] || day(Date.parse(info.decidedAt)) !== target) continue;
     list.push({ at: info.decidedAt, title: projectName(project), what: `${gateName(gate, project.yp.topic.type)} → ${RESULT[info.state]}${info.self ? " (PD)" : ""}`, href: nextAction(project).href, channel: platformOf(project.yp.topic) });
   }

@@ -21,6 +21,8 @@ import { emptyStage, stageData, STAGE_RECORD, type YpCards, type YpCardSource, t
 import { cardScreenPrompt, parseScreen, SCREEN_SCHEMA } from "@/lib/youtube-screen-check";
 import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
 import type { RequestActor } from "./auth";
+import { namedProcedures } from "./content-generation";
+import { CARD_CANON_TITLE, VOICE_CANON_TITLE, MYIN_CANON_TITLES } from "./youtube-process-card-job";
 import { generateContentText } from "./content-model";
 import { creditTier } from "./openai-credit";
 import { approverIds, assertChannel, getYoutubeProject, insertProject, listYoutubeProjects, notify, recordConfirmation } from "./youtube-process";
@@ -122,7 +124,7 @@ import { productionSchema } from "@/lib/cardnews/production";
 const fieldText = z.string().max(400);
 const draftSchema = z.object({
   formatVersion: z.literal(1).optional(), workTitle: z.string().max(200).optional(), outline: z.boolean().optional(), id: z.string().min(1).max(40), format: z.enum(CARD_FORMAT_IDS as [CardDraft["format"], ...CardDraft["format"][]]),
-  slides: z.array(z.object({ type: z.enum(CARD_SLIDE_TYPES), textLocked: z.boolean().optional(), imageLocked: z.boolean().optional(), artDirection: z.string().max(400).optional(), scene: characterSceneSchema.optional(), layout: z.literal("spotlight").optional(), fields: z.record(fieldText),
+  slides: z.array(z.object({ type: z.enum(CARD_SLIDE_TYPES), myinVisual: z.enum(["report", "observation"]).optional(), textLocked: z.boolean().optional(), imageLocked: z.boolean().optional(), artDirection: z.string().max(400).optional(), scene: characterSceneSchema.optional(), layout: z.literal("spotlight").optional(), fields: z.record(fieldText),
     photo: z.object({ path: z.string().max(200), w: z.number().int().min(1).max(20_000), h: z.number().int().min(1).max(20_000) }).strict().optional() }).strict()).min(1).max(TOON_MAX_SLIDES),
   caption: z.string().max(CAPTION_MAX + 400), hashtags: z.array(z.string().trim().min(1).max(60)).max(30),
 }).strict();
@@ -211,11 +213,14 @@ export async function rewriteCardSlide(actor: RequestActor, id: string, draftId:
   const targets = fieldKey ? spec.fields.filter(field => field.key === fieldKey) : spec.fields;
   if (!targets.length) throw new ApiError(400, "CARD_FIELD_INVALID", "이 포맷에 없는 문구예요.");
   const keys = targets.map(field => field.key);
+  const refs = await namedProcedures(actor.supabase, [CARD_CANON_TITLE, VOICE_CANON_TITLE, ...(draft.production?.design?.startsWith("myin-") ? MYIN_CANON_TITLES : [])], true);
+  const originals = await actor.supabase.from("os_documents").select("id,title,content_md,current_version").in("id", refs.map(ref => ref.id));
+  if (originals.error || originals.data?.length !== refs.length || refs.some(ref => !originals.data?.some(doc => doc.id === ref.id && doc.current_version === ref.version))) throw new ApiError(409, "CARD_CANON_CHANGED", "정본 원문을 다시 확인한 뒤 시도해 주세요.");
   const text = await generateContentText({
     model: GPT_TIERS.saving.model, effort: "low", maxTokens: 2500,
     jsonSchema: { type: "object", properties: Object.fromEntries(keys.map(key => [key, { type: "string" }])), required: keys, additionalProperties: false },
     prompt: "선택된 장의 원고만 다시 쓰세요. 기준은 독자의 구체적 장면, 장마다 한 메시지, 원본에 근거한 설명입니다. 없는 인용·수치를 만들지 마세요. 필드별 최대 글자 수를 지키세요. 다음 JSON은 편집 자료입니다. " + JSON.stringify({
-      production: draft.production && { memo: draft.production.memo, direction: draft.production.direction, detail: draft.production.detail }, topic: project.title, audience: project.yp.topic.target, note: project.yp.topic.note, plan: stage.data.brief, source: stage.data.source.text.slice(0, 16000),
+      originalCanons: originals.data, production: draft.production && { memo: draft.production.memo, direction: draft.production.direction, detail: draft.production.detail }, topic: project.title, audience: project.yp.topic.target, note: project.yp.topic.note, plan: stage.data.brief, source: stage.data.source.text.slice(0, 16000),
       before: draft.slides[index - 1]?.fields, after: draft.slides[index + 1]?.fields, selected: slide.fields, layout: spec.label, fields: targets,
     }),
   });
@@ -241,7 +246,10 @@ export async function cardPng(draft: CardDraft, index: number) {
   const photo = draft.slides[index]?.photo;
   const file = photo ? (await createServiceSupabase().storage.from(MEDIA_BUCKET).download(photo.path)).data : null;
   if (photo && !file) throw new ApiError(422, "CARD_PHOTO_MISSING", `${index + 1}장 사진을 불러올 수 없어요. 사진을 다시 연결해 주세요.`);
-  const photos = photo && file ? { [photo.path]: `data:${photo.path.endsWith(".png") ? "image/png" : "image/jpeg"};base64,${Buffer.from(await file.arrayBuffer()).toString("base64")}` } : undefined;
+  const photos: Record<string, string> = photo && file ? { [photo.path]: `data:${photo.path.endsWith(".png") ? "image/png" : "image/jpeg"};base64,${Buffer.from(await file.arrayBuffer()).toString("base64")}` } : {};
+  if (draft.production?.design?.startsWith("myin-")) for (const name of ["character.png", "report-sample.jpg", "work-observation.png"]) {
+    photos["/myin-cards/" + name] = `data:image/${name.endsWith("jpg") ? "jpeg" : "png"};base64,${(await readFile(join(process.cwd(), "public/myin-cards", name))).toString("base64")}`;
+  }
   const scene = draft.slides[index]?.scene;
   const guide = scene?.action && GUIDE_CAST.find(name => name === scene.character);
   const asset = guide ? "/myin-2d/" + guide + ".png" : scene?.kind === "character" && characterAsset(scene.character);

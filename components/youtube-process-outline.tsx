@@ -1,11 +1,12 @@
 "use client";
+import { CanonRail } from "./canon-rail";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { apiRequest } from "@/lib/api-client";
 import { Clock, Eye, Info, MessageSquare, Sparkles } from "lucide-react";
 import { myinCleanScript } from "@/lib/myin-script";
 import { projectName } from "@/lib/youtube-process/project";
-import { lengthEstimate, minSec, outlineMissing, paragraphTimes, quoteFromSelection, runtimeError, scriptChars, shotLine, shotList, SPEC_OPTIONS, specOption, ypFormat, type ShotKind, type YpOutline, type YpScriptNote } from "@/lib/youtube-process/stages";
+import { lengthEstimate, minSec, outlineMissing, paragraphTimes, quoteFromSelection, runtimeError, scriptChars, scriptKey, shotLine, shotList, SPEC_OPTIONS, specOption, ypFormat, type ShotKind, type YpOutline, type YpScriptNote } from "@/lib/youtube-process/stages";
 import { checkScriptBody } from "@/lib/youtube-script-check";
 import { KnowledgeRichEditor, type KnowledgeRichEditorMethods } from "./knowledge-rich-editor";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
@@ -140,6 +141,12 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
   const action = page.bundle ? stepAction(page, 2, project?.yp.stage === "outline" ? { kind: "button", label: "다음: 제작", reason: missing, busy: moving, onClick: () => void move() } : { kind: "status", status: "구성안 끝남" }) : null;
   const current = form?.versions.at(-1)?.v ?? 0;
   const viewing = viewV && viewV !== current ? form?.versions.find(item => item.v === viewV) ?? null : null;
+  const manuscriptVersion = viewing ?? form?.versions.at(-1);
+  const hasAiSource = manuscriptVersion?.why === "ai" && (viewing || manuscriptVersion.md === form?.script);
+  const legacySource = manuscriptVersion?.at === form?.ai?.at ? form?.ai : undefined;
+  const review = page.bundle?.stages.review2.data;
+  const reviewKey = scriptKey(viewing?.md ?? script);
+  const judgement = review?.state === "done" && review.key === reviewKey ? review : [...(review?.history ?? [])].reverse().find(item => item.key === reviewKey);
   const pulling = ypFormat(page.bundle?.stages.plan.data) === "pulling";
   const estimate = form ? lengthEstimate(viewing?.md ?? form.script, form.spec.runtimeMin, viewing ? null : voiceSec, pulling) : null;
   // 로건 QA 10/30: a 최종 검토 note at 00:56 had nowhere to point in 4,609 letters — each spoken paragraph with its number and time.
@@ -260,6 +267,7 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
       {project.yp.stage === "outline" ? <GateBanner page={page} gate="draft" /> : null}
       {project.yp.stage !== "outline" && editable && anim ? <div className="yp-note yp-warn" role="status"><Info size={16} className="yp-i" aria-hidden="true" /><div>원고를 한 글자라도 고치면 음성을 처음부터 다시 만들어요(음성 비용이 다시 들어요). 그 뒤 받아쓰기 · 자막, 장면 기획표, 미리보기 확인, 완성 영상도 다시 거쳐요. 이미 만든 최종본은 그대로 남아요.</div></div> : null}
       <Subject page={page} />
+      {form && <CanonRail refs={hasAiSource ? manuscriptVersion?.trace ?? legacySource?.trace : undefined} legacy={hasAiSource ? legacySource?.canonBundle : undefined} check={(viewing?.md ?? script).trim() ? (judgement ? (judgement.pass ? "두 번째 검수 통과" : "두 번째 검수 · 수정 필요") : "두 번째 검수 전") : undefined} pending={!form.script.trim()} />}
       <div className="yp-wrap2"><div>
         <YpSection n={1} title="영상 스펙" gq={anim ? "최종본 기준" : "촬영 · 최종본 기준"} need className="yp-compact">
           <div className="yp-spec1">
@@ -327,7 +335,7 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
             <p className="yp-hint" style={{ margin: "0 10px 10px" }}>{voiceSec && !viewing ? `만든 음성 ${minSec(voiceSec)}을 글자 수로 나눈 시각이에요.` : pulling ? "공백 빼고 한 글자 0.148초로 센 시각이에요." : "분당 390자로 센 시각이에요."} 최종 영상은 오프닝 · 쉼이 더해져 조금 늦어요.</p></details> : null}
           {checked.length && editable && !viewing ? <details className="yp-note yp-warn" role="status" style={{ display: "block" }}><summary style={{ cursor: "pointer" }}>원고 형식 검사에서 걸린 곳 {checked.length}건 — 고쳐야 제작·음성으로 넘어가요</summary>
             <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 13 }}>{checked.map(issue => <li key={issue}>{issue}</li>)}</ul></details> : null}
-          {!viewing ? <ScriptReview2 page={page} outline={form} editable={editable} dirty={dirty} /> : null}
+          {!viewing ? <ScriptReview2 page={page} outline={form} editable={editable} dirty={dirty || noteBusy} saveDecision={notePatch} onRewrite={id => setAskIds([id])} /> : null}
           {form.ai ? <details className="yp-card" open={notesOpen} onToggle={event => setNotesOpen((event.target as HTMLDetailsElement).open)} style={{ marginTop: 8 }}>
             <summary style={{ padding: "8px 10px", cursor: "pointer", fontSize: 13 }}>AI 작업 기록 보기</summary>
             {notesOpen ? <div style={{ padding: "0 12px 12px", fontSize: 13 }}>{([["자료", form.ai.materials], ["축", form.ai.axis], ["설계", form.ai.design], ["검토 기록", form.ai.review]] as const).map(([label, value]) =>

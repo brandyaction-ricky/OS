@@ -19,6 +19,7 @@ export const photoSchema = z.object({ path: z.string().min(1).max(200), w: z.num
 export const productionSchema = z.object({
   title: z.string().max(200), format: z.enum(CARD_FORMAT_IDS as [CardFormatId, ...CardFormatId[]]),
   memo: z.string().max(16000), direction: z.string().max(1800), detail: z.string().max(2000),
+  design: z.enum(["legacy", "myin-character", "myin-report", "myin-question"]).optional(),
   canonInsight: z.string().max(800).optional(),
   reference: z.object({ purpose: z.enum(["design", "use"]), photo: photoSchema }).optional(),
 }).strict();

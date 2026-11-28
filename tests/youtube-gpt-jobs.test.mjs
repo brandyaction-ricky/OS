@@ -10,9 +10,9 @@ import * as gptDraft from "../lib/youtube-process/gpt-draft.ts";
 class ApiError extends Error { constructor(status, code, message) { super(message); this.status = status; this.code = code; } }
 const source = await readFile(new URL("../lib/server/youtube-gpt-jobs.ts", import.meta.url), "utf8");
 
-function load({ answers, complete }) {
-  const calls = { prompts: [], completed: [], failed: [] };
-  const docs = [{ id: "11111111-2222-3333-4444-555555555555", title: "발행 키트 정본", content_md: "정본 본문" }];
+function load({ answers, complete, task, onPhase = () => {} }) {
+  const calls = { prompts: [], completed: [], failed: [], phases: [] };
+  const docs = [{ id: "11111111-2222-3333-4444-555555555555", title: "발행 키트 정본", current_version: 2, content_md: "정본 본문" }];
   const supabase = { from: () => ({ select: () => ({ in: (_col, ids) => ({ neq: async () => ({ data: docs.filter((doc) => ids.includes(doc.id)) }) }) }) }) };
   const modules = {
     "next/server": { after: () => undefined }, "@/lib/http": { ApiError }, "@/lib/supabase/server": { createServiceSupabase: () => supabase },
@@ -21,7 +21,8 @@ function load({ answers, complete }) {
     "./content-model": { generateContentText: async (request) => { calls.prompts.push(request); return answers.shift(); } },
     "./youtube-ai-jobs": {
       staffJobRequestSchema: { parse: (value) => value },
-      claimStaffJob: async (_agent, jobId, byGpt) => { assert.equal(byGpt, true, "GPT takes its own jobs only"); return { jobId, lease: "lease-1", instructions: "## 먼저 끝까지 열 문서 (doc_id로 엽니다)\n- 발행 키트 정본 (doc_id: 11111111-2222-3333-4444-555555555555)\nresult = { desc }" }; },
+      cardJobPhase: async (_agent, _id, _lease, phase) => { calls.phases.push(phase); onPhase(phase); },
+      claimStaffJob: async (_agent, jobId, byGpt) => { assert.equal(byGpt, true, "GPT takes its own jobs only"); return { task, jobId, lease: "lease-1", instructions: "## 먼저 끝까지 열 문서 (doc_id로 엽니다)\n- 발행 키트 정본 (doc_id: 11111111-2222-3333-4444-555555555555)\nresult = { desc }" }; },
       completeStaffJob: async (_agent, input) => { calls.completed.push(input); return complete(input); },
       failStaffJob: async (_agent, input) => { calls.failed.push(input); return { closed: true }; },
       requestStaffJob: async () => ({ id: "job", status: "backlog" }),
@@ -58,12 +59,32 @@ test("GPT gets the card's documents, answers once more with the OS's format prob
   assert.equal(ok.calls.failed.length, 0);
 });
 
+test("card jobs record progress and a cancelled lease prevents saving a late answer", async () => {
+  const options = { task: "card", answers: ["{}"], complete: () => ({ done: true }) };
+  const first = load(options);
+  await first.jobs.runGptJob("job", owner, "precise");
+  assert.deepEqual(first.calls.phases, ["card_writing", "card_checking"]);
+  const stopped = load({ ...options, answers: ["{}"], onPhase: phase => {
+    if (phase === "card_checking") throw new ApiError(409, "LEASE_LOST", "작업 취소");
+  } });
+  await assert.rejects(stopped.jobs.runGptJob("job", owner, "precise"), /취소/);
+  assert.equal(stopped.calls.completed.length, 0);
+});
+
 test("only the derivative tasks and the 카드뉴스 draft take GPT, and a draft says whose it is", () => {
-  assert.deepEqual([...gptDraft.GPT_DRAFT_TASKS], ["kit", "column", "short-topics", "short-script", "card", "short-recycle"]);
+  assert.deepEqual([...gptDraft.GPT_DRAFT_TASKS], ["kit", "column", "short-topics", "short-formula", "short-script", "card", "short-recycle"]);
   assert.deepEqual([...gptDraft.GPT_AUTO_TASKS], ["kit", "column", "short-topics"], "숏폼 대본 waits for the PD's topic and formula");
   assert.equal(gptDraft.isGptTask("script"), false, "the 원고 stays with the staff AI (원고 공정 정본 §12-1)");
   assert.equal(gptDraft.draftTag("유쓰", "gpt-6-astra"), "GPT 초안 · GPT-6 Astra");
   assert.equal(gptDraft.draftTag("유쓰", "claude-opus-5-5"), "AI 초안 · 유쓰");
+});
+
+test("제작 GPT는 수령한 정본 버전만 열고 중간에 바뀐 문서는 다시 요청한다", async () => {
+  const { jobs } = load({ answers: [], complete: () => ({}) });
+  const ref = { id: "11111111-2222-3333-4444-555555555555", title: "발행 키트 정본", version: 2 };
+  assert.match(await jobs.cardDocs("별도 지시 없음", [ref]), /정본 본문/);
+  assert.equal(await jobs.cardDocs(`추가 자료 (doc_id: ${ref.id})`, []), "");
+  await assert.rejects(jobs.cardDocs("", [{ ...ref, version: 1 }]), /정본이 바뀌었어요/);
 });
 
 // 업로드 뒤 저절로 (요청 11-25): after a longform's upload the 칼럼 goes public on MYIN and the 숏폼 5편 are made, with nothing made twice.

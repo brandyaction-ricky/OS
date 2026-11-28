@@ -1,7 +1,9 @@
+import { adSetupSchema } from "@/lib/ad-production-schema";
 import { z } from "zod";
 import { finishedCardPublication } from "@/lib/cardnews/cards";
 import { cardListSummary, CATEGORY_IDS, type CardCategory } from "@/lib/cardnews/categories";
 import { stageData } from "@/lib/youtube-process/stages";
+import { overviewRows } from "@/lib/youtube-process/overview";
 import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { authenticateRequest, type RequestActor } from "./auth";
@@ -26,7 +28,7 @@ const topicFields = {
   channel: z.string().uuid().nullable(),
   assigneeId: z.string().uuid().nullable(),
 };
-export const projectCreateSchema = z.object(topicFields).partial().strict();
+export const projectCreateSchema = z.object({...topicFields, adSetup:adSetupSchema, isTest:z.boolean()}).partial().strict();
 export const projectPatchSchema = z.object({ ...topicFields, isTest: z.boolean(), cardCategory: z.enum(CATEGORY_IDS as [CardCategory, ...CardCategory[]]).nullable(), expectedVersion: z.number().int().positive() }).partial().required({ expectedVersion: true }).strict();
 export const gateActionSchema = z.object({ action: z.enum(["confirm", "request", "cancel", "reopen"]), expectedVersion: z.number().int().positive(), reply: z.string().max(200).optional(), to: z.string().uuid().optional() }).strict();
 // note: the 대표 leaves a note on a step the PD confirmed (owner decision 2026-10-26); it changes nothing else.
@@ -56,7 +58,6 @@ function asProject(row: Parameters<typeof projectFromRecord>[0] | null) {
   return project;
 }
 
-// ponytail: up to 500 projects per read; page by contentUpdatedAt when the list outgrows it.
 /** Older completed cards stored the post only in their cards record. Read the evidence, retaining its original date. */
 export async function withLegacyCardEvidence(supabase: RequestActor["supabase"], projects: YpProject[], includeCardSummary = false) {
   const cardsById = new Map(projects.filter(project => project.yp.topic.type === "card" && (includeCardSummary || (project.yp.stage === "done" && !project.yp.cardPublication))).map(project => [project.id, project]));
@@ -80,6 +81,7 @@ export async function withLegacyCardEvidence(supabase: RequestActor["supabase"],
   return projects.map(project => enriched.get(project.id) ?? project);
 }
 
+// ponytail: up to 500 projects per read; page by contentUpdatedAt when the list outgrows it.
 export async function listYoutubeProjects(actor: RequestActor, includeCardSummary = false) {
   const { data, error } = await actor.supabase.from("os_records").select(COLUMNS)
     .eq("record_type", "content_topic").eq("metadata->>workflow", "youtube_v1").is("archived_at", null).limit(500);
@@ -91,7 +93,8 @@ export async function getYoutubeProject(actor: RequestActor, id: string) {
   const { data, error } = await actor.supabase.from("os_records").select(COLUMNS)
     .eq("id", id).eq("record_type", "content_topic").is("archived_at", null).maybeSingle();
   if (error) throw readFailed();
-  return asProject(data);
+  const [project] = await withLegacyCardEvidence(actor.supabase, [asProject(data)]);
+  return project;
 }
 
 async function assertAssignee(actor: RequestActor, assigneeId: string | null | undefined) {
@@ -138,7 +141,13 @@ export async function createYoutubeProject(actor: RequestActor, input: z.infer<t
   const topic: YpTopic = { type: input.kind ?? null, target: input.target ?? "", note: input.note ?? "", refs: input.refs ?? [],
     ...(input.purpose ? { purpose: input.purpose } : {}), ...(input.channel ? { channel: input.channel } : {}) };
   // 4-2: no PD picked means the person who wrote the topic.
-  return insertProject(actor, input.title ?? "", input.assigneeId ?? actor.ownerId, newProjectMeta(topic, new Date().toISOString()));
+  const meta = newProjectMeta(topic, new Date().toISOString());
+  if (input.adSetup) {
+    if (topic.purpose !== "ad" || topic.type !== "short" || !input.adSetup.aspects.includes("9x16")) throw new ApiError(422,"AD_SETUP_INVALID","영상 광고는 세로 9:16 원본이 필요해요.");
+    meta.yp.adSetup = input.adSetup;
+  }
+  if (input.isTest) meta.yp.isTest = true;
+  return insertProject(actor, input.title ?? "", input.assigneeId ?? actor.ownerId, meta);
 }
 
 export async function updateYoutubeProject(actor: RequestActor, id: string, input: z.infer<typeof projectPatchSchema>) {
@@ -287,7 +296,16 @@ export async function confirmYoutubeGate(actor: RequestActor, id: string, gate: 
 /** Hourly (8-2): remind approvers of gates still waiting; several due together (the 08:00 morning) become one notice. */
 export async function remindConfirmations(now = new Date().toISOString()) {
   if (quietHours(now)) return { reminded: 0 };
-  const due = dueReminders(await allProjects(), now);
+  const projects = (await allProjects()).filter(project => !project.yp.isTest);
+  const { openStaffJobsFor } = await import("./youtube-ai-jobs");
+  const jobs = await openStaffJobsFor(new Set(projects.filter(project => project.yp.stage !== "done").map(project => project.id)));
+  const overdue = overviewRows(projects, jobs, { id: "", canConfirm: true }, Date.parse(now)).rows.filter(row => row.overdue);
+  for (const row of overdue) {
+    const project = projects.find(item => item.id === row.id)!;
+    const recipient = row.gate && project.yp.gates[row.gate].state === "wait" ? project.yp.gates[row.gate].requestedTo ?? project.assigneeId : project.assigneeId;
+    if (recipient) await notify([recipient], "yt_due", project.id, `stalled:${project.id}:${project.yp.stage}:${row.since}`);
+  }
+  const due = dueReminders(projects, now);
   if (!due.length) return { reminded: 0 };
   const approvers = await approverIds();
   const first = due[0].project;

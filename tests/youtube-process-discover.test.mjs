@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ageLabel, categoryQuery, channelNormal, durationLabel, isBreakout, keptVideoRecord, nicheStage, NOT_A_TOPIC } from "../lib/youtube-process/discover.ts";
+import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { runInNewContext } from "node:vm";
+import ts from "typescript";
+import { z } from "zod";
+import * as discover from "../lib/youtube-process/discover.ts";
+import { ageLabel, categoryQuery, channelNormal, durationLabel, matchesDiscoverScope, isBreakout, keptVideoRecord, nicheStage, NOT_A_TOPIC } from "../lib/youtube-process/discover.ts";
 import { protectedPipelineChange } from "../lib/content-pipeline.ts";
 
 // 주제 찾기 (owner decision 2026-10-21, the 기획실 concept): a video breaks out against its own channel's normal views.
@@ -10,6 +16,41 @@ const video = (viewCount, median, durationSeconds = 600, title = "영상") => ({
 test("a category searches its words with OR; multi-word ones stay together", () => {
   assert.equal(categoryQuery("A"), '"강점 찾기"|"재능 찾는 법"|"잘하는 일 찾기"');
   assert.equal(categoryQuery("G"), '번아웃|자존감|"일하기 싫을 때"');
+});
+
+test("기본 분류는 제목과 일치해야 하며 일반 단어만 있는 인기 영상은 제외한다", () => {
+  assert.equal(matchesDiscoverScope("나를 위한 최고의 맛집: 오래 끓인 국밥"), false);
+  assert.equal(matchesDiscoverScope("회사 밖 커리어를 고민하는 사람", "C"), true);
+  assert.equal(matchesDiscoverScope("퇴사 고민에 답하는 세 가지 질문", "A"), false);
+  assert.equal(matchesDiscoverScope("잘하는 것과 좋아하는 것 사이에서"), true);
+});
+
+test("첫 진입과 기간 변경은 저장 결과만 읽고 명시적 검색만 YouTube를 호출한다", async () => {
+  let cache = [];
+  const requests = [], writes = [];
+  const query = {
+    select() { return this; }, eq() { return this; }, is() { return this; }, order() { return this; },
+    limit: async () => ({ data: cache }), insert: async row => { writes.push(row); return { error: null }; },
+  };
+  const modules = {
+    "node:crypto": { createHash }, zod: { z }, "@/lib/http": { ApiError: Error },
+    "@/lib/html-entities": {}, "@/lib/supabase/server": { createServiceSupabase: () => ({ from: () => query }) },
+    "@/lib/youtube-process/discover": discover, "./youtube-niche": { keepFoundBreakouts: async () => {} },
+  };
+  const source = readFileSync(new URL("../lib/server/youtube-discover.ts", import.meta.url), "utf8");
+  const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const exports = {};
+  runInNewContext(code, { exports, require: name => modules[name], URLSearchParams, AbortSignal, process: { env: { YOUTUBE_API_KEY: "mock" } },
+    fetch: async url => { requests.push(new URL(url).pathname); return Response.json({ items: [] }); } });
+  const input = { category: "A", days: "30", refresh: false };
+  assert.equal((await exports.discoverYoutube({}, input, true)).videos.length, 0);
+  cache = [{ metadata: { videos: [], channels: [], at: "2026-01-01" } }];
+  assert.equal((await exports.discoverYoutube({}, { ...input, days: "365" }, true)).at, "2026-01-01");
+  assert.equal(requests.length, 0);
+  assert.equal(writes.length, 0);
+  await exports.discoverYoutube({}, { ...input, refresh: true });
+  assert.deepEqual(requests, ["/youtube/v3/search"]);
+  assert.equal(writes.length, 1);
 });
 
 test("a channel's normal is the median of five or more long uploads; Shorts and short videos do not count", () => {

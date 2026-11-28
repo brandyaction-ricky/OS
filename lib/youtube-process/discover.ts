@@ -21,6 +21,22 @@ export const DISCOVER_CATEGORIES = [
 export type DiscoverLetter = (typeof DISCOVER_CATEGORIES)[number][0];
 export const DISCOVER_LETTERS = DISCOVER_CATEGORIES.map(([letter]) => letter) as DiscoverLetter[];
 
+const categoryTerms: Record<DiscoverLetter, string[]> = {
+  A: ["잘하는 것", "잘하는 일"], B: ["MBTI", "내향인"], C: ["이직", "직무 전환"],
+  D: ["평생 직업", "좋아하는 일"], E: ["작심삼일"], F: ["직장 인간관계", "상사 갈등"],
+  G: ["번아웃", "자존감"], H: ["직장인 미래", "먹고살"], I: ["나를 알아", "원하는 것 찾기"],
+  J: ["워라밸"], K: ["팀장", "리더십"], L: ["퇴사", "진로", "인생 전환"],
+};
+
+/** Category searches can also return unrelated popular videos. Use the visible title, not the search that returned it. */
+export function matchesDiscoverScope(title: string, category: string = "all") {
+  const normalize = (value: string) => value.toLowerCase().replace(/\s+/g, "");
+  const text = normalize(title);
+  return DISCOVER_CATEGORIES.some(([key, label, phrases]) =>
+    (category === "all" || category === key) && [...label.split("·"), ...phrases, ...categoryTerms[key]]
+      .some(word => normalize(word).length >= 2 && text.includes(normalize(word))));
+}
+
 /** One YouTube search per category: its words joined with OR ("강점 찾기"|재능|"잘하는 것"). */
 export function categoryQuery(letter: DiscoverLetter) {
   const words = DISCOVER_CATEGORIES.find(([key]) => key === letter)![2];

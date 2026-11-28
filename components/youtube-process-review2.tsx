@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { scriptKey, type YpOutline } from "@/lib/youtube-process/stages";
+import { quoteFromSelection, scriptKey, type YpReview2Item, type ReviewDecision, type YpOutline } from "@/lib/youtube-process/stages";
 import { modelName } from "@/lib/cost";
 import { GPT_TIERS, type GptTier } from "@/lib/youtube-process/gpt-draft";
 import { REVIEW2_GATE_NAME } from "@/lib/youtube-script-review2";
@@ -10,9 +10,12 @@ import type { useYpBundle } from "./youtube-process-frame";
 const WAIT_MS = 12 * 60_000;
 
 /** 구성안 원고 칸: GPT's 두 번째 검수 (관문 2~6). It only informs; 다음: 제작 is not blocked by it. */
-export function ScriptReview2({ page, outline, editable, dirty }: { page: ReturnType<typeof useYpBundle>; outline: YpOutline; editable: boolean; dirty: boolean }) {
+export function ScriptReview2({ page, outline, editable, dirty, saveDecision, onRewrite }: { page: ReturnType<typeof useYpBundle>; outline: YpOutline; editable: boolean; dirty: boolean; saveDecision: (patch: Record<string, unknown>) => Promise<boolean>; onRewrite: (id: string) => void }) {
   const review = page.bundle?.stages.review2;
   const cost = useCostConfirm();
+  const [editing, setEditing] = useState<{ issue: string; action: "ignore" | "revise" } | null>(null);
+  const [memo, setMemo] = useState("");
+  const [queued, setQueued] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [tier, setTier] = useState<GptTier>("precise");
   const data = review?.data;
@@ -30,9 +33,24 @@ export function ScriptReview2({ page, outline, editable, dirty }: { page: Return
     }, 15_000);
     return () => window.clearInterval(timer);
   }, [waiting, busy, projectId]);
+  useEffect(() => {
+    if (!queued || !data) return;
+    const note = outline.notes?.find(row => row.decision?.key === data.key && row.decision.issue === queued);
+    if (note) { setQueued(null); onRewrite(note.id); }
+  }, [queued, data, outline.notes, onRewrite]);
   if (!review || !data) return null;
   const stale = data.state === "done" && data.key !== scriptKey(outline.script);
   const issues = data.gates.reduce((sum, gate) => sum + gate.items.filter(item => item.grade !== "하").length, 0);
+  const decisions = (outline.notes ?? []).filter(note => note.decision?.key === data.key);
+  const total = data.gates.reduce((sum, gate) => sum + gate.items.length, 0);
+  const decide = async (item: YpReview2Item, issue: string, action: ReviewDecision["action"]) => {
+    const anchor = action === "ignore" ? { quote: item.quote || "검수 지적", before: "", after: "" } : quoteFromSelection(outline.script, item.quote, "");
+    if ("problem" in anchor) { page.fail(new Error(anchor.problem)); return; }
+    const text = action === "adopt" ? item.fix || item.reason : memo.trim();
+    if (!text || !await saveDecision({ note: { ...anchor, text, decision: { key: data.key, issue, action } } })) return;
+    if (action === "adopt") setQueued(issue);
+    setEditing(null); setMemo("");
+  };
   const run = async () => {
     if (!projectId || !page.client) return;
     const client = page.client;
@@ -54,19 +72,30 @@ export function ScriptReview2({ page, outline, editable, dirty }: { page: Return
       {waiting ? <span className="yp-tag">GPT가 읽는 중 · 3~6분</span>
         : data.state === "done" ? <span className={`yp-tag ${data.pass ? "yp-ok" : "yp-bad"}`}>{data.pass ? "✓ 통과" : `고칠 곳 ${issues}곳`}</span>
         : data.state === "failed" ? <span className="yp-tag yp-bad">⚠ 끝내지 못했어요</span> : <span className="yp-muted" style={{ fontSize: 12 }}>아직 받지 않았어요</span>}
-      {data.state === "done" && !waiting ? <span className="yp-muted" style={{ fontSize: 12 }}>{modelName(data.model)}{stale ? " · 원고가 바뀌었어요" : ""}</span> : null}
+      {data.state === "done" && !waiting ? <span className="yp-muted" style={{ fontSize: 12 }}>{modelName(data.model)}{data.source ? ` · ${data.source.origin === "ai" ? "AI 초안" : "사람 수정본"} · v${data.source.version}` : " · 원고 판 미기록"}{stale ? " · 옛 원고 기준" : ""}</span> : null}
       <span className="yp-sp" />
-      {editable ? <select className="yp-in yp-sel1" aria-label="검수 모델" value={tier} disabled={Boolean(blocked)} onChange={event => setTier(event.target.value as GptTier)}>
-        {(Object.keys(GPT_TIERS) as GptTier[]).map(key => <option key={key} value={key}>{GPT_TIERS[key].label} · {modelName(GPT_TIERS[key].model)}</option>)}</select> : null}
+      {editable ? <details><summary>더 보기</summary><select className="yp-in yp-sel1" aria-label="검수 모델" value={tier} disabled={Boolean(blocked)} onChange={event => setTier(event.target.value as GptTier)}>
+        {(Object.keys(GPT_TIERS) as GptTier[]).map(key => <option key={key} value={key}>{GPT_TIERS[key].label} · {modelName(GPT_TIERS[key].model)}</option>)}</select></details> : null}
       {editable ? <button type="button" className="yp-btn yp-sm" disabled={Boolean(blocked)} title={blocked || undefined} onClick={() => void run()}>{label} <CostTag kind="paid" amount={tokenEstimate(GPT_TIERS[tier].model, 40_000 + outline.script.length, 20_000)} upTo /></button> : null}
     </div>
     {data.state === "failed" && !waiting ? <div className="yp-card-b" style={{ fontSize: 13 }}>{data.error}</div> : null}
     {data.state === "done" ? <div className="yp-card-b" style={{ fontSize: 13, display: "grid", gap: 6 }}>
+      <strong>검수 지적 결정 {decisions.length}/{total}</strong>
+      {data.reviewedParagraphs && <span>바뀐 문단 {data.reviewedParagraphs.join(", ")}번 재검수</span>}
       {data.gates.filter(gate => gate.items.length).map(gate => <details key={gate.gate} open={!gate.pass}>
         <summary style={{ cursor: "pointer" }}><b>{REVIEW2_GATE_NAME[gate.gate]}</b> · {gate.pass ? "통과" : "반려"} · {gate.items.length}곳</summary>
-        <ul style={{ margin: "6px 0 0", paddingLeft: 18, display: "grid", gap: 6 }}>{gate.items.map((item, i) => <li key={i}>
+        <ul style={{ margin: "6px 0 0", paddingLeft: 18, display: "grid", gap: 6 }}>{gate.items.map((item, i) => {
+          const issue = scriptKey(JSON.stringify([gate.gate, i, item]));
+          const decision = decisions.find(note => note.decision?.issue === issue);
+          return <li key={i}>
           <span className={`yp-tag${item.grade === "상" ? " yp-bad" : ""}`}>{item.paragraph}번 문단 · {item.grade}</span> “{item.quote}”
-          <div>{item.reason}</div>{item.fix ? <div className="yp-muted">→ {item.fix}</div> : null}</li>)}</ul></details>)}
+          <div>{item.reason}</div>{item.fix ? <div className="yp-muted">→ {item.fix}</div> : null}
+          {decision ? <div className="yp-chips"><b>{decision.decision?.action === "ignore" ? "무시" : decision.decision?.action === "revise" ? "수정 요청" : "채택"}</b> {decision.text}
+            {editable && !dirty && !stale && decision.state === "open" && <button className="yp-btn yp-sm" onClick={() => onRewrite(decision.id)}>이 구간 다시 쓰기</button>}</div>
+            : editable && !dirty && !stale && <div className="yp-chips"><button className="yp-btn yp-sm" onClick={() => void decide(item, issue, "adopt")}>채택</button>
+              {(["revise", "ignore"] as const).map(action => <button key={action} className="yp-btn yp-sm" onClick={() => { setEditing({ issue, action }); setMemo(""); }}>{action === "revise" ? "수정 요청" : "무시"}</button>)}
+              {editing?.issue === issue && <><input className="yp-in" aria-label="판단 이유" placeholder={editing.action === "ignore" ? "무시할 이유" : "수정할 방향"} maxLength={1000} value={memo} onChange={e => setMemo(e.target.value)} /><button className="yp-btn" disabled={!memo.trim()} onClick={() => void decide(item, issue, editing.action)}>결정 저장</button></>}</div>}
+          </li>})}</ul></details>)}
       {data.gates.some(gate => gate.pass && !gate.items.length) ? <div className="yp-muted">통과: {data.gates.filter(gate => gate.pass && !gate.items.length).map(gate => REVIEW2_GATE_NAME[gate.gate]).join(" · ")}</div> : null}
       {data.doubts.length ? <details><summary style={{ cursor: "pointer" }}>확인해 볼 것 {data.doubts.length}</summary>
         <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>{data.doubts.map((doubt, i) => <li key={i}>{doubt}</li>)}</ul></details> : null}

@@ -1,3 +1,4 @@
+import type { CanonTrace } from "@/lib/youtube-process/canon-trace";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
@@ -125,7 +126,7 @@ export function v1ScriptCardInputs(state: Pipeline, card: { targetMinutes: numbe
   };
 }
 /** A submitted 원고 becomes the current 구성안 원고 (the previous one stays as a version). */
-export async function saveV1Script(client: { supabase: RequestActor["supabase"]; id: string }, state: Pipeline, bundle: { manuscript: string; materials: string; axis: string; design: string; review: string; canonBundle: string; suggestions: string[] }, author: { model: string; jobId?: string; targetMinutes: number; name: string }, canon: string) {
+export async function saveV1Script(client: { supabase: RequestActor["supabase"]; id: string }, state: Pipeline, bundle: { manuscript: string; materials: string; axis: string; design: string; review: string; canonBundle: string; suggestions: string[] }, author: { model: string; jobId?: string; targetMinutes: number; name: string; trace?: CanonTrace[] }, canon: string) {
   const stages = v1Stages(state);
   const title = stages.plan.data.confirmed?.A?.title ?? projectName(stages.project);
   const check = checkManuscript(bundle.manuscript, { title, targetMinutes: author.targetMinutes, canon, pulling: ypFormat(stages.plan.data) === "pulling" });
@@ -134,8 +135,8 @@ export async function saveV1Script(client: { supabase: RequestActor["supabase"];
   // The head comments (축 · 출처) stay with the AI notes; the editor gets the readable 원고.
   const md = oneArrow(bundle.manuscript.replace(/\r/g, "").split("\n").filter(line => !line.trim().startsWith("<!--")).join("\n").trim()) + "\n";
   const by = await displayName(client.supabase, client.id, author.name);
-  const outline = { ...withScriptVersion(stages.outline.data, md, by, now, "ai", author.model),
-    ai: { jobId: author.jobId ?? "", model: author.model, at: now, by, materials: bundle.materials, axis: bundle.axis, design: bundle.design,
+  const outline = { ...withScriptVersion(stages.outline.data, md, by, now, "ai", author.model, author.trace),
+    ai: { trace: author.trace, jobId: author.jobId ?? "", model: author.model, at: now, by, materials: bundle.materials, axis: bundle.axis, design: bundle.design,
       review: bundle.review, canonBundle: bundle.canonBundle, suggestions: bundle.suggestions, head: bundle.manuscript.split("\n").filter(line => line.trim().startsWith("<!--")).join("\n") } };
   await writeStage(client.supabase, client.id, state.source.team ?? "", stages.project, "outline", stages.outline, outline);
   scheduleScriptReview({ supabase: client.supabase, id: client.id, team: state.source.team ?? "" }, stages.project);
@@ -412,9 +413,9 @@ export const v1ColumnInputKey = (state: Pipeline) => {
 
 /** 칼럼 롱폼 재료 (직원 요청 11-19): the longform storyboard's photos and diagrams (columnMaterials in myin-run). */
 export type ColumnMaterials = ReturnType<typeof myinColumnMaterials>;
-export async function v1ColumnCard(supabase: RequestActor["supabase"], state: Pipeline, leaseMinutes: number, count = 1, materials: ColumnMaterials | null = null) {
+export async function v1ColumnCard(supabase: RequestActor["supabase"], state: Pipeline, leaseMinutes: number, count = 1, materials: ColumnMaterials | null = null, references?: CanonTrace[]) {
   const stages = v1Stages(state);
-  const docs = await procedureRefs(supabase, "seo_column").catch(() => []);
+  const docs = references ?? await procedureRefs(supabase, "seo_column").catch(() => []);
   const longform = materials ? { photos: Object.entries(materials.photos).map(([file, photo]) => ({ file, at: photo.at, ...(photo.credit ? { credit: photo.credit } : {}) })), diagrams: materials.diagrams } : null;
   const inputs = { title: v1Title(stages), audience: stages.project.yp.topic.target, videoUrl: stages.upload.data.run?.videoUrl ?? null, longform, script: narrationFromMarkdown(stages.outline.data.script).slice(0, 60_000) };
   return `이 작업 하나만 처리합니다. 승인 · 업로드 · 게시 · 삭제는 하지 않습니다.
@@ -442,7 +443,7 @@ process_youtube_ai_job에 action=complete, job_id, lease, model(지금 쓰는 �
 }
 
 /** The new columns replace the AI columns nobody touched; a column a person edited (or pasted) stays (9-5). */
-export async function saveV1Column(supabase: RequestActor["supabase"], ownerId: string, state: Pipeline, value: unknown, author: { model: string; jobId: string; name: string }, count = 1,
+export async function saveV1Column(supabase: RequestActor["supabase"], ownerId: string, state: Pipeline, value: unknown, author: { model: string; jobId: string; name: string; trace?: CanonTrace[] }, count = 1,
   materials: ColumnMaterials | null = null) {
   const parsed = columnResultSchema.safeParse(value);
   if (!parsed.success) throw new ApiError(422, "COLUMN_RESULT_INVALID", `result는 { "columns": [{ "html": "<!DOCTYPE html>…" }] } — 칼럼 ${count}편이에요.`);
@@ -455,7 +456,7 @@ export async function saveV1Column(supabase: RequestActor["supabase"], ownerId: 
   if (problems.length) throw new ApiError(422, "COLUMN_HTML_INVALID", `칼럼 검사에서 걸린 곳 ${problems.length}건: ${problems.join(" / ")}`);
   const stages = v1Stages(state);
   const kept = stages.column.data.items.filter(item => !item.ai || item.html !== item.ai.html);
-  const base = { by: await displayName(supabase, ownerId, author.name), model: author.model, at: new Date().toISOString(), jobId: author.jobId };
+  const base = { trace: author.trace, by: await displayName(supabase, ownerId, author.name), model: author.model, at: new Date().toISOString(), jobId: author.jobId };
   const fills = await Promise.all(htmls.map(html => columnPhotoFills(supabase, stages.project.id, html, materials)));
   const items = [...kept, ...htmls.map((html, index) => ({ id: randomUUID().slice(0, 8), html, fills: fills[index], ai: { ...base, html } }))];
   await writeStage(supabase, ownerId, state.source.team ?? "", stages.project, "column", stages.column, { items });

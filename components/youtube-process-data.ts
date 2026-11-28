@@ -1,5 +1,6 @@
 "use client";
 
+import { adCopyIssues, adDisposition, type AdDisposition } from "@/lib/ad-production";
 import { ctaPlan, type CtaVideo } from "@/lib/youtube-process/cta";
 import { rankAds, type AdHistoryRow, type AdResult } from "@/lib/youtube-process/ad-results";
 import { apiRequest, ApiRequestError, listMembers, listRecords, uploadContentMedia } from "@/lib/api-client";
@@ -58,10 +59,10 @@ export interface YpClient {
   /** 한눈에 보기: the videos, the open staff-AI jobs on them, and whether I confirm. */
   overview(): Promise<{ projects: YpProject[]; jobs: OvJob[]; canConfirm: boolean }>;
   /** 채택 on 한눈에 보기: an AI result is taken and leaves the list. */
-  adoptJob(jobId: string): Promise<void>;
+  adoptJob(jobId: string, action?: "retry" | "close"): Promise<void>;
   get(id: string): Promise<YpProject>;
   bundle(id: string): Promise<YpBundle>;
-  create(input: YpTopicInput): Promise<YpProject>;
+  create(input: YpTopicInput & {adSetup?: import("@/lib/ad-production").AdSetup; isTest?: boolean}): Promise<YpProject>;
   update(id: string, expectedVersion: number, patch: YpTopicInput): Promise<YpProject>;
   /** `to`: the approver a 컨펌 요청 goes to (2026-11-02). */
   topicGate(id: string, action: "confirm" | "request" | "cancel" | "reopen", expectedVersion: number, reply?: string, to?: string): Promise<{ project: YpProject; created: YpProject[] }>;
@@ -69,7 +70,7 @@ export interface YpClient {
   saveStage<K extends YpStageKind>(id: string, kind: K, expectedVersion: number, patch: Record<string, unknown>): Promise<{ stage: YpStageView<K>; project: YpProject }>;
   /** One SEO 칼럼 to the MYIN 아티클: send (draft or update), publish, or back to draft. */
   columnMyin(id: string, item: string, action: "send" | "publish" | "unpublish", expectedVersion: number): Promise<{ stage: YpStageView<"column">; project: YpProject }>;
-  move(id: string, to: "make" | "review" | "shorts" | "done", expectedVersion: number): Promise<YpProject>;
+  move(id: string, to: "make" | "review" | "shorts" | "done", expectedVersion: number, disposition?: AdDisposition): Promise<YpProject>;
   uploadAsset(id: string, kind: YpAssetKind, file: File, onProgress?: (percent: number) => void): Promise<{ path: string; name: string; bytes: number }>;
   assetUrl(id: string, path: string): Promise<string>;
   finalUrl(id: string, final: YpFinalView): Promise<string | null>;
@@ -160,7 +161,7 @@ function apiClient(token: string): YpClient {
     demo: false,
     list: async include => (await apiRequest<{ projects: YpProject[] }>(include ? base + "?cardLibrary=1" : base, { token })).projects,
     overview: () => apiRequest("/api/v1/content/youtube/overview", { token }),
-    adoptJob: async jobId => { await apiRequest("/api/v1/content/youtube/overview", { token, method: "POST", body: json({ jobId }) }); },
+    adoptJob: async (jobId, action) => { await apiRequest("/api/v1/content/youtube/overview", { token, method: "POST", body: json({ jobId, action }) }); },
     get: async id => (await apiRequest<YpBundle>(`${base}/${id}`, { token })).project,
     bundle: id => apiRequest<YpBundle>(`${base}/${id}`, { token }),
     create: async input => (await apiRequest<{ project: YpProject }>(base, { token, method: "POST", body: json(input) })).project,
@@ -169,7 +170,7 @@ function apiClient(token: string): YpClient {
     gate,
     saveStage: (id, kind, expectedVersion, patch) => apiRequest(`${base}/${id}/stages/${kind}`, { token, method: "PATCH", body: json({ expectedVersion, patch }) }),
     columnMyin: (id, item, action, expectedVersion) => apiRequest(`${base}/${id}/column/myin`, { token, method: "POST", body: json({ item, action, expectedVersion }) }),
-    move: async (id, to, expectedVersion) => (await apiRequest<{ project: YpProject }>(`${base}/${id}/stage`, { token, method: "POST", body: json({ to, expectedVersion }) })).project,
+    move: async (id, to, expectedVersion, disposition) => (await apiRequest<{ project: YpProject }>(`${base}/${id}/stage`, { token, method: "POST", body: json({ to, expectedVersion, disposition }) })).project,
     uploadAsset: async (id, kind, file, onProgress) => {
       const upload = await apiRequest<{ path: string; token: string; mimeType: string }>(`${base}/${id}/assets`, { token, method: "POST", body: json({ kind, fileName: file.name, fileSize: file.size, mimeType: file.type || "" }) });
       await uploadContentMedia(upload.path, upload.token, file, upload.mimeType, onProgress);
@@ -373,9 +374,10 @@ function demoCards(): YpStageData["cards"] {
 const demoStages = new Map<string, YpStagesView>();
 const demoShorts = new Map<string, YpShortView>();
 const demoShort = (project: YpProject): YpShortView => demoShorts.get(project.id) ?? { id: `demo-short-${project.id}`, version: 1, scenes: [], aiScenes: null, appeals: [], ai: null, images: {}, render: null,
-  brief: { purpose: project.yp.topic.purpose === "ad" ? "ad" : "organic", duration: 30, product: "", audience: project.yp.topic.target, goal: "", landingUrl: "", evidence: "", appeal: "" } };
+  brief: { purpose: project.yp.topic.purpose === "ad" ? "ad" : "organic", duration: 30, product: "", audience: project.yp.topic.target, goal: "", landingUrl: "", evidence: "", appeal: "", ...project.yp.adSetup } };
 const demoFinals = new Map<string, YpFinalView[]>();
 const demoAdopted = new Set<string>();
+const demoJobResolution = new Map<string, "retry" | "close">();
 const demoFeedback = new Map<string, YpFeedbackView[]>();
 const demoFiles = new Map<string, string>();
 const demoCardCache = "brandy-os-demo-card-images-v1";
@@ -445,9 +447,10 @@ function demoClient(): YpClient {
     ? { ...project, cardSummary: cardListSummary(stagesOf(project).cards.data, project.yp.stage) } : project;
   const put = (next: YpProject) => { demoStore = demoProjects().map(row => row.id === next.id ? next : row); saveCardSession(next); return structuredClone(next); };
   const bump = (project: YpProject, yp: YpProject["yp"] = project.yp) => put({ ...project, version: project.version + 1, updatedAt: new Date().toISOString(), yp });
-  const add = (title: string, input: YpTopicInput, multiFrom?: string) => {
+  const add = (title: string, input: Parameters<YpClient["create"]>[0], multiFrom?: string) => {
     const now = new Date().toISOString();
     const meta = newProjectMeta({ type: input.kind ?? null, target: input.target ?? "", note: input.note ?? "", refs: input.refs ?? [], ...(input.purpose ? { purpose: input.purpose } : {}) }, now, multiFrom);
+    if (input.adSetup) { meta.yp.adSetup = input.adSetup; meta.yp.isTest = Boolean(input.isTest); }
     const project: YpProject = { id: `demo-${crypto.randomUUID()}`, version: 1, title, assigneeId: input.assigneeId ?? DEMO_ME, ownerId: DEMO_ME, updatedAt: now, yp: meta.yp };
     demoStore = [project, ...demoProjects()];
     return project;
@@ -464,6 +467,11 @@ function demoClient(): YpClient {
       const stages = stagesOf(project);
       const missing = project.yp.topic.type === "card" ? (name === "draft" ? cardsMissing(stages.cards.data) : "")
         : name === "draft" ? project.yp.topic.type === "short" ? shortScriptMissing(stages.shortScript.data) : draftMissing(stages.plan.data) : (demoFinals.get(id) ?? []).length ? "" : "최종본을 올려주세요";
+      if (name==="draft" && project.yp.topic.purpose==="ad") {
+        const script=stages.shortScript.data;
+        const issue=adCopyIssues(script.headCopy+"\n"+script.text,demoShort(project).brief.evidence)[0];
+        if(issue) throw demoError(400,"GATE_INCOMPLETE",issue);
+      }
       if (missing) throw demoError(400, "GATE_INCOMPLETE", missing);
       const yp = gateApply(project, name, action, { actor: DEMO_ME, now, reply, to });
       if (name === "draft" && action === "confirm") { const stages = stagesOf(project); demoStages.set(id, { ...stages, plan: { ...stages.plan, data: { ...stages.plan.data, confirmed: confirmPlan(stages.plan.data, now) } } }); }
@@ -494,13 +502,18 @@ function demoClient(): YpClient {
       const outlining = projects.find(row => row.yp.stage === "outline");
       const jobs: OvJob[] = [
         ...(making ? [{ sourceId: making.id, task: "마이인 기획표(장면 · 비유 · 자료 후보)", status: "active" as const, requestedAt: at(9), claimedAt: at(4), failReason: null }] : []),
-        ...(planning ? [{ sourceId: planning.id, task: "기획안(제목 · 썸네일 문구 · 영상 흐름)", status: "blocked" as const, requestedAt: at(50), claimedAt: at(48), failReason: "참고 영상 주소를 열지 못했어요" }] : []),
+        ...(planning ? [{ id: "demo-job-blocked", ownerId: DEMO_ME, sourceId: planning.id, task: "기획안(제목 · 썸네일 문구 · 영상 흐름)", status: "blocked" as const, requestedAt: at(50), claimedAt: at(48), failReason: "참고 영상 주소를 열지 못했어요" }] : []),
         ...(outlining && !demoAdopted.has("demo-job-arrived") ? [{ id: "demo-job-arrived", ownerId: DEMO_ME, sourceId: outlining.id, task: "원고(축 · 설계 · 초안 · 검수)", status: "done" as const, requestedAt: at(70), claimedAt: at(66), failReason: null, doneAt: at(12),
           report: { conclusion: "[예시] 초안 한 편 완성 · 고칠 곳 2군데만 보면 돼요", did: ["[예시] 축 3개 중 '퇴근 뒤 1시간'으로 설계", "[예시] 초안 9분 분량", "[예시] 관문 1 검사 두 번 돌림"], evidence: ["[예시] 원고 공정 정본 §2", "[예시] 참고 영상 3편 대본"], canon: "[예시] 관문 1 통과 · '여러분' 2곳 바꿈" } }] : []),
       ];
+      for (const job of jobs) {
+        const resolution = job.id ? demoJobResolution.get(job.id) : undefined;
+        if (resolution === "retry") { job.status = "backlog"; job.claimedAt = null; job.failReason = null; }
+        if (resolution === "close") job.closedAt = at(0);
+      }
       return { projects, jobs, canConfirm: true };
     },
-    adoptJob: async jobId => { demoAdopted.add(jobId); },
+    adoptJob: async (jobId, action) => { if (action) demoJobResolution.set(jobId, action); else demoAdopted.add(jobId); },
     get: async id => structuredClone(find(id)),
     bundle: async id => { const project = find(id); return structuredClone({ project, stages: stagesOf(project), finals: demoFinals.get(id) ?? [] }); },
     create: async input => structuredClone(add(input.title ?? "", input)),
@@ -629,7 +642,7 @@ function demoClient(): YpClient {
       demoStages.set(id, { ...stages, column: stage });
       return structuredClone({ stage, project });
     },
-    move: async (id, to, expectedVersion) => {
+    move: async (id, to, expectedVersion, disposition) => {
       const project = find(id);
       checkVersion(project.version, expectedVersion);
       const stages = stagesOf(project);
@@ -638,9 +651,15 @@ function demoClient(): YpClient {
         if (!["upload", "done"].includes(project.yp.stage) || project.yp.cardPublication || !evidence) throw demoError(409, "STAGE_NOT_READY", "게시 주소 또는 게시 안 함 이유를 저장해 주세요.");
         return bump(project, { ...project.yp, stage: to, stageEnteredAt: new Date().toISOString(), cardPublication: evidence });
       }
+      if (project.yp.topic.purpose === "ad" && to === "done") {
+        const decision = adDisposition(disposition);
+        if (!decision || !["upload","done"].includes(project.yp.stage) || project.yp.adRelease) throw demoError(409,"AD_RELEASE_REQUIRED","최종 검토 후 광고 ID 또는 미집행 이유를 남겨 주세요.");
+        const now = new Date().toISOString();
+        return bump(project,{...project.yp,stage:to,contentUpdatedAt:now,adRelease:{...decision,at:now}});
+      }
       const reason = to === "make" ? outlineMissing(stages.outline.data) : to === "review" ? ((demoFinals.get(id) ?? []).length ? thumbsMissing(stages.make.data) : "최종본을 올려주세요") : "";
       if (reason) throw demoError(409, "STAGE_NOT_READY", reason);
-      return bump(project, { ...project.yp, stage: to });
+      return bump(project, { ...project.yp, stage: to, stageEnteredAt: new Date().toISOString() });
     },
     uploadAsset: async (_id, kind, file) => {
       const path = `youtube/demo/${kind}/${crypto.randomUUID()}.${file.name.split(".").pop()?.toLowerCase() ?? "bin"}`;
@@ -731,7 +750,7 @@ function demoClient(): YpClient {
       demoCta.history = [change, ...demoCta.history]; return { change };
     },
     ctaUndo: async () => { throw demoError(409, "DEMO", "데모에서는 되돌리지 않아요."); },
-    adHistory: async () => rankAds(demoProjects().flatMap(project => (stagesOf(project).upload.data.ads ?? []).map(result => ({ projectId: project.id, title: projectName(project), result })))),
+    adHistory: async () => rankAds(demoProjects().flatMap(project => (stagesOf(project).upload.data.ads ?? []).map(result => ({ projectId: project.id, title: projectName(project), isTest:!!project.yp.isTest,released:project.yp.adRelease?.kind==="published", result })))),
     moveDates: async (id, makeVersion, patch) => {
       const project = find(id); const stages = stagesOf(project); const make = stages.make;
       checkVersion(make.version, makeVersion);

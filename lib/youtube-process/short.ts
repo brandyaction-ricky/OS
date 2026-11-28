@@ -6,7 +6,7 @@ import type { YpMeta } from "./project.ts";
 import type { YpUpload } from "./stages.ts";
 export type YpShortPurpose = "organic" | "ad";
 export type YpShortDuration = 15 | 30 | 60;
-export interface YpShortBrief { purpose: YpShortPurpose; duration: YpShortDuration; product: string; audience: string; goal: string; landingUrl: string; evidence: string; appeal: string }
+export interface YpShortBrief { purpose: YpShortPurpose; duration: YpShortDuration; product: string; audience: string; goal: string; landingUrl: string; evidence: string; appeal: string; hypothesis?: string; successCriterion?: string; budget?: string }
 export interface YpShortScene { seconds: number; text: string; voice: string; note: string; asset: string; assetId?: string; diagram?: ShortformDiagram }
 export interface YpShortCut { start: string; end: string; text: string; note: string; voice?: string; asset?: string; missingAsset?: boolean; assetId?: string; diagram?: ShortformDiagram }
 export interface YpShortAppeal { title: string; reason: string; evidence: string; basis: "evidence" | "hypothesis" }

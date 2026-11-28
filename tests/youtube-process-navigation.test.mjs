@@ -12,7 +12,7 @@ test("the switch is off unless YOUTUBE_V1_ENABLED is exactly true", () => {
 });
 
 test("v1 menu is 내 영상 · 스케줄 · 성과 (owner decision 2026-10-21) and 단축 링크 (2026-10-26); the steps sit under 내 영상; 컨펌 under 대표 메뉴", () => {
-  assert.deepEqual(YOUTUBE_V1_PAGES.map(page => page.label), ["내 영상", "스케줄", "성과", "채널/링크 관리"]);
+  assert.deepEqual(YOUTUBE_V1_PAGES.map(page => page.label), ["내 영상", "스케줄", "콘텐츠 성과", "채널/링크 관리"]);
   assert.deepEqual(YOUTUBE_V1_STEP_PAGES.map(page => [page.href, page.navHref]), [["/content/plan", "/content/projects"], ["/content/make", "/content/projects"], ["/content/final-check", "/content/projects"], ["/content/upload", "/content/projects"], ["/content/shorts", "/content/projects"],
     // 음성 사전 (로건 OS 요청 2026-10-30): opened from 제작's 음성 확인 and by address, not a menu of its own.
     ["/content/voice-dictionary", "/content/projects"]]);
@@ -63,12 +63,12 @@ test("the platform sidebar keeps video and image ads together under 광고", asy
   assert.deepEqual(stages.map(stage => stage.label).slice(0, 7), ["공통", "롱폼 유튜브", "숏폼 · 릴스", "광고", "카드뉴스", "스레드", "콘텐츠 자동화"]);
   assert.deepEqual(stages.filter(stage => stage.pages.some(page => page.href === "/content/images")).map(stage => stage.id), ["yt-ad"]);
   // 한눈에 보기 (리키 관제실 시안, owner decision 2026-10-31) leads 공통.
-  assert.deepEqual(stages[0].pages.map(page => page.label), ["한눈에 보기", "주제 찾기", "아카이브", "스케줄", "성과", "채널/링크 관리"]);
+  assert.deepEqual(stages[0].pages.map(page => page.label), ["한눈에 보기", "제작 정본 현황", "주제 찾기", "아카이브", "스케줄", "콘텐츠 성과", "채널/링크 관리"]);
   const threads = stages.find(stage => stage.id === "threads");
   assert.equal(threads.pages[0].label, "스레드 글감 모으기", "레퍼런스 수집 says what it collects");
   assert.equal(threads.pages[0].href, "/automation/references");
-  // Every old address is still in the menu exactly once (bookmarks, guides and per-address menu permissions keep working).
-  const before = NAV_STAGES.filter(stage => stage.id === "automation").flatMap(stage => stage.pages.map(page => page.href)).sort();
+  // The old card and shorts URLs redirect to their current screens and are absent from the v1 sidebar.
+  const before = NAV_STAGES.filter(stage => stage.id === "automation").flatMap(stage => stage.pages.map(page => page.href)).filter(href => !["/automation/cardnews", "/automation/shorts"].includes(href)).sort();
   const after = stages.filter(stage => ["threads", "automation"].includes(stage.id)).flatMap(stage => stage.pages.map(page => page.href))
     .filter(href => href !== "/content/threads-canon").sort();
   assert.deepEqual(after, before);

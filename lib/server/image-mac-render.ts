@@ -8,7 +8,7 @@ import { usesBackgroundPhoto } from "@/lib/image-creative/formats";
 import { IMAGE_CREATIVE_KIND } from "@/lib/image-creative/storage";
 import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
-import { imageMeta, isApprovedRender, macOutputPath, macPhotoUrl, savedDesignPreview, saveImageMeta, type ImageMacRun, type ImageRenderTarget } from "./image-creatives";
+import { adPlacementPng, imageMeta, isApprovedRender, macOutputPath, macPhotoUrl, savedDesignPreview, saveImageMeta, type ImageMacRun, type ImageRenderTarget } from "./image-creatives";
 import { MEDIA_BUCKET } from "./youtube-process-stages";
 
 const lease = { jobId: z.string().uuid(), lease: z.string().uuid() };
@@ -16,7 +16,7 @@ const variantId = z.string().uuid();
 const fileSize = z.number().int().positive().max(20 * 1024 * 1024);
 const file = z.object({variantId, bytes: fileSize, sha256: z.string().regex(/^[a-f0-9]{64}$/)}).strict();
 export const imageMacActions = [
-  z.object({action:z.literal("image_creative_claim"), rendererVersion:z.number().int().min(1).max(9)}).strict(),
+  z.object({action:z.literal("image_creative_claim"), rendererVersion:z.number().int().min(1).max(10)}).strict(),
   z.object({action:z.literal("image_creative_scene"), ...lease, variantId}).strict(),
   z.object({action:z.literal("image_creative_prepare"), ...lease, variantId, fileSize}).strict(),
   z.object({action:z.literal("image_creative_complete"), ...lease, files:z.array(file).min(1).max(20)}).strict(),
@@ -52,7 +52,7 @@ async function claim(computer: Computer, rendererVersion: number) {
         const run = meta.renders?.find(r => r.target === computer.target && r.status === status &&
           (status === "queued" || (r.expires ?? 0) <= Date.now()) && isApprovedRender(meta, r) &&
           meta.state.variants.every(v => !r.variantIds.includes(v.id) ||
-            rendererVersion >= (v.referenceArtwork || v.promptEdit ? 9 : usesReferencePhotoStyling(v.referenceLayout) ? 8 : usesReferenceDetailRendering(v.referenceLayout) ? 7 : v.referenceLayout?.master ? 6 : v.referenceLayout?.composition ? 5 : v.formatId === "reference_image" ? 4 : v.formatId === "thumbnail_subject" ? 3 : usesBackgroundPhoto(v) ? 2 : 1)));
+            rendererVersion >= (v.design?.photoFit ? 10 : v.referenceArtwork || v.promptEdit ? 9 : usesReferencePhotoStyling(v.referenceLayout) ? 8 : usesReferenceDetailRendering(v.referenceLayout) ? 7 : v.referenceLayout?.master ? 6 : v.referenceLayout?.composition ? 5 : v.formatId === "reference_image" ? 4 : v.formatId === "thumbnail_subject" ? 3 : usesBackgroundPhoto(v) ? 2 : 1)));
         if (!run) continue;
         const token = randomUUID();
         try {
@@ -158,9 +158,10 @@ export async function imageMacWork(computer: Computer, input: Action) {
 }
 
 /** The owner reviews a scaled copy of the completed Mac file; its signed original is released after final approval. */
-export async function macReviewPng(record: OsRecord, id: string, runId: string) {
+export async function macReviewPng(record: OsRecord, id: string, runId: string, aspect?: import("../ad-production").AdAspect) {
   const meta = imageMeta(record);
   const run = meta.renders?.find(row => row.id === runId && row.status === "done" && row.variantIds.includes(id));
+  if (aspect && !meta.state.adSetup?.aspects.includes(aspect)) throw missed();
   const receipt = run?.files?.find(file => file.variantId === id);
   if (!run || !receipt || !isApprovedRender(meta, run)) throw missed();
   const {data, error} = await createServiceSupabase().storage.from(MEDIA_BUCKET).download(macOutputPath(record.id, run, id));
@@ -169,6 +170,7 @@ export async function macReviewPng(record: OsRecord, id: string, runId: string) 
   try {
     const bytes = Buffer.from(await data.arrayBuffer());
     if (sha(bytes) !== receipt.sha256) throw Error("receipt mismatch");
+    if (aspect) return await adPlacementPng(bytes,aspect);
     return await getSharp(undefined)(bytes, { failOn: "warning", limitInputPixels: 1440 * 2560 })
       .resize({ width: 900, withoutEnlargement: true }).png().toBuffer();
   } catch {

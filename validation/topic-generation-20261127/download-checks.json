@@ -1,0 +1,14 @@
+[
+  {
+    "topic": "coffee",
+    "pngs": 5,
+    "reloadMatches": true,
+    "downloaded": true
+  },
+  {
+    "topic": "booking",
+    "pngs": 5,
+    "reloadMatches": true,
+    "downloaded": true
+  }
+]

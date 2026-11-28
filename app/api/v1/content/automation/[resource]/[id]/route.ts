@@ -57,7 +57,7 @@ export async function PATCH(request:Request,{params}:Params){
     if(input.dueDate!==undefined)changes.due_date=input.dueDate;
     if(input.metadata){
       const metadata:Record<string,unknown>={...current.metadata,...input.metadata,space:"personal",
-        ...(resource==="items"?{channel:current.metadata.channel}:{}),
+        ...(resource==="items"?{channel:current.metadata.channel,canonTrace:current.metadata.canonTrace}:{}),
         // Sharing changes only through the share/unshare actions.
         ...Object.fromEntries(TEAM_FIELDS.map(key=>[key,current.metadata[key]])),
         ...(resource==="templates"?{packageKind:"cardnews_template_v2"}:{})};

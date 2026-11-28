@@ -1,13 +1,13 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ExternalLink, Plus, RefreshCw, Search, Sparkles, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ExternalLink, Plus, Search, Sparkles, X } from "lucide-react";
 import { apiRequest, archiveRecord, createRecord, listAllRecordsOfType, resolveYoutubeChannel, type YoutubeChannelIdentity } from "@/lib/api-client";
 import { contentOrigin } from "@/lib/content-origin";
 import type { OsRecord } from "@/lib/record-types";
 import {
-  ageLabel, BREAKOUT, compactCount, DISCOVER_CATEGORIES, durationLabel, isBreakout, keptVideoRecord, ratioLabel,
+  ageLabel, BREAKOUT, compactCount, DISCOVER_CATEGORIES, durationLabel, isBreakout, matchesDiscoverScope, keptVideoRecord, ratioLabel,
   type DiscoverChannel, type DiscoverVideo, type NicheCluster, type NicheDecision, type NicheVideo,
 } from "@/lib/youtube-process/discover";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
@@ -22,9 +22,6 @@ type Source = "found" | "tracked" | "kept";
 type Query = { category: string } | { q: string };
 type Found = { videos: DiscoverVideo[]; channels: DiscoverChannel[]; at: string; cached: boolean };
 type Board = { boardId: string; clusters: NicheCluster[]; settled: NicheCluster[]; at: string | null; by: string | null; model: string | null; pool: number };
-// One request per search while the page is open: the screen can mount twice and the session token can refresh as it loads,
-// and an uncached 전체 search spends about 1,460 YouTube quota units.
-const inflight = new Map<string, Promise<Found>>();
 const meta = <T,>(record: OsRecord, key: string, fallback: T) => (record.metadata?.[key] ?? fallback) as T;
 const num = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : null;
 /** A new video at 주제: one found video, or a 틈새's videos (up to 8) as its 참고 영상 with the 틈새's name and formula. */
@@ -82,23 +79,32 @@ export function YoutubeDiscoverScreen({ bare = false }: { bare?: boolean }) {
   const [error, setError] = useState("");
   const team = profile?.team || "콘텐츠";
 
-  const search = useCallback(async (refresh = false) => {
-    setError("");
-    if (demo) { setFound({ videos: DEMO_VIDEOS, channels: DEMO_CHANNELS, at: new Date().toISOString(), cached: false }); return; }
-    if (!accessToken) return;
+  const [run, setRun] = useState({ number: 0, key: "" });
+  const key = new URLSearchParams({ days, ...pick }).toString();
+  const startSearch = () => {
+    const next = query.trim() ? { q: query.trim() } : "q" in pick ? { category: "all" } : pick;
+    setSource("found");
+    setPick(next);
+    setRun(previous => ({ number: previous.number + 1, key: new URLSearchParams({ days, ...next }).toString() }));
+  };
+  const lastRun = useRef(0);
+  useEffect(() => {
+    let active = true;
+    const explicit = run.key === key && run.number > lastRun.current;
+    if (explicit) lastRun.current = run.number;
+    setError(""); setFound(null);
+    if (demo) {
+      setFound({ videos: DEMO_VIDEOS, channels: DEMO_CHANNELS, at: "", cached: false });
+      setBusy(false); return;
+    }
+    if (!accessToken) { setBusy(false); return; }
     setBusy(true);
-    try {
-      const key = new URLSearchParams({ days, ...("q" in pick ? { q: pick.q } : { category: pick.category }) }).toString();
-      let request = refresh ? undefined : inflight.get(key);
-      if (!request) {
-        request = apiRequest<Found>(`/api/v1/content/youtube/discover?${key}${refresh ? "&refresh=1" : ""}`, { token: accessToken });
-        inflight.set(key, request);
-        request.catch(() => inflight.delete(key));
-      }
-      setFound(await request);
-    } catch (reason) { setError(errorMessage(reason)); } finally { setBusy(false); }
-  }, [accessToken, demo, days, pick]);
-  useEffect(() => { void search(); }, [search]);
+    apiRequest<Found>(`/api/v1/content/youtube/discover?${key}&${explicit ? "refresh=1" : "cachedOnly=1"}`, { token: accessToken })
+      .then(result => { if (active) setFound(result); })
+      .catch(reason => { if (active) setError(errorMessage(reason)); })
+      .finally(() => { if (active) setBusy(false); });
+    return () => { active = false; };
+  }, [accessToken, demo, key, run]);
   const loadRecords = useCallback(async () => {
     if (demo || !accessToken) return;
     try { setRecords((await listAllRecordsOfType(accessToken, "content_topic")).filter(row => contentOrigin(row) !== "test" && row.metadata?.workflow !== "youtube_v1")); }
@@ -112,10 +118,13 @@ export function YoutubeDiscoverScreen({ bare = false }: { bare?: boolean }) {
   const tracked = records.filter(row => kind(row) === "outlier" && ["tracked_channel", "rising_channel"].includes(from(row)));
   const keptIds = new Set(kept.map(row => meta<string>(row, "youtubeId", "")));
   const trackedChannelIds = new Set(channels.map(row => meta<string>(row, "channelId", "")));
-  const foundBreakouts = (found?.videos ?? []).filter(isBreakout);
-  const base = source === "found" ? (onlyBreakouts ? foundBreakouts : found?.videos ?? []) : (source === "kept" ? kept : tracked).map(asVideo);
+  const foundVideos = (found?.videos ?? []).filter(video => matchesDiscoverScope(video.title, "category" in pick ? pick.category : "all"));
+  const hiddenCount = (found?.videos.length ?? 0) - foundVideos.length;
+  const foundChannelIds = new Set(foundVideos.map(video => video.channelId));
+  const foundBreakouts = foundVideos.filter(isBreakout);
+  const base = source === "found" ? (onlyBreakouts ? foundBreakouts : foundVideos) : (source === "kept" ? kept : tracked).map(asVideo);
   const shown = base.slice().sort((a, b) => sort === "views" ? b.viewCount - a.viewCount : sort === "recent" ? (b.publishedAt ?? "").localeCompare(a.publishedAt ?? "") : (b.ratio ?? -1) - (a.ratio ?? -1));
-  const candidates = (found?.channels ?? []).filter(channel => (channel.median ?? 0) >= BREAKOUT.minMedian);
+  const candidates = (found?.channels ?? []).filter(channel => foundChannelIds.has(channel.id) && (channel.median ?? 0) >= BREAKOUT.minMedian);
 
   const keep = async (video: DiscoverVideo) => {
     if (!accessToken || keptIds.has(video.id)) return;
@@ -137,8 +146,8 @@ export function YoutubeDiscoverScreen({ bare = false }: { bare?: boolean }) {
     } catch (reason) { setError(errorMessage(reason)); } finally { setSaving(""); }
   };
   const label = "q" in pick ? `“${pick.q}”` : pick.category === "all" ? "전체 분류" : DISCOVER_CATEGORIES.find(([letter]) => letter === pick.category)?.[1] ?? "";
-  const hoursAgo = found?.at ? Math.floor((Date.now() - Date.parse(found.at)) / 3_600_000) : 0;
   const searchable = tab !== "niche";
+  const emptyCache = !demo && found?.cached && !found.at;
 
   return <>
     {bare ? null : <div className="yp-mv-head"><h1 className="page-title" data-ui="page-title">주제 찾기</h1><span style={{ flex: 1 }} /><Link className="yp-btn" href="/content/projects">← 내 영상</Link></div>}
@@ -146,16 +155,15 @@ export function YoutubeDiscoverScreen({ bare = false }: { bare?: boolean }) {
       <button key={key} type="button" role="tab" aria-selected={tab === key} className={tab === key ? "yp-on" : ""} onClick={() => setTab(key)}>{text}</button>)}</div>
     <p className="yp-hint" style={{ margin: "8px 0 12px" }}>{TAB_HINT[tab]}</p>
     {searchable ? <>
-      <form className="yp-disc-search" onSubmit={event => { event.preventDefault(); if (query.trim().length >= 2) { setSource("found"); setPick({ q: query.trim() }); } }}>
+      <form className="yp-disc-search" onSubmit={event => { event.preventDefault(); startSearch(); }}>
         <Search size={16} className="yp-i" aria-hidden="true" /><input className="yp-in" type="search" value={query} onChange={event => setQuery(event.target.value)} onFocus={event => event.currentTarget.select()} placeholder="키워드로 찾기 · 예) 직장인 강점 찾기" aria-label="키워드로 찾기" />
-        <button type="submit" className="yp-btn yp-pri" disabled={query.trim().length < 2}>찾기</button><CostTag kind="youtube" /></form>
+        <button type="submit" className="yp-btn yp-pri" disabled={busy || query.trim().length === 1}>찾기</button><CostTag kind="youtube" /></form>
       <div className="yp-chips" role="group" aria-label="분류">
-        <button type="button" className={`yp-chip${"category" in pick && pick.category === "all" ? " yp-on" : ""}`} onClick={() => { setSource("found"); setPick({ category: "all" }); }}>전체</button>
-        {DISCOVER_CATEGORIES.map(([letter, name]) => <button key={letter} type="button" className={`yp-chip${"category" in pick && pick.category === letter ? " yp-on" : ""}`} onClick={() => { setSource("found"); setPick({ category: letter }); }}>{letter} {name}</button>)}
+        <button type="button" className={`yp-chip${"category" in pick && pick.category === "all" ? " yp-on" : ""}`} onClick={() => { setQuery(""); setSource("found"); setPick({ category: "all" }); }}>전체</button>
+        {DISCOVER_CATEGORIES.map(([letter, name]) => <button key={letter} type="button" className={`yp-chip${"category" in pick && pick.category === letter ? " yp-on" : ""}`} onClick={() => { setQuery(""); setSource("found"); setPick({ category: letter }); }}>{letter} {name}</button>)}
       </div>
       <div className="yp-disc-bar">
-        {found && !busy ? <span className="yp-hint" style={{ margin: 0 }}>{found.cached ? `${hoursAgo ? `${hoursAgo}시간` : "조금"} 전에 찾아 둔 결과예요.` : "방금 유튜브에서 찾았어요."}
-          {!demo ? <> <button type="button" className="yp-lnk" onClick={() => void search(true)}><RefreshCw size={12} aria-hidden="true" /> 다시 찾기</button> <CostTag kind="youtube" /></> : null}</span> : null}
+        <span className="yp-hint" style={{ margin: 0 }}>{demo ? "예시 영상" : found?.at ? `최근 검색 · ${new Date(found.at).toLocaleString("ko-KR")}` : "찾기를 누르면 유튜브에서 검색해요."}{hiddenCount > 0 ? ` · 분류 밖 영상 ${hiddenCount}개 제외` : ""}</span>
         <span style={{ flex: 1 }} />
         <select className="yp-in yp-w-auto" aria-label="기간" value={days} onChange={event => setDays(event.target.value)}><option value="30">최근 30일</option><option value="90">최근 90일</option><option value="365">최근 1년</option><option value="all">전체 기간</option></select>
       </div>
@@ -175,7 +183,7 @@ export function YoutubeDiscoverScreen({ bare = false }: { bare?: boolean }) {
           {channel.top.length ? <div className="yp-dch-v">{channel.top.map(video => <a key={video.id} className="yp-ref-thumb" href={video.url} target="_blank" rel="noreferrer" title={video.title}
             style={{ backgroundImage: `url(${video.thumbnail || `https://i.ytimg.com/vi/${video.id}/mqdefault.jpg`})` }} aria-label={`${video.title} 유튜브에서 보기`}><span>{ratioLabel(video.ratio ?? 0)}</span></a>)}</div> : null}
         </article>)}</div>
-        : <p className="yp-pempty">찾은 채널이 없어요. 기간을 늘리거나 다른 분류를 눌러 보세요.</p>}
+        : <p className="yp-pempty">{emptyCache ? "저장된 검색 결과가 없어요. 찾기를 눌러 첫 검색을 시작하세요." : "찾은 채널이 없어요. 기간을 늘리거나 다른 분류를 골라 보세요."}</p>}
       <ChannelManager channels={channels} onChanged={loadRecords} demo={demo} token={accessToken} team={team} />
     </> : null}
 
@@ -205,7 +213,7 @@ export function YoutubeDiscoverScreen({ bare = false }: { bare?: boolean }) {
             {keepFailed[video.id] ? <span className="yp-errline" role="alert">담지 못했어요: {keepFailed[video.id]}</span> : null}
           </div></article>)}</div>
         : <p className="yp-pempty">{source === "kept" ? "담아 둔 영상이 없어요. 찾은 영상에서 [틈새 재료로 담기]를 눌러요." : source === "tracked" ? "매일 보는 채널에서 평소보다 크게 나온 영상이 생기면 여기에 모여요. ① 채널 모으기에서 채널을 넣어요."
-          : onlyBreakouts && found?.videos.length ? `찾은 영상 ${found.videos.length}개 중 평소의 ${BREAKOUT.ratio}배를 넘은 영상이 없어요. 기간을 늘리거나 다른 분류를 눌러 보세요.` : "찾은 영상이 없어요. 기간을 늘리거나 다른 분류를 눌러 보세요."}</p>}
+          : emptyCache ? "저장된 검색 결과가 없어요. 찾기를 눌러 첫 검색을 시작하세요." : onlyBreakouts && foundVideos.length ? `분류에 맞는 영상 ${foundVideos.length}개 중 평소의 ${BREAKOUT.ratio}배를 넘은 영상이 없어요. 기간을 늘리거나 다른 분류를 눌러 보세요.` : "찾은 영상이 없어요. 기간을 늘리거나 다른 분류를 눌러 보세요."}</p>}
     </> : null}
 
     <div hidden={tab !== "niche"}><NicheBoard token={accessToken} demo={demo} profile={profile} onCount={setOpenNiches} /></div>

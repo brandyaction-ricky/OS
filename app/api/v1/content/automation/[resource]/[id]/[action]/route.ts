@@ -6,7 +6,7 @@ import { authenticateRequest } from "@/lib/server/auth";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { parseAutomationResult } from "@/lib/content-automation-results";
 import { validatePersonalItem } from "@/lib/server/content-automation-validators";
-import { threadsPostsProblem } from "@/lib/threads-posts";
+import { threadsClaimsProblem, threadsPostsProblem } from "@/lib/threads-posts";
 import type { OsRecord } from "@/lib/record-types";
 import { mayHideComment } from "@/lib/content-comments";
 import { moderateChannelComment } from "@/lib/server/channel-comments";
@@ -208,6 +208,10 @@ export async function POST(request:Request,{params}:Params){
         if(!["draft","blocked"].includes(current.status))throw new ApiError(409,"ITEM_STATUS_CHANGED","제작 중 콘텐츠만 확인으로 보낼 수 있습니다.");
         validatePersonalItem(current.metadata,String(current.metadata.channel),String(current.owner_id));
         validateShortformReview(current.metadata);
+        if(current.metadata.channel==="threads"){
+          const issue=threadsClaimsProblem(current.metadata.posts,current.metadata.claims);
+          if(issue)throw new ApiError(422,"THREADS_FACT_SOURCE_REQUIRED",issue);
+        }
         if(current.metadata.channel==="card"&&(!Array.isArray(current.metadata.pages)||!current.metadata.pages.length))
           throw new ApiError(422,"CARD_PAGES_REQUIRED","카드뉴스 페이지를 준비해 주세요.");
         if(current.metadata.channel==="threads"&&threadsPostsProblem(current.metadata.posts,1))
@@ -220,6 +224,11 @@ export async function POST(request:Request,{params}:Params){
       if(action==="review"){
         if(!access.canReview)throw new ApiError(403,"TEAM_REVIEWER_REQUIRED","팀 원고는 지정 검수자만 승인하거나 수정 요청할 수 있습니다.");
         const input=reviewSchema.parse(await parseJson(request,30_000));
+        if(input.version!==current.version)throw new ApiError(409,"AUTOMATION_CHANGED","최신 원고를 다시 불러와 주세요.");
+        if(current.metadata.channel==="threads"&&input.result==="ready"){
+          const issue=threadsClaimsProblem(current.metadata.posts,current.metadata.claims);
+          if(issue)throw new ApiError(422,"THREADS_FACT_SOURCE_REQUIRED",issue);
+        }
         const {data,error}=await db.rpc("os_content_review_command",{
           p_owner:current.owner_id,p_record:id,p_expected_version:input.version,p_result:input.result,
           p_checks:input.checks,p_note:input.note??null,p_actor:ownerId,
@@ -242,6 +251,10 @@ export async function POST(request:Request,{params}:Params){
           confirm:z.literal(true),
         }).strict().parse(await parseJson(request,5000));
         if(input.version!==current.version)throw new ApiError(409,"AUTOMATION_CHANGED","최신 확인본을 다시 불러와 주세요.");
+        if(current.metadata.channel==="threads"&&action==="schedule"){
+          const issue=threadsClaimsProblem(current.metadata.posts,current.metadata.claims);
+          if(issue)throw new ApiError(422,"THREADS_FACT_SOURCE_REQUIRED",issue);
+        }
         if(action==="schedule"&&!input.startsAt)throw new ApiError(422,"PUBLICATION_TIME_REQUIRED","미래 게시 시각을 입력해 주세요.");
         if(action==="manual-done"&&!input.platform)throw new ApiError(422,"PUBLICATION_PLATFORM_REQUIRED","게시 플랫폼을 선택해 주세요.");
         if(input.permalink){
@@ -277,11 +290,12 @@ export async function POST(request:Request,{params}:Params){
           if(typeof candidate!=="object"||candidate===null)throw new ApiError(422,"JOB_RESULT_INVALID","AI 결과 형식을 확인해 주세요.");
           const result=candidate as Record<string,unknown>;
           const proc=String(job.metadata.proc);
+          const canon = proc === "threads" ? getThreadsJobInput(job)?.canonical : undefined;
           const fields=proc==="card-fill"?{pages:result.pages,selfCheck:result.selfCheck}:
             proc==="card-caption"?{caption:result.caption,hashtags:result.hashtags}:
             proc==="shorts-cut"?(result.appeals?{shortformAppeals:result.appeals}:{cuts:result.cuts}):
             proc==="shorts-desc"?{coverText:result.cover,description:result.description}:
-            proc==="threads"?{posts:result.posts}:
+            proc==="threads"?{posts:result.posts,canonTrace:canon ? [{id:canon.id,title:canon.title,version:canon.version}] : []}:
             proc==="review"?{aiReview:result}:proc==="image"?{imageRequest:result}:
             proc==="reply"?{replyDraft:result}:null;
           if(!fields)throw new ApiError(422,"JOB_RESULT_INVALID","이 콘텐츠에 맞는 AI 결과가 아닙니다.");

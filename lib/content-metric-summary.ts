@@ -11,6 +11,10 @@ export type MetricSummary = { days: SummaryDay[]; videos: SummaryVideo[]; rows: 
 
 export const ANALYTICS_DAILY = "youtube_analytics_daily";
 const num = (value: unknown) => { const n = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : NaN; return Number.isFinite(n) ? n : null; };
+function weightedAverage(sum: unknown, weight: unknown) {
+  const value = num(sum), denominator = num(weight);
+  return value !== null && denominator !== null && denominator > 0 ? value / denominator : null;
+}
 const add = (a: number | null, b: number | null) => b === null ? a : (a ?? 0) + b;
 
 /** The database function's days and videos, worked out from day rows the same way (missing values stay missing, never 0). */
@@ -50,8 +54,8 @@ export function videoRows(videos: SummaryVideo[], owner = ""): OsRecord[] {
       amount: null, currency: "KRW", source_url: v.url, tags: [], version: 1, created_by: owner, updated_by: owner, created_at: at, updated_at: at, archived_at: null,
       metadata: { contentId: v.video, platform: "YouTube", format: v.format, metricMode: "daily", dataSource: ANALYTICS_DAILY, summary: true, days: num(v.days) ?? 0,
         views, likes: num(v.likes), comments: num(v.comments), shares: num(v.shares), watchMinutes: num(v.watchMinutes), subscribers: num(v.subscribers),
-        retention: num(v.retentionViews) ? num(v.retentionSum)! / num(v.retentionViews)! : null,
-        impressions: num(v.impressions), ctr: num(v.ctrImpressions) ? num(v.ctrSum)! / num(v.ctrImpressions)! : null,
+        retention: weightedAverage(v.retentionSum, v.retentionViews),
+        impressions: num(v.impressions), ctr: weightedAverage(v.ctrSum, v.ctrImpressions),
         averageViewDuration: views && num(v.durationSum) !== null ? Math.round(num(v.durationSum)! / views) : null,
         publishedAt: v.publishedAt, channelId: v.channelId, durationSeconds: num(v.durationSeconds), measuredAt: at } } as OsRecord;
   });

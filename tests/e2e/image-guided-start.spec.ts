@@ -72,7 +72,7 @@ test("첫 화면은 모바일에서도 한 장 제작과 여러 안 테스트를
     const button = page.getByRole("button", {name:title, exact:true});
     await expect(button).toBeInViewport();
   }
-  await expect(page.getByRole("region",{name:"포맷 창고"})).toHaveCount(0);
+  await expect(page.getByRole("region",{name:"광고 디자인 고르기"})).toHaveCount(0);
   await expect(page.getByLabel("이미지를 출력할 컴퓨터")).toHaveCount(0);
   await page.getByRole("button",{name:"광고 한 장 만들기", exact:true}).click();
   await expect(page.getByRole("heading",{name:"상품 선택",exact:true})).toBeVisible();

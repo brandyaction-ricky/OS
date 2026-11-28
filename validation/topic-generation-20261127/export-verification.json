@@ -1,0 +1,41 @@
+[
+  {
+    "topic": "pottery",
+    "brand": "솔빛공방",
+    "formats": [
+      "M01",
+      "M09",
+      "A04",
+      "A10",
+      "D12"
+    ],
+    "pngCount": 5,
+    "zipMatchesPreview": true
+  },
+  {
+    "topic": "coffee",
+    "brand": "새벽원두",
+    "formats": [
+      "M01",
+      "M09",
+      "A04",
+      "A10",
+      "D12"
+    ],
+    "pngCount": 5,
+    "zipMatchesPreview": true
+  },
+  {
+    "topic": "booking",
+    "brand": "예약노트",
+    "formats": [
+      "M01",
+      "M09",
+      "A04",
+      "A10",
+      "D12"
+    ],
+    "pngCount": 5,
+    "zipMatchesPreview": true
+  }
+]

@@ -38,7 +38,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { STAFF_FINANCE_MENUS } from "./finance/access.ts";
-import { ARCHIVE_PAGE, CARD_CANON_PAGE, COLUMN_CANON_PAGE, OVERVIEW_PAGE, SCRIPT_CANON_PAGE, SHORT_CANON_PAGE, THREADS_CANON_PAGE, YOUTUBE_V1_CEO_STAGE, YOUTUBE_V1_CONFIRM_PAGE, YOUTUBE_V1_HREFS, YOUTUBE_V1_PAGES, YOUTUBE_V1_STEP_PAGES } from "./youtube-process/navigation.ts";
+import { ARCHIVE_PAGE, CARD_CANON_PAGE, COLUMN_CANON_PAGE, OVERVIEW_PAGE, PRODUCTION_CANON_PAGE, SCRIPT_CANON_PAGE, SHORT_CANON_PAGE, THREADS_CANON_PAGE, YOUTUBE_V1_CEO_STAGE, YOUTUBE_V1_CONFIRM_PAGE, YOUTUBE_V1_HREFS, YOUTUBE_V1_PAGES, YOUTUBE_V1_STEP_PAGES } from "./youtube-process/navigation.ts";
 export { YOUTUBE_V1_HREFS };
 
 export interface NavPage {
@@ -81,7 +81,7 @@ export const NAV_STAGES: NavStage[] = [
     { label: "주제 기획", href: "/automation/topics", icon: Lightbulb, processNumber: 1, ready: true },
     { label: "카드뉴스", href: "/automation/cardnews", icon: Image, processNumber: 2, ready: true },
     { label: "쇼츠", href: "/automation/shorts", icon: Smartphone, processNumber: 3, ready: true },
-    { label: "쓰레드", href: "/automation/threads", icon: AtSign, processNumber: 4, ready: true },
+    { label: "스레드", href: "/automation/threads", icon: AtSign, processNumber: 4, ready: true },
     { label: "최종 확인", href: "/automation/review", icon: ListChecks, processNumber: 5, ready: true, aliases: ["최종 점검"] },
     { label: "발행", href: "/automation/calendar", icon: CalendarRange, processNumber: 6, ready: true, children: [{ label: "발행 일정", href: "/automation/calendar?tab=schedule" }, { label: "발행 기록", href: "/automation/calendar?tab=history" }] },
     { label: "반응·성과", href: "/automation/performance", icon: MessageSquareText, processNumber: 7, ready: true, children: [{ label: "댓글·답글", href: "/automation/performance?tab=comments" }, { label: "성과", href: "/automation/performance?tab=metrics" }] },
@@ -160,6 +160,7 @@ const matchesPath = (pathname: string, href: string) => pathname === href || (hr
 export function findPage(path: string): NavPage {
   const pathname = path.split(/[?#]/)[0];
   if (pathname === "/home") return HOME_PAGE;
+  if (pathname === "/content/cardnews/myin") return { label: "마이인 카드뉴스 제작", href: pathname, navHref: "/automation/cardnews", icon: Image, ready: true };
   if (pathname === "/organization/people") return { label: "팀 현황", href: pathname, navHref: "/organization/members", icon: Gauge, ready: true };
   if (pathname === "/knowledge") return { label: "문서 보관함", href: pathname, navHref: "/knowledge/vault", icon: BookOpen, ready: true };
   const legacyDocuments: Record<string, string> = {
@@ -185,7 +186,7 @@ export function findPage(path: string): NavPage {
     return { ...page, href: alias, navHref: page.href };
   }
   return [...pages].sort((a, b) => b.href.length - a.href.length).find(page => matchesPath(pathname, page.href))
-    ?? [...YOUTUBE_V1_PAGES, ...YOUTUBE_V1_STEP_PAGES, YOUTUBE_V1_CONFIRM_PAGE, CARD_CANON_PAGE, SHORT_CANON_PAGE, THREADS_CANON_PAGE, COLUMN_CANON_PAGE, SCRIPT_CANON_PAGE, OVERVIEW_PAGE, ARCHIVE_PAGE].find(page => matchesPath(pathname, page.href)) ?? HOME_PAGE;
+    ?? [...YOUTUBE_V1_PAGES, ...YOUTUBE_V1_STEP_PAGES, YOUTUBE_V1_CONFIRM_PAGE, CARD_CANON_PAGE, SHORT_CANON_PAGE, THREADS_CANON_PAGE, COLUMN_CANON_PAGE, SCRIPT_CANON_PAGE, PRODUCTION_CANON_PAGE, OVERVIEW_PAGE, ARCHIVE_PAGE].find(page => matchesPath(pathname, page.href)) ?? HOME_PAGE;
 }
 export function findStage(pathname: string) {
   const page = findPage(pathname);

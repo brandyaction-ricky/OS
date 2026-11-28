@@ -13,7 +13,7 @@ const METRICS = [["views", "조회"], ["likes", "좋아요"], ["comments", "댓�
 const READ_SCOPES = { full: "전체 읽음", partial: "일부 읽음", preview: "미리보기만 확인", unavailable: "본문 확인 불가" } as const;
 // 텔레그램 아카이브 (수정 요청 2026-11-13): Instagram · YouTube · TikTok links come in from the archive cards too.
 const PLATFORM_LABELS = { threads: "Threads", substack: "Substack", instagram: "Instagram", youtube: "YouTube", tiktok: "TikTok", other: "기타" } as const;
-const QUALITY_LABELS = { recommended: "추천 후보", pending: "검증 대기", reference_only: "내용 참고", all: "전체" } as const;
+const QUALITY_LABELS = { recommended: "추천 후보", pending: "반응 확인 대기", reference_only: "내용 참고", all: "전체" } as const;
 type QualityFilter = keyof typeof QUALITY_LABELS;
 type Mutate = (path: string, method: "POST" | "PATCH" | "PUT", body: unknown) => Promise<Record<string, unknown>>;
 type ComparisonDraft = { url: string; likes: string; publishedAt: string };
@@ -84,8 +84,9 @@ function ReferenceFacts({ item }: { item: ThreadsReferenceItem }) {
 
 export function ReferenceEvidencePanel({ topic, collapsed = false }: { topic: OsRecord; collapsed?: boolean }) {
   const references = referencesOf(topic);
+  const ideaOnly = references.some(item=>evaluateThreadsReference(item).status !== "recommended");
   if (!references.length) return null;
-  return <details className="ca-v07-brief tr-evidence" open={!collapsed}><summary>선택한 참고 자료 {references.length}개</summary>
+  return <details className="ca-v07-brief tr-evidence" open={!collapsed}><summary>선택한 참고 자료 {references.length}개{ideaOnly?" · 아이디어 후보":""}</summary>
     <p>주제로 가져올 때 확인한 원문과 반응입니다. 현재 수치는 원문에서 다시 확인하세요.</p>
     {references.map((item, index) => <article className="tr-evidence-row" key={`${item.id}:${index}`}><ReferenceFacts item={item} /></article>)}
   </details>;
@@ -142,7 +143,7 @@ export function ThreadsReferenceWorkspace({ records, mutate, collectionContext }
       if (editor.record) await mutate(`/api/v1/content/automation/topics/${editor.record.id}`, "PATCH", { expectedVersion: editor.record.version, title: reference.title, metadata: { reference_items: [reference] } });
       else await mutate("/api/v1/content/automation/topics", "POST", { title: reference.title, source: "reference", sourceRef: reference.url, kind: "threads_reference", editorial_workflow: "threads_reference_v1", reference_items: [reference], requestId });
       const quality = evaluateThreadsReference(reference);
-      setQualityFilter(quality.status); setEditor(null); setNotice(`${quality.label}(으)로 저장했습니다. 원하는 자료는 검증 상태와 관계없이 선택할 수 있습니다.`); setRequestId(crypto.randomUUID());
+      setQualityFilter(quality.status); setEditor(null); setNotice(`${quality.label}(으)로 저장했습니다. 원하는 자료는 반응 근거 충족 여부와 관계없이 선택할 수 있습니다.`); setRequestId(crypto.randomUUID());
     } catch (issue) { setError(issue instanceof Error ? issue.message : "참고 자료를 저장하지 못했습니다."); }
     finally { setBusy(false); }
   };
@@ -167,7 +168,7 @@ export function ThreadsReferenceWorkspace({ records, mutate, collectionContext }
     <div className="ca-v07-toolbar"><input aria-label="참고 자료 검색" placeholder="한국어 제목·질문·관점 검색" value={query} onChange={event => setQuery(event.target.value)} />
       <select aria-label="참고 자료 플랫폼" value={platform} onChange={event => setPlatform(event.target.value)}><option value="all">전체 플랫폼</option>{Object.entries(PLATFORM_LABELS).map(([key, label]) => <option value={key} key={key}>{label}</option>)}</select>
       <button type="button" className="primary-button" onClick={() => openEditor(null)}>+ 원문 등록</button></div>
-    <p>마음에 드는 자료의 ‘주제에 사용’을 선택하세요. 검증 상태와 관계없이 주제로 만들 수 있습니다. 선택하면 주제 만들기 버튼이 나타납니다.</p>
+    <p>마음에 드는 자료의 ‘주제에 사용’을 선택하세요. 반응 근거 충족 여부와 관계없이 주제로 만들 수 있습니다. 선택하면 주제 만들기 버튼이 나타납니다.</p>
     <details className="ca-v07-brief"><summary>내 AI에 원문 조사 맡기기</summary><div className="ca-v07-form-grid tr-collection-fields"><label>이번에 살펴볼 주제·범위<input value={collectionScope} maxLength={1000} placeholder="비워 두면 현재 정본과 타겟 기준으로 조사" onChange={event => setCollectionScope(event.target.value)} /></label>
       <label>추천 후보 수<select value={collectionCount} onChange={event => setCollectionCount(Number(event.target.value))}>{[1, 2, 3].map(count => <option key={count} value={count}>최대 {count}개</option>)}</select></label></div>
       <p>탐색 범위는 넓히되 기준을 통과한 글만 최대 3개 추천합니다. 추천 후보가 0개여도 정상입니다.</p>
@@ -217,7 +218,7 @@ export function ThreadsReferenceWorkspace({ records, mutate, collectionContext }
       <div className="ca-v07-actions"><button className="secondary-button" type="button" disabled={busy} onClick={() => setEditor(null)}>취소</button><button className="primary-button" disabled={busy || demo}>{busy ? "저장 중…" : "내 참고 자료에 저장"}</button></div>
     </form> : null}
     <div className="tr-list-head"><h2>내 레퍼런스 <small>전체 {entries.length}개</small></h2><span>원하는 자료 선택 → 주제 만들기</span></div>
-    <div className="tr-quality-filters" role="group" aria-label="참고 자료 검증 상태">{(Object.keys(QUALITY_LABELS) as QualityFilter[]).map(key => <button className="secondary-button" key={key} type="button" aria-pressed={qualityFilter === key} onClick={() => setQualityFilter(key)}>{QUALITY_LABELS[key]} {counts[key]}개</button>)}</div>
+    <div className="tr-quality-filters" role="group" aria-label="참고 자료 반응 근거">{(Object.keys(QUALITY_LABELS) as QualityFilter[]).map(key => <button className="secondary-button" key={key} type="button" aria-pressed={qualityFilter === key} onClick={() => setQualityFilter(key)}>{QUALITY_LABELS[key]} {counts[key]}개</button>)}</div>
     {selected.length ? <div className="tr-selected-guide" role="status"><strong>{selected.length}개 선택됨</strong><span>선택한 자료를 확인하고 주제를 만들어 보세요.</span><a href="#tr-create-topic">선택한 자료로 주제 만들기 ↓</a></div> : null}
     {filtered.length ? <div className="tr-comparison">{filtered.map(({ record, item, quality }) => {
       const checked = selected.some(entry => entry.record.id === record.id);
@@ -233,7 +234,7 @@ export function ThreadsReferenceWorkspace({ records, mutate, collectionContext }
       <label>주제 후보 이름<input aria-label="주제 후보 이름" aria-describedby="tr-topic-name-help" required maxLength={240} value={topicTitle} onChange={event => { setTopicTitle(event.target.value); setRequestId(crypto.randomUUID()); }} placeholder="선택한 원문으로 다룰 질문" /></label><small id="tr-topic-name-help">우리가 다룰 질문 · 내부 기획 이름, 첫 줄 카피는 집필 단계</small>
       <p>주제 후보 이름은 직접 바꿀 수 있습니다. 검증되지 않은 반응은 확인된 인기나 성과로 단정하지 않습니다.</p>
       <div className="tr-topic-suggestions">{selected.map(({ record, item }) => item.suggestedTopic ? <button className="secondary-button" type="button" key={record.id} disabled={busy} onClick={() => { setTopicTitle(item.suggestedTopic!); setRequestId(crypto.randomUUID()); }}>제안 사용: {item.suggestedTopic}</button> : null)}</div>
-      <p>선택한 원문만 주제 기획으로 가져갑니다. 기획 메모를 정하고 제작을 시작하면 쓰레드를 집필할 수 있습니다.</p>
+      <p>선택한 원문만 주제 기획으로 가져갑니다. 기획 메모를 정하고 제작을 시작하면 스레드를 집필할 수 있습니다.</p>
       <div className="ca-v07-actions"><button className="secondary-button" type="button" disabled={busy} onClick={clearSelection}>선택 해제</button><button className="primary-button" disabled={busy || demo || !topicTitle.trim()}>{busy ? "가져오는 중…" : "주제 후보로 가져오기"}</button><Link href="/automation/topics">주제 기획 보기 →</Link></div>
     </form> : null}
   </div>;

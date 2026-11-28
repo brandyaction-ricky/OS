@@ -62,3 +62,16 @@ test("provider errors distinguish invalid requests from temporary failures witho
     );
   }
 });
+
+test("필수 제작 정본은 동명 문서와 누락을 확인하고 유일한 승인본을 고른다", async () => {
+  const generation = loadGeneration();
+  const rows = [];
+  const db = { from() { return { select() { return this; }, in() { return this; }, order() { return { data: rows }; } }; } };
+  await assert.rejects(generation.namedProcedures(db, ["기준"], true), /미등록/);
+  rows.push({ id: "team", title: "기준", current_version: 1, status: "team" });
+  rows.push({ id: "company", title: "기준", current_version: 5, status: "canonical" });
+  const refs = await generation.namedProcedures(db, ["기준"], true);
+  assert.equal(refs[0].id, "company"); assert.equal(refs[0].version, 5);
+  rows.push({ id: "other", title: "기준", current_version: 2, status: "canonical" });
+  await assert.rejects(generation.namedProcedures(db, ["기준"], true), /여러 개/);
+});

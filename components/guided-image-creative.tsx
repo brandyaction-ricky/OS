@@ -258,7 +258,7 @@ export function GuidedImageCreative({projects,listReady,experimentList,reloadLis
   const referenceFlow = writeLegacyAppeals || Boolean((recommendation?.referenceFirst || (!recommendation && plan?.referenceFirst)) &&
     (!firstBatch || (state?.batches.length === 1 && !firstBatch.review?.copy && !firstBatch.review?.history.some(h=>h.step==="copy" && h.decision==="approved") && !approved?.baseId)));
   const projectTitle = bundle && <><header className="ic-row ic-guided-actions">
-    <div><strong>{bundle.project.title}</strong>{experiment && <p className="ic-muted">{statusLabel(experiment)}</p>}</div>
+    <div><strong>{bundle.project.title}</strong>{experiment && <p className="ic-muted">{state?.adRelease?.kind === "withheld" ? "집행 안 함 · 기록 완료" : statusLabel(experiment)}</p>}</div>
     {experiment ? <a href={listHref} className="secondary-button" role="button">프로젝트 목록</a>
       : <button type="button" className="secondary-button" disabled={busy} onClick={restart}>다른 작업</button>}
     {trashProject && <button type="button" className="secondary-button" disabled={busy} onClick={()=>trashProject(bundle.project)}>프로젝트 삭제</button>}
@@ -274,7 +274,9 @@ export function GuidedImageCreative({projects,listReady,experimentList,reloadLis
   if (approved && bundle) return <>{projectTitle}{demo ? <section className="panel panel-pad-lg ic-panel"><h2>포맷을 승인했어요</h2>
     <p>체험 모드에서는 카피를 직접 가져와서 다음 단계를 확인할 수 있어요.</p><button className="secondary-button" onClick={openTools}>카피 직접 가져오기</button></section> : jobPanel("copy")}</>;
   if (newest && (!newest.review?.final || !followup)) return <>{projectTitle}{newest.review?.final && <section className="panel panel-pad-lg ic-panel">
-    {experiment && !winner && <><h2>집행 결과 대기</h2><p>광고 결과를 확인한 뒤 아래 시안에서 승리 소재를 지정하세요.</p></>}
+    {experiment && !winner && (state?.adRelease?.kind === "withheld"
+      ? <><h2>집행하지 않은 광고입니다</h2><p>미집행 사유를 저장했어요. 제작한 시안과 승인 기록은 아래에서 확인할 수 있습니다.</p></>
+      : <><h2>집행 결과 대기</h2><p>광고 결과를 확인한 뒤 아래 시안에서 승리 소재를 지정하세요.</p></>)}
     {winner && <><h2>{experiment ? `${modeName(newest.mode)} 테스트 승리 소재` : "선택한 시안으로 다음 테스트"}</h2>
       <p><strong>{winner.copy.headline}</strong> · {winner.appeal.meaning}</p>
       {measured?.note && <p className="ic-muted">결과 메모 · {measured.note}</p>}

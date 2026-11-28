@@ -74,7 +74,7 @@ test("제작한 광고의 글꼴·카드·규격을 바꿔 원본과 별도 보�
   const record=await page.evaluate(()=>JSON.parse(localStorage.getItem("os-image-creatives-demo-v1")!)[0]);
   const [v0,v1]=record.state.variants;expect(v1).toMatchObject({parentId:v0.id,brand:v0.brand,copy:v0.copy,asset:v0.asset,appeal:v0.appeal,design:{font:"serif",card:"frame",placement:"reel",outputWidth:1440}});
   expect(v0.design).toBeUndefined();
-  await page.goto("/content/images?project="+record.project.id+"#image-creative-results");
+  await page.goto("/content/images?view=tools&project="+record.project.id+"#image-creative-results");
   await expect(revised.getByRole("img")).toBeVisible();expect(await png(revised.getByRole("img"))).toEqual(withGuide);
   await results.getByLabel("결과에 세이프 존 표시").check();
   const [single]=await Promise.all([page.waitForEvent("download"),revised.getByRole("button",{name:"내보내기",exact:true}).click()]);

@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { MYIN_DESIGNS } from "@/lib/cardnews/myin-example";
 import Image from "next/image";
 import { ArrowRight, Check, ImagePlus } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
@@ -83,12 +85,15 @@ export function CardProductionStart({ initial, thumbnail, save, upload, resolveP
   return <section className="yp-fsec yp-production" aria-label="유형별 카드 제작">
     <div className="yp-production-block">
       <h2 className="yp-production-heading">제작 방식 선택</h2>
+      <p className="yp-hint">정본 확인 → 내용 기획 → 원고 검토 → 그림 생성 → PNG 출력</p>
+      <Link className="yp-btn" href="/content/cardnews/myin">마이인 정본 기반 8장 제작 예시 열기 ↗</Link>
       <div className="yp-production-types" role="group" aria-label="제작 유형">{Object.entries(PRODUCTION_TYPES).map(([key, row]) =>
         <button type="button" className="yp-production-choice" key={key} disabled={busy} aria-pressed={key === type} onClick={() => { if (key !== type) choose(row.example); }}>
           <div aria-hidden="true">{thumbnail(row.example, "body", 40)}</div>
           <span className="yp-choice-copy"><strong>{row.name}</strong><small className="yp-production-meta">{row.detail}</small></span>
           {key === type && <Check size={16} aria-hidden="true" />}
         </button>)}</div>
+      {data.format === "list" && <label className="yp-field"><span>디자인 기준</span><select className="yp-in" value={data.design ?? "legacy"} disabled={busy} onChange={e => change({ design: e.target.value as ProductionInput["design"] })}><option value="legacy">기존 디자인 유지</option>{MYIN_DESIGNS.map(d => <option key={d.id} value={d.id}>마이인 · {d.name}</option>)}</select><small>새로 만드는 초안에 적용됩니다. 기존 초안은 유지해요.</small></label>}
       <h3 className="yp-production-subhead">포맷 선택</h3>
       <div className="yp-production-layout">
         <div className="yp-production-formats" role="group" aria-label="포맷 선택">{CARD_FORMAT_IDS.filter(id => FORMAT_INPUT[id].type === type).map(id =>

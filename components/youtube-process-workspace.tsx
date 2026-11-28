@@ -13,9 +13,10 @@ import { YoutubeFinalCheckScreen } from "./youtube-process-final";
 import { YoutubeUploadScreen } from "./youtube-process-upload";
 import { YoutubeScheduleScreen } from "./youtube-process-schedule";
 import { YoutubeShortsScreen } from "./youtube-process-shorts";
-import { ContentPerformanceDashboard } from "./content-performance-dashboard";
+import { ContentFormatPerformance } from "./content-format-performance";
 import { YoutubeLinksScreen } from "./youtube-process-links";
 import { YoutubeArchiveScreen } from "./youtube-process-archive";
+import { ProductionCanonScreen } from "./production-canon";
 import { CanonGrindScreen, ScriptCanonScreen } from "./canon-grind";
 import { YoutubeVoiceDictionaryScreen } from "./youtube-process-voice-dictionary";
 import { YoutubeOverviewScreen } from "./youtube-process-overview";
@@ -34,7 +35,7 @@ const SUB: Partial<Record<YoutubeV1Screen | "shorts", string>> = {
   "script-canon": "롱폼 원고마다 받은 두 번째 검수를 원고 정본 묶음별로 모아, 어느 관문에서 자주 반려되는지 보고 정본을 다듬어요.",
 };
 
-const TITLES: Record<YoutubeV1Screen | "shorts", string> = { overview: "한눈에 보기", projects: "내 영상", plan: "기획", make: "제작", "final-check": "최종 검토", upload: "업로드", shorts: "쇼츠 · 칼럼", schedule: "콘텐츠 일정", confirm: "컨펌", links: "채널/링크 관리", archive: "아카이브", "voice-dictionary": "음성 사전", "card-canon": "카드뉴스 정본 다듬기", "short-canon": "숏폼 대본 정본 다듬기", "threads-canon": "스레드 정본 다듬기", "column-canon": "SEO 칼럼 정본 다듬기", "script-canon": "롱폼 원고 정본 다듬기" };
+const TITLES: Record<YoutubeV1Screen | "shorts", string> = { canon: "제작 정본 현황", overview: "한눈에 보기", projects: "내 영상", plan: "기획", make: "제작", "final-check": "최종 검토", upload: "업로드", shorts: "쇼츠 · 칼럼", schedule: "콘텐츠 일정", confirm: "컨펌", links: "채널/링크 관리", archive: "아카이브", "voice-dictionary": "음성 사전", "card-canon": "카드뉴스 정본 다듬기", "short-canon": "숏폼 대본 정본 다듬기", "threads-canon": "스레드 정본 다듬기", "column-canon": "SEO 칼럼 정본 다듬기", "script-canon": "롱폼 원고 정본 다듬기" };
 
 /** 유튜브 공정 v1 screens behind YOUTUBE_V1_ENABLED. */
 /**
@@ -54,7 +55,7 @@ export function YoutubeProcessWorkspace({ screen }: { screen: YoutubeV1Screen | 
   const cls = `yp ui-v2${width ? ` ${width}` : ""}`;
   const canConfirm = useYoutubeCanConfirm(screen === "confirm", accessToken, demo, profile?.role === "admin");
   // 성과 keeps its dashboard, in the same page width and without the guide box.
-  if (screen === "performance") return <section className={cls}><ContentPerformanceDashboard youtubeOnly /></section>;
+  if (screen === "performance") return <section className={cls}><ContentFormatPerformance /></section>;
   const sub = SUB[screen];
   // Owner request 2026-10-21: no "이 화면에서 할 일" guide on these screens; each screen shows what to do itself.
   const header = <header className="page-header"><div className="page-title-group"><h1 className="page-title" data-ui="page-title">{TITLES[screen]}</h1>{sub ? <p>{sub}</p> : null}</div></header>;
@@ -71,6 +72,7 @@ export function YoutubeProcessWorkspace({ screen }: { screen: YoutubeV1Screen | 
       : screen === "overview" ? <YoutubeOverviewScreen />
       : screen === "links" ? <YoutubeLinksScreen />
       : screen === "archive" ? <YoutubeArchiveScreen />
+      : screen === "canon" ? <ProductionCanonScreen />
       : screen === "card-canon" ? <CanonGrindScreen kind="card" />
       : screen === "short-canon" ? <CanonGrindScreen kind="short" />
       : screen === "threads-canon" ? <CanonGrindScreen kind="threads" />

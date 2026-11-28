@@ -179,7 +179,7 @@ export function ThreadsEditorialWorkspace({ collectionContext, mutate, onRouteCh
       setError(`${count}개 저장됨 · ${issue instanceof Error ? issue.message : "나머지 후보를 저장하지 못했습니다."} 저장된 후보는 다시 만들지 않습니다.`);
     } finally { saving.current = false; setBusy(false); }
   }
-  return <section className="ca-v07-card te-workspace" aria-label="쓰레드 주제 발굴">
+  return <section className="ca-v07-card te-workspace" aria-label="스레드 주제 발굴">
     <header><h2>어디서 주제를 찾을까요?</h2><p>자료를 바탕으로 후보를 비교한 뒤, 쓸 주제 1개를 고릅니다.</p></header>
     <div className="te-route-cards">
       <Link href="/automation/references"><strong>레퍼런스형</strong><span>반응이 좋은 원문에서 장면과 질문을 찾습니다.</span><small>레퍼런스 수집으로 이동 →</small></Link>

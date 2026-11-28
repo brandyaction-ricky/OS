@@ -1,0 +1,173 @@
+[
+  {
+    "topic": "pottery",
+    "name": "QA 주제별 · 도자기 수업",
+    "url": "http://127.0.0.1:3167/content/images?view=tools&revision=design-selection-2&project=99080b21-e22e-4fa9-9ef2-b75f4ccdadf5",
+    "outputs": [
+      {
+        "index": 0,
+        "format": "퇴근 후, 내 잔을 빚어요",
+        "alt": "퇴근 후, 내 잔을 빚어요",
+        "width": 1080,
+        "height": 1350,
+        "bytes": 218069,
+        "hash": "e11f6c903c5ba5a1b6b3d1fbfe22575758403b8442bcccb45c71d4cd1181b979",
+        "formatId": "M01"
+      },
+      {
+        "index": 1,
+        "format": "퇴근 후, 내 잔을 빚어요",
+        "alt": "퇴근 후, 내 잔을 빚어요",
+        "width": 1080,
+        "height": 1350,
+        "bytes": 236245,
+        "hash": "bdc30e986cc058f91a7af9fdd3c65c3ea174b13d1baca6cc6566f96c2c39f84e",
+        "formatId": "M09"
+      },
+      {
+        "index": 2,
+        "format": "퇴근 후, 내 잔을 빚어요",
+        "alt": "퇴근 후, 내 잔을 빚어요",
+        "width": 1080,
+        "height": 1350,
+        "bytes": 104805,
+        "hash": "7b262c4d38e25442615ebe4a0907d0a7876688928018577a5b9a6c8a13854dbc",
+        "formatId": "A04"
+      },
+      {
+        "index": 3,
+        "format": "퇴근 후, 내 잔을 빚어요",
+        "alt": "퇴근 후, 내 잔을 빚어요",
+        "width": 1080,
+        "height": 1350,
+        "bytes": 135806,
+        "hash": "c3e5a675d9a82995c688b2f6be4fa5a11021f8c4b9959be6fcdf63851ea49c4a",
+        "formatId": "A10"
+      },
+      {
+        "index": 4,
+        "format": "퇴근 후, 내 잔을 빚어요",
+        "alt": "퇴근 후, 내 잔을 빚어요",
+        "width": 1080,
+        "height": 1350,
+        "bytes": 125008,
+        "hash": "ae7c9aa5bdcef7adb92e26f2d0f7aa1a3ffb56e07c4c189be628ae963f348e36",
+        "formatId": "D12"
+      }
+    ]
+  },
+  {
+    "topic": "coffee",
+    "name": "QA 주제별 · 원두 구독",
+    "url": "http://127.0.0.1:3167/content/images?view=tools&revision=design-selection-2&project=e61c9123-8c8c-4b35-870c-6b403790ed20#image-creative-results",
+    "outputs": [
+      {
+        "index": 0,
+        "format": "우리 집 아침, 새 원두로",
+        "alt": "우리 집 아침, 새 원두로",
+        "width": 1080,
+        "height": 1350,
+        "bytes": 209116,
+        "hash": "cc4fae4fecf1a4d5dc70d61e51300b89d3e74d935cbfb037d248b8d3805083ec",
+        "formatId": "M01"
+      },
+      {
+        "index": 1,
+        "format": "우리 집 아침, 새 원두로",
+        "alt": "우리 집 아침, 새 원두로",
+        "width": 1080,
+        "height": 1350,
+        "bytes": 219062,
+        "hash": "3427fabeddd0126016da8ee72c8bbcb91a594a21a6a5e2b112a5f4c66196828f",
+        "formatId": "M09"
+      },
+      {
+        "index": 2,
+        "format": "우리 집 아침, 새 원두로",
+        "alt": "우리 집 아침, 새 원두로",
+        "width": 1080,
+        "height": 1350,
+        "bytes": 96510,
+        "hash": "aadb6820056484aa70048ec9d40a2ea4acdf5675e9a51aea213fa3d5f918695d",
+        "formatId": "A04"
+      },
+      {
+        "index": 3,
+        "format": "우리 집 아침, 새 원두로",
+        "alt": "우리 집 아침, 새 원두로",
+        "width": 1080,
+        "height": 1350,
+        "bytes": 126910,
+        "hash": "929cab3a0da92d9914275cd73a279fcc8087b39f0253f39ef91756bdc0119404",
+        "formatId": "A10"
+      },
+      {
+        "index": 4,
+        "format": "우리 집 아침, 새 원두로",
+        "alt": "우리 집 아침, 새 원두로",
+        "width": 1080,
+        "height": 1350,
+        "bytes": 103537,
+        "hash": "cb483b551198110676cc12ea620b4abd1fb3db7d85c024931f1851dc1178fa1f",
+        "formatId": "D12"
+      }
+    ]
+  },
+  {
+    "topic": "booking",
+    "name": "QA 주제별 · 예약 관리",
+    "url": "http://127.0.0.1:3167/content/images?view=tools&revision=design-selection-2&project=73a2a24c-3a27-47ec-bda4-0b29f0e24388#image-creative-results",
+    "outputs": [
+      {
+        "index": 0,
+        "format": "예약 정리, 한 화면에서",
+        "alt": "예약 정리, 한 화면에서",
+        "width": 1080,
+        "height": 1350,
+        "bytes": 223417,
+        "hash": "8211dc4bdfae526601a6050a2fbe3166ee264056e15c77a901fb9ec4938049e9",
+        "formatId": "M01"
+      },
+      {
+        "index": 1,
+        "format": "예약 정리, 한 화면에서",
+        "alt": "예약 정리, 한 화면에서",
+        "width": 1080,
+        "height": 1350,
+        "bytes": 196261,
+        "hash": "4f3194a2eb0999b352a091fded187bf8bda0e72982f6376f1caddebd847c5b8d",
+        "formatId": "M09"
+      },
+      {
+        "index": 2,
+        "format": "예약 정리, 한 화면에서",
+        "alt": "예약 정리, 한 화면에서",
+        "width": 1080,
+        "height": 1350,
+        "bytes": 100805,
+        "hash": "2bd5e7151ce98c16fea05bcc33b523bd11f3d31af6bbd2e7a9f2244b3414e578",
+        "formatId": "A04"
+      },
+      {
+        "index": 3,
+        "format": "예약 정리, 한 화면에서",
+        "alt": "예약 정리, 한 화면에서",
+        "width": 1080,
+        "height": 1350,
+        "bytes": 132619,
+        "hash": "5d71141fe2a2f7d4bfa8e394c3290435cacfc04b112f06c4b59b2ef06f9174b4",
+        "formatId": "A10"
+      },
+      {
+        "index": 4,
+        "format": "예약 정리, 한 화면에서",
+        "alt": "예약 정리, 한 화면에서",
+        "width": 1080,
+        "height": 1350,
+        "bytes": 107012,
+        "hash": "bc4ade4fbe1d037d4678d79d394ece1fabd8f573b3c0e2b7fd1c6ec216550de1",
+        "formatId": "D12"
+      }
+    ]
+  }
+]

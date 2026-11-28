@@ -24,7 +24,7 @@ import { STUDIO_ITEMS, testKind, type StudioItem, type StudioState, type studioS
 export function YoutubeUploadScreen({ header }: { header: ReactNode }) {
   const page = useYpBundle();
   const kind = page.bundle?.project.yp.topic.type;
-  return kind === "card" ? <CardExportScreen header={header} page={page} /> : kind === "short" ? <ShortExportScreen header={header} page={page} /> : <LongUploadScreen header={header} page={page} />;
+  return kind === "card" ? <CardExportScreen header={header} page={page} /> : kind === "short" ? <ShortExportScreen key={page.bundle?.project.id} header={header} page={page} /> : <LongUploadScreen header={header} page={page} />;
 }
 
 /** S7 업로드: UTM · SRT · 설명란 · 고정 댓글 (내 AI) · 공개 범위, then one [업로드] to YouTube (4-8 · 10-2). */

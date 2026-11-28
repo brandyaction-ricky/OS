@@ -25,6 +25,7 @@ const STAGE = "L1";
 export const ORDER = "@layer os.vendor, os.base, os.legacy, os.kit, os.screen;";
 // 파일 → 레이어. 새 CSS 파일을 만들면 여기에 먼저 적는다(적지 않으면 실패).
 const FILE_LAYER = {
+  "components/myin-card-workshop.css": "os.screen",
   "components/canon-rail.module.css": "os.kit",
   "app/theme-tokens.css": null, // 색 토큰: 레이어 밖(어떤 레이어도 못 덮음)
   "app/os-foundation.css": "os.base+os.kit",
@@ -40,6 +41,7 @@ const FILE_LAYER = {
   "components/development-workspace.css": "os.legacy",
   "components/development-notifications.css": "os.legacy",
   "components/os-ui.css": "os.kit",
+  "components/canon-rail.module.css": "os.kit",
   "components/fullscreen-shell.css": "os.kit",
   "components/fullscreen-content.css": "os.kit",
   "components/fullscreen-documents.css": "os.kit",
@@ -61,6 +63,8 @@ const FILE_LAYER = {
   "components/team/team-kpi.css": "os.screen",
   "components/threads-editorial-workspace.css": "os.screen",
   "components/threads-reference-workspace.css": "os.screen",
+  "components/ad-production.css": "os.screen",
+  "components/ad-source-studio.css": "os.screen",
   "components/youtube-process.css": "os.screen",
   "components/content-performance.css": "os.screen",
   "components/youtube-process-card.css": "os.screen",
@@ -71,6 +75,8 @@ const FILE_LAYER = {
 };
 // 화면 파일 → 메뉴 접두어 (공통 가이드 7장 등록표)
 const SCREEN_PREFIX = {
+  "components/myin-card-workshop.css": ["mw-"],
+  "components/ad-source-studio.css": ["ad-"],
   "components/team-workspace.css": ["tm-"],
   "components/content-automation-v07.css": ["ca-"],
   "components/content-automation-worker.css": ["ca-"],

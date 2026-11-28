@@ -7,6 +7,7 @@ import type { CreativeVariant, ImageBatch } from "@/lib/image-creative/model";
 import { designSummary, LegacyPreview, SafeZoneOverlay } from "./image-design-editor";
 import { WarehouseVariantPreview } from "./warehouse-variant-preview";
 import { LegacySavedPng } from "./legacy-saved-png";
+import { AdPlacementPicker, AdPlacementPreview } from "./ad-placement-preview";
 import { MacReviewPreview } from "./mac-review-preview";
 import { CostTag, useCostModels } from "./cost-notice";
 import { imageEstimate } from "@/lib/cost";
@@ -46,6 +47,7 @@ export function WinnerArtwork({variant,url,projectId,photo,referenceUrl,detailUr
 }
 
 interface Props {
+  aspects?: import("@/lib/ad-production").AdAspect[];
   batch: ImageBatch; index: number; variants: CreativeVariant[]; assets: {path:string;url:string}[];
   projectId: string; target: RenderTarget; render?: MachineRender; demo:boolean; guided?:boolean; busy:boolean; showGuide:boolean;
   experimentRound?: boolean; winner?: ImageBatch["winner"]; control?: CreativeVariant; revisions?: CreativeVariant[]; registerWinner?:(batchId:string,variantId:string,note:string)=>void;
@@ -57,8 +59,10 @@ interface Props {
   attachPhoto?:(batchId:string,assetPath:string)=>void; uploadPhoto?:(file:File|null)=>void;
   generateReference?:(batchId:string)=>void; referenceRun?:ReferenceGenerationRun; generating?:boolean; refresh?:()=>void;
 }
-export function ImageApprovalBatch({ batch, index, variants, assets, projectId, target, render, demo, guided, busy, showGuide, selectedId,
+export function ImageApprovalBatch({ aspects,batch, index, variants, assets, projectId, target, render, demo, guided, busy, showGuide, selectedId,
   experimentRound, winner, control, revisions = [], registerWinner, rendered, reviewable, review, returnReview, edit, select, download, keepBlob, attachPhoto, uploadPhoto, generateReference, referenceRun, generating, refresh }:Props) {
+  const [aspect,setAspect]=useState<import("@/lib/ad-production").AdAspect>("4x5");
+  const [guide,setGuide]=useState(true);
   const alternateCandidates = [...(control ? [control] : []), ...revisions];
   const recorded = batch.winner;
   const recordedVariant = recorded && [...variants,...alternateCandidates].find(v=>v.id===recorded.variantId);
@@ -148,19 +152,22 @@ export function ImageApprovalBatch({ batch, index, variants, assets, projectId, 
       const showFinal=Boolean(!demo && done && !final && reviewable?.[v.id]===render?.id);
       const readyKey=(render?.id || "")+v.id;
       const hasPreview=!photoPending && (!aiReference || !!v.referenceArtwork || !!v.promptEdit);
+      const masterPreview = isWarehouseFormat(v.formatId) && !v.promptEdit && !v.referenceArtwork ? <WarehouseVariantPreview variant={v} assetUrl={url} onReady={keep} onCheck={onCheck}/>
+            : <LegacySavedPng projectId={projectId} variant={v} promptEditUrl={assets.find(a=>a.path===v.promptEdit?.image.path)?.url} referenceArtworkUrl={assets.find(a=>a.path===v.referenceArtwork?.image.path)?.url} assetUrl={url} referenceUrl={assets.find(a=>a.path===v.referenceLayout?.source.path)?.url} detailUrl={assets.find(a=>a.path===v.detailAsset?.path)?.url} onReady={keep} onCheck={onCheck}/>;
       return <article className={`ic-card ${(experimentRound ? v.id===winner?.variantId : v.id===selectedId)?"ic-selected":""}`} key={v.id}>
+        {done && !!aspects?.length && <AdPlacementPicker aspects={aspects} value={aspect} select={setAspect} guide={guide} setGuide={setGuide}/>}
         {copyReady && hasPreview && <div className="ic-artboard" onLoadCapture={e=>{
           if (e.target instanceof HTMLImageElement && e.target.naturalWidth > 0) markPreview(v.id,true);
         }} onErrorCapture={()=>markPreview(v.id,false)}>
-          {final && !demo && rendered?.[v.id] ?
+          {!demo && done && aspects?.length && (showFinal || final) ? <MacReviewPreview key={readyKey+aspect} aspect={aspect} projectId={projectId} variantId={v.id} runId={render!.id} title={v.copy.headline}
+          onReady={ok=>setFinalReady(old=>old[readyKey]===ok?old:{...old,[readyKey]:ok})}/> : final && !demo && rendered?.[v.id] ?
             // eslint-disable-next-line @next/next/no-img-element -- Final reviewed private PNG.
             <img className="ic-compare-photo" alt={v.copy.headline} src={rendered[v.id]} />
             : showFinal ? <MacReviewPreview key={readyKey} projectId={projectId} variantId={v.id} runId={render!.id} title={v.copy.headline}
               onReady={ok=>setFinalReady(old=>old[readyKey]===ok?old:{...old,[readyKey]:ok})}/>
             : !demo && done ? <p role="status">검수용 출력본을 불러오는 중입니다.</p>
-            : isWarehouseFormat(v.formatId) && !v.promptEdit && !v.referenceArtwork ? <WarehouseVariantPreview variant={v} assetUrl={url} onReady={keep} onCheck={onCheck}/>
-            : <LegacySavedPng projectId={projectId} variant={v} promptEditUrl={assets.find(a=>a.path===v.promptEdit?.image.path)?.url} referenceArtworkUrl={assets.find(a=>a.path===v.referenceArtwork?.image.path)?.url} assetUrl={url} referenceUrl={assets.find(a=>a.path===v.referenceLayout?.source.path)?.url} detailUrl={assets.find(a=>a.path===v.detailAsset?.path)?.url} onReady={keep} onCheck={onCheck}/>}
-          {showGuide && <SafeZoneOverlay size={v.size} design={v.design}/>}
+            : demo && done && aspects?.length ? <AdPlacementPreview aspect={aspect} sourceSize={v.size} placement={v.design?.placement}>{masterPreview}</AdPlacementPreview> : masterPreview}
+          {done && aspects?.length ? aspect==="9x16" && guide && <SafeZoneOverlay size="story"/> : showGuide && <SafeZoneOverlay size={v.size} design={v.design}/>}
         </div>}
         <div className="ic-card-body"><strong>{v.promptEdit ? "프롬프트 수정본" : v.referenceArtwork ? "레퍼런스 기반 AI 시안" : IMAGE_FORMATS[v.formatId].name}</strong>
           {v.promptEdit && <><p>{v.promptEdit.prompt}</p><small>기준 소구 · {v.appeal.meaning}</small></>}

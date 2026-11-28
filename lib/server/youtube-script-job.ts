@@ -9,7 +9,9 @@ import { CHARS_PER_MINUTE, PULLING_CHARS_PER_MINUTE, checkManuscript, checkScrip
 import type { RequestActor } from "./auth";
 import { assertExpectedVersion, readPipeline, saveMetadata, scriptReviewWorkflowState, writingWorkflowState } from "./content-pipeline";
 import { assertV1ScriptInputs, isYoutubeV1, saveV1Script, v1ScriptCardInputs, v1ScriptInputKey } from "./youtube-process-ai";
-import { canonIds, SCRIPT_CANON, scriptCanonText } from "./youtube-script-canon";
+import { canonVersion } from "@/lib/canon-grind/grind";
+import type { CanonTrace } from "@/lib/youtube-process/canon-trace";
+import { scriptCanonRows, scriptCanonText } from "./youtube-script-canon";
 
 // ② 원고 by the staff member's own AI (원고 공정 정본 v1.0, owner decision 2026-10-17): the AI reads the canon itself, runs
 // 축 → 설계 → 초안 → 검수 and submits the §8-2 bundle; the OS counts 관문 1, fills 집필 준비 and 원고 검수, and the staff member
@@ -17,7 +19,6 @@ import { canonIds, SCRIPT_CANON, scriptCanonText } from "./youtube-script-canon"
 type Client = Pick<RequestActor, "supabase" | "id"> & { name?: string };
 type Pipeline = Awaited<ReturnType<typeof readPipeline>>;
 const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
-const CANON_TITLES = [...SCRIPT_CANON, "현재기준"].join(" · ");
 const AI_MATERIALS = "[작성 AI 자료]";
 
 export const scriptBundleSchema = z.object({
@@ -50,23 +51,19 @@ export function scriptInputKey(state: Pipeline) {
   return digest(["staff-script-v1", state.signatures[0], packaging ? [packaging.id, packaging.version] : null, state.writing.packageTitle, state.writing.packageCopy]);
 }
 
+export async function scriptCanonTrace(supabase: Client["supabase"]): Promise<CanonTrace[]> {
+  return (await scriptCanonRows(supabase)).map(doc => ({ id: String(doc.id), title: String(doc.title), version: Number(doc.current_version), bundle: canonVersion(String(doc.content_md), Number(doc.current_version)) }));
+}
+
 /** 풀링형 정본 (원고 공정 정본 §10): found by its title so a new version (the title carries it) needs no change here. */
 async function pullingCanonRef(supabase: Client["supabase"]) {
   const { data } = await supabase.from("os_documents").select("id,title").ilike("title", "풀링형 롱폼%").neq("status", "archived").order("updated_at", { ascending: false }).limit(1);
   const doc = data?.[0];
   return doc ? `- ${doc.title} (doc_id: ${doc.id}) — 이 영상이 풀링형이라 함께 엽니다.` : "- 풀링형 정본: 제목이 「풀링형 롱폼」으로 시작하는 문서를 search_knowledge로 찾아 엽니다.";
 }
-async function canonRefs(supabase: Client["supabase"], pulling = false) {
-  const extra = pulling ? `\n${await pullingCanonRef(supabase)}` : "";
-  const ids = canonIds();
-  if (!ids.length) return `제목으로 찾습니다: ${CANON_TITLES}. 같은 이름의 [보관] 문서는 읽지 않습니다.${extra}`;
-  const { data } = await supabase.from("os_documents").select("id,title").in("id", ids);
-  const titles = new Map((data ?? []).map((doc) => [doc.id as string, doc.title as string]));
-  return `${ids.map((id) => `- ${titles.get(id) ?? "정본"} (doc_id: ${id})`).join("\n")}${extra}\n이 ID로 엽니다(제목 검색에는 같은 이름의 옛 문서가 함께 나옵니다).`;
-}
 
 /** The job card: where the inputs are and what to submit. The canon itself is read by the AI, not pasted here. */
-export async function scriptJobCard(supabase: Client["supabase"], state: Pipeline, card: { targetMinutes: number; leaseMinutes: number; role: string; attachments?: string }) {
+export async function scriptJobCard(supabase: Client["supabase"], state: Pipeline, card: { targetMinutes: number; leaseMinutes: number; role: string; attachments?: string; trace?: CanonTrace[] }) {
   const { targetMinutes, leaseMinutes, role } = card;
   const source = state.source;
   const plan = pipelineArtifacts(state.records).research;
@@ -99,7 +96,8 @@ ${pulling ? `이 영상은 풀링형입니다. [풀링형 정본]의 순서 · �
 - 현재기준은 원고 공정 정본이 정한 범위만 읽습니다.`}
 
 ## 먼저 끝까지 열 문서
-${await canonRefs(supabase, pulling)}${pulling ? "\n풀링형은 이 가운데 원고 공정 정본 · 원고 말투 정본 · 풀링형 정본을 끝까지 읽고, 원고 검수 정본은 관문 1 · 6만 읽습니다. 원고 구조 정본과 현재기준은 열지 않습니다(풀링형 정본이 짜임을 정합니다)." : ""}
+${(card.trace ?? await scriptCanonTrace(supabase)).map(ref => `- ${ref.title} (doc_id: ${ref.id}, 문서 v${ref.version})`).join("\n")}
+${pulling ? `\n${await pullingCanonRef(supabase)}\n풀링형은 이 가운데 원고 공정 정본 · 원고 말투 정본 · 풀링형 정본을 끝까지 읽고, 원고 검수 정본은 관문 1 · 6만 읽습니다. 원고 구조 정본과 현재기준은 열지 않습니다(풀링형 정본이 짜임을 정합니다).` : ""}
 하나라도 열지 못하면 쓰지 말고 fail로 끝냅니다(정본 §12-2).
 ${pulling ? "" : `
 ## 재료 — 쓸 것만 찾습니다 (원고 공정 정본 §2-1)
@@ -128,13 +126,13 @@ result = ${SCRIPT_RESULT_SHAPE}
 }
 
 /** Saves a submitted bundle: 집필 준비 (자료 · 축 · 설계), a new 원고 and its 검수 기록. Approvals are left to the staff check. */
-export async function saveScriptBundle(client: Client, sourceId: string, bundle: ScriptBundle, author: { type: "staff_ai" | "staff"; model: string; jobId?: string; targetMinutes: number }, expectedVersion?: number) {
+export async function saveScriptBundle(client: Client, sourceId: string, bundle: ScriptBundle, author: { type: "staff_ai" | "staff"; model: string; jobId?: string; targetMinutes: number; trace?: CanonTrace[] }, expectedVersion?: number) {
   const state = await readPipeline(client, sourceId);
   if (expectedVersion !== undefined) assertExpectedVersion(state.source, expectedVersion);
   assertScriptInputs(state);
   const canon = await scriptCanonText(client.supabase);
   // 유튜브 공정 v1: the 원고 goes to the 구성안 as a new version; the 구성안 has no separate staff confirm (4-5).
-  if (isYoutubeV1(state.source)) return { scriptId: "", ...await saveV1Script(client, state, bundle, { model: author.model, jobId: author.jobId, targetMinutes: author.targetMinutes, name: client.name ?? "직원" }, canon) };
+  if (isYoutubeV1(state.source)) return { scriptId: "", ...await saveV1Script(client, state, bundle, { model: author.model, jobId: author.jobId, targetMinutes: author.targetMinutes, name: client.name ?? "직원", trace: author.trace }, canon) };
   const check = checkManuscript(bundle.manuscript, { title: state.writing.packageTitle, targetMinutes: author.targetMinutes, canon });
   if (check.issues.length) throw new ApiError(422, "SCRIPT_FORMAT_INVALID", `원고 형식 검사(관문 1)에서 걸린 곳 ${check.issues.length}건: ${check.issues.join(" / ")}`);
   const source = state.source;
@@ -158,7 +156,7 @@ export async function saveScriptBundle(client: Client, sourceId: string, bundle:
     created_by: client.id, updated_by: client.id, tags: ["유튜브", "원고"],
     metadata: { scriptStep: 5, generatedBy: author.type, model: author.model, ...(author.jobId ? { jobId: author.jobId } : {}), manuscript: bundle.manuscript,
       sections: check.sections, targetMinutes: author.targetMinutes,
-      submission: { canonBundle: bundle.canonBundle, reReviews: bundle.reReviews, editedParagraphs: bundle.editedParagraphs, suggestions: bundle.suggestions,
+      submission: { trace: author.trace, canonBundle: bundle.canonBundle, reReviews: bundle.reReviews, editedParagraphs: bundle.editedParagraphs, suggestions: bundle.suggestions,
         osCheck: { chars: check.chars, paragraphs: check.paragraphs.length, sections: check.sections.length, at: now } } },
   });
   if (error) throw new ApiError(500, "SCRIPT_SAVE_FAILED", "원고를 저장하지 못했습니다. 같은 내용으로 다시 제출해 주세요.");

@@ -1,3 +1,4 @@
+import { adCopyIssues, adDisposition } from "@/lib/ad-production";
 import { finishedCardPublication } from "@/lib/cardnews/cards";
 import { createHash, randomUUID } from "node:crypto";
 import { getSharp } from "next/dist/server/image-optimizer";
@@ -109,7 +110,8 @@ export const stagePatchSchemas = {
   outline: z.object({ spec: z.object({ runtimeMin: z.number().int().min(1).max(120).nullable(), res: text(60), fps: text(60), ratio: text(60) }).strict(),
     script: text(120_000), saveVersion: z.literal(true), restore: z.number().int().positive(),
     // 구간 의견: write one, set one aside (or back), or put the AI's text for one into the 원고.
-    note: z.object({ quote: z.string().trim().min(1).max(600), before: text(80), after: text(80), text: z.string().trim().min(1).max(1000) }).strict(),
+    note: z.object({ quote: z.string().trim().min(1).max(600), before: text(80), after: text(80), text: z.string().trim().min(1).max(1000),
+      decision: z.object({ key: z.string().regex(/^[a-f0-9]{8}$/), issue: z.string().regex(/^[a-f0-9]{8}$/), action: z.enum(["adopt", "revise", "ignore"]) }).strict().optional() }).strict(),
     noteState: z.object({ id: text(40), state: z.enum(["open", "dismissed"]) }).strict(), applyNote: text(40) }).partial().strict(),
   make: z.object({ editDue: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/), editDueWhy: text(200), status: z.enum(["prep", "shoot", "edit", "done"]),
     thumb: z.object({ slot: z.enum(SLOTS), path: text(300), name: text(240), edit: thumbSavedEditSchema.optional() }).strict(), addFinal: z.object({ path: text(300), name: text(240), bytes: z.number().int().positive() }).strict(),
@@ -390,7 +392,8 @@ export function assertColumnOpen(project: YpProject) {
 }
 
 // ── Moving on (S0 '지금 할 일') ──
-export const stageMoveSchema = z.object({ to: z.enum(["make", "review", "shorts", "done"]), expectedVersion: z.number().int().positive() }).strict();
+export const adDispositionSchema = z.object({kind: z.enum(["published", "withheld"]), value: z.string().trim().max(2000)}).strict();
+export const stageMoveSchema = z.object({ to: z.enum(["make", "review", "shorts", "done"]), disposition: adDispositionSchema.optional(), expectedVersion: z.number().int().positive() }).strict();
 export async function moveYoutubeStage(actor: RequestActor, id: string, input: z.infer<typeof stageMoveSchema>) {
   const project = await getYoutubeProject(actor, id);
   if (project.version !== input.expectedVersion) throw conflict();
@@ -417,13 +420,18 @@ export async function moveYoutubeStage(actor: RequestActor, id: string, input: z
     const publication = finishedCardPublication(stages.cards.data, now);
     need(Boolean(publication), "각 화의 게시 주소를 남기거나 게시 안 함 이유를 저장해 주세요.");
     return saveProject(actor, project, input.expectedVersion, { yp: { ...project.yp, stage: "done", stageEnteredAt: now, contentUpdatedAt: now, cardPublication: publication } });
+  } else if (project.yp.topic.type === "short" && project.yp.topic.purpose === "ad") {
+    need(input.to === "done" && ["upload","done"].includes(project.yp.stage) && !project.yp.adRelease, "최종 검토를 마친 광고에서 집행을 기록해 주세요.");
+    const decision = adDisposition(input.disposition);
+    if (!decision) throw new ApiError(422,"AD_RELEASE_REQUIRED","광고 ID 또는 집행하지 않은 이유를 입력해 주세요.");
+    return saveProject(actor, project, input.expectedVersion, {yp:{...project.yp,stage:"done",contentUpdatedAt:now,adRelease:{...decision,at:now}}});
   } else if (project.yp.topic.type === "short") {
     need(project.yp.stage === "upload" && input.to === "done", "최종 검토 컨펌 OK 뒤에 마칠 수 있어요.");
   } else {
     // After the YouTube upload: on to 쇼츠 · 칼럼, or done (from either).
     need((input.to === "shorts" ? project.yp.stage === "upload" : ["upload", "shorts"].includes(project.yp.stage)) && stages.upload.data.run?.status === "done", "유튜브 업로드가 끝난 뒤에 넘어갈 수 있어요.");
   }
-  return saveProject(actor, project, input.expectedVersion, { yp: { ...project.yp, stage: input.to, contentUpdatedAt: now } });
+  return saveProject(actor, project, input.expectedVersion, { yp: { ...project.yp, stage: input.to, stageEnteredAt: now, contentUpdatedAt: now } });
 }
 
 // ── Confirms on 기획안 and 최종 검수 ──
@@ -431,6 +439,11 @@ export async function moveYoutubeStage(actor: RequestActor, id: string, input: z
 async function gateMissing(actor: RequestActor, project: YpProject, gate: YpGate) {
   const stages = await readStages(actor.supabase, project);
   if (project.yp.topic.type === "card") return gate === "draft" ? (await cardsModule()).cardsMissing(stages.cards.data) : "";
+  if (gate === "draft" && project.yp.topic.purpose === "ad") {
+    const { brief } = await (await import("./youtube-process-short")).shortJobInputs(createServiceSupabase(), project);
+    const issue = adCopyIssues([stages.shortScript.data.headCopy, stages.shortScript.data.text].join("\n"), brief.evidence)[0];
+    if (issue) return issue;
+  }
   if (gate === "draft") return project.yp.topic.type === "short" ? shortScriptMissing(stages.shortScript.data, await (await shortRefsModule()).doneShortRefs(createServiceSupabase(), project.id, 60)) : draftMissing(stages.plan.data, project.yp.topic.type);
   if (gate === "review") return (await readFinals(actor.supabase, project.id, stages.make.data, project.yp.topic.type)).length ? "" : "최종본을 올려 주세요";
   return "";

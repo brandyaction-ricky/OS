@@ -37,7 +37,7 @@ const text = (form: FormData, key: string) => String(form.get(key) ?? "").trim()
 const count = (value: number | null) => value === null ? "—" : value.toLocaleString("ko-KR");
 const SOURCES: Record<string, string> = { youtube_analytics_daily: "유튜브 분석 · 하루", youtube_data_api: "유튜브 조회수 · 시간별", "YouTube Analytics API": "유튜브 분석", manual: "직접 입력" };
 
-export function ContentPerformanceDashboard({ youtubeOnly = false }: { youtubeOnly?: boolean } = {}) {
+export function ContentPerformanceDashboard({ youtubeOnly = false, fixedFormat }: { youtubeOnly?: boolean; fixedFormat?: Format } = {}) {
   const work = useContentWork();
   const { accessToken, demo, profile } = useSession();
   const search = useSearchParams(), router = useRouter(), pathname = usePathname();
@@ -54,7 +54,8 @@ export function ContentPerformanceDashboard({ youtubeOnly = false }: { youtubeOn
 
   const [records, setRecords] = useState<OsRecord[]>([]), [before, setBefore] = useState<OsRecord[]>([]), [snapshots, setSnapshots] = useState<OsRecord[] | null>(null), [days, setDays] = useState<SummaryDay[]>([]);
   const [hypotheses, setHypotheses] = useState<OsRecord[]>([]), [allSources, setSources] = useState<OsRecord[]>([]), [loading, setLoading] = useState(!demo);
-  const [origin, setOrigin] = useState<OriginFilter>("own"), [format, setFormat] = useState<Format>("all");
+  const [origin, setOrigin] = useState<OriginFilter>("own"), [selectedFormat, setFormat] = useState<Format>("all");
+  const format = fixedFormat ?? selectedFormat;
   const [brand, setBrand] = useState("all"), [hierarchy, setHierarchy] = useState("all"), [localSourceId, setLocalSourceId] = useState("all");
   const sources = filterContentOrigin(allSources, origin);
   const sourceId = work ? work.topicId || "all" : localSourceId;
@@ -91,8 +92,9 @@ export function ContentPerformanceDashboard({ youtubeOnly = false }: { youtubeOn
     let active = true;
     const apply = (summary: MetricSummary) => { setRecords(summaryRecords(summary)); setDays(summary.days); };
     const recent = recentMetricSummary(accessToken, from, to, observed);
-    if (recent) { apply(recent); setLoading(false); } else setLoading(true);
+    if (recent) { apply(recent); setLoading(false); } else { setLoading(true); setRecords([]); setDays([]); }
     listMetricSummary(accessToken, from, to, observed).then((summary) => { if (active) apply(summary); }).catch((reason) => { if (active) setError(reason.message); }).finally(() => { if (active) setLoading(false); });
+    setBefore([]);
     listMetricSummary(accessToken, prev.from, prev.to, observed).then((summary) => { if (active) setBefore(summaryRecords(summary)); }).catch(() => { if (active) setBefore([]); });
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- summaryRecords() is visibleMetrics() plus fixed shaping
@@ -147,6 +149,8 @@ export function ContentPerformanceDashboard({ youtubeOnly = false }: { youtubeOn
   }, [filtered, dimension, find, sort, salesByVideo]);
   const topVideos = useMemo(() => groupMetricDimension(dayRows, "video").filter((group) => group.views !== null).sort((a, b) => (b.views ?? 0) - (a.views ?? 0)).slice(0, 5), [dayRows]);
   const compare = [weekA, weekB].map((start) => { const week = fixedWeek(start); const data = week ? within(weekRecords[start] ?? [], week.start, week.end) : []; return { week, count: data.length, totals: summarizeMetrics(data) }; });
+  const aggregateSales = format === "all" && sourceId === "all" && hierarchy === "all" && origin === "own" && (brand === "all" || brand === "마이인");
+  const periodSales = aggregateSales && sales.sales?.from === from && sales.sales?.to === to ? sales.sales.totals.youtube.l : null;
   // 필터 더 보기 closes when the next press lands outside it, like a menu.
   const moreFilters = useRef<HTMLDetailsElement>(null);
   useEffect(() => {
@@ -190,7 +194,7 @@ export function ContentPerformanceDashboard({ youtubeOnly = false }: { youtubeOn
     <button type="button" className="perf-sort" onClick={() => setSort((current) => ({ key, desc: current.key === key ? !current.desc : key !== "title" }))}>{label}{sort.key === key ? (sort.desc ? " ↓" : " ↑") : ""}</button></th>;
 
   return <div className="perf-root">
-    <header className="page-header"><div className="page-title-group"><PageTitle /><p>기간을 고르면 아래 숫자가 모두 그 기간으로 바뀌어요.</p></div>
+    <header className="page-header"><div className="page-title-group">{fixedFormat ? null : <PageTitle />}<p>기간을 고르면 아래 숫자가 모두 그 기간으로 바뀌어요.</p></div>
       <div className="header-actions">
         <button type="button" className="secondary-button with-icon" disabled={busy} onClick={() => void perform(load)}><RefreshCw size={14} aria-hidden="true" />새로고침</button>
         <button type="button" className="secondary-button" disabled={busy || !filtered.length} onClick={weeklyReport}>주간 보고서 만들기</button>
@@ -205,7 +209,7 @@ export function ContentPerformanceDashboard({ youtubeOnly = false }: { youtubeOn
         {period.id === "custom" ? <span className="perf-range-inputs"><input type="date" aria-label="시작일" value={from} max={to} onChange={(event) => event.target.value && setAddress({ period: "custom", from: event.target.value, to })} /><span aria-hidden="true">~</span><input type="date" aria-label="종료일" value={to} min={from} max={today} onChange={(event) => event.target.value && setAddress({ period: "custom", from, to: event.target.value })} /></span> : null}
         <b className="perf-range">{rangeLabel(from, to)}</b>
         <span className="os-spacer" />
-        {youtubeOnly ? <div className="segmented" role="group" aria-label="영상 형식">{FORMATS.map(([value, label]) => <button type="button" key={value} aria-pressed={format === value} onClick={() => setFormat(value)}>{label}</button>)}</div> : null}
+        {youtubeOnly && !fixedFormat ? <div className="segmented" role="group" aria-label="영상 형식">{FORMATS.map(([value, label]) => <button type="button" key={value} aria-pressed={format === value} onClick={() => setFormat(value)}>{label}</button>)}</div> : null}
         <ContentOriginFilter value={origin} onChange={(value) => { setOrigin(value); setSourceId("all"); setLearningTargetId(""); }} />
         <details ref={moreFilters} className="perf-more-filters"><summary className="secondary-button compact">필터 더 보기{extraFilters ? ` · ${extraFilters}` : ""}</summary>
           <div className="perf-more-body">
@@ -229,7 +233,7 @@ export function ContentPerformanceDashboard({ youtubeOnly = false }: { youtubeOn
             {card("시청 지속률", totals.retention === null ? "—" : `${totals.retention.toFixed(1)}%`, changeLabel(totals.retention, previousTotals.retention, true))}
             {card("구독자 순증", totals.subscribers === null ? "—" : `${totals.subscribers > 0 ? "+" : ""}${totals.subscribers.toLocaleString("ko-KR")}`, changeLabel(totals.subscribers, previousTotals.subscribers))}
             {card("클릭률(노출 대비)", totals.ctr === null ? "—" : `${totals.ctr.toFixed(1)}%`, changeLabel(totals.ctr, previousTotals.ctr, true), totals.ctr === null ? "아직 수집 전이에요" : undefined)}
-            {card("유튜브 매출 · 마이인", sales.sales ? `${sales.sales.totals.youtube.l.net.toLocaleString("ko-KR")}원` : "—", null, sales.sales ? `구매 ${sales.sales.totals.youtube.l.orders.toLocaleString("ko-KR")}건 · 결제 직전 유입 기준` : sales.demo ? "연습 화면에서는 불러오지 않아요" : sales.error || "불러오는 중…")}
+            {card("유튜브 매출 · 마이인", periodSales ? `${periodSales.net.toLocaleString("ko-KR")}원` : "—", null, periodSales ? `구매 ${periodSales.orders.toLocaleString("ko-KR")}건 · 결제 직전 유입 기준` : !aggregateSales ? "선택한 필터의 매출 집계 없음" : sales.demo ? "연습 화면에서는 불러오지 않아요" : sales.error || "불러오는 중…")}
           </>}
         </section>
         <div className="perf-grid">
@@ -238,8 +242,8 @@ export function ContentPerformanceDashboard({ youtubeOnly = false }: { youtubeOn
             {topVideos.length ? <ol className="perf-top">{topVideos.map((video, index) => <li key={video.key}><span className="perf-rank">{index + 1}</span><span className="perf-top-title">{video.title}</span><b>{count(video.views)}</b><small>{video.retention === null ? "" : `지속 ${video.retention.toFixed(0)}%`}</small></li>)}</ol>
               : <div className="empty-state">이 기간에 잰 영상이 없어요. 기간을 넓혀 보세요.</div>}</section>
         </div>
-        <section className="panel perf-panel"><div className="card-head"><span className="card-title">콘텐츠 전환 단계</span><span className="section-meta">‘—’는 아직 안 잰 단계예요</span></div>
-          <div className="perf-flow">{([["노출", totals.impressions], ["조회", totals.views], ["클릭", totals.clicks], ["구매", totals.purchases ?? sales.sales?.totals.youtube.l.orders ?? null]] as [string, number | null][]).map(([label, value]) => <div key={label}><span>{label}</span><b>{count(value)}</b></div>)}</div></section>
+        <section className="panel perf-panel"><div className="card-head"><span className="card-title">콘텐츠 전환 단계</span><span className="section-meta">{periodSales ? "구매는 마이인 결제 직전 유튜브 유입 기준" : "‘—’는 아직 안 잰 단계예요"}</span></div>
+          <div className="perf-flow">{([["노출", totals.impressions], ["조회", totals.views], ["클릭", totals.clicks], ["구매", periodSales?.orders ?? totals.purchases]] as [string, number | null][]).map(([label, value]) => <div key={label}><span>{label}</span><b>{count(value)}</b></div>)}</div></section>
       </> : null}
 
       {tab === "videos" ? <section className="panel perf-panel" aria-label="성과 비교">

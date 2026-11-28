@@ -45,6 +45,8 @@ import {MovedMenuNotice} from "./moved-menu-notice";
 import {ContentWorkProvider} from "./content-work-provider";
 import { PasswordChangeForm } from "./password-change-form";
 import { useSession } from "./session-provider";
+import { ProjectLocationContext, type ProjectLocation } from "./content-project-navigation";
+
 type DisplayTheme = "dark" | "light";
 
 const THEME_STORAGE_KEY = "brandy-os-theme";
@@ -85,11 +87,18 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
   const workOf = (id: string) => !workCounts ? null : id === "content" ? workCounts : workCounts.by[PLATFORM_GROUP[id as keyof typeof PLATFORM_GROUP]] ?? { decide: 0, ai: 0 };
   // 유튜브 공정 v1: 대표 메뉴 on top, then the menu by what is made (owner 2026-10-29, A안); old screens stay reachable by address.
   const navStages = youtubeV1Enabled ? [...(canConfirm ? [YOUTUBE_V1_CEO_STAGE] : []), ...youtubeV1Stages(NAV_STAGES)] : NAV_STAGES;
-  const activeStageId = youtubeV1Enabled ? youtubeV1StageId(navStages, pathname, params, stage.id, (page.navHref ?? page.href).split("?")[0]) : stage.id;
+  const [projectLocation, setProjectLocation] = useState<ProjectLocation | null>(null);
+  const projectStep = youtubeV1Enabled && YOUTUBE_V1_STEP_PAGES.some(item => item.href === pathname);
+  const stepGroup = projectStep && projectLocation && projectLocation.id === params.get("project") ? `yt-${projectLocation.platform}` : null;
+  const activeStageId = stepGroup ?? (youtubeV1Enabled ? youtubeV1StageId(navStages, pathname, params, stage.id, (page.navHref ?? page.href).split("?")[0]) : stage.id);
   // Without 유튜브 공정 v1 the content group keeps the name it always showed.
   const groupLabel = (item: { id: string; label: string }) => !youtubeV1Enabled && item.id === "content" ? "유튜브 공정" : item.label;
   const activeStage = navStages.find(item => item.id === activeStageId) ?? stage;
   const entrySelected = (href: string) => href.includes("?") ? youtubeV1EntrySelected(href, pathname, params) : href === (page.navHref ?? page.href);
+  const activeEntry = activeStage.pages.find(entry => entry.href.includes("?") && entrySelected(entry.href))
+    ?? activeStage.pages.find(entry => entry.href === pathname);
+  const cardPageLabel = stepGroup === "yt-card" ? ({ "/content/plan": params.get("view") === "topic" ? "카드 주제" : "카드 만들기", "/content/final-check": "최종 검토", "/content/upload": "내보내기" } as Record<string, string>)[pathname] : undefined;
+  const pageLabel = cardPageLabel ?? (youtubeV1Enabled && (activeStage.id === "threads" || activeStage.id.startsWith("yt-") || activeStage.id === "content") ? activeEntry?.label ?? page.label : page.label);
   const visibleStages = navStages.filter(item => !item.requiresHr || hrEnabled).map(item => ({ ...item, pages: item.pages
     .filter(entry => entry.href !== "/hr/my-leave"
       && !(hrShell.legacyHidden && (!teamV1Enabled && entry.href === "/organization/members" || !teamV1Enabled && entry.href === "/organization/schedule"))
@@ -303,13 +312,13 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
     // Next puts each page's own <title> in, sometimes a moment after this runs (streamed metadata). Setting document.title
     // while there is none made a second <title> that kept the previous page's name after the next move, so this renames
     // Next's element once it is there.
-    const title = `${page.label} | 브랜디 OS`;
+    const title = `${stepGroup ? activeStage.label + " · " : ""}${pageLabel} | 브랜디 OS`;
     const apply = () => { const element = document.head.querySelector("title"); if (element) element.textContent = title; return Boolean(element); };
     if (apply()) return;
     const observer = new MutationObserver(() => { if (apply()) observer.disconnect(); });
     observer.observe(document.head, { childList: true });
     return () => observer.disconnect();
-  }, [page.label]);
+  }, [pageLabel, activeStage.label, stepGroup]);
 
   if (loading || (!demo && !profile)) {
     return (
@@ -353,7 +362,7 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
               </button> : null}
               <div id={`nav-${item.id}`} className="nav-section-pages" hidden={item.id !== "home" && !groupOpen(item.id)}>
                 {item.pages.map((entry, index) => {
-                  const selected = entrySelected(entry.href);
+                  const selected = entrySelected(entry.href) || Boolean(stepGroup && item.id === stepGroup && entry.href === activeStage.href);
                   const submenuOpen = selected || Boolean(openSubmenus[entry.href]);
                   const PageIcon = entry.icon;
                   return <div key={entry.href}>
@@ -399,7 +408,7 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
       <div className="app-main">
         <header className="topbar" data-ui="topbar">
           <button ref={mobileTriggerRef} className="icon-button mobile-only" aria-label="메뉴 열기" aria-expanded={mobileOpen} aria-controls="main-navigation" onClick={() => setMobileOpen(true)}><Menu size={19} /></button>
-          <nav className="breadcrumbs" data-ui="breadcrumbs" aria-label="현재 위치">{pathname !== "/settings/account" ? <><Link href={activeStage.href}>{activeStage.label}</Link><ChevronRight size={14} /></> : null}<span aria-current="page">{activeStage.pages.find(entry => entry.href.includes("?") && entrySelected(entry.href))?.label ?? page.label}</span></nav>
+          <nav className="breadcrumbs" data-ui="breadcrumbs" aria-label="현재 위치">{pathname !== "/settings/account" ? <><Link href={activeStage.href}>{activeStage.label}</Link><ChevronRight size={14} /></> : null}<span aria-current="page">{pageLabel}</span></nav>
           <div className="topbar-actions">
             <button className="command-trigger" data-ui="search" aria-label="페이지·지식 검색" aria-haspopup="dialog" aria-expanded={paletteOpen} onClick={openPalette}><Search size={15} /><span>찾기</span><kbd data-ui="kbd"><Command size={11} />K</kbd></button>
             <button type="button" className={`display-control guidance-control${guidanceOn ? " active" : ""}`} data-ui={guidanceOn ? "guide-toggle-on" : "guide-toggle-off"} role="switch" aria-checked={guidanceOn} aria-label={`사용 가이드 ${guidanceOn ? "켜짐" : "꺼짐"}`} onClick={changeGuidance}><CircleHelp size={15} /><span>사용 가이드</span><em>{guidanceOn ? "ON" : "OFF"}</em></button>
@@ -415,7 +424,7 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
         <ContentWorkProvider youtubeV1={youtubeV1Enabled}><main className={`page-content${screen ? ` ui-v2 screen-${screen}` : ""}`}>
           <MovedMenuNotice />
           {menuGuide && !(youtubeV1Enabled && pathname.startsWith("/content/")) ? <section className="menu-guide" aria-label="메뉴 안내"><div><strong>새 메뉴에서 내 일을 찾아보세요</strong><p>유튜브 제작은 {youtubeV1Enabled ? "유튜브 공정의 프로젝트에서" : "콘텐츠의 8단계에서"}, 채널 자동화와 댓글은 콘텐츠 자동화에서 확인합니다. 회사 정본은 전체 문서에서, 채널 연결은 내 계정에서 관리합니다.</p></div><button className="secondary-button" onClick={dismissGuide}>확인했어요</button></section> : null}
-          {menuAccess.loading ? <section className="panel settings-loading-state" role="status">메뉴 권한을 확인하는 중입니다.</section> : menuAccess.error ? <section className="panel menu-access-denied" role="alert"><h1>메뉴 권한을 확인하지 못했습니다.</h1><p>{menuAccess.error}</p><button className="secondary-button" onClick={menuAccess.retry}>다시 확인</button></section> : canOpenMenu(profile, navigationPath, menuAccess.allowed) ? children : <section className="panel menu-access-denied"><ShieldCheck size={24} /><h1>이 메뉴에 접근 권한이 없습니다.</h1><p>관리자에게 메뉴 권한 설정을 요청해 주세요.</p><Link className="secondary-button" href="/home">내 할 일로 이동</Link></section>}
+          {menuAccess.loading ? <section className="panel settings-loading-state" role="status">메뉴 권한을 확인하는 중입니다.</section> : menuAccess.error ? <section className="panel menu-access-denied" role="alert"><h1>메뉴 권한을 확인하지 못했습니다.</h1><p>{menuAccess.error}</p><button className="secondary-button" onClick={menuAccess.retry}>다시 확인</button></section> : canOpenMenu(profile, navigationPath, menuAccess.allowed) ? <ProjectLocationContext.Provider value={setProjectLocation}>{children}</ProjectLocationContext.Provider> : <section className="panel menu-access-denied"><ShieldCheck size={24} /><h1>이 메뉴에 접근 권한이 없습니다.</h1><p>관리자에게 메뉴 권한 설정을 요청해 주세요.</p><Link className="secondary-button" href="/home">내 할 일로 이동</Link></section>}
         </main></ContentWorkProvider>
       </div>
       <DevelopmentRequestDrawer open={requestOpen} onClose={() => setRequestOpen(false)} />

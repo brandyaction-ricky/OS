@@ -23,3 +23,44 @@ export function threadsPostRole(posts:string[],index:number){
   if(index===posts.length-1&&/^https?:\/\/\S+$/.test(posts[index].trim()))return `원문 링크 · ${index}번 글에 답글`;
   return `${index}번 글에 답글`;
 }
+
+export interface ThreadsClaim {
+  post: number;
+  sentence: number;
+  text: string;
+  kind: "" | "fact" | "interpretation";
+  source: string;
+}
+
+/** Bind a decision to its exact sentence. Edits cannot inherit a previous sentence's evidence. */
+export function threadsClaims(posts: unknown, saved: unknown): ThreadsClaim[] {
+  if (!Array.isArray(posts)) return [];
+  const segmenter = new Intl.Segmenter("ko", { granularity: "sentence" });
+  const entries = new Map<string, ThreadsClaim>();
+  if (Array.isArray(saved)) for (const item of saved) {
+    if (item && typeof item.text === "string" && typeof item.source === "string" && ["fact", "interpretation"].includes(item.kind))
+      entries.set(JSON.stringify([item.post,item.sentence,item.text]), item);
+  }
+  return posts.flatMap((value, post) => {
+    if (typeof value !== "string") return [];
+    const lines = value.split(/\r?\n/).flatMap(line => Array.from(segmenter.segment(line), s => s.segment.trim())).filter(Boolean);
+    return lines.flatMap((text, sentence) => {
+      if (/^https?:\/\/\S+$/.test(text)) return [];
+      const previous = entries.get(JSON.stringify([post, sentence, text]));
+      return [{post, sentence, text, kind: previous?.kind ?? "", source: previous?.source ?? ""}];
+    });
+  });
+}
+
+export function threadsClaimsProblem(posts: unknown, saved: unknown): string | null {
+  for (const claim of threadsClaims(posts,saved)) {
+    if (!claim.kind) return `${claim.post+1}번 글의 ${claim.sentence+1}번째 문장을 사실 또는 해석으로 구분해 주세요.`;
+    if (claim.kind === "fact") {
+      let source: URL | undefined;
+      try { source = new URL(claim.source); } catch { /* Missing or incomplete source. */ }
+      if (!source || !["http:", "https:"].includes(source.protocol) || source.username || source.password)
+        return `${claim.post+1}번 글의 사실 문장에 원본 출처 주소를 입력해 주세요.`;
+    }
+  }
+  return null;
+}

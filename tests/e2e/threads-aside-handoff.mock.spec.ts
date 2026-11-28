@@ -101,7 +101,7 @@ async function mockWorkspace(page: Page, options: { existing?: "backlog" | "acti
   });
   return state;
 }
-const writing = (page: Page) => page.getByRole("region", { name: "내 AI로 쓰레드 집필" });
+const writing = (page: Page) => page.getByRole("region", { name: "내 AI로 스레드 집필" });
 const copy = (page: Page) => writing(page).getByRole("button", { name: "내 AI에 보낼 요청문 복사", exact: true });
 const result = (page: Page) => page.getByLabel("Aside가 작성한 결과", { exact: true });
 const save = (page: Page) => writing(page).getByRole("button", { name: "미승인 초안 저장", exact: true });
@@ -196,7 +196,7 @@ test("a stale source error retains the result and does not claim successful stor
 test("a shared draft belonging to another employee exposes no handoff controls", async ({ page }) => {
   const state = await mockWorkspace(page, { shared: true });
   await page.goto(`/automation/threads?scope=team&sel=${ITEM}`);
-  await expect(page.getByRole("heading", { name: /쓰레드 · v1/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /스레드 · v1/ })).toBeVisible();
   await expect(writing(page)).toHaveCount(0);
   await expect(page.getByLabel("Aside가 작성한 결과")).toHaveCount(0);
   expect(state.writes).toEqual([]);

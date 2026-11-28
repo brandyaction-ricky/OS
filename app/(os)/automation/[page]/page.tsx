@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { ContentAutomationV07 } from "@/components/content-automation-v07";
 import { PlaceholderPage } from "@/components/placeholder-page";
+import { youtubeV1Mode } from "@/lib/youtube-process/gate";
 import { retiredRoute } from "@/lib/final-routes";
 import { findPage, NAV_STAGES } from "@/lib/navigation";
 
@@ -15,10 +16,14 @@ export async function generateMetadata({ params, searchParams }: AutomationPageP
   return { title: `${page.label} | 브랜디 OS` };
 }
 
-export default async function AutomationPage({ params }: AutomationPageProps) {
+export default async function AutomationPage({ params, searchParams }: AutomationPageProps) {
   const href = `/automation/${(await params).page}`;
   const legacy = retiredRoute(href);
   if (legacy) redirect(legacy);
+  if (youtubeV1Mode()==="all" && ["/automation/cardnews","/automation/shorts"].includes(href)) {
+    const query=await searchParams;
+    if (!Object.keys(query).length) redirect(`/content/projects?platform=${href.endsWith("shorts")?"short":"card"}`);
+  }
   if (href === "/automation/topics") return <ContentAutomationV07 page="topics" />;
   if (href === "/automation/references") return <ContentAutomationV07 page="references" />;
   if (href === "/automation/cardnews") return <ContentAutomationV07 page="cardnews" />;

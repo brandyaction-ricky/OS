@@ -1,5 +1,6 @@
 // 유튜브 공정 v1 stage records (지시서 6-1 · 6-2): 기획안 · 구성안 · 제작 · 업로드 (+ SEO 칼럼, 2026-10-25), one child record each under the project.
 // Rules here are shared by the API, the screens and the demo store.
+import type { CanonTrace } from "./canon-trace";
 import type { YpReviewer } from "./reviewers";
 import type { YpKind, YpRef } from "./project";
 import type { ThumbSavedEdit } from "./thumb-edit.ts";
@@ -49,12 +50,14 @@ export interface YpPlan {
   /** Copied when the 기획안 컨펌 is OK: the A · B · (C) pairs that later screens compare against. */
   confirmed?: { at: string } & Partial<Record<YpSlot, YpPick>>;
 }
-export interface YpScriptVersion { v: number; at: string; by: string; md: string; why: "manual" | "ai" | "make" | "restore"; model?: string }
+export interface YpScriptVersion { v: number; at: string; by: string; md: string; why: "manual" | "ai" | "make" | "restore"; model?: string; trace?: CanonTrace[] }
 /**
  * 구간 의견 (수정 요청 2026-11-12): a passage of the 원고 with a comment on it, written in 의견 모드. The quote and a little text on
  * each side find the passage again; only 「반영」 changes the 원고, and only when the passage is found once.
  */
+export interface ReviewDecision { key: string; issue: string; action: "adopt" | "revise" | "ignore" }
 export interface YpScriptNote {
+  decision?: ReviewDecision;
   id: string; quote: string; before: string; after: string; text: string;
   /** The 원고 version the comment was written on (0 = before any version was kept). */
   v: number; by: string; at: string;
@@ -67,7 +70,7 @@ export interface YpOutline {
   script: string; versions: YpScriptVersion[];
   notes?: YpScriptNote[];
   /** The staff AI's working notes behind its draft (원고 공정 정본 §8-2): kept for reading, not edited. */
-  ai?: { jobId: string; model: string; at: string; by: string; materials: string; axis: string; design: string; review: string; canonBundle: string; suggestions: string[]; head?: string };
+  ai?: { trace?: CanonTrace[]; jobId: string; model: string; at: string; by: string; materials: string; axis: string; design: string; review: string; canonBundle: string; suggestions: string[]; head?: string };
 }
 export type YpMakeStatus = "prep" | "shoot" | "edit" | "done";
 export interface YpFinalUpload { v: number; at: string; by: string; path: string; name: string; bytes: number }
@@ -136,7 +139,7 @@ export interface YpColumnItem {
   /** Per data-slot: an image the PD uploaded (path) or an address (url); the video place takes a YouTube link. */
   fills: Record<string, { path?: string; url?: string; name?: string }>;
   /** The AI's HTML as it arrived; a column whose HTML still equals it is replaced by the next AI pass, an edited one is kept. */
-  ai: { by: string; model: string; at: string; jobId: string; html: string } | null;
+  ai: { trace?: CanonTrace[]; by: string; model: string; at: string; jobId: string; html: string } | null;
   /** Where it went on the MYIN 아티클 (2026-10-25): sent as a draft, made public from OS; `sig` is what was sent, to show a later edit. */
   myin?: YpColumnMyin;
 }
@@ -176,7 +179,7 @@ export interface YpShortScript {
   query: string; refs: YpShortRef[]; text: string; hooks: YpShortHook[]; insight: string; formula: string;
   /** The big words on this 숏폼's first screen (헤드 카피), over the first three seconds. */
   headCopy: string;
-  ai?: { by: string; model: string; at: string; jobId: string; market?: { query: string; count: number }; picked: { title: string; url: string; views: number }[]; formulas: YpShortFormula[]; notes: string; text: string };
+  ai?: { trace?: CanonTrace[]; by: string; model: string; at: string; jobId: string; market?: { query: string; count: number }; picked: { title: string; url: string; views: number }[]; formulas: YpShortFormula[]; notes: string; text: string };
   /** 주제 step (owner 2026-10-28): the formulas the staff AI drew from the references and the 주제 후보 made from them; the PD fixes one. */
   research?: { by: string; model: string; at: string; jobId: string; market?: { query: string; count: number }; picked: { title: string; url: string; views: number }[]; formulas: YpShortFormula[]; topics: YpShortTopicPick[]; notes: string };
   /** The AI's script when the PD had already written: shown beside the fields, applied only on [이 초안으로 바꾸기]. */
@@ -190,6 +193,10 @@ export interface YpReview2Item { paragraph: number; quote: string; grade: "상" 
 export interface YpReview2 {
   state: "none" | "running" | "done" | "failed"; at: string; model: string;
   /** scriptKey() of the 원고 judged: when the 구성안 changes, the screen says the judgement is for an older 원고. */
+  source?: { version: number; origin: "ai" | "human"; by: string; bundle?: string; trace?: CanonTrace[] };
+  history?: Pick<YpReview2, "source" | "key" | "at" | "pass" | "gates">[];
+  paragraphKeys?: string[];
+  reviewedParagraphs?: number[];
   key: string; pass?: boolean; gates: { gate: 2 | 3 | 4 | 5 | 6; pass: boolean; items: YpReview2Item[] }[]; doubts: string[]; error?: string;
 }
 /** 화면 자동 검사 (owner 2026-10-29, ④): GPT looks at the render PC's 점검 시트 (one frame per scene) for text past its box,
@@ -421,9 +428,9 @@ export function outlineMissing(outline: YpOutline) {
 export const scriptFromPlan = (plan: YpPlan) => `### 오프닝 (첫 30초)\n\n${plan.opening}\n\n### 본론\n\n${plan.body}\n\n### 클로징 · 다음 행동\n\n${plan.closing}\n`;
 export const MAX_SCRIPT_VERSIONS = 30;
 /** A new current 원고, kept as a version (the oldest drop off after 30). */
-export function withScriptVersion(outline: YpOutline, md: string, by: string, at: string, why: YpScriptVersion["why"], model?: string): YpOutline {
+export function withScriptVersion(outline: YpOutline, md: string, by: string, at: string, why: YpScriptVersion["why"], model?: string, trace?: CanonTrace[]): YpOutline {
   const v = (outline.versions.at(-1)?.v ?? 0) + 1;
-  return { ...outline, script: md, versions: [...outline.versions, { v, at, by, md, why, ...(model ? { model } : {}) }].slice(-MAX_SCRIPT_VERSIONS) };
+  return { ...outline, script: md, versions: [...outline.versions, { v, at, by, md, why, ...(model ? { model } : {}), ...(trace ? { trace } : {}) }].slice(-MAX_SCRIPT_VERSIONS) };
 }
 
 /** Where a note's passage is in the 원고: found once (start index), or why it is not safe to change. */
@@ -463,13 +470,16 @@ export function notesOverlap(script: string, notes: YpScriptNote[]) {
   const spans = notes.flatMap(note => { const spot = noteSpot(script, note); return "at" in spot ? [{ from: spot.at, to: spot.at + note.quote.length }] : []; }).sort((a, b) => a.from - b.from);
   return spans.some((span, index) => index > 0 && span.from < spans[index - 1].to);
 }
-export interface YpNotePatch { note?: Pick<YpScriptNote, "quote" | "before" | "after" | "text">; noteState?: { id: string; state: "open" | "dismissed" }; applyNote?: string }
+export interface YpNotePatch { note?: Pick<YpScriptNote, "quote" | "before" | "after" | "text" | "decision">; noteState?: { id: string; state: "open" | "dismissed" }; applyNote?: string }
 /** One 구간 의견 change (write · set aside or back · 반영), shared by the server and the demo; a refusal throws its reason. */
 export function withNotePatch(outline: YpOutline, patch: YpNotePatch, by: string, at: string, newId: string): YpOutline {
   const notes = outline.notes ?? [];
   if (patch.note) {
     if (notes.length >= 200) throw new Error("구간 의견이 200개를 넘었어요. 끝난 의견을 정리한 뒤 남겨 주세요.");
-    outline = { ...outline, notes: [...notes, { id: newId, ...patch.note, v: outline.versions.at(-1)?.v ?? 0, by, at, state: "open" }] };
+    const decision = patch.note.decision;
+    if (decision && decision.key !== scriptKey(outline.script)) throw new Error("원고가 바뀌었어요. 현재 원고를 검수한 뒤 결정해 주세요.");
+    if (decision && notes.some(note => note.decision?.key === decision.key && note.decision.issue === decision.issue)) throw new Error("이미 결정한 지적이에요.");
+    outline = { ...outline, notes: [...notes, { id: newId, ...patch.note, v: outline.versions.at(-1)?.v ?? 0, by, at, state: decision?.action === "ignore" ? "dismissed" : "open" }] };
   }
   if (patch.noteState) {
     const { id, state } = patch.noteState, note = notes.find(item => item.id === id);

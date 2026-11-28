@@ -1,4 +1,7 @@
 "use client";
+import { campaignTrackingUrl } from "@/lib/ad-campaign";
+import { projectName } from "@/lib/youtube-process/project";
+import { latestAdMeasurement } from "@/lib/youtube-process/ad-results";
 import { AdResultsSection } from "./youtube-process-ads";
 import { saveLatest } from "@/lib/save-latest";
 import { shortformDiagramSchema } from "@/lib/shortform-production";
@@ -6,6 +9,8 @@ import { ShortformDiagramFields } from "./shortform-diagram-fields";
 import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, Download, ExternalLink, ImagePlus, Plus, Sparkles, X, Youtube } from "lucide-react";
 import { uploadYoutubeFile } from "@/lib/api-client";
+import { AdDelivery } from "./ad-delivery";
+import "./ad-production.css";
 import { useUploadChannel } from "./youtube-channel-styles";
 import { appealText, shortMissing, type YpShortBrief, type YpShortScene } from "@/lib/youtube-process/short";
 import { scenesFromScript, scriptLines } from "@/lib/youtube-process/short-script";
@@ -78,12 +83,18 @@ const move = <T,>(list: T[], from: number, to: number) => { const next = [...lis
  * 광고 브리프 on the 대본 step (로건 QA 10/30: it sat in 제작, after the script it should shape, so the script was rewritten). It is the
  * same record 제작 edits; the 대본 AI reads it.
  */
-export function AdBrief({ page, editable }: { page: YpPage; editable: boolean }) {
+function CampaignLink({id,landing}:{id:string;landing:string}) {
+  const url = campaignTrackingUrl(landing,id,"video");
+  return <div className="yp-field">{url && <label className="yp-lbl">영상 광고 추적 주소<input className="yp-in" readOnly value={url} onFocus={e=>e.currentTarget.select()} /></label>}
+    <a className="yp-lnk" href={`/content/images?campaign=${encodeURIComponent(id)}`}>이 캠페인으로 이미지 광고 만들기 →</a></div>;
+}
+
+export function AdBrief({ page, editable,onEvidence }: { page: YpPage; editable: boolean;onEvidence?:(value:string)=>void }) {
   const client = page.client, id = page.bundle!.project.id, fail = page.fail;
   const [brief, setBrief] = useState<YpShortBrief | null>(null);
   const [dirty, setDirty] = useState(false);
   const version = useRef(0), rev = useRef(0), timer = useRef<number | null>(null), queue = useRef<Promise<unknown>>(Promise.resolve());
-  useEffect(() => { if (client) client.short(id).then(view => { version.current = view.version; setBrief(view.brief); }, fail); }, [client, id, fail]);
+  useEffect(() => { if (client) client.short(id).then(view => { version.current = view.version; setBrief(view.brief); onEvidence?.(view.brief.evidence); }, fail); }, [client, id, fail,onEvidence]);
   useEffect(() => () => { if (timer.current) window.clearTimeout(timer.current); }, []);
   useLeaveGuard(dirty);
   if (!brief) return null;
@@ -95,14 +106,15 @@ export function AdBrief({ page, editable }: { page: YpPage; editable: boolean })
       try { const view = await client.saveShort(id, version.current, { brief: next }); version.current = view.version; if (rev.current === at) setDirty(false); } catch (reason) { fail(reason); }
     });
   };
-  const edit = (key: "product" | "audience" | "goal" | "landingUrl" | "evidence" | "appeal", value: string) => {
+  const edit = (key: "product" | "audience" | "goal" | "landingUrl" | "evidence" | "hypothesis" | "successCriterion" | "budget" | "appeal", value: string) => {
+    if (key==="evidence") onEvidence?.(value);
     rev.current += 1; const next = { ...brief, [key]: value }; setBrief(next); setDirty(true);
     if (timer.current) window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => save(next), 1500);
   };
   const field = (key: Parameters<typeof edit>[0], label: string, placeholder: string, rows = 0) => <label className="yp-lbl" style={rows ? { gridColumn: "1 / -1" } : undefined}>{label}
-    {rows ? <textarea className="yp-in" rows={rows} value={brief[key]} readOnly={!editable} placeholder={placeholder} onChange={event => edit(key, event.target.value)} />
-      : <input className="yp-in" value={brief[key]} readOnly={!editable} placeholder={placeholder} onChange={event => edit(key, event.target.value)} />}</label>;
+    {rows ? <textarea className="yp-in" rows={rows} value={brief[key] ?? ""} readOnly={!editable} placeholder={placeholder} onChange={event => edit(key, event.target.value)} />
+      : <input className="yp-in" value={brief[key] ?? ""} readOnly={!editable} placeholder={placeholder} onChange={event => edit(key, event.target.value)} />}</label>;
   return <div onBlur={() => { if (dirty) save(brief); }}><YpSection title="광고 브리프" gq="대본보다 먼저 정해요 · 제작에서도 이어서 써요" need>
     <div className="yp-g2">
       {field("product", "광고할 상품 · 서비스", "예) 강점 진단 결과지")}
@@ -111,7 +123,10 @@ export function AdBrief({ page, editable }: { page: YpPage; editable: boolean })
       {field("goal", "보고 나서 할 행동", "예) 프로필 링크에서 진단 받기")}
       {field("landingUrl", "연결할 페이지", "https://")}
       {field("evidence", "실제 근거와 출처", "상품 정보 · 사용을 허락받은 후기 · 실제 화면과 그 출처", 3)}
-    </div></YpSection></div>;
+      {field("hypothesis", "검증할 가설", "어떤 메시지가 누구의 행동을 바꿀까요?")}
+      {field("successCriterion", "성과 기준과 측정 기간", "예) 7일간 진단 시작당 비용 1만 원 이하")}
+      {field("budget", "시험 예산", "예) 일 3만 원씩 7일")}
+    </div><CampaignLink id={id} landing={brief.landingUrl} /></YpSection></div>;
 }
 
 export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: boolean; n0: number }) {
@@ -230,10 +245,10 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
   const before = scenes.slice(0, -1).reduce((total, scene) => total + scene.seconds, 0);
   const finals = page.bundle?.finals ?? [];
   const made = latestFinals(finals);
-  const field = (key: "product" | "audience" | "goal" | "landingUrl" | "evidence", label: string, placeholder: string, need: boolean, rows = 0) => <label className="yp-lbl" style={rows ? { gridColumn: "1 / -1" } : undefined}>
+  const field = (key: "product" | "audience" | "goal" | "landingUrl" | "evidence" | "hypothesis" | "successCriterion" | "budget", label: string, placeholder: string, need: boolean, rows = 0) => <label className="yp-lbl" style={rows ? { gridColumn: "1 / -1" } : undefined}>
     {label} {need ? <span className="yp-need">필수</span> : <span className="yp-opt">선택</span>}
-    {rows ? <textarea className="yp-in" rows={rows} value={brief[key]} readOnly={!editable} placeholder={placeholder} onChange={event => editBrief({ [key]: event.target.value })} />
-      : <input className="yp-in" value={brief[key]} readOnly={!editable} placeholder={placeholder} onChange={event => editBrief({ [key]: event.target.value })} />}</label>;
+    {rows ? <textarea className="yp-in" rows={rows} value={brief[key] ?? ""} readOnly={!editable} placeholder={placeholder} onChange={event => editBrief({ [key]: event.target.value })} />
+      : <input className="yp-in" value={brief[key] ?? ""} readOnly={!editable} placeholder={placeholder} onChange={event => editBrief({ [key]: event.target.value })} />}</label>;
   const pageFields = <>{field("landingUrl", "연결할 페이지", "https://", ad)}{field("evidence", "실제 근거와 출처", "상품 정보 · 사용을 허락받은 후기 · 실제 화면과 그 출처", ad, 3)}</>;
 
   return <div onBlur={() => { if (dirty) void save(); }}>
@@ -249,8 +264,11 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
         {field("product", ad ? "광고할 상품 · 서비스" : "다룰 내용", ad ? "예) 강점 진단 결과지" : "예) 저녁마다 지치는 이유 한 가지", ad)}
         {field("audience", "누구에게", "예) 퇴근 후에도 할 일이 머리에 남는 30대 직장인", true)}
         {field("goal", "보고 나서 할 행동", "예) 프로필 링크에서 진단 받기", true, 1)}
-        {ad ? pageFields : null}
+        {ad ? <>{pageFields}{field("hypothesis","검증할 가설","어떤 메시지가 누구의 행동을 바꿀까요?",false)}
+          {field("successCriterion","성과 기준과 측정 기간","예) 7일간 진단 시작당 비용 1만 원 이하",false)}
+          {field("budget","시험 예산","예) 일 3만 원씩 7일",false)}</> : null}
       </div>
+      {ad && <CampaignLink id={id} landing={brief.landingUrl} />}
       {ad ? null : <details className="yp-more-fields" open={Boolean(brief.landingUrl || brief.evidence)}><summary>연결 페이지 · 근거 더 쓰기 (선택)</summary><div className="yp-g2">{pageFields}</div></details>}
       {ad ? <div className="yp-field"><div className="yp-fld-h"><b>구매 이유</b> <span className="yp-need">필수</span><span className="yp-gq">하나만 써요</span></div>
         {view.appeals.length ? <div className="yp-ways">{view.appeals.map(appeal => { const text = appealText(appeal);
@@ -306,11 +324,15 @@ function SceneRow({ index, scene, last, remain, count, image, editable, busy, di
   onChange: (patch: Partial<YpShortScene>) => void; onUpload: (file: File) => void; onMove: (to: number) => void; onRemove: () => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
+  const [preview,setPreview]=useState(false);
   return <div className="yp-scn">
     <button type="button" className="yp-scn-img" disabled={!editable || busy} onClick={() => input.current?.click()} aria-label={`장면 ${index + 1} 이미지 ${image ? "바꾸기" : "올리기"}`}>
       {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed URLs from private storage */}
       {scene.diagram ? <span>세로 도식</span> : image ? <img src={image.url} alt={image.name} /> : <><ImagePlus size={18} aria-hidden="true" /><span>{busy ? "올리는 중…" : "이미지 올리기"}</span></>}</button>
     <div className="yp-scn-f">
+      <button className="yp-btn yp-sm" type="button" aria-expanded={preview} onClick={()=>setPreview(!preview)}>장면 미리보기</button>
+      {preview && <figure className="ad-scene-preview">{/* eslint-disable-next-line @next/next/no-img-element -- signed project asset */}
+          {image && <img src={image.url} alt={image.name}/>}<figcaption>{scene.text || scene.voice || "입력한 자막이 여기에 표시됩니다."}</figcaption></figure>}
       <div className="yp-scn-h"><span className="yp-n">{index + 1}</span>
         {last ? <span className="yp-tag">나머지 {Math.round(remain * 10) / 10}초</span>
           : <label className="yp-scn-sec"><input className="yp-in" type="number" min={1} max={60} step={0.5} value={scene.seconds} readOnly={!editable} aria-label={`장면 ${index + 1} 길이(초)`}
@@ -333,7 +355,17 @@ export function ShortExportScreen({ header, page }: { header: ReactNode; page: Y
   const [view, setView] = useState<YpShortView | null>(null);
   const project = page.bundle?.project;
   const client = page.client, id = project?.id;
-  useEffect(() => { if (client && id) client.short(id).then(setView, () => undefined); }, [client, id]);
+  const [attempt, setAttempt] = useState(0);
+  const [loadError, setLoadError] = useState(false);
+  useEffect(() => {
+    if (!client || !id) return;
+    let active = true;
+    client.short(id).then(
+      next => { if (active) setView(next); },
+      () => { if (active) setLoadError(true); },
+    );
+    return () => { active = false; };
+  }, [client, id, attempt]);
   const { vertical: last, square, portrait } = latestFinals(page.bundle?.finals ?? []);
   const finish = async () => {
     if (!page.client || !project) return;
@@ -341,7 +373,8 @@ export function ShortExportScreen({ header, page }: { header: ReactNode; page: Y
     try { const next = await page.client.move(project.id, "done", project.version); page.setBundle(current => current ? { ...current, project: next } : current); }
     catch (reason) { page.fail(reason); } finally { setMoving(false); }
   };
-  const action = page.bundle ? stepAction(page, 5, project?.yp.stage === "done" ? { kind: "status", status: "끝난 영상" }
+  const isAd = project?.yp.topic.purpose==="ad";
+  const action = isAd && project && ["upload","done"].includes(project.yp.stage) ? {kind:"status" as const,status:project.yp.adRelease?"집행 기록 완료":"집행 기록 대기"} : page.bundle ? stepAction(page, 5, project?.yp.stage === "done" ? { kind: "status", status: "끝난 영상" }
     : { kind: "button", label: "다 올렸으면 끝내기", reason: last ? "" : "최종본이 없어요", busy: moving, onClick: () => void finish() }) : null;
   return <YpFrame page={page} view={5} action={action} header={header} title="내보내기" sub="유튜브 쇼츠는 여기서 바로 올리고, 릴스 · 광고는 MP4를 내려받아 올려요. 다 올렸으면 끝내요.">
     {page.bundle && project ? !["upload", "done"].includes(project.yp.stage) ? <LockedStep page={page} name="내보내기" /> : <>
@@ -355,18 +388,29 @@ export function ShortExportScreen({ header, page }: { header: ReactNode; page: Y
         {last ? null : <p className="yp-pempty" style={{ padding: "14px 8px" }}>최종본이 아직 없어요. 최종 검토에서 만들거나 올려요.</p>}
         {square || portrait ? <p className="yp-hint">정사각형 · 4:5는 피드 광고용이에요. 내려받아 광고 관리자에 올려요.</p> : null}
       </YpSection>
-      <ShortYoutube page={page} last={last} />
+      {isAd && view ? <AdDelivery path={project.yp.adSetup?.path} medium="video" headline={page.bundle.stages.shortScript.data.headCopy || projectName(project)}
+        body={page.bundle.stages.upload.data.desc || page.bundle.stages.shortScript.data.text} cta={view.brief.goal} landing={view.brief.landingUrl}
+        campaign={project.yp.adSetup?.campaign??project.id} aspects={project.yp.adSetup?.aspects??["9x16",...(square?["1x1" as const]:[]),...(portrait?["4x5" as const]:[])]}
+        isTest={!!project.yp.isTest} release={project.yp.adRelease} measurement={latestAdMeasurement(page.bundle.stages.upload.data.ads ?? [])}
+        save={async decision=>{if(!page.client)throw new Error("로그인이 필요해요.");await page.client.move(project.id,"done",project.version,decision);await page.reload();}}
+        measure={async measurement=>{if(!page.client || !page.bundle)throw new Error("로그인이 필요해요.");const upload=page.bundle.stages.upload;
+          const existing=upload.data.ads?.find(r=>r.from===measurement.from && r.to===measurement.to);
+          await page.client.saveAdResult(project.id,upload.version,{entry:{id:existing?.id,from:measurement.from,to:measurement.to,spend:measurement.spend,impressions:measurement.impressions,clicks:measurement.clicks,purchases:measurement.purchases,revenue:measurement.revenue,plays3s:existing?.plays3s??0,note:existing?.note??"",measurement}});await page.reload();}}/>
+        : isAd ? <section className="panel panel-pad-lg"><h2>집행 패키지</h2>
+          {loadError ? <><p role="alert">광고 정보를 불러오지 못했어요.</p>
+            <button className="secondary-button" onClick={() => { setLoadError(false); setAttempt(n => n + 1); }}>다시 불러오기</button></>
+            : <p role="status">광고 정보를 불러오는 중이에요.</p>}</section> : <ShortYoutube page={page} last={last} />}
       {/* Only what was written for it (the older scene editor's brief); a 숏폼 made from its 대본 has none to show. */}
       {view && (view.brief.purpose === "ad" || view.brief.goal || view.brief.landingUrl) ? <YpSection n={3} title="광고 · 릴스로 올릴 때 같이 쓸 것">
         <dl className="yp-kv">
           <dt>용도</dt><dd>{view.brief.purpose === "ad" ? "광고" : "일반 콘텐츠"} · {view.brief.duration}초</dd>
           <dt>할 행동</dt><dd>{view.brief.goal || "—"}</dd>
-          <dt>연결 페이지</dt><dd>{view.brief.landingUrl ? <a className="yp-lnk" href={view.brief.landingUrl} target="_blank" rel="noreferrer">{view.brief.landingUrl}</a> : "—"}</dd>
+          <dt>연결 페이지</dt><dd>{view.brief.landingUrl ? <a className="yp-lnk" href={view.brief.purpose==="ad" ? campaignTrackingUrl(view.brief.landingUrl,project.id,"video") : view.brief.landingUrl} target="_blank" rel="noreferrer">{view.brief.purpose==="ad" ? campaignTrackingUrl(view.brief.landingUrl,project.id,"video") : view.brief.landingUrl}</a> : "—"}</dd>
           {view.brief.purpose === "ad" ? <><dt>구매 이유</dt><dd style={{ whiteSpace: "pre-wrap" }}>{view.brief.appeal || "—"}</dd></> : null}
         </dl>
         <p className="yp-hint">광고 문구와 연결 페이지의 약속이 맞는지 올리기 전에 한 번 더 봐요.</p>
       </YpSection> : null}
-      {project.yp.topic.purpose === "ad" || view?.brief.purpose === "ad" ? <AdResultsSection page={page} n={4} /> : null}
+      {project.yp.topic.purpose === "ad" || view?.brief.purpose === "ad" ? <details><summary>이전 기간별 성과</summary><AdResultsSection page={page} n={4} /></details> : null}
       {/* 카드뉴스 (설계서 2026-10-30): a confirmed 대본 also makes an Instagram 카드뉴스. */}
       {view?.brief.purpose !== "ad" && project.yp.topic.purpose !== "ad" ? <CardFromProject page={page} /> : null}
     </> : null}
