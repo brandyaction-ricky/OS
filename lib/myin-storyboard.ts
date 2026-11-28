@@ -22,9 +22,10 @@ export const myinStoryboardSchema = z.object({
   cta: z.array(z.object({ after: z.string().min(1), line: z.string().min(1) }).passthrough()).max(3),
 }).passthrough();
 export type MyinStoryboard = z.infer<typeof myinStoryboardSchema>;
-/** AI 사진 (풀링형 요청, 대표 2026-11-24 — the way 원리 1·2편 were made): GPT Image 2, 1536×1024, high, at most 6 a video. */
+/** AI 사진 (풀링형 요청, 대표 2026-11-24 — the way 원리 1·2편 were made): GPT Image 2, 1536×1024, high. At most 15 a video since
+ *  대표 2026-11-29 (「이미지가 필요한 건 GPT로 그리기를 적극 활용」, was 6). */
 export const MYIN_AI_PHOTO_MODEL = "gpt-image-2";
-export const MYIN_AI_PHOTOS_MAX = 6;
+export const MYIN_AI_PHOTOS_MAX = 15;
 
 /** Logan's _norm(): only digits, Latin letters and Hangul count. */
 export const myinNorm = (value: string) => value.replace(/[^0-9A-Za-z가-힣]/g, "");
