@@ -72,6 +72,7 @@ test("reference + message + appeal creates multiple images, retries only unfinis
   await expect(studio.getByRole("alert")).toContainText("시험용 생성 중단");
   await expect(studio.getByText("이미지 소재 · 1/3개 완료", { exact: true })).toBeVisible();
   expect(f.calls).toEqual(["source-1", "source-2"]); expect(f.uploads).toHaveLength(1);
+  expect(new URL(page.url()).searchParams.get("source")).toBe([...f.records.keys()][0]);
   await page.reload();
   await expect(studio.getByRole("button", { name: "남은 소재 이어 만들기" })).toBeEnabled();
   expect(f.calls).toEqual(["source-1", "source-2"]);
@@ -104,6 +105,7 @@ test("video script preserves narration and scene directions, creates one image p
   expect(f.inputs[0]).toMatchObject({ mode: "video", script: "바쁜 아침을 시작합니다.\n책상 위에 제품을 놓습니다.", visuals: ["창가에서 준비하는 사람의 뒷모습", "제품이 중앙에 놓인 책상 클로즈업"] });
   expect([...f.records.values()][0].items.map(item => item.narration)).toEqual(["바쁜 아침을 시작합니다.", "책상 위에 제품을 놓습니다."]);
   expect(await studio.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  expect(new URL(page.url()).searchParams.get("source")).toBe([...f.records.keys()][0]);
   await page.reload();
   await expect(studio.getByText("영상용 장면 이미지 · 2/2개 완료", { exact: true })).toBeVisible();
   expect(f.calls).toHaveLength(2);

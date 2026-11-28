@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { ArrowDownToLine, Film, Image as ImageIcon, Sparkles, Upload, X } from "lucide-react";
 import { apiRequest } from "@/lib/api-client";
 import {
@@ -30,7 +30,7 @@ function saveDownload(blob: Blob, name: string) {
 
 export function AdSourceStudio() {
   const { demo, accessToken } = useSession();
-  const router = useRouter(), pathname = usePathname(), search = useSearchParams();
+  const search = useSearchParams();
   const sourceId = search.get("source");
   const [mode, setMode] = useState<AdSourceMode>("image");
   const [aspect, setAspect] = useState<AdSourceAspect>("4:5");
@@ -93,9 +93,11 @@ export function AdSourceStudio() {
   const scenes = adScriptScenes(script);
   function selectMode(next: AdSourceMode) { setMode(next); setAspect(next === "video" ? "9:16" : "4:5"); setError(""); }
   function setLocation(id: string | null) {
-    const params = new URLSearchParams(search.toString());
-    if (id) params.set("source", id); else params.delete("source");
-    router.replace(`${pathname}?${params}`, { scroll: false });
+    const url = new URL(window.location.href);
+    if (id) url.searchParams.set("source", id); else url.searchParams.delete("source");
+    // This is client-only selection. Persist it before generation so an immediate
+    // refresh resumes the saved request without waiting for a server navigation.
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
   }
   function remember(next: AdSourceBundle | null) { current.current = next; if (mounted.current) setProject(next); }
   function chooseFiles(picked: FileList | null, limit = 3) {
