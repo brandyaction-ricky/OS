@@ -20,9 +20,11 @@ const KEY = process.env.MYIN_HELPER_KEY || path.join(os.homedir(), ".ssh", "id_e
 const SSH = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=6", "-o", "ServerAliveInterval=15", ...(existsSync(KEY) ? ["-i", KEY] : [])];
 /** What the engine reads from the environment that is not a path on this PC: passed to the helpers as KEY=VAL. */
 const ENGINE_KEYS = /^(STORY|SRC|NO_HOLD|HOLD_[A-Z_]+|SUB_[A-Z_]+|MYIN_(FINAL_FPS|CHAPTER_SEC|LOGO)|VOICE_REF)$/;
-/** The video folder minus what pieces never read: earlier outputs, voice takes, caches. */
+/** The video folder minus what pieces never read: earlier outputs, voice takes, caches, and the music · ambience · effect libraries
+ * (pieces are silent video; only the mix after them reads those — about half of each copy, 2026-11-28 test: 273 of 540 MB). */
 const EXCLUDE = ["voice/os_myin/chunks/", "voice/os_myin/v0/", "voice/os_myin/*.mp4", "voice/os_myin/handouts/", "voice/os_myin/voice16k.wav",
-  "voice/os_myin/preview_*.png", "voice/os_voice/p*_s*_*.wav", "voice/os_voice/*_raw.wav", "__pycache__/", "*.bak*", "tools/editor/"];
+  "voice/os_myin/preview_*.png", "voice/os_voice/p*_s*_*.wav", "voice/os_voice/*_raw.wav", "__pycache__/", "*.bak*", "tools/editor/",
+  "/assets/bgm/", "/assets/amb/", "/assets/sfx/"];
 
 // "local" is this PC itself without SSH (a test of the whole hand-out on one computer): same script, folders under this home.
 const shell = (host, command) => host === "local" ? ["zsh", ["-c", command]] : ["ssh", [...SSH, host, command]];
@@ -66,9 +68,12 @@ export async function splitPieces({ runId, work, myinDir, env, python, procs, he
   const chunks = path.join(work, "voice", "os_myin", "chunks");
   mkdirSync(chunks, { recursive: true });
   for (const name of readdirSync(chunks)) if (name.endsWith(".mp4")) rmSync(path.join(chunks, name), { force: true });
-  // The video's folder and this PC's diagrams and fonts, so every helper draws with exactly what this PC has.
+  // The video's folder and this PC's diagrams and fonts, so every helper draws with exactly what this PC has. Without MYIN_FONT_DIR
+  // the engine draws with the package's assets/fonts (myin_engine.py UF), and the helper script always points at _shared/fonts:
+  // send that folder then (2026-11-28 four-PC test: every helper stopped with "cannot open resource" and this PC drew all 109 pieces).
+  const fonts = env.MYIN_FONT_DIR || path.join(myinDir, "..", "..", "assets", "fonts");
   const shared = [[env.MYIN_DIAGRAM_DIR, "diagrams"], [String(env.PYTHONPATH ?? "").split(path.delimiter).find((p) => p && p !== env.MYIN_DIAGRAM_DIR), "diagrams-base"],
-    [env.MYIN_FONT_DIR, "fonts"], [env.WIN_FONT_DIR, "winfonts"]].filter(([dir]) => dir && existsSync(dir));
+    [fonts, "fonts"], [env.WIN_FONT_DIR, "winfonts"]].filter(([dir]) => dir && existsSync(dir));
   const synced = await Promise.all(ready.map(async (h) => {
     try {
       await run(...shell(h.host, `mkdir -p ~/myin/help/_shared ~/myin/help/${runId} && find ~/myin/help -mindepth 1 -maxdepth 1 -type d ! -name _shared -mtime +3 -exec rm -rf {} +`), { timeout: 60_000 });
