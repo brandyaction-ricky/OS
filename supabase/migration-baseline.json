@@ -1160,6 +1160,16 @@
         "production"
       ],
       "notes": "Owner-approved and applied to production 2026-11-24, read back (table 12,950 rows, 2 triggers, summary reads the copy; 30-day views 157,319 unchanged). Additive: new table os_content_metric_days (RLS: active members), helper os_metric_number, trigger function + 2 triggers on os_records (content_metric only), backfill of the live day rows, os_content_metric_summary reads the copy. Rolled-back check on production data: 30-day and previous-30-day summaries identical (56 days, 276 videos, rows equal); insert/update/archive/unarchive keep the copy in step; a non-number value becomes null instead of failing the write."
+    },
+    {
+      "file": "20261128120000_canon_review_simple.sql",
+      "sha256": "00aa80b32b88be35810412c0600d53ddaa43a48dc924dc256f967316e58455c3",
+      "purpose": "정본 요청 carries one line of why (submit_note) and an approval is pinned to the version the approver saw (approved_version); final registration refuses text changed after the approval.",
+      "requiresApproval": true,
+      "developmentApprovedAt": null,
+      "productionApprovedAt": null,
+      "appliedEnvironments": [],
+      "notes": "Additive: two columns on os_document_candidates (submit_note text default '' ≤300, approved_version integer), new os_candidate_note(uuid,text) for the submitter/admin on an open request, os_decide_candidate records approved_version and may re-approve an approved candidate whose document changed, os_publish_candidate refuses OS_CANDIDATE_CHANGED_SINCE_APPROVAL. Existing approved rows keep approved_version null and publish as before."
     }
   ],
   "legacyMigrations": [

@@ -21,6 +21,7 @@ function readError(error: { code?: string }, stage: string) {
 }
 function databaseError(error: { code?: string; message?: string }) {
   if (["42P01","42703","PGRST202","PGRST204","PGRST205"].includes(error.code ?? "")) return new ApiError(503,"KNOWLEDGE_SCHEMA_REQUIRED","회사 문서 저장 구조의 배포가 아직 준비되지 않았습니다. 입력한 내용은 지우지 마세요.");
+  if (error.message?.includes("OS_CANDIDATE_CHANGED_SINCE_APPROVAL")) return new ApiError(409,"CANDIDATE_CHANGED_SINCE_APPROVAL","승인한 뒤 문서가 바뀌었습니다. 바뀐 부분을 확인하고 다시 승인해 주세요.");
   if (error.code === "PT409" || error.code === "40001" || error.message?.includes("VERSION_CONFLICT")) return new ApiError(409,"VERSION_CONFLICT","다른 사람이 먼저 수정했습니다. 입력한 내용을 보존했습니다.");
   if (error.message?.includes("OS_NOTE_OWNER_ONLY")) return new ApiError(403,"NOTE_OWNER_ONLY","작성자가 「나만 보기」로 정한 노트입니다. 작성자가 공유해야 열 수 있습니다.");
   if (error.code === "42501") return new ApiError(403,"KNOWLEDGE_FORBIDDEN","이 작업을 수행할 권한이 없습니다.");
@@ -55,7 +56,7 @@ export async function GET(request: Request) {
       db.from("os_meeting_attendees").select("meeting_id,user_id").order("meeting_id").order("user_id"),
       db.from("os_document_candidates").select("*").order("submitted_at",{ascending:false}),
       db.from("os_knowledge_events").select("*").order("created_at",{ascending:false}).limit(500),
-      service.from("os_profiles").select("id,display_name,role,member_kind").eq("is_active",true),
+      service.from("os_profiles").select("id,display_name,role,member_kind,canonical_publisher").eq("is_active",true),
       db.from("os_records").select("id,title,status,version,owner_id,created_by,created_at,updated_at,parent_id,metadata").eq("record_type","decision").eq("status","decided").is("archived_at",null).order("id"),
     ].map(async(builder,index)=>{
       // Each resource may exceed PostgREST's default row cap. Audit deliberately stays at 500.
@@ -84,7 +85,7 @@ export async function GET(request: Request) {
       const result=await db.rpc("os_can_approve",{p_actor:row.id,p_author:null});
       if(result.error) throw readError(result.error,"approvers");
       const canApprove=row.member_kind==="staff"&&result.data===true;
-      return {id:row.id,display_name:row.display_name,role:row.role,member_kind:row.member_kind,can_approve:canApprove};
+      return {id:row.id,display_name:row.display_name,role:row.role,member_kind:row.member_kind,can_approve:canApprove,publisher:row.canonical_publisher===true};
     })));
     // Keys are never returned; only their owner identity is needed for the self-approval guard.
     const agentOwnersRead = proposalsRead.then(async pages=>{
@@ -196,6 +197,10 @@ export async function POST(request: Request) {
       ? await actor.supabase.rpc("os_publish_candidate",{p_id:parsed.data.id,p_expected_version:parsed.data.expectedVersion})
       : await actor.supabase.rpc("os_knowledge_command",{p:parsed.data});
     if(error) throw databaseError(error);
+    // 정본 요청 (2026-11-28): the one line of why goes onto the request just made.
+    const note=parsed.data.action==="candidate.submit"&&typeof parsed.data.note==="string"?parsed.data.note.trim().slice(0,300):"";
+    const candidateId=(data as {id?:string}|null)?.id;
+    if(note&&candidateId){const {error:noteError}=await actor.supabase.rpc("os_candidate_note",{p_id:candidateId,p_note:note});if(noteError) throw databaseError(noteError);}
     return NextResponse.json(data,{headers:{"Cache-Control":"no-store"}});
   }catch(error){return apiErrorResponse(error);}
 }

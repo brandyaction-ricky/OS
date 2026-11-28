@@ -9,11 +9,12 @@ test("AI-written (MCP) team documents can be submitted as canon candidates and s
   // The candidate button follows the document's status, not its space (MCP documents have space "ai").
   assert.match(editor, /const canSubmitCandidate = [^;]*current\.status==="team"/);
   assert.doesNotMatch(editor.match(/const canSubmitCandidate = [^;]*;/)[0], /space/);
-  assert.match(editor, /\{canSubmitCandidate&&<button onClick=\{\(\)=>void transition\("candidate"\)\}>정본 후보로 올리기/);
-  assert.match(editor, /current\.status==="draft"\?"팀에 공유":"내 노트로 이동"/);
+  // 정본으로 가는 단계 (2026-11-28): the stage row carries the one next step; the request opens only when allowed.
+  assert.match(editor, /onRequest=\{\(\)=>canSubmitCandidate&&void transition\("candidate"\)\}/);
+  assert.match(editor, /onShare=\{\(\)=>void transition\("share"\)\}/);
   assert.match(editor, /searchParams\?\.get\("candidate"\)==="1"&&canSubmitCandidate/);
   // Approvers see their own candidates and proposals to review.
-  assert.match(review, /c\.status==="open"&&c\.requested_approver_id===actor\.ownerId/);
+  assert.match(review, /i\.state==="open"&&mineToDecide\(i\.candidate\.requested_approver_id\)/);
   assert.doesNotMatch(review, /submitted_by!==actor\.ownerId|author_id!==actor\.ownerId/);
   // The vault no longer moves team → review without a candidate; it links to the candidate dialog and can withdraw review.
   assert.match(vault, /team: ""/);

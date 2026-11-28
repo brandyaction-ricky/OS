@@ -6,7 +6,7 @@ import { useEffect,useRef,useState } from "react";
 import {TagPicker} from "./tag-picker";
 import { Header,Card,Empty,Modal } from "./ui";
 import { useKnowledge } from "./provider";
-import { kstDay,kstTime,type Proposal } from "@/lib/knowledge/model";
+import { documentHref,kstDay,kstTime,type Candidate,type Proposal } from "@/lib/knowledge/model";
 import { ProposalComments } from "./proposal-comments";
 import { diffMarkdownLines,keepOriginalLines } from "@/lib/line-diff";
 import { mergeMarkdown,mergeValue,joinMergeParts } from "@/lib/knowledge/merge";
@@ -16,6 +16,7 @@ import { apiRequest } from "@/lib/api-client";
 import type { CanonListDocument } from "@/lib/knowledge/canon-list";
 
 const KnowledgeDocumentPage=dynamic(()=>import("./editor").then(module=>module.KnowledgeDocumentPage),{loading:()=> <Empty>문서를 불러오는 중…</Empty>});
+const MarkdownView=dynamic(()=>import("@/components/knowledge-workspace").then(module=>module.MarkdownView),{loading:()=> <p>내용을 불러오는 중…</p>});
 const KnowledgeRichEditor=dynamic(()=>import("@/components/knowledge-rich-editor").then(module=>module.KnowledgeRichEditor),{loading:()=> <Empty>편집기를 불러오는 중…</Empty>});
 
 export function KnowledgeCanon(){
@@ -35,7 +36,7 @@ export function KnowledgeCanon(){
   if(loading)return <Empty>정본 목록을 불러오는 중입니다</Empty>;
   if(error)return <Empty>정본 목록을 확인하지 못했습니다. 위의 다시 불러오기를 눌러 주세요.</Empty>;
   return <>
-    <Header title="회사 정본" description="승인된 업무 기준입니다. 직접 덮어쓰지 않고 변경 제안을 통해 새 버전으로 갱신합니다."><Link href="/knowledge/review?tab=todo">정본 검토·등록</Link></Header>
+    <Header title="회사 정본" description="승인된 업무 기준입니다. 직접 덮어쓰지 않고 변경 제안을 통해 새 버전으로 갱신합니다."><Link href="/knowledge/review?tab=todo">정본 검토</Link></Header>
     <div className="kw-metrics">{[["all","전체 정본",all.length],["overdue","검토 기한 지남",all.filter(overdue).length],["nosteward","담당자 미지정",all.filter(d=>!d.steward_id).length],["proposal","변경 제안 대기",proposals.size]].map(([key,label,count])=><button className="kw-card" key={key} aria-pressed={filter===key} onClick={()=>query({filter:String(key)})}><span>{label}<strong>{count}</strong></span></button>)}</div>
     <div className="kw-db">
       <aside className="kw-card kw-categories"><h3>정본 폴더</h3><button aria-pressed={!folder} onClick={()=>query({folder:""})}>전체 폴더</button>{[...folderCounts].sort(([a],[b])=>a.localeCompare(b,"ko")).map(([path,count])=><button key={path} title={path||"분류 없음"} aria-pressed={folder===path} onClick={()=>query({folder:path})}><span className="kw-category-name">{path.includes("/")&&<em>{path.slice(0,path.lastIndexOf("/"))}</em>}{path.slice(path.lastIndexOf("/")+1)||"분류 없음"}</span><small>{count}</small></button>)}</aside>
@@ -82,22 +83,97 @@ function ProposalEditor({doc,historical}:{doc:KnowledgeDocument;historical:Docum
   async function submit(){setBusy(true);try{const result=await command({action:"proposal.create",id:doc.id,proposalId:prior?.id,expectedVersion:baseVersion,title,content,folder,tags:tags.split(",").map(t=>t.trim()).filter(Boolean),reason,approverId:approver,reviewDueOn:due,aiAssist:ai});try{localStorage.removeItem(formKey);}catch{/* nothing kept */}notify("변경 제안을 보냈습니다. 정본은 승인 전까지 그대로 유지됩니다.");router.push("/knowledge/review?tab=sent"+(result.id?"&id="+encodeURIComponent(result.id):""));}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
   return <><Header title="정본 변경 제안" description={`원본 v${doc.current_version} · 제안 기준 v${baseVersion} · ${saved||"본문만 임시 저장됩니다"}`}><Link href={`/knowledge/canon/${doc.id}`}>정본으로 돌아가기</Link>{!prior&&!historical&&(draft||title!==doc.title||content!==doc.content_md)&&<button disabled={busy} onClick={()=>void discard()}>초안 버리기</button>}<button className="kw-primary" disabled={busy||!reason.trim()||!approver} onClick={()=>void submit()}>{prior?"수정하여 다시 제출":"변경 제안 보내기"}</button></Header>{baseVersion!==doc.current_version&&<p className="kw-conflict">기준 버전이 오래되었습니다. 제출 후 최신 정본과 충돌을 해결해야 승인할 수 있습니다.</p>}<div className="kw-meeting-layout"><Card title="제안 내용"><input aria-label="제안 제목" value={title} onChange={e=>setTitle(e.target.value)}/><div className="kw-actions"><button onClick={()=>{if(raw)restart(content);setRaw(!raw);}}>{raw?"편집 화면으로 돌아가기":"마크다운 원문으로 고치기"}</button></div>{raw?<textarea aria-label="제안 본문 마크다운" spellCheck={false} style={{minHeight:480,width:"100%",fontFamily:"ui-monospace,monospace"}} value={content} onChange={e=>setContent(e.target.value)}/>:<KnowledgeRichEditor key={editorKey} markdown={content} accessToken={token} onNormalize={value=>{normalized.current=value;}} onChange={value=>setContent(keepOriginalLines(opened.current,normalized.current,value))} onError={setError}/>}</Card><aside className="kw-card kw-stack"><label>변경 이유 (필수 · 200자)<textarea required maxLength={200} value={reason} onChange={e=>setReason(e.target.value)}/></label><label>승인자<select value={approver} onChange={e=>setApprover(e.target.value)}><option value="">승인자 선택</option>{approverChoices(state.people).map(p=><option key={p.id} value={p.id}>{p.display_name}</option>)}</select></label><label>정본 폴더<input value={folder} onChange={e=>setFolder(e.target.value)}/></label><TagPicker value={tags.split(",").map(t=>t.trim()).filter(Boolean)} onChange={values=>setTags(values.join(", "))}/><label>검토일<input type="date" value={due} onChange={e=>setDue(e.target.value)}/></label><label>AI 도움을 받은 부분 (선택)<textarea value={ai} onChange={e=>setAi(e.target.value)}/></label>{error&&<p className="kw-error" role="alert">{error}</p>}</aside></div></>;
 }
+/** 정본 검토 (대표 2026-11-28): one list of requests, the text right beside it, one button that makes it company canon. */
+type ReviewItem={kind:"candidate";id:string;candidate:Candidate;doc?:KnowledgeDocument;at:string;state:"open"|"publish"|"changed"|"done"}|{kind:"proposal";id:string;proposal:Proposal;doc?:KnowledgeDocument;at:string;stale:boolean};
 export function KnowledgeReview(){
   const {state,actor}=useKnowledge(),params=useSearchParams();
-  const tab=params.get("tab")??"todo",selected=params.get("id")??params.get("proposal")??state.proposals.find(p=>p.document_id===params.get("document")&&p.status==="open")?.id??state.candidates.find(c=>c.document_id===params.get("document")&&c.status==="open")?.id;
-  const proposals=state.proposals.filter(p=>tab==="sent"?p.author_id===actor.ownerId:tab==="done"?p.status!=="open"&&(p.author_id===actor.ownerId||p.reviewer_id===actor.ownerId):p.status==="open"&&(p.requested_approver_id===actor.ownerId||!p.requested_approver_id&&actor.role==="admin"));
-  const candidates=state.candidates.filter(c=>tab==="sent"?c.submitted_by===actor.ownerId:tab==="done"?c.status!=="open"&&!(c.status==="approved"&&state.documents.find(d=>d.id===c.document_id)?.status==="reviewed"):c.status==="open"&&c.requested_approver_id===actor.ownerId||c.status==="approved"&&actor.canPublishCanonical&&state.documents.find(d=>d.id===c.document_id)?.status==="reviewed");
-  const proposal=state.proposals.find(p=>p.id===(selected??proposals[0]?.id));
-  const candidate=state.candidates.find(c=>c.id===(selected??(!proposal?candidates[0]?.id:undefined)));
-  return <><Header title="정본 검토·등록" description="지정 승인자의 검토와 정본 담당자의 최종 등록을 확인합니다."/><nav className="kw-tabs">{[["todo","내가 검토할 것"],["sent","내가 보낸 것"],["done","완료"]].map(([value,label])=><Link key={value} aria-current={tab===value?"page":undefined} href={`/knowledge/review?tab=${value}`}>{label}</Link>)}</nav><div className="kw-review-layout"><aside className="kw-card kw-review-list">{proposals.map(p=><Link key={p.id} aria-current={proposal?.id===p.id&&!candidate?"page":undefined} href={`/knowledge/review?tab=${tab}&id=${p.id}`}><strong>{p.title}</strong><small>변경 제안 · {p.status==="open"?"검토 대기":p.status==="approved"?"승인":p.status==="withdrawn"?"철회":p.return_kind==="reject"?"반려":"보완 요청"}</small></Link>)}{candidates.map(c=><Link key={c.id} href={`/knowledge/review?tab=${tab}&id=${c.id}`}><strong>{state.documents.find(d=>d.id===c.document_id)?.title??"문서"}</strong><small>정본 후보 · {c.status}</small></Link>)}{tab==="todo"&&state.meetings.filter(m=>m.status==="review"&&(m.owner_id===actor.ownerId||actor.role==="admin")).map(m=><Link key={m.id} href={`/knowledge/meetings/${m.id}`}><strong>{m.title}</strong><small>회의 검수</small></Link>)}{!proposals.length&&!candidates.length&&<Empty>검토 항목이 없습니다</Empty>}</aside><main>{candidate?<CandidateReview key={candidate.id} id={candidate.id}/>:proposal?<ProposalReview key={proposal.id} proposal={proposal}/>:<Empty>왼쪽에서 검토할 항목을 선택하세요</Empty>}</main></div></>;
+  const tab=params.get("tab")??"todo";
+  const doc=(id:string)=>state.documents.find(d=>d.id===id);
+  const mineToDecide=(approver?:string|null)=>approver===actor.ownerId||(!approver&&actor.role==="admin");
+  const candidateItem=(c:Candidate):ReviewItem=>{const d=doc(c.document_id);const changed=c.status==="approved"&&d?.status==="reviewed"&&c.approved_version!=null&&c.approved_version!==d.current_version;
+    return {kind:"candidate",id:c.id,candidate:c,doc:d,at:c.submitted_at,state:c.status==="open"?"open":changed?"changed":c.status==="approved"&&d?.status==="reviewed"?"publish":"done"};};
+  const proposalItem=(p:Proposal):ReviewItem=>{const d=doc(p.document_id);return {kind:"proposal",id:p.id,proposal:p,doc:d,at:p.created_at,stale:p.status==="open"&&Boolean(d)&&p.base_version!==d!.current_version};};
+  const candidates=state.candidates.map(candidateItem),proposals=state.proposals.map(proposalItem);
+  const lists:Record<string,ReviewItem[]>={
+    todo:[...candidates.filter(i=>i.kind==="candidate"&&(i.state==="open"&&mineToDecide(i.candidate.requested_approver_id)||(i.state==="publish"&&actor.canPublishCanonical)||(i.state==="changed"&&(mineToDecide(i.candidate.requested_approver_id)||actor.canPublishCanonical)))),
+      ...proposals.filter(i=>i.kind==="proposal"&&i.proposal.status==="open"&&!i.stale&&mineToDecide(i.proposal.requested_approver_id))],
+    stale:proposals.filter(i=>i.kind==="proposal"&&i.stale&&(mineToDecide(i.proposal.requested_approver_id)||i.proposal.author_id===actor.ownerId)),
+    sent:[...candidates.filter(i=>i.kind==="candidate"&&i.candidate.submitted_by===actor.ownerId),...proposals.filter(i=>i.kind==="proposal"&&i.proposal.author_id===actor.ownerId)],
+    done:[...candidates.filter(i=>i.kind==="candidate"&&i.state==="done"&&(i.candidate.decided_by===actor.ownerId||i.candidate.submitted_by===actor.ownerId)),...proposals.filter(i=>i.kind==="proposal"&&i.proposal.status!=="open"&&(i.proposal.author_id===actor.ownerId||i.proposal.reviewer_id===actor.ownerId))],
+  };
+  for(const list of Object.values(lists))list.sort((a,b)=>b.at.localeCompare(a.at));
+  const items=lists[tab]??lists.todo;
+  const wanted=params.get("id")??params.get("proposal")??[...state.proposals.filter(p=>p.status==="open"),...state.candidates.filter(c=>c.status!=="withdrawn")].find(x=>x.document_id===params.get("document"))?.id;
+  const selected=items.find(i=>i.id===wanted)??[...candidates,...proposals].find(i=>i.id===wanted)??items[0];
+  const meetings=state.meetings.filter(m=>m.status==="review"&&(m.owner_id===actor.ownerId||actor.role==="admin")).length;
+  return <><Header title="정본 검토" description="요청을 누르면 내용이 바로 보여요. 승인하면 그대로 회사 정본이 돼요.">{meetings>0&&<Link href="/knowledge/meetings">회의 검수 {meetings}건</Link>}</Header>
+    <nav className="kw-tabs">{[["todo","검토할 것"],["stale","낡은 제안"],["sent","내가 보낸 것"],["done","끝난 것"]].map(([value,label])=><Link key={value} aria-current={tab===value?"page":undefined} href={`/knowledge/review?tab=${value}`}>{label}{(value==="todo"||value==="stale")&&lists[value].length>0&&<span className="kw-count">{lists[value].length}</span>}</Link>)}</nav>
+    <div className="kw-review-layout"><aside className="kw-review-list" aria-label="요청 목록">{items.map(i=><ReviewCard key={i.id} item={i} tab={tab} current={selected?.id===i.id}/>)}{!items.length&&<Empty>{tab==="todo"?"지금 검토할 요청이 없어요":tab==="stale"?"낡은 제안이 없어요":"항목이 없어요"}</Empty>}</aside>
+    <main>{selected?selected.kind==="candidate"?<CandidateReview key={selected.id} id={selected.id}/>:<ProposalReview key={selected.id} proposal={selected.proposal}/>:null}</main></div></>;
+}
+function reviewBadge(item:ReviewItem){
+  if(item.kind==="proposal")return item.stale?["낡은 제안","old"]:item.proposal.status==="open"?["정본 변경","change"]:[({approved:"반영됨",withdrawn:"취소됨",rejected:"반려",returned:"보완 요청"} as Record<string,string>)[item.proposal.status]??item.proposal.status,"done"];
+  return {open:["새 정본 요청","new"],publish:["등록 대기","new"],changed:["다시 확인","warn"],done:[({approved:"정본 등록",returned:"보완 요청",withdrawn:"취소됨"} as Record<string,string>)[item.candidate.status]??item.candidate.status,"done"]}[item.state];
+}
+function ReviewCard({item,tab,current}:{item:ReviewItem;tab:string;current:boolean}){
+  const {state}=useKnowledge();const [label,tone]=reviewBadge(item);
+  const who=state.people.find(p=>p.id===(item.kind==="candidate"?item.candidate.submitted_by:item.proposal.author_id))?.display_name??"";
+  const title=item.kind==="candidate"?item.doc?.title??"볼 수 없는 문서":item.proposal.title;
+  const why=item.kind==="candidate"?item.candidate.submit_note:item.proposal.author_note;
+  return <Link className="kw-review-card" aria-current={current?"page":undefined} href={`/knowledge/review?tab=${tab}&id=${item.id}`}>
+    <span className={`kw-review-badge kw-tone-${tone}`}>{label}</span><strong>{title}</strong>
+    <small>{who}{who&&" · "}{kstTime(item.at).slice(5,16)}</small>{why&&<em>「{why}」</em>}</Link>;
+}
+function useFullDocument(id:string){
+  const {loadDocument}=useKnowledge();const [doc,setDoc]=useState<KnowledgeDocument|null>(null),[error,setError]=useState("");
+  useEffect(()=>{let live=true;setDoc(current=>current?.id===id?current:null);void loadDocument(id).then(d=>{if(live)setDoc(d);}).catch(e=>{if(live)setError((e as Error).message);});return()=>{live=false;};},[id,loadDocument]);
+  return {doc,error};
 }
 function CandidateReview({id}:{id:string}){
-  const {state,actor,command,notify}=useKnowledge();const c=state.candidates.find(c=>c.id===id)!,doc=state.documents.find(d=>d.id===c.document_id);
-  const [reason,setReason]=useState(""),[busy,setBusy]=useState(false);if(!doc)return <Empty>이 문서를 볼 권한이 없습니다</Empty>;
-  const allowed=canDecideProposal(actor,{requested_approver_id:c.requested_approver_id},reason);
-  async function decide(decision:string){setBusy(true);try{await command({action:"candidate.decide",id,expectedVersion:doc!.current_version,decision,reason});notify(decision==="approved"?"검토가 승인됐습니다. 최종 등록 담당자의 확인을 기다립니다.":"후보 검토 결과를 저장했습니다");}catch(e){notify((e as Error).message);}finally{setBusy(false);}}
-  async function publish(){setBusy(true);try{await command({action:"candidate.publish",id,expectedVersion:doc!.current_version});notify("승인된 문서를 회사 정본으로 등록했습니다.");}catch(e){notify((e as Error).message);}finally{setBusy(false);}}
-  return <Card title={doc.title}><p>정본 후보 · 먼저 지정 승인자가 검토하고, 최종 등록 담당자가 정본으로 옮깁니다.</p><p>폴더 {c.target_folder||"미분류"} · 검토일 {c.review_due_on}</p><Link href={`/knowledge/doc/${doc.id}`}>문서 내용 확인</Link>{c.status==="open"&&<label>검토 메모 / 대리 처리 사유<textarea value={reason} onChange={e=>setReason(e.target.value)}/></label>}<div className="kw-actions">{c.status==="open"&&<><button disabled={!allowed||busy||!reason.trim()} onClick={()=>void decide("returned")}>보완 요청</button><button className="kw-primary" disabled={!allowed||busy} onClick={()=>void decide("approved")}>검토 승인</button>{c.submitted_by===actor.ownerId&&<button disabled={busy} onClick={()=>void command({action:"candidate.withdraw",id}).catch(e=>notify(e.message))}>후보 철회</button>}</>}{c.status==="approved"&&doc.status==="reviewed"&&<button className="kw-primary" disabled={busy||!actor.canPublishCanonical} onClick={()=>void publish()}>회사 정본 최종 등록</button>}</div>{c.status==="open"&&!allowed&&<small>요청받은 승인자 또는 사유를 남긴 관리자가 처리합니다.</small>}{c.status==="approved"&&doc.status==="reviewed"&&!actor.canPublishCanonical&&<small>지정된 운영자 계정만 최종 등록할 수 있습니다.</small>}</Card>;
+  const {state,actor,command,notify,token,demo}=useKnowledge(),router=useRouter();
+  const c=state.candidates.find(c=>c.id===id)!,listed=state.documents.find(d=>d.id===c.document_id);
+  const {doc:full,error:readError}=useFullDocument(c.document_id);
+  const [memo,setMemo]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState(""),[approved,setApproved]=useState<DocumentVersion|null>(null);
+  const doc=full??listed;
+  const name=(who?:string|null)=>state.people.find(p=>p.id===who)?.display_name??"미지정";
+  const changed=c.status==="approved"&&doc?.status==="reviewed"&&c.approved_version!=null&&c.approved_version!==doc.current_version;
+  // 승인 뒤 바뀐 부분: the version the approver saw, side by side with today's text.
+  useEffect(()=>{if(!changed||!doc)return;let live=true;const read=demo?Promise.resolve(state.versions[doc.id]??[]):apiRequest<{versions:DocumentVersion[]}>(`/api/v1/documents/${doc.id}/versions`,{token}).then(r=>r.versions);
+    void read.then(v=>{if(live)setApproved(v.find(x=>x.version_no===c.approved_version)??null);}).catch(e=>{if(live)setError((e as Error).message);});return()=>{live=false;};},[changed,doc,c.approved_version,demo,state.versions,token]);
+  if(!doc)return <Empty>{readError||"문서를 불러오는 중입니다"}</Empty>;
+  const canDecide=canDecideProposal(actor,{requested_approver_id:c.requested_approver_id},memo);
+  const publisher=state.people.find(p=>p.publisher)?.display_name??"정본 담당자";
+  const oneStep=actor.canPublishCanonical;
+  const openLink=(title:string)=>{const target=state.documents.find(d=>d.title===title);if(target)router.push(documentHref(target));};
+  async function approve(){setBusy(true);setError("");try{
+      await command({action:"candidate.decide",id,expectedVersion:doc!.current_version,decision:"approved",reason:memo.trim()||(changed?"승인 뒤 바뀐 내용까지 확인하고 다시 승인":"")});
+      if(oneStep){await command({action:"candidate.publish",id,expectedVersion:doc!.current_version});notify("회사 정본으로 등록했습니다.");}
+      else notify(`승인했습니다. ${publisher}님이 정본으로 등록하면 끝나요.`);
+    }catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+  async function publish(){setBusy(true);setError("");try{await command({action:"candidate.publish",id,expectedVersion:doc!.current_version});notify("회사 정본으로 등록했습니다.");}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+  async function sendBack(){setBusy(true);setError("");try{await command({action:"candidate.decide",id,expectedVersion:doc!.current_version,decision:"returned",reason:memo.trim()});notify("보완 요청을 보냈습니다. 문서는 팀 문서로 돌아가요.");}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+  const diff=changed&&approved?diffMarkdownLines(approved.content_md,doc.content_md):[];
+  return <article className="kw-card kw-review-detail">
+    <header><span className={`kw-review-badge kw-tone-${changed?"warn":"new"}`}>{changed?"승인 뒤 내용이 바뀜":c.status==="open"?"새 정본 요청":c.status==="approved"?"승인됨 · 등록 대기":"끝난 요청"}</span><h2>{doc.title}</h2>
+      <p className="kw-review-meta">{name(c.submitted_by)} 요청 · {kstTime(c.submitted_at).slice(0,16)} · <Link href={`/knowledge/doc/${doc.id}`}>문서 열기</Link></p></header>
+    <div className="kw-review-why"><small>왜 정본으로?</small><p>{c.submit_note||"이유가 적히지 않은 예전 요청이에요."}</p></div>
+    <dl className="kw-review-facts"><div><dt>승인</dt><dd>{name(c.requested_approver_id)}</dd></div><div><dt>담당</dt><dd>{name(c.steward_id)}</dd></div><div><dt>검토일</dt><dd>{c.review_due_on}</dd></div><div><dt>폴더</dt><dd>{c.target_folder||"미분류"}</dd></div></dl>
+    {changed&&<section className="kw-review-changed"><h3>승인한 v{c.approved_version} 뒤에 바뀐 부분</h3>{approved?<div className="kw-diff" aria-label="승인 뒤 바뀐 부분">{diff.map((line,i)=>(line.kind!=="same"||diff[i-1]?.kind!=="same"||diff[i+1]?.kind!=="same")&&<div className={`kw-diff-${line.kind}`} key={i}><small>{line.oldLine??" "} {line.newLine??" "}</small><span>{line.kind==="added"?"+":line.kind==="removed"?"−":" "}</span><code>{line.text||" "}</code></div>)}</div>:<p>{error||"비교 내용을 불러오는 중입니다"}</p>}</section>}
+    <section className="kw-review-body" aria-label="문서 내용"><h3>{changed?"지금 내용 전체":"내용 전체"}</h3>{full?<MarkdownView content={full.content_md} onOpenLink={openLink}/>:<p>{readError||"내용을 불러오는 중입니다"}</p>}</section>
+    {c.decision_note&&c.status!=="open"&&<p className="kw-review-meta">검토 메모 · {name(c.decided_by)}: {c.decision_note}</p>}
+    {(c.status==="open"||changed||(c.status==="approved"&&doc.status==="reviewed"))&&<footer className="kw-decide">
+      {c.status==="open"&&<ol className="kw-decide-steps"><li>① 검토 승인 · {name(c.requested_approver_id)}</li><li>② 정본 등록 · {oneStep?"한 번에":publisher}</li></ol>}
+      {c.status==="open"&&<textarea aria-label="검토 메모" placeholder={canDecide?"메모 (보완 요청 때는 꼭 적어 주세요)":"대신 처리할 때는 사유를 적어 주세요"} value={memo} maxLength={2000} onChange={e=>setMemo(e.target.value)}/>}
+      {error&&<p className="kw-error" role="alert">{error}</p>}
+      <div className="kw-actions">
+        {c.status==="open"&&<><button disabled={busy||!canDecide||!memo.trim()} onClick={()=>void sendBack()}>보완 요청</button>{c.submitted_by===actor.ownerId&&<button disabled={busy} onClick={()=>void command({action:"candidate.withdraw",id}).catch(e=>setError(e.message))}>요청 취소</button>}<button className="kw-primary" disabled={busy||!canDecide} onClick={()=>void approve()}>{oneStep?"정본으로 승인":"검토 승인"}</button></>}
+        {changed&&<button className="kw-primary" disabled={busy||!(canDecideProposal(actor,{requested_approver_id:c.requested_approver_id},"바뀐 내용 확인")||actor.canPublishCanonical)} onClick={()=>void approve()}>바뀐 내용까지 확인 · {oneStep?"정본으로 승인":"다시 승인"}</button>}
+        {!changed&&c.status==="approved"&&doc.status==="reviewed"&&<button className="kw-primary" disabled={busy||!actor.canPublishCanonical} onClick={()=>void publish()}>정본으로 등록</button>}
+      </div>
+      {c.status==="open"&&!canDecide&&<small>지정된 승인자가 처리해요. 관리자는 사유를 적으면 대신 처리할 수 있어요.</small>}
+      {!changed&&c.status==="approved"&&doc.status==="reviewed"&&!actor.canPublishCanonical&&<small>{publisher}님이 정본으로 등록해요.</small>}
+    </footer>}
+  </article>;
 }
 function ProposalReview({proposal:p}:{proposal:Proposal}){
   const {state,actor,command,loadDocument,notify,token,demo}=useKnowledge();
@@ -116,8 +192,15 @@ function ProposalReview({proposal:p}:{proposal:Proposal}){
   if(!doc||body===null)return <Empty>{error||"검토 내용을 불러오는 중입니다"}</Empty>;
   const allowed=canDecideProposal(actor,p,reason),outdated=p.base_version!==doc.current_version;
   const diff=base?diffMarkdownLines(base.content_md,body):[];
-  async function decide(decision:string){setBusy(true);setError("");try{await command({action:"proposal.decide",id:p.id,decision,reason});notify("검토 결과를 저장했습니다.");}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
-  return <Card title={p.title}><p>{p.author_note||"변경 이유 미기록"} · 기준 v{p.base_version} → 현재 v{doc.current_version}</p>{p.ai_assist&&<p><small>AI 도움: {p.ai_assist}</small></p>}{outdated&&p.status==="open"&&<div className="kw-conflict">정본이 변경되어 승인할 수 없습니다. {base&&(p.author_id===actor.ownerId||allowed)&&<button onClick={()=>setMerge(true)}>최신 정본과 충돌 해결</button>}</div>}{base===undefined?<p>{error||"비교 내용을 불러오는 중입니다"}</p>:!base?<p className="kw-error">기준 버전을 확인하지 못했습니다. 비교 확인 전 승인을 진행할 수 없습니다.</p>:<><div className="kw-actions"><button onClick={()=>setAll(!all)}>{all?"변경 부분만":"전체 내용"}</button><Link href={`/knowledge/canon/${doc.id}`}>현재 정본</Link></div><div className="kw-diff" aria-label="변경 비교">{diff.map((line,i)=>(all||line.kind!=="same"||diff[i-1]?.kind!=="same"||diff[i+1]?.kind!=="same")&&<div className={`kw-diff-${line.kind}`} key={i}><small>{line.oldLine??" "} {line.newLine??" "}</small><span>{line.kind==="added"?"+":line.kind==="removed"?"−":" "}</span><code>{line.text||" "}</code>{line.newLine!==null&&p.status==="open"&&<button aria-label={`${line.newLine}행 댓글`} onClick={()=>setCommentLine(line.newLine)}>댓글</button>}</div>)}</div>{[["제목",base.title,p.title],["폴더",doc.folder,p.folder],["태그",doc.tags.join(", "),p.tags.join(", ")],["검토일",doc.review_due_on??"",p.review_due_on??""]].filter(([,a,b])=>a!==b).map(([label,a,b])=><p key={label}><strong>{label}</strong> <del>{a||"없음"}</del> → {b||"없음"}</p>)}</>}<ProposalComments proposal={p} line={commentLine}/><label>검토 메모 / 대리 처리 사유<textarea value={reason} onChange={e=>setReason(e.target.value)} maxLength={2000}/></label>{error&&<p className="kw-error" role="alert">{error}</p>}<div className="kw-actions">{p.status==="open"&&<><button disabled={busy||!allowed||!reason.trim()} onClick={()=>void decide("rejected")}>반려</button><button disabled={busy||!allowed||!reason.trim()} onClick={()=>void decide("returned")}>보완 요청</button><button className="kw-primary" disabled={busy||!allowed||outdated||!base} onClick={()=>void decide("approved")}>변경 승인</button>{p.author_id===actor.ownerId&&<button disabled={busy} onClick={()=>void decide("withdrawn")}>철회</button>}</>}{p.author_id===actor.ownerId&&p.status==="returned"&&p.return_kind==="revise"&&<Link href={`/knowledge/canon/${doc.id}/propose?proposal=${p.id}`}>보완하여 다시 제출</Link>}</div>{!allowed&&<small>작성자·문서 소유자는 자신의 제안을 승인할 수 없습니다.</small>}{p.note&&<p>검토 의견: {p.note}</p>}{merge&&base&&full&&<MergeDialog proposal={p} current={full} base={base} close={()=>setMerge(false)}/>}</Card>;
+  async function decide(decision:string,note=reason){setBusy(true);setError("");try{await command({action:"proposal.decide",id:p.id,decision,reason:note});notify(decision==="approved"?"승인했습니다. 정본에 새 버전으로 반영됐어요.":decision==="rejected"&&outdated?"낡은 제안을 닫았습니다.":"검토 결과를 저장했습니다.");}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+  const who=state.people.find(person=>person.id===p.author_id)?.display_name??"";
+  const closeNote="정본이 그사이 바뀌어 낡은 제안으로 닫습니다. 필요하면 최신 정본에서 다시 제안해 주세요.";
+  const canClose=canDecideProposal(actor,p,closeNote);
+  return <article className="kw-card kw-review-detail"><header><span className={`kw-review-badge kw-tone-${outdated&&p.status==="open"?"old":"change"}`}>{outdated&&p.status==="open"?"낡은 제안":"정본 변경 제안"}</span><h2>{p.title}</h2><p className="kw-review-meta">{who}{who&&" 제안 · "}{kstTime(p.created_at).slice(0,16)} · 기준 v{p.base_version} → 지금 v{doc.current_version} · <Link href={`/knowledge/canon/${doc.id}`}>지금 정본 열기</Link></p></header>
+  <div className="kw-review-why"><small>왜 바꾸나요?</small><p>{p.author_note||"이유가 적히지 않았어요."}</p>{p.ai_assist&&<small>AI 도움: {p.ai_assist}</small>}</div>
+  {outdated&&p.status==="open"&&<div className="kw-conflict"><p>정본이 그사이 v{p.base_version}에서 v{doc.current_version}로 바뀌어, 이 제안은 그대로 승인할 수 없어요.</p><div className="kw-actions">{base&&(p.author_id===actor.ownerId||allowed)&&<button onClick={()=>setMerge(true)}>최신 정본에 맞춰 고치기</button>}{(canClose||p.author_id===actor.ownerId)&&<button disabled={busy} onClick={()=>void (p.author_id===actor.ownerId?decide("withdrawn",closeNote):decide("rejected",closeNote))}>제안 닫기</button>}</div></div>}{base===undefined?<p>{error||"비교 내용을 불러오는 중입니다"}</p>:!base?<p className="kw-error">기준 버전을 확인하지 못했습니다. 비교 확인 전 승인을 진행할 수 없습니다.</p>:<><div className="kw-actions"><button onClick={()=>setAll(!all)}>{all?"변경 부분만":"전체 내용"}</button><Link href={`/knowledge/canon/${doc.id}`}>현재 정본</Link></div><div className="kw-diff" aria-label="변경 비교">{diff.map((line,i)=>(all||line.kind!=="same"||diff[i-1]?.kind!=="same"||diff[i+1]?.kind!=="same")&&<div className={`kw-diff-${line.kind}`} key={i}><small>{line.oldLine??" "} {line.newLine??" "}</small><span>{line.kind==="added"?"+":line.kind==="removed"?"−":" "}</span><code>{line.text||" "}</code>{line.newLine!==null&&p.status==="open"&&<button aria-label={`${line.newLine}행 댓글`} onClick={()=>setCommentLine(line.newLine)}>댓글</button>}</div>)}</div>{[["제목",base.title,p.title],["폴더",doc.folder,p.folder],["태그",doc.tags.join(", "),p.tags.join(", ")],["검토일",doc.review_due_on??"",p.review_due_on??""]].filter(([,a,b])=>a!==b).map(([label,a,b])=><p key={label}><strong>{label}</strong> <del>{a||"없음"}</del> → {b||"없음"}</p>)}</>}<ProposalComments proposal={p} line={commentLine}/>{p.note&&<p className="kw-review-meta">검토 메모: {p.note}</p>}
+  {(p.status==="open"&&!outdated||(p.author_id===actor.ownerId&&p.status==="returned"&&p.return_kind==="revise"))&&<footer className="kw-decide">{p.status==="open"&&<textarea aria-label="검토 메모" placeholder={allowed?"메모 (반려·보완 요청 때는 꼭 적어 주세요)":"대신 처리할 때는 사유를 적어 주세요"} value={reason} onChange={e=>setReason(e.target.value)} maxLength={2000}/>}{error&&<p className="kw-error" role="alert">{error}</p>}<div className="kw-actions">{p.status==="open"&&<><button disabled={busy||!allowed||!reason.trim()} onClick={()=>void decide("rejected")}>반려</button><button disabled={busy||!allowed||!reason.trim()} onClick={()=>void decide("returned")}>보완 요청</button>{p.author_id===actor.ownerId&&<button disabled={busy} onClick={()=>void decide("withdrawn")}>제안 취소</button>}<button className="kw-primary" disabled={busy||!allowed||outdated||!base} onClick={()=>void decide("approved")}>승인하고 정본에 반영</button></>}{p.author_id===actor.ownerId&&p.status==="returned"&&p.return_kind==="revise"&&<Link className="kw-primary" href={`/knowledge/canon/${doc.id}/propose?proposal=${p.id}`}>보완해서 다시 보내기</Link>}</div>{p.status==="open"&&!allowed&&<small>지정된 승인자가 처리해요. 관리자는 사유를 적으면 대신 처리할 수 있어요.</small>}</footer>}
+  {error&&!(p.status==="open"&&!outdated)&&<p className="kw-error" role="alert">{error}</p>}{merge&&base&&full&&<MergeDialog proposal={p} current={full} base={base} close={()=>setMerge(false)}/>}</article>;
 }
 function MergeDialog({proposal:p,current:d,base,close}:{proposal:Proposal;current:KnowledgeDocument;base:DocumentVersion;close:()=>void}){
   const {command}=useKnowledge(),[parts,setParts]=useState(()=>mergeMarkdown(base.content_md,d.content_md,p.content_md));
