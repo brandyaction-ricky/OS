@@ -117,6 +117,17 @@ export async function assertLocalEngine(engine: string) {
   if (pcEngine !== engine) throw new ApiError(409, "MYIN_ENGINE_DIFFERENT", "내 컴퓨터의 엔진이 영상 만드는 컴퓨터와 달라요. 새 엔진을 받은 뒤 다시 켜 주세요.");
 }
 
+/**
+ * 빠른 PC 먼저 (대표 2026-11-28): RENDER_PC_ORDER names the render PCs fastest first (kept out of the repository). True while a PC
+ * ahead of `name` in that order is on (heard from within 90 s — heartbeats come every minute), idle, and able to take work.
+ */
+export async function fasterPcIdle(name: string, order = (process.env.RENDER_PC_ORDER ?? "").split(",").map((pc) => pc.trim()).filter(Boolean)) {
+  const ahead = order.indexOf(name) < 0 ? [] : order.slice(0, order.indexOf(name));
+  if (!ahead.length) return false;
+  const pcs = await readPcs(), engine = fleetEngine(pcs);
+  return pcs.some((pc) => ahead.includes(pc.name) && ageOf(pc)! <= 90 && !pc.job && pc.diskFreeGb >= RENDER_PC_MIN_DISK_GB && (!engine || !pc.engine || pc.engine === engine));
+}
+
 /** Each render PC that is on, with the job it reported last (대기 순서, 2026-11-17). */
 export const renderPcJobs = async () => (await readPcs()).filter(online).map((pc) => ({ name: pc.name, job: pc.job ?? null }));
 

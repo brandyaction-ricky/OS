@@ -96,3 +96,23 @@ test("claims carry the PC's name, the run keeps it, and a PC without the folder 
   assert.match(worker, /copyEngine\(layout === "short" \? myinPkgShort : myinPkg, work\)/, "a moved 숏폼 is rebuilt from the vertical engine");
   assert.match(panel, /run\.pc \? `영상 만드는 컴퓨터\(\$\{run\.pc\}\)`/, "the screen says which PC has the video");
 });
+
+// 빠른 PC 먼저 (대표 2026-11-28): a video no PC holds yet waits a little for a faster render PC that is on and idle.
+test("a slower PC gives a new video to a faster idle PC, but never waits for one that is busy, away or held", async () => {
+  const a = "a".repeat(16), order = ["fast", "mid", "slow"];
+  const at = (seconds) => new Date(Date.now() - seconds * 1000).toISOString();
+  const pcs = (fast) => new Map([["render-pc/pcs/fast.json", { ...signal(a, 0), ...fast }], ["render-pc/pcs/mid.json", signal(a, 0)], ["render-pc/pcs/slow.json", signal(a, 0)]]);
+  const idle = await loadRenderPc(pcs({}));
+  assert.equal(await idle.fasterPcIdle("slow", order), true);
+  assert.equal(await idle.fasterPcIdle("mid", order), true);
+  assert.equal(await idle.fasterPcIdle("fast", order), false, "the fastest PC never waits");
+  assert.equal(await idle.fasterPcIdle("other", order), false, "a PC not in the order takes work as before");
+  assert.equal(await idle.fasterPcIdle("slow", []), false, "no order set: nothing changes");
+  assert.equal(await (await loadRenderPc(pcs({ job: { step: "drawing" } }))).fasterPcIdle("mid", order), false, "busy");
+  assert.equal(await (await loadRenderPc(pcs({ at: at(120) }))).fasterPcIdle("mid", order), false, "not heard from for two minutes");
+  assert.equal(await (await loadRenderPc(pcs({ diskFreeGb: 10 }))).fasterPcIdle("mid", order), false, "low disk takes no work");
+  const held = new Map([...pcs({ engine: "b".repeat(16) })]);
+  assert.equal(await (await loadRenderPc(held)).fasterPcIdle("mid", order), false, "a PC on another engine takes no work");
+  const run = await readFile(new URL("../lib/server/myin-run.ts", import.meta.url), "utf8");
+  assert.match(run, /if \(pc\?\.name && !run\.pc && Date\.now\(\) - Date\.parse\(candidate\.updated_at\) < FASTER_PC_WAIT_MS && await \(faster \?\?= fasterPcIdle\(pc\.name\)\)\) continue;/);
+});
