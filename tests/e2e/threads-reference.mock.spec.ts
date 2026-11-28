@@ -131,6 +131,8 @@ async function mockWorkspace(page: Page, noRecommendations = false) {
     if (path === "jobs") return json({ jobs: [record(JOB, "가상 브리프 작업", { proc: "brief", targetId: TOPIC, jobNo: 1 }), ...state.queuedJobs].map(row => ({ ...row, record_type: "ai_job", status: "backlog" })) });
     if (path === `jobs/${JOB}/instructions`) return json({ target: { topic: { reference_items: [second] }, canonical: { title: "예시 집필 기준", version: 2, body: "원문의 장면과 독자의 질문을 이어 쓴다." } }, instructions: "확인한 근거만 사용한다.", skill: "개인 스킬 예시", resultFormat: { one: "한 줄 주제" } });
     if (path === "browsers") return json({ browsers: [] });
+    // An incomplete health response must not remove the usable job list.
+    if (path === "worker/health") return json({});
     if (path === "runs") return json({ runs: [], silent: false });
     return json({ records: [], notifications: [], requests: [], policies: [], ok: true });
   });
@@ -426,6 +428,7 @@ test("incomplete evidence may be saved and comparison draft input is not discard
 test("Aside instructions copy the frozen source and personal writing guidance without running a job", async ({ page }) => {
   const state = await mockWorkspace(page);
   await page.goto("/automation/requests");
+  await expect(page.getByText("AI·렌더 PC 실행 이력을 불러오지 못했어요.")).toBeVisible();
   await page.getByRole("button", { name: "자세히", exact: true }).click();
   await page.getByRole("button", { name: "Aside용 작업 지침 복사" }).click();
   await expect(page.getByText("작업 지침을 복사했습니다. Aside에 붙여 넣고 받은 결과를 아래에 가져오세요.")).toBeVisible();

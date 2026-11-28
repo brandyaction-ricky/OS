@@ -233,7 +233,13 @@ function WorkerReadiness({data}:Pick<ViewProps,"data">) {
     if (demo || !accessToken) return;
     const controller=new AbortController();
     apiRequest<{actors:typeof actors}>("/api/v1/content/automation/worker/health",{token:accessToken,signal:controller.signal})
-      .then(result=>{if(!controller.signal.aborted)setActors(result.actors);})
+      .then(result=>{
+        if(controller.signal.aborted)return;
+        if(!Array.isArray(result?.actors) || !result.actors.length || result.actors.some(actor=>!actor || typeof actor.label!=="string" || typeof actor.state!=="string")) {
+          setStatusError(true);return;
+        }
+        setActors(result.actors);
+      })
       .catch(()=>{if(!controller.signal.aborted)setStatusError(true);});
     return ()=>controller.abort();
   },[demo,accessToken]);

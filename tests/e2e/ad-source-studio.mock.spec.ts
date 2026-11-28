@@ -23,6 +23,7 @@ async function fixture(page: Page, failSecond = false) {
     if (url.hostname !== "127.0.0.1") return route.abort();
     if (url.pathname.startsWith("/fixture-")) return route.fulfill({ contentType: "image/png", body: png });
     if (!url.pathname.startsWith("/api/")) return route.continue();
+    if (url.pathname === "/api/v1/content/youtube/channel-styles") return route.fulfill({ json: { styles: [], version: 0, purposes: [] } });
     if (url.pathname === "/api/v1/content/ad-sources") {
       if (req.method() === "POST") {
         const input = req.postDataJSON() as AdSourceInput; inputs.push(input);
