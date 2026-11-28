@@ -56,12 +56,12 @@ test("command palette finds both new labels and former menu labels", () => {
 });
 
 test('company documents and finance menus coexist with gated HR navigation',()=>{
-  assert.deepEqual(NAV_STAGES.filter(stage=>!stage.requiresHr).map(stage=>stage.pages.length),[8,11,1,4,4,10,3,4]);
+  assert.deepEqual(NAV_STAGES.filter(stage=>!stage.requiresHr).map(stage=>stage.pages.length),[8,11,1,5,4,10,3,4]);
   assert.equal(NAV_STAGES.find(stage=>stage.id==='ads').label,'광고');
   assert.deepEqual(NAV_STAGES.find(stage=>stage.id==='ads').pages.map(page=>page.href),['/content/images']);
   assert.ok(!NAV_STAGES.find(stage=>stage.id==='automation').pages.some(page=>page.href==='/content/images'));
   assert.equal(searchNavigation('이미지 광고')[0].stage,'광고');
-  assert.deepEqual(NAV_STAGES.find(stage=>stage.id==='knowledge').pages.map(page=>page.href),['/knowledge/vault','/knowledge/notes','/knowledge/canon','/knowledge/trash']);
+  assert.deepEqual(NAV_STAGES.find(stage=>stage.id==='knowledge').pages.map(page=>page.href),['/knowledge/vault','/knowledge/notes','/knowledge/canon','/knowledge/review','/knowledge/trash']);
   assert.equal(NAV_STAGES.find(stage=>stage.id==='team').label,'업무 기록');
   assert.equal(NAV_STAGES.find(stage=>stage.id==='finance').requiresFinance,true);
   assert.deepEqual(searchNavigation('재무',false).map(page=>page.href),['/finance/cards','/finance/recurring'],'staff find only 카드지출·정기 결제');
