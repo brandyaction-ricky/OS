@@ -8,7 +8,7 @@ export const JOB_STATUS_LABELS:Record<string,string>={
   completed:"결과 도착",done:"결과 도착",failed:"막힘",adopted:"반영 완료",
   rejected:"채택 안 함",cancelled:"닫음",
 };
-export const CHANNEL_LABELS:Record<string,string>={card:"카드뉴스",shorts:"쇼츠",threads:"쓰레드"};
+export const CHANNEL_LABELS:Record<string,string>={card:"카드뉴스",shorts:"쇼츠",threads:"스레드"};
 export const PROC_LABELS:Record<string,string>={
   topic:"주제 후보 찾기",brief:"기획 메모 쓰기","card-fill":"카드뉴스 글 채우기",
   "card-caption":"카드뉴스 캡션",image:"이미지 요청서","shorts-cut":"쇼츠 컷 구성",
