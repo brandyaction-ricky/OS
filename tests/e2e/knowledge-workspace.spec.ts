@@ -16,7 +16,7 @@ for(const width of [1440,1024,390]) test(`company workspace routes and horizonta
   await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   await expect(page.getByText(/Application error/)).toHaveCount(0);
   if (path === "/knowledge") await expect(page.locator(".vault-workspace")).toBeVisible();
-  else if (path === "/knowledge/canon") await expect(page.getByRole("link",{name:"정본 검토",exact:true})).toBeVisible();
+  else if (path === "/knowledge/canon") await expect(page.locator(".kw-header").getByRole("link",{name:"정본 검토",exact:true})).toBeVisible();
   else await expect(page.locator(".kw-root")).not.toContainText(/undefined|NaN|Infinity|\[object/);
   if(path==="/knowledge"||path==="/knowledge/graph"){await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:info.outputPath(`${path.endsWith("graph")?"graph":"home"}-${width}.png`)});}
  }
