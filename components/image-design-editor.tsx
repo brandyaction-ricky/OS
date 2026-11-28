@@ -33,7 +33,7 @@ export function designSummary(variant: CreativeVariant): string {
   if (!variant.design) return "";
   const { font, card, placement, outputWidth } = variant.design;
   const spec = resolvePlacement(variant.size, placement, outputWidth);
-  return [fontLabels[font], cardLabels[card], spec.label, `${spec.width}×${spec.height}`].join(" · ");
+  return [fontLabels[font], cardLabels[card], spec.label, `${spec.width}×${spec.height}`, ...(variant.design.photoFit ? ["전체 사진 보기"] : [])].join(" · ");
 }
 
 export function SafeZoneOverlay({ size, design }: { size: CreativeVariant["size"]; design?: ImageDesign }) {
@@ -64,9 +64,9 @@ export function ImageDesignEditor({ projectId, base, assetUrl, referenceUrl, det
   useEffect(() => { section.current?.focus({ preventScroll: true }); section.current?.scrollIntoView({ block: "start" }); }, []);
   const placement = resolvePlacement(base.size, design.placement, design.outputWidth);
   const draft = useMemo(() => ({ ...base, size: placement.size, design }), [base, design, placement.size]);
-  const key = JSON.stringify([design.font, design.card, design.placement, design.outputWidth || 1080]);
+  const key = JSON.stringify([design.font, design.card, design.placement, design.outputWidth || 1080, design.photoFit]);
   const changed = design.font !== original.font || design.card !== original.card ||
-    design.placement !== original.placement || (design.outputWidth || 1080) !== (original.outputWidth || 1080);
+    design.placement !== original.placement || (design.outputWidth || 1080) !== (original.outputWidth || 1080) || design.photoFit !== original.photoFit;
   const onCheck = (problems: string[]) => setRender(old =>
     old?.key === key && old.problems.join("\n") === problems.join("\n") ? old : { key, problems });
   function update(next: ImageDesign) {
@@ -98,6 +98,11 @@ export function ImageDesignEditor({ projectId, base, assetUrl, referenceUrl, det
     </div>
     <fieldset className="ic-editor-fields" disabled={busy}>
       <legend>디자인 편집</legend>
+      {["M09", "D12"].includes(base.formatId) && <label className="ic-field">사진 배치<select aria-label="사진 배치" className="field" value={design.photoFit || "original"} onChange={e=>{
+        const rest = {...design}; delete rest.photoFit;
+        update(e.target.value === "contain" ? {...rest,photoFit:"contain"} : rest);
+      }}><option value="original">기존 포맷 확대</option><option value="contain">전체 사진 보기</option></select>
+        <small>사진 전체를 보여 주며, 기존 승인본은 보존하고 수정본으로 저장합니다.</small></label>}
       <label className="ic-field">제목 글꼴<select className="field" value={design.font} onChange={e=>update({ ...design, font: e.target.value as ImageDesign["font"] })}>
         {Object.entries(fontLabels).map(([value, label])=><option key={value} value={value}>{label}</option>)}</select></label>
       <label className="ic-field">카드 디자인<select className="field" value={design.card} onChange={e=>update({ ...design, card: e.target.value as ImageDesign["card"] })}>

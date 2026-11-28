@@ -57,7 +57,7 @@ test("일반 프로젝트가 업로드 사진과 브랜드로 창고 디자인�
   const fontData = await fontUrl("public/fonts/pretendard/PretendardVariable.woff2");
   for (const [index,format] of FORMAT_TEST_FORMATS.entries()) {
     const face = displayFonts[format.id as keyof typeof displayFonts];
-    const svg = renderFormatTestSvg({formatId:format.id,copy,photo:"data:image/png;base64,"+illustration,fontData,
+    const svg = renderFormatTestSvg({formatId:format.id,copy,...(["M09","D12"].includes(format.id) ? {design:{font:"original",card:"original",placement:"feed-portrait",photoFit:"contain"}} : {}),photo:"data:image/png;base64,"+illustration,fontData,
       displayFontData:face ? await fontUrl("public/image-format-test/fonts/"+face) : undefined});
     const expected = await page.evaluate(async source => {
       const u=URL.createObjectURL(new Blob([source],{type:"image/svg+xml;charset=utf-8"}));

@@ -236,6 +236,8 @@ async function rendererVersion(root) {
   }
   if (version === 8 && existsSync(path.join(dir,"prompt-edit-render.mjs")) &&
       (await import(fileUrl(dir,"prompt-edit-render.mjs"))).promptEditRenderVersion === 1) version = 9;
+  if (version === 9 && existsSync(path.join(dir,"format-test-renderer.mjs")) &&
+      (await import(fileUrl(dir,"format-test-renderer.mjs"))).warehousePhotoFitVersion === 1) version = 10;
   advertisedVersions.set(root, version);
   return version;
 }

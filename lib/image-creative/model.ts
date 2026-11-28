@@ -18,6 +18,7 @@ export interface ImageDesign {
   card: typeof DESIGN_CARDS[number];
   placement: PlacementId;
   outputWidth?: 1080 | 1440;
+  photoFit?: "contain";
 }
 export interface ImageAsset { path: string; w: number; h: number; subjectBox?: import("./subject-box.ts").SubjectBox }
 export interface CreativeVariant {
@@ -72,17 +73,18 @@ const chars = (text: string) => [...text].length;
 const LOCAL_TEXT = /^[\x20-\x7e\n\u3131-\u3163\uac00-\ud7a3·“”‘’…—–₩]*$/u;
 const object = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === "object" && !Array.isArray(value));
 export function isImageDesign(value: unknown): value is ImageDesign {
-  return object(value) && Object.keys(value).every(k => ["font", "card", "placement", "outputWidth"].includes(k)) &&
+  return object(value) && Object.keys(value).every(k => ["font", "card", "placement", "outputWidth", "photoFit"].includes(k)) &&
     ["font", "card", "placement"].every(k => Object.hasOwn(value, k)) &&
     DESIGN_FONTS.some(font => font === value.font) && DESIGN_CARDS.some(card => card === value.card) &&
     PLACEMENT_IDS.some(id => id === value.placement) &&
-    (value.outputWidth === undefined || value.outputWidth === 1080 || value.outputWidth === 1440);
+    (value.outputWidth === undefined || value.outputWidth === 1080 || value.outputWidth === 1440) &&
+    (value.photoFit === undefined || value.photoFit === "contain");
 }
 export function variantDesign(variant: Pick<CreativeVariant, "size" | "design">): ImageDesign {
   return variant.design ?? {font: "original", card: "original", placement: defaultPlacement(variant.size)};
 }
 function sameDesign(a: ImageDesign, b: ImageDesign) {
-  return a.font === b.font && a.card === b.card && a.placement === b.placement && (a.outputWidth ?? 1080) === (b.outputWidth ?? 1080);
+  return a.font === b.font && a.card === b.card && a.placement === b.placement && (a.outputWidth ?? 1080) === (b.outputWidth ?? 1080) && a.photoFit === b.photoFit;
 }
 function keys(value: unknown, allowed: string[], required: string[], label: string): asserts value is Record<string, unknown> {
   if (!object(value)) fail(`${label} 입력이 객체가 아니에요.`);
@@ -185,6 +187,8 @@ export function imageVariantProblems(value: unknown, photoPending = false): stri
         problems.push("이미지 규격과 게재 위치가 일치해야 해요.");
     }
     const spec = IMAGE_FORMATS[value.formatId];
+    if ((value.design as ImageDesign | undefined)?.photoFit && !["M09", "D12"].includes(value.formatId))
+      problems.push("전체 사진 배치는 사진 중심 디자인에서 사용할 수 있어요.");
     const aiReference = value.formatId === "reference_image" && isReferenceLayout(value.referenceLayout) && value.referenceLayout.reproduction === "image-ai";
     if (value.referenceArtwork !== undefined && (!aiReference || value.promptEdit !== undefined))
       problems.push("레퍼런스 생성 시안과 프롬프트 수정본의 저장 정보를 확인해 주세요.");
@@ -751,6 +755,8 @@ export function createImageBatch(state: ImageCreativeState, request: ImageBatchR
       if (delta.formatVersion !== spec.version) fail(`${spec.name}은 포맷 버전 ${spec.version}을 사용해 주세요.`);
       const showBrand = isWarehouseFormat(spec.id) || !!req.referenceLayout?.master?.brandSlots?.length || req.referenceLayout?.reproduction === "image-ai";
       item = { formatId: spec.id, formatVersion: spec.version, ...(req.referenceLayout && {referenceLayout:req.referenceLayout}), ...(showBrand ? { brand: state.brief.brand } : {}), size: delta.size as CreativeSize, ...(delta.asset ? { asset: asset(delta.asset) } : {}), appeal: appeal(delta.appeal), copy: copy(delta.copy) };
+      // Snapshot the safer placement on new work only; approved historical variants remain unchanged.
+      if (["M09", "D12"].includes(spec.id)) item.design = {font:"original",card:"original",placement:defaultPlacement(item.size),photoFit:"contain"};
       if (spec.backgroundPhoto && item.asset && !req.assetPaths.length) fail("기획에서 고른 배경 사진만 사용해 주세요.");
       if (spec.supportsAsset && req.assetPaths.length && (!item.asset || !req.assetPaths.includes(item.asset.path)))
         fail("이번 요청에서 선택한 실제 이미지를 사용해 주세요.");

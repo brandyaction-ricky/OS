@@ -16,7 +16,7 @@ const variantId = z.string().uuid();
 const fileSize = z.number().int().positive().max(20 * 1024 * 1024);
 const file = z.object({variantId, bytes: fileSize, sha256: z.string().regex(/^[a-f0-9]{64}$/)}).strict();
 export const imageMacActions = [
-  z.object({action:z.literal("image_creative_claim"), rendererVersion:z.number().int().min(1).max(9)}).strict(),
+  z.object({action:z.literal("image_creative_claim"), rendererVersion:z.number().int().min(1).max(10)}).strict(),
   z.object({action:z.literal("image_creative_scene"), ...lease, variantId}).strict(),
   z.object({action:z.literal("image_creative_prepare"), ...lease, variantId, fileSize}).strict(),
   z.object({action:z.literal("image_creative_complete"), ...lease, files:z.array(file).min(1).max(20)}).strict(),
@@ -52,7 +52,7 @@ async function claim(computer: Computer, rendererVersion: number) {
         const run = meta.renders?.find(r => r.target === computer.target && r.status === status &&
           (status === "queued" || (r.expires ?? 0) <= Date.now()) && isApprovedRender(meta, r) &&
           meta.state.variants.every(v => !r.variantIds.includes(v.id) ||
-            rendererVersion >= (v.referenceArtwork || v.promptEdit ? 9 : usesReferencePhotoStyling(v.referenceLayout) ? 8 : usesReferenceDetailRendering(v.referenceLayout) ? 7 : v.referenceLayout?.master ? 6 : v.referenceLayout?.composition ? 5 : v.formatId === "reference_image" ? 4 : v.formatId === "thumbnail_subject" ? 3 : usesBackgroundPhoto(v) ? 2 : 1)));
+            rendererVersion >= (v.design?.photoFit ? 10 : v.referenceArtwork || v.promptEdit ? 9 : usesReferencePhotoStyling(v.referenceLayout) ? 8 : usesReferenceDetailRendering(v.referenceLayout) ? 7 : v.referenceLayout?.master ? 6 : v.referenceLayout?.composition ? 5 : v.formatId === "reference_image" ? 4 : v.formatId === "thumbnail_subject" ? 3 : usesBackgroundPhoto(v) ? 2 : 1)));
         if (!run) continue;
         const token = randomUUID();
         try {

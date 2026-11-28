@@ -14,7 +14,7 @@ test("an updated Mac can still poll an older OS without claiming a second job af
     return {idle:true};
   };
   assert.equal(await processAdRender(call,process.cwd()),false);
-  assert.deepEqual(versions,[9,8,7,6,5,4,3,2,1]);
+  assert.deepEqual(versions,[10,9,8,7,6,5,4,3,2,1]);
   let attempts=0;
   await assert.rejects(processAdRender(async()=>{attempts++;throw new Error("lost response");},"unused"),/lost response/);
   assert.equal(attempts,1);
@@ -76,7 +76,7 @@ test("a staff video bundle renders offline without the OS checkout and uploads o
   const dispatch=async body=>{
     sent.push(body.action);
     switch(body.action){
-      case "image_creative_claim":assert.equal(body.rendererVersion,9);return {jobId:"j",lease:"lease",variantIds:["v"]};
+      case "image_creative_claim":assert.equal(body.rendererVersion,10);return {jobId:"j",lease:"lease",variantIds:["v"]};
       case "image_creative_scene":assert.equal(body.variantId,"v");return scene("v");
       case "image_creative_prepare":return {signedUrl:"https://example.test/storage/v1/object/upload/sign/owned-result"};
       case "image_creative_complete":
@@ -124,7 +124,7 @@ test("prompt-edited artwork travels through the offline Mac worker byte-for-byte
   };
   await processAdRender(async body=>{
     switch(body.action) {
-      case "image_creative_claim":assert.equal(body.rendererVersion,9);return {jobId:"j",lease:"lease",variantIds:["v"]};
+      case "image_creative_claim":assert.equal(body.rendererVersion,10);return {jobId:"j",lease:"lease",variantIds:["v"]};
       case "image_creative_scene":return {variant,promptEditUrl:"https://example.test/storage/v1/object/sign/edited",width:1080,height:1350};
       case "image_creative_prepare":return {signedUrl:"https://example.test/storage/v1/object/upload/sign/result"};
       case "image_creative_complete":assert.equal(body.files[0].sha256,createHash("sha256").update(bytes).digest("hex"));return {done:true};
@@ -165,7 +165,7 @@ test("AI reference output uses the installed v9 bitmap transport without changin
   };
   await processAdRender(async body=>{
     switch(body.action) {
-      case "image_creative_claim":assert.equal(body.rendererVersion,9);return {jobId:"j",lease:"lease",variantIds:["v"]};
+      case "image_creative_claim":assert.equal(body.rendererVersion,10);return {jobId:"j",lease:"lease",variantIds:["v"]};
       case "image_creative_scene":return {variant,promptEditUrl:"https://example.test/storage/v1/object/sign/artwork",width:1080,height:1080};
       case "image_creative_prepare":return {signedUrl:"https://example.test/storage/v1/object/upload/sign/result"};
       case "image_creative_complete":

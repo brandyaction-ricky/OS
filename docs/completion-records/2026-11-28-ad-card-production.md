@@ -1,0 +1,31 @@
+# 광고·MYIN 카드뉴스 운영 반영
+
+2026-11-28 사용자가 운영 배포를 명시적으로 요청했다. 기존 PR #693의 추가 변경 전송, main 병합과 Vercel Production 배포를 진행하는 작업이다. 회사 데이터, 환경변수, DB 스키마와 외부 광고 집행은 변경 범위가 아니다.
+
+## 대상과 변경
+
+- 저장소: brandyaction-ricky/OS, 브랜치: codex/ad-card-release-20261127
+- 작업 경로: /Users/ricky/Projects/brandyaction-os/.worktrees/ad-card-release-20261127
+- 통합 기준 main: 9bc983ec306c5374da20026cadae4dc69072ce26, 로컬 통합 커밋: f49a1582
+- PR: https://github.com/brandyaction-ricky/OS/pull/693
+- 11월 27일 기록의 전송 보류는 이번 명시적 배포 요청으로 해소됐다. 실제 배포 완료 여부는 아래 검증 결과로 별도 기록한다.
+- 광고 입력·사진·승인·비교·내보내기 개선, MYIN 정본 기반 카드뉴스 제작 화면과 완성 결과를 통합했다. 최신 main의 정본 검토와 영상 후속 기록 변경도 보존했다.
+- M09/D12 새 시안에 전체 사진 배치를 저장한다. 기존 시안은 자동 변경하지 않고 편집에서 별도 수정본으로 저장한다. 과거 승인 PNG 5장의 SHA-256이 모두 그대로임을 실제 브라우저에서 확인했다.
+- 새 사진 배치는 Mac 렌더러 capability 10 이상에만 배정한다. 구버전 엔진이 다른 결과를 출력하지 않도록 차단했다. 기존 시안의 구버전 호환성은 유지한다.
+
+## 배포 전 확인
+
+- 관련 단위 검사 73/73 통과. 타입 검사와 프로덕션 빌드 통과. 편집기 lint 오류·경고 없음.
+- 전체 로컬 단위 검사 2,009개: 1,998 통과, 10 skip, 1 실패. 기존 프로세스 중지 검사의 ps EPERM으로, 환경 실행 권한 때문에 실패했다. GitHub Linux CI에서 재검증한다.
+- 사진 전체 보기 M09/D12를 실제 화면에서 수정본으로 저장하고 포맷 승인 → 카피 승인 → PNG 출력까지 확인했다. 컵과 손잡이가 잘리지 않는다. validation/ad-release-20261127/ad-whole-M09.png 및 ad-whole-D12.png 참조.
+- 앞선 PNG 9장·ZIP 해시·모바일·보관 복구·비로그인 경계 검증은 2026-11-27 기록에 있다. CI 재진입 URL 2개도 view=tools로 수정했다.
+- 실제 OpenAI 생성, DEV 계정 저장/RLS와 실제 회사 Mac 출력은 미검증이다. Preview에는 이미지 생성 키가 없어 격리 fixture와 로컬 검증을 수행한다. 운영 데이터로 시험 생성하지 않는다.
+- 회사 Mac은 새 코드/렌더러 번들 반영이 필요하며 실제 연결 상태와 출력 완료를 별도 확인해야 한다. 웹 배포 성공을 Mac 배포 성공으로 간주하지 않는다.
+
+## 운영 확인과 복구 기준
+
+배포 직전 조회한 Production은 9bc983ec306c5374da20026cadae4dc69072ce26, READY, https://brandyaction-k2071hmnm-brandyaction-os.vercel.app 이다. 사용자 진입 주소는 https://brandyaction-os.vercel.app 이다. 문제 발생 시 이 배포를 복구 기준으로 삼되 직전 활성 배포를 다시 확인한다. 추가 DB 마이그레이션은 없다.
+
+정확한 PR Head의 CI와 Preview를 확인한 뒤 병합한다. 이후 Production SHA와 READY, health, 로그인 경계, 광고·MYIN 화면 및 완성 이미지 로드를 확인한다. 이 문서 작성 시점에는 병합·운영 배포가 아직 완료되지 않았다.
+
+회사 OS 개발 기록은 운영 기록 쓰기 범위의 별도 승인이 없어 동기화 대기다. Telegram 알림을 발생시키는 운영 완료 로그는 생성하지 않는다.

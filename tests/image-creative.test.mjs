@@ -253,7 +253,16 @@ test('warehouse selections use registered project content and keep the same desi
     assert.equal(row.formatId, ids[i]); assert.equal(row.formatVersion, 2);
     assert.equal(row.brand, fresh.brief.brand); assert.deepEqual(row.asset, image());
     assert.deepEqual(imageVariantProblems(row), []);
+    assert.equal(row.design?.photoFit, ['M09','D12'].includes(row.formatId) ? 'contain' : undefined);
   }
+  const historical = structuredClone(batch);
+  const oldPhoto = historical.variants.find(v => v.formatId === 'M09');
+  delete oldPhoto.design;
+  const revisedPhoto = reviseImageDesign(historical, oldPhoto.id, '496f3fdd-6c18-4eee-bbd4-0de66d1f40e0',
+    {font:'original',card:'original',placement:'feed-portrait',photoFit:'contain'},ctx());
+  assert.equal(revisedPhoto.variants.find(v=>v.id===oldPhoto.id).design, undefined, 'historical approval artwork is unchanged');
+  assert.equal(revisedPhoto.variants.at(-1).design.photoFit,'contain');
+  assert.ok(imageVariantProblems({...batch.variants[0],design:{font:'original',card:'original',placement:'feed-portrait',photoFit:'contain'}}).length);
   const root = batch.variants[0];
   const appeals = create(batch, { mode: 'appeal', count: 1, baseId: root.id }, [appealDelta()]);
   const copies = create(appeals, { mode: 'copy', count: 1, baseId: appeals.variants.at(-1).id, copyFields: ['headline'] },

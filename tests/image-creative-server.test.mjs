@@ -722,6 +722,10 @@ test("a Mac renders only an assigned saved batch; its checked PNG is the actual 
   stored.metadata.state.variants[0] = {...original,formatId:"typography"};
   assert.equal((await imageMacWork(local,poll)).idle,true);
   const queued = structuredClone(stored);
+  stored.metadata.state.variants[0] = {...original,formatId:"M09",formatVersion:2,brand:"공방",design:{font:"original",card:"original",placement:"feed-portrait",photoFit:"contain"}};
+  assert.equal((await imageMacWork(local,{...poll,rendererVersion:9})).idle,true, "old workers must not silently restore the fixed crop");
+  assert.equal((await imageMacWork(local,{...poll,rendererVersion:10})).jobId,run.id);
+  stored = structuredClone(queued);
   assert.equal((await imageMacWork(local,{...poll,rendererVersion:2})).jobId,run.id);
   stored = structuredClone(queued);
   stored.metadata.state.variants[0] = {...original,formatId:"thumbnail_subject"};
