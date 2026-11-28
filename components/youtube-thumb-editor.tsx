@@ -5,7 +5,7 @@ import { apiRequest } from "@/lib/api-client";
 import type { YpSlot } from "@/lib/youtube-process/stages";
 import type { ThumbSavedEdit } from "@/lib/youtube-process/thumb-edit";
 import { ThumbFrame } from "@/lib/youtube-process/thumb-frame";
-import { THUMB_EXTRA_COLORS, THUMB_PERSON, THUMB_STYLES, thumbLayout, type ThumbEdit, type ThumbExtraColor, type ThumbSubject } from "@/lib/youtube-process/thumb-style";
+import { THUMB_COLLAGE, THUMB_EXTRA_COLORS, THUMB_PERSON, THUMB_STYLES, thumbLayout, type ThumbEdit, type ThumbExtraColor, type ThumbSubject } from "@/lib/youtube-process/thumb-style";
 import type { YpPage } from "./youtube-process-frame";
 import { Scaled } from "./youtube-thumb-picker";
 
@@ -55,8 +55,8 @@ export function ThumbEditor({ page, slot, start, onSave, onClose }: {
   const undo = () => { const last = history.at(-1); if (!last) return; setHistory(history.slice(0, -1)); setDraft(last); };
   const photo = draft.photo ?? { scale: 1, x: 0, y: 0, brightness: 1 };
   const checks = thumbLayout(draft.copy, style, editOf(draft), subject).checks;
-  const person = draft.frame === "person";
-  const sizeRange = person ? [THUMB_PERSON.minPx, THUMB_PERSON.maxPx] : [style.title.minPx, style.title.maxPx];
+  const person = draft.frame === "person", collage = draft.frame === "collage";
+  const sizeRange = person ? [THUMB_PERSON.minPx, THUMB_PERSON.maxPx] : collage ? [THUMB_COLLAGE.main.minPx, THUMB_COLLAGE.main.maxPx] : [style.title.minPx, style.title.maxPx];
 
   const onDown = (event: PointerEvent<HTMLDivElement>) => {
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -105,11 +105,11 @@ export function ThumbEditor({ page, slot, start, onSave, onClose }: {
         <div className="yp-seg2 yp-sm" role="tablist">{([["text", "글자"], ["photo", "사진"], ["extras", "장치"]] as const).map(([key, label]) =>
           <button key={key} type="button" role="tab" aria-selected={tab === key} className={tab === key ? "yp-on" : ""} onClick={() => setTab(key)}>{label}</button>)}</div>
         {tab === "text" ? <div className="yp-te-fields">
-          <div className="yp-seg2 yp-sm" role="group" aria-label="틀">{([["", "기본형"], ["person", "인물형"]] as const).map(([key, label]) =>
-            <button key={label} type="button" className={(draft.frame ?? "") === key ? "yp-on" : ""} onClick={() => change({ ...draft, frame: key || undefined, flip: key ? draft.flip : undefined, size: undefined, photo: undefined })}>{label}</button>)}</div>
-          <label className="yp-lbl">문구 <span className="yp-gq">{person ? "세 줄까지: 작은 띠 · 파랑 박스 · 검정 박스 (두 줄이면 파랑 · 검정)" : "두 줄까지 · 줄바꿈으로 나눠요"}</span>
+          <div className="yp-seg2 yp-sm" role="group" aria-label="틀">{([["collage", "콜라주형"], ["", "기본형"], ["person", "인물형"]] as const).map(([key, label]) =>
+            <button key={label} type="button" className={(draft.frame ?? "") === key ? "yp-on" : ""} onClick={() => change({ ...draft, frame: key || undefined, flip: key === "person" ? draft.flip : undefined, size: undefined, photo: undefined })}>{label}</button>)}</div>
+          <label className="yp-lbl">문구 <span className="yp-gq">{person ? "세 줄까지: 작은 띠 · 파랑 박스 · 검정 박스 (두 줄이면 파랑 · 검정)" : collage ? "두 줄: 가는 첫 줄 · 굵은 둘째 줄" : "두 줄까지 · 줄바꿈으로 나눠요"}</span>
             <textarea className="yp-in" rows={person ? 3 : 2} maxLength={60} value={draft.copy.text} onChange={(event) => change({ ...draft, copy: { ...draft.copy, text: event.target.value } })} /></label>
-          {person ? null : <label className="yp-lbl">파랑 강조 <span className="yp-gq">문구 안의 말 그대로</span>
+          {person ? null : <label className="yp-lbl">{collage ? "노랑 강조" : "파랑 강조"} <span className="yp-gq">{collage ? "둘째 줄 안의 말 그대로" : "문구 안의 말 그대로"}</span>
             <input className="yp-in" maxLength={20} value={draft.copy.accent ?? ""} onChange={(event) => change({ ...draft, copy: { ...draft.copy, accent: event.target.value } })} /></label>}
           <label className="yp-lbl">크기 {draft.size ? `${draft.size}px` : "자동"}
             <input type="range" min={sizeRange[0]} max={sizeRange[1]} value={draft.size ?? thumbLayout(draft.copy, style, editOf(draft)).size} onChange={(event) => change({ ...draft, size: Number(event.target.value) })} /></label>

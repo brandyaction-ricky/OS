@@ -15,6 +15,7 @@ import { oneArrow, pickFrame,
 import { checkColumnHtml, cleanColumnHtml, columnForMyin, columnShorts, type ColumnFill } from "@/lib/seo-column";
 import { shortsAction } from "@/lib/youtube-process/short";
 import { thumbSavedEditSchema } from "@/lib/youtube-process/thumb-edit";
+import { THUMB_FRAMES } from "@/lib/youtube-process/thumb-style";
 import { GateError } from "@/lib/youtube-process/confirm";
 import { markReviewed, MAX_REVIEWERS, reviewerInput, setReviewers, type YpReviewer } from "@/lib/youtube-process/reviewers";
 import type { RequestActor } from "./auth";
@@ -101,7 +102,7 @@ const refSchema = z.object({ url: z.string().url().max(300), videoId: z.string()
 const statSchema = z.object({ fact: text(200), value: text(40), unit: text(20), period: text(20), table: text(120), organization: text(60),
   sourceUrl: z.string().max(300).regex(/^https:\/\/kosis\.kr\//) }).strict();
 const thumbSchema = z.object({ id: text(40), mode: z.enum(["img", "text"]), path: text(300).optional(), screen: text(500).optional(), copy: text(120).optional(),
-  pick: z.object({ candidate: z.string().uuid(), accent: text(20).optional(), diff: z.enum(["카피", "그림", "배치"]).optional(), frame: z.literal("person").optional(), flip: z.boolean().optional() }).strict().optional() }).strict();
+  pick: z.object({ candidate: z.string().uuid(), accent: text(20).optional(), diff: z.enum(["카피", "그림", "배치"]).optional(), frame: z.enum(THUMB_FRAMES).optional(), flip: z.boolean().optional() }).strict().optional() }).strict();
 export const stagePatchSchemas = {
   plan: z.object({ titles: z.array(z.object({ id: text(40), text: text(200) }).strict()).min(1).max(12), thumbs: z.array(thumbSchema).min(1).max(8),
     opening: text(2000), body: text(6000), closing: text(2000), note: text(2000), extraRefs: z.array(refSchema).max(50), stats: z.array(statSchema).max(3), format: z.enum(["keypulling", "pulling"]), aiDraft: z.null() }).partial().strict(),

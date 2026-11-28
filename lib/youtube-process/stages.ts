@@ -3,7 +3,7 @@
 import type { YpReviewer } from "./reviewers";
 import type { YpKind, YpRef } from "./project";
 import type { ThumbSavedEdit } from "./thumb-edit.ts";
-import { THUMB_STYLES, thumbLayout } from "./thumb-style.ts";
+import { THUMB_STYLES, thumbLayout, type ThumbFrameKind } from "./thumb-style.ts";
 import type { AdResult } from "./ad-results";
 import type { CardDraft, CardFormatId } from "../cardnews/formats.ts";
 import { narrationFromMarkdown } from "../youtube-narration-document.ts";
@@ -29,9 +29,9 @@ export const slotOf = (index: number): YpSlot | "예비" => index < SLOTS.length
 
 /** pick: a 롱폼 애니메이션 썸네일 picked from the AI's candidates — which picture, the copy and its blue word set on it, and what A and B
  *  differ in (카피 · 그림 · 배치) — so 제작 can set it again. path is then the composite PNG. */
-export interface YpThumbPick { candidate: string; accent?: string; diff?: "카피" | "그림" | "배치"; frame?: "person"; flip?: boolean }
+export interface YpThumbPick { candidate: string; accent?: string; diff?: "카피" | "그림" | "배치"; frame?: ThumbFrameKind; flip?: boolean }
 /** The frame a picked thumbnail was made in, carried into 제작's 다듬기 (인물형 2026-11-24). */
-export const pickFrame = (pick?: YpThumbPick | null) => pick?.frame === "person" ? { frame: "person" as const, ...(pick.flip ? { flip: true } : {}) } : {};
+export const pickFrame = (pick?: YpThumbPick | null) => pick?.frame ? { frame: pick.frame, ...(pick.frame === "person" && pick.flip ? { flip: true } : {}) } : {};
 export interface YpThumb { id: string; mode: "img" | "text"; path?: string; screen?: string; copy?: string; pick?: YpThumbPick }
 export interface YpPick { title: string; thumb: YpThumb | null }
 /** One national figure the staff AI read from KOSIS for the 기획안 (owner decision 2026-11-01): the PD keeps or removes it,

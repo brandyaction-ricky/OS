@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { draftMissing } from "../lib/youtube-process/stages.ts";
-import { THUMB_STYLES, cleanThumbEdit, thumbAccentParts, thumbLayout, thumbLines, thumbStyleFor } from "../lib/youtube-process/thumb-style.ts";
+import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { runInNewContext } from "node:vm";
+import { createElement } from "react";
+import ts from "typescript";
+import * as thumbStyle from "../lib/youtube-process/thumb-style.ts";
+import { THUMB_COLLAGE, THUMB_STYLES, cleanThumbEdit, thumbAccentParts, thumbLayout, thumbLines, thumbStyleFor } from "../lib/youtube-process/thumb-style.ts";
 import { thumbSavedEditSchema } from "../lib/youtube-process/thumb-edit.ts";
 
 // 롱폼 애니메이션 썸네일 자동 제작 1단계 (요청 2026-11-09).
@@ -54,11 +60,11 @@ test("the AI hands each picture in while it holds the job, and a confirm carries
   assert.match(read("app/api/v1/content/youtube-automation/ai-jobs/worker/route.ts"), /input\.action === "upload" \|\| input\.action === "add" \? await thumbJobStep\(actor, input\)/);
   const thumbs = read("lib/server/youtube-thumbs.ts");
   assert.match(thumbs, /THUMB_NOT_UPLOADED/);
-  assert.match(thumbs, /new ImageResponse\(createElement\(ThumbFrame, \{ style, image, copy, edit: input\.edit, subject \}\)/);
+  assert.match(thumbs, /new ImageResponse\(createElement\(ThumbFrame, \{ style, image, copy, edit: input\.edit, subject, collageAssets: assets \}\)/);
   const stages = read("lib/server/youtube-process-stages.ts");
   assert.match(stages, /if \(project\.yp\.topic\.type === "anim"\) await pickedThumbsToMake\(service, actor, project, stages\.make, plan, now\);/);
   assert.match(stages, /draftMissing\(stages\.plan\.data, project\.yp\.topic\.type\)/);
-  assert.match(read("next.config.ts"), /"\/api\/v1\/content\/youtube\/projects\/\[id\]\/thumbs": \["\.\/lib\/cardnews\/fonts\/Pretendard-900\.otf"\]/);
+  assert.match(read("next.config.ts"), /"\/api\/v1\/content\/youtube\/projects\/\[id\]\/thumbs": \["\.\/lib\/cardnews\/fonts\/Pretendard-900\.otf", /);
 });
 
 test("the picker keeps a picture's first link, and 제작 picks again from the 기획안 without 공식대로 다시 뽑기", () => {
@@ -123,7 +129,7 @@ test("the AI's subject box puts the subject as tall as the room above the title,
   assert.ok(Math.abs(zoomed.photoBox.left + (576 + 840) / 2 * zk - 640) <= 1, "사진 크기 grows around the subject");
   const server = read("lib/server/youtube-thumbs.ts");
   assert.match(server, /subject: z\.object\(\{ box: z\.tuple\(\[px, px, px, px\]\), size: z\.tuple\(\[px, px\]\) \}\)\.strict\(\)/);
-  assert.match(server, /createElement\(ThumbFrame, \{ style, image, copy, edit: input\.edit, subject \}\)/);
+  assert.match(server, /createElement\(ThumbFrame, \{ style, image, copy, edit: input\.edit, subject, collageAssets: assets \}\)/);
   assert.match(read("components/youtube-thumb-picker.tsx"), /subject=\{current\.subject\}/);
 });
 
@@ -145,12 +151,48 @@ test("인물형 틀 (대표 확정 2026-11-24): photo over the frame, band · bl
   assert.deepEqual(cleanThumbEdit({ frame: "person", flip: true, size: 40 }, style), { frame: "person", flip: true, size: 56 });
   assert.ok(thumbSavedEditSchema.safeParse({ frame: "person", flip: true, copy: { text: "a\nb\nc" } }).success);
   const jobs = read("lib/server/youtube-ai-jobs.ts"), thumbs = read("lib/server/youtube-thumbs.ts");
-  assert.match(jobs, /frame: z\.literal\("person"\)\.optional\(\), query:/);
+  assert.match(jobs, /frame: z\.enum\(THUMB_FRAMES\)\.optional\(\), query:/);
   assert.match(thumbs, /if \(frame === "person"\) return personThumbsCard\(/);
   assert.match(thumbs, /!ok && !\(frame && key === "white"\)/);
   // A job sent without the frame (an older screen) still takes person candidates: the AI marks them itself.
-  assert.match(thumbs, /frame: z\.literal\("person"\)\.optional\(\), flip: z\.boolean\(\)\.optional\(\),/);
+  assert.match(thumbs, /frame: z\.enum\(THUMB_FRAMES\)\.optional\(\), flip: z\.boolean\(\)\.optional\(\),/);
   assert.match(thumbs, /const frame = jobFrame \?\? input\.frame;/);
   assert.match(thumbs, /candidate에 "frame": "person"을 넣고/);
-  assert.match(read("components/youtube-thumb-picker.tsx"), /if \(current\?\.frame\) \{ setFrame\(current\.frame\); setFlip\(Boolean\(current\.flip\)\); \}/);
+  assert.match(read("components/youtube-thumb-picker.tsx"), /setFrame\(current\?\.frame \?\? ""\); setFlip\(Boolean\(current\?\.flip\)\);/);
+});
+
+test("콜라주형 틀 (썸네일 정본 2026-11-28): collage, noise, fade, silhouette and two outlined lines at the canon's numbers", async () => {
+  const layout = thumbLayout({ text: "퇴사를 고민하고 있다면\n회사만 바꾸면 될까?", accent: "회사만" }, style, { frame: "collage" });
+  assert.deepEqual(layout.collage, { sub: { text: "퇴사를 고민하고 있다면", size: 94, top: 450 }, main: { text: "회사만 바꾸면 될까?", top: 555, size: 121 },
+    silhouette: { left: 894, top: 122, width: 530, height: 620 } });
+  assert.equal(720 - layout.collage.main.top - Math.round(121 * THUMB_COLLAGE.lineHeight), THUMB_COLLAGE.bottom, "the heavy line ends 40 px above the bottom");
+  assert.deepEqual(layout.photoBox, { left: 0, top: 0, width: 1280, height: 720 });
+  assert.ok(layout.checks.every((c) => c.ok), layout.checks.filter((c) => !c.ok).map((c) => c.text).join());
+  assert.equal(thumbLayout({ text: "그만둘지 고민될 때 / 회사 탓? 일 탓?" }, style, { frame: "collage" }).collage.main.size, 132, "short lines stop at the canon's 132 px");
+  assert.equal(thumbLayout({ text: "회사만 바꾸면 될까?" }, style, { frame: "collage" }).collage.sub, null);
+  assert.ok(thumbLayout({ text: "가\n나\n다" }, style, { frame: "collage" }).checks.some((c) => !c.ok), "three lines do not fit the 콜라주형");
+  assert.ok(thumbLayout({ text: "아주아주아주아주아주아주아주아주 긴 둘째 줄입니다 정말로" }, style, { frame: "collage" }).checks.some((c) => !c.ok));
+  assert.deepEqual(cleanThumbEdit({ frame: "collage", flip: true, size: 300 }, style), { frame: "collage", size: 132 });
+  assert.ok(thumbSavedEditSchema.safeParse({ frame: "collage", copy: { text: "a\nb" } }).success);
+  const thumbs = read("lib/server/youtube-thumbs.ts");
+  assert.match(thumbs, /if \(frame === "collage"\) return collageThumbsCard\(/);
+  assert.match(thumbs, /if \(actor\.role !== "admin"\) throw new ApiError\(403, "THUMB_REF_ADMIN"/);
+  assert.match(read("next.config.ts"), /"\.\/lib\/cardnews\/fonts\/Pretendard-300\.woff", "\.\/public\/thumb-collage\/\*\.png"/);
+  // The PNG is drawn by next/og from the same component the screen shows (noise tile, mask, stroke and all).
+  const require = createRequire(import.meta.url);
+  const { ImageResponse } = require("next/og");
+  const view = { exports: {} };
+  const frameSource = await readFile(new URL("../lib/youtube-process/thumb-frame.tsx", import.meta.url), "utf8");
+  runInNewContext(ts.transpileModule(frameSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 } }).outputText, {
+    module: view, exports: view.exports, require: (name) => name === "./thumb-style.ts" ? thumbStyle : require(name),
+  });
+  const file = async (path) => readFile(new URL(`../${path}`, import.meta.url));
+  const data = async (path) => `data:image/png;base64,${(await file(path)).toString("base64")}`;
+  const fonts = [{ name: "Pretendard", weight: 900, style: "normal", data: await file("lib/cardnews/fonts/Pretendard-900.otf") },
+    { name: "Pretendard", weight: 300, style: "normal", data: await file("lib/cardnews/fonts/Pretendard-300.woff") }];
+  const assets = { noise: await data("public/thumb-collage/noise.png"), silhouette: await data("public/thumb-collage/silhouette.png") };
+  const png = Buffer.from(await new ImageResponse(createElement(view.exports.ThumbFrame, { style, image: assets.silhouette, copy: { text: "퇴사를 고민하고 있다면\n회사만 바꾸면 될까?", accent: "회사만" },
+    edit: { frame: "collage" }, collageAssets: assets }), { width: 1280, height: 720, fonts }).arrayBuffer());
+  assert.equal(png.toString("ascii", 1, 4), "PNG");
+  assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [1280, 720]);
 });

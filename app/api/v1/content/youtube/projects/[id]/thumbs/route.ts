@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { youtubeActor } from "@/lib/server/youtube-process";
-import { renderThumbPick, thumbRenderSchema, youtubeThumbsView } from "@/lib/server/youtube-thumbs";
+import { renderThumbPick, thumbCollageRefUpload, thumbRefSchema, thumbRenderSchema, youtubeThumbsView } from "@/lib/server/youtube-thumbs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,12 +19,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   }
 }
 
-/** 고르기: the picked picture with the picked copy as the thumbnail PNG (the picker's own frame); the screen then saves its path in the slot. */
+/** 고르기: the picked picture with the picked copy as the thumbnail PNG (the picker's own frame); the screen then saves its path in the slot.
+ *  { ref }: an admin replaces the 콜라주형 참고 그림 (a signed upload to its one place). */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const actor = await youtubeActor(request);
-    const input = thumbRenderSchema.parse(await parseJson(request, 4_000));
-    return NextResponse.json(await renderThumbPick(actor, projectId.parse((await params).id), input), { headers });
+    const body = await parseJson(request, 4_000), id = projectId.parse((await params).id);
+    if (body && typeof body === "object" && "ref" in body) return NextResponse.json(await thumbCollageRefUpload(actor, thumbRefSchema.parse(body).ref), { headers });
+    return NextResponse.json(await renderThumbPick(actor, id, thumbRenderSchema.parse(body)), { headers });
   } catch (error) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "THUMB_RENDER_INPUT", "고른 후보와 문구를 확인해 주세요."));
     return apiErrorResponse(error);
