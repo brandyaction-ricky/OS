@@ -268,4 +268,10 @@
 .kw-layer-group li small { color: var(--kw-muted); font-size: 11px; display: -webkit-box; overflow: hidden; -webkit-line-clamp: 1; -webkit-box-orient: vertical; }
 .kw-layer-loose { background: transparent; border-style: dashed; }
 .kw-row-folder { display: block; color: var(--kw-muted); font-size: 11px; }
+
+/* 기다리는 변경 제안은 검토 화면으로 (2026-11-28) */
+.kw-stage-row p[data-tone=wait] { color: var(--kw-fg); }
+.kw-stage-row p[data-tone=wait] strong { color: var(--accent-2); }
+.kw-root a.kw-badge-link { margin-left: 6px; color: var(--accent-2); background: var(--kw-accent-soft); text-decoration: none; font-weight: 600; }
+.kw-root a.kw-badge-link:hover { text-decoration: underline; }
 }

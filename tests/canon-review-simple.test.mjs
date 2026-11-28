@@ -66,3 +66,11 @@ test("the 업무 표 is read from the registries; a role pointing at non-canon o
   const route = await read("app/api/v1/knowledge/workspace/route.ts");
   assert.match(route, /rpc\("os_set_document_library"/);
 });
+
+test("a canon document with a waiting change proposal sends the reader to the review screen", async () => {
+  const [stage, editor, canon] = await Promise.all([read("components/knowledge/stage.tsx"), read("components/knowledge/editor.tsx"), read("components/knowledge/canon.tsx")]);
+  assert.match(stage, /변경 제안 \{waiting\.length\}건이 승인을 기다려요/);
+  assert.match(stage, /href=\{`\/knowledge\/review\?id=\$\{waiting\[0\]\.id\}`\}>검토하기</);
+  assert.match(editor, /proposals=\{state\.proposals\}/);
+  assert.match(canon, /href=\{`\/knowledge\/review\?document=\$\{d\.id\}`\}[^>]*>변경 제안 검토</);
+});

@@ -3,7 +3,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { Check } from "lucide-react";
 import type { KnowledgeDocument } from "@/lib/types";
-import type { Candidate, Person } from "@/lib/knowledge/model";
+import type { Candidate, Person, Proposal } from "@/lib/knowledge/model";
 
 /**
  * 정본으로 가는 길 (대표 2026-11-28): every document shows where it stands — 내 초안 → 팀 공유 → 정본 요청 → 정본 —
@@ -26,8 +26,8 @@ export function inDays(days: number, from = new Date()) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(from.getTime() + days * 86400000));
 }
 
-export function DocumentStage({ document: doc, candidates, people, mine, onShare, onUnshare, onRequest, onWithdraw }: {
-  document: KnowledgeDocument; candidates: Candidate[]; people: Person[]; mine: boolean;
+export function DocumentStage({ document: doc, candidates, proposals = [], people, mine, onShare, onUnshare, onRequest, onWithdraw }: {
+  document: KnowledgeDocument; candidates: Candidate[]; proposals?: Proposal[]; people: Person[]; mine: boolean;
   onShare: () => void; onUnshare: () => void; onRequest: () => void; onWithdraw: (id: string) => void;
 }) {
   if (doc.meeting_record_id || doc.status === "archived") return null;
@@ -51,12 +51,16 @@ export function DocumentStage({ document: doc, candidates, people, mine, onShare
     note = <>승인됨 · 정본 등록 대기{approved?.approved_version && approved.approved_version !== doc.current_version ? " · 승인 뒤 내용이 바뀌어 다시 확인을 받아요" : ""}</>;
     action = <Link className="kw-stage-link" href={`/knowledge/review?id=${approved?.id ?? ""}`}>검토 화면에서 보기</Link>;
   } else {
-    note = "회사 정본이에요. 고칠 점은 변경 제안으로 보내면 승인 뒤 새 버전이 돼요.";
-    action = <Link className="kw-stage-link" href={`/knowledge/canon/${doc.id}/propose`}>변경 제안하기</Link>;
+    // A waiting change proposal is decided on the review screen, not here (2026-11-28): say so and link to it.
+    const waiting = proposals.filter(p => p.document_id === doc.id && p.status === "open").sort((a, b) => b.created_at.localeCompare(a.created_at));
+    const stale = waiting.filter(p => p.base_version !== doc.current_version).length;
+    note = waiting.length ? <><strong>변경 제안 {waiting.length}건이 승인을 기다려요</strong>{stale ? ` · 그중 ${stale}건은 정본이 그사이 바뀐 낡은 제안` : ""}. 승인은 정본 검토 화면에서 해요.</> : "회사 정본이에요. 고칠 점은 변경 제안으로 보내면 승인 뒤 새 버전이 돼요.";
+    action = waiting.length ? <Link className="kw-primary" href={`/knowledge/review?id=${waiting[0].id}`}>검토하기</Link> : <Link className="kw-stage-link" href={`/knowledge/canon/${doc.id}/propose`}>변경 제안하기</Link>;
+    if (waiting.length) second = <Link className="kw-stage-link" href={`/knowledge/canon/${doc.id}/propose`}>변경 제안하기</Link>;
   }
   return <section className="kw-stage" aria-label="정본으로 가는 단계">
     <ol>{STAGES.map((label, i) => <li key={label} data-state={i < at ? "done" : i === at ? "now" : "next"} aria-current={i === at ? "step" : undefined}>
       <b><span>{i < at ? <Check size={12} aria-hidden/> : i + 1}</span>{label}</b></li>)}</ol>
-    <div className="kw-stage-row"><p data-tone={returned ? "warn" : undefined}>{note}</p><div className="kw-actions">{second}{action}</div></div>
+    <div className="kw-stage-row"><p data-tone={returned ? "warn" : doc.status === "canonical" && proposals.some(p => p.document_id === doc.id && p.status === "open") ? "wait" : undefined}>{note}</p><div className="kw-actions">{second}{action}</div></div>
   </section>;
 }
