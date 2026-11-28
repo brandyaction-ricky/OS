@@ -40,3 +40,29 @@ test("staff see one next step, the request needs only the why line, and the appr
   assert.match(review, />제안 닫기</);
   assert.doesNotMatch(review, /작성자·문서 소유자는 자신의 제안을 승인할 수 없습니다/);
 });
+
+test("the 업무 표 is read from the registries; a role pointing at non-canon or 자료실 is flagged; 자료실 is a list beside the document", async () => {
+  const { parseRegistry, registryIssue, roleGroup } = await import("../lib/knowledge/registry.ts");
+  const roles = parseRegistry([
+    "| 역할키 | 대상 doc_id | 담당 범위 | 별칭 |", "|---|---|---|---|",
+    "| `content.advertising` | `6d38e1f4-4722-4ab1-9b26-cf4b378b3188` | 회사 유료 광고 | 메타광고 |",
+    "| `brand.context` | `d92c2bd6-23ed-4cbe-a65e-4f15e9ce816a` | 사업·브랜드 맥락 | 핵심 컨텍스트 |",
+    "| not a role | text | x | y |",
+  ].join("\n"));
+  assert.deepEqual(roles.map(r => [r.key, r.id.slice(0, 8), r.scope]), [["content.advertising", "6d38e1f4", "회사 유료 광고"], ["brand.context", "d92c2bd6", "사업·브랜드 맥락"]]);
+  assert.equal(roleGroup("content.advertising.myin"), "콘텐츠 제작");
+  assert.equal(roleGroup("diagnosis.report"), "마이인");
+  assert.equal(registryIssue("canonical", false), null);
+  assert.equal(registryIssue("draft", false), "draft");
+  assert.equal(registryIssue("team", false, true), "draft");
+  assert.equal(registryIssue("canonical", true), "library");
+  assert.equal(registryIssue(undefined, false), "missing");
+
+  const sql = await read("supabase/migrations/20261128130000_document_library.sql");
+  assert.match(sql, /create table if not exists public\.os_document_library/);
+  assert.match(sql, /if not public\.os_is_admin\(\) then raise exception 'OS_LIBRARY_ADMIN_REQUIRED'/);
+  assert.match(sql, /where d\.id=any\(p_ids\) and d\.status='canonical'/);
+  assert.doesNotMatch(sql, /update public\.os_documents/);   // the document itself is never touched
+  const route = await read("app/api/v1/knowledge/workspace/route.ts");
+  assert.match(route, /rpc\("os_set_document_library"/);
+});

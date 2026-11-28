@@ -242,4 +242,29 @@
 .kw-decide > small { color: var(--kw-muted); text-align: right; }
 .kw-decide-steps { display: flex; gap: 12px; margin: 0; padding: 0; list-style: none; color: var(--kw-muted); font-size: 12px; }
 @media(max-width:820px) { .kw-stage-row { flex-direction: column; align-items: stretch; }.kw-stage-row .kw-actions { justify-content: flex-end; }.kw-review-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }.kw-review-layout main > .kw-review-detail { padding: 14px; }.kw-decide { margin: 0 -14px -14px; padding: 12px 14px; }.kw-review-body { max-height: none; } }
+
+/* 회사 정본 3층 · 자료실 (2026-11-28) */
+.kw-count-quiet { color: var(--kw-muted); background: var(--kw-soft); }
+.kw-tabs a[aria-current=page] .kw-count-quiet { color: var(--accent-2); }
+.kw-registry-warn summary { cursor: pointer; font-weight: 600; }
+.kw-registry-warn ul { display: grid; gap: 6px; margin: 10px 0; padding: 0; list-style: none; }
+.kw-registry-warn li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--kw-fg); font-size: 13px; }
+.kw-registry-warn p { margin: 0; color: var(--kw-muted); font-size: 13px; }
+.kw-layers { display: grid; gap: 12px; }
+.kw-layer { display: grid; gap: 10px; padding: 16px; border: 1px solid var(--kw-line); border-radius: 10px; background: var(--kw-surface); }
+.kw-layer > header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.kw-layer h2 { margin: 0; font-size: 15px; }
+.kw-layer > header small { color: var(--kw-muted); font-size: 12px; }
+.kw-layer-no { display: inline-grid; place-items: center; min-width: 34px; height: 22px; padding: 0 8px; border-radius: 11px; font-size: 11px; font-weight: 700; color: var(--on-accent); background: var(--kw-accent); }
+.kw-layer-docs { display: flex; flex-wrap: wrap; gap: 8px; }
+.kw-layer-docs > a, .kw-layer-docs > span { display: inline-flex; padding: 6px 10px; border: 1px solid var(--kw-line); border-radius: 8px; font-size: 13px; background: var(--kw-soft); }
+.kw-layer-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.kw-layer-group { padding: 12px; border: 1px solid var(--kw-line); border-radius: 8px; background: var(--kw-soft); min-width: 0; }
+.kw-layer-group h3 { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; font-size: 13px; }
+.kw-layer-group h3 span { color: var(--kw-muted); font-weight: 400; }
+.kw-layer-group ul { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.kw-layer-group li { display: grid; gap: 1px; min-width: 0; font-size: 13px; }
+.kw-layer-group li small { color: var(--kw-muted); font-size: 11px; display: -webkit-box; overflow: hidden; -webkit-line-clamp: 1; -webkit-box-orient: vertical; }
+.kw-layer-loose { background: transparent; border-style: dashed; }
+.kw-row-folder { display: block; color: var(--kw-muted); font-size: 11px; }
 }

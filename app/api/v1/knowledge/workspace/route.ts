@@ -180,7 +180,7 @@ export async function GET(request: Request) {
 const commandSchema=z.object({action:z.enum([
   "document.create","document.commit","document.draft","document.discard","document.properties","document.duplicate","document.export","document.share","document.archive",
   "note.capture","note.access","link.ignore","pin.toggle","category.save","category.archive","category.batch","inbox.create","inbox.delete","inbox.process",
-  "template.save","template.archive","candidate.submit","candidate.decide","candidate.publish","candidate.withdraw","canon.keep","canon.demote","canon.steward",
+  "template.save","template.archive","candidate.submit","candidate.decide","candidate.publish","candidate.withdraw","canon.library","canon.keep","canon.demote","canon.steward",
   "proposal.create","proposal.decide","proposal.rebase","meeting.create","meeting.save","meeting.start","meeting.finish","meeting.review","meeting.correct",
   "trash.restore","trash.purge"
 ]),id:z.string().uuid().optional(),expectedVersion:z.number().int().positive().optional()}).passthrough();
@@ -192,6 +192,14 @@ export async function POST(request: Request) {
     if(parsed.data.action==="candidate.decide"||parsed.data.action==="candidate.publish"){
       const {error: gateError}=await actor.supabase.from("os_profiles").select("canonical_publisher").limit(1);
       if(gateError) throw new ApiError(503,"CANONICAL_GATE_NOT_READY","정본 승인 절차를 준비 중입니다. 관리자에게 문의해 주세요.");
+    }
+    if(parsed.data.action==="canon.library"){
+      // 자료실 (2026-11-28): admins move company canon to the reference list and back; the document itself is untouched.
+      const ids=z.array(z.string().uuid()).min(1).max(1000).safeParse(parsed.data.ids);
+      if(!ids.success||typeof parsed.data.on!=="boolean") throw new ApiError(400,"INVALID_COMMAND","요청 형식을 확인해 주세요.");
+      const {data:moved,error:libraryError}=await actor.supabase.rpc("os_set_document_library",{p_ids:ids.data,p_on:parsed.data.on,p_note:typeof parsed.data.note==="string"?parsed.data.note.slice(0,300):""});
+      if(libraryError) throw databaseError(libraryError);
+      return NextResponse.json({moved},{headers:{"Cache-Control":"no-store"}});
     }
     const {data,error}=parsed.data.action==="candidate.publish"
       ? await actor.supabase.rpc("os_publish_candidate",{p_id:parsed.data.id,p_expected_version:parsed.data.expectedVersion})

@@ -1170,6 +1170,16 @@
       "productionApprovedAt": null,
       "appliedEnvironments": [],
       "notes": "Additive: two columns on os_document_candidates (submit_note text default '' ≤300, approved_version integer), new os_candidate_note(uuid,text) for the submitter/admin on an open request, os_decide_candidate records approved_version and may re-approve an approved candidate whose document changed, os_publish_candidate refuses OS_CANDIDATE_CHANGED_SINCE_APPROVAL. Existing approved rows keep approved_version null and publish as before."
+    },
+    {
+      "file": "20261128130000_document_library.sql",
+      "sha256": "259281f4cd47b2cdef857c6dc30a41990c629daa384e9bb482709b3e0c794d1d",
+      "purpose": "자료실: company canon keeps the standards people work by; reference originals are listed in os_document_library beside it (status, text, owner, version and link unchanged).",
+      "requiresApproval": true,
+      "developmentApprovedAt": null,
+      "productionApprovedAt": null,
+      "appliedEnvironments": [],
+      "notes": "Additive: table os_document_library (document_id pk → os_documents on delete cascade, moved_by, moved_at, note ≤300; RLS read = os_workspace_page_read), admin-only os_set_document_library(uuid[],boolean,text) for canonical documents (≤1000 per call) with knowledge events. Moving back deletes the row."
     }
   ],
   "legacyMigrations": [

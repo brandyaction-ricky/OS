@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
 import { canReadDocument } from "../lib/knowledge/access.ts";
+import * as registry from "../lib/knowledge/registry.ts";
 
 class ApiError extends Error { constructor(status, code, message) { super(message); this.status = status; this.code = code; } }
 const actor = { ownerId: "reader", type: "user", role: "member", memberKind: "staff", active: true, allowedStatuses: ["canonical"] };
@@ -44,6 +45,7 @@ function endpoint({ documents = [doc(1)], proposals = [], authenticated = true, 
     "@/lib/server/auth": { authenticateRequest: async () => { if (!authenticated) throw new ApiError(401, "AUTH_REQUIRED", "로그인 필요"); return { ...actor, supabase: db }; } },
     "@/lib/supabase/server": { createServiceSupabase: () => db },
     "@/lib/server/knowledge-access": { knowledgeAccessContext: async () => ({ actor }) },
+    "@/lib/knowledge/registry": registry,
     "@/lib/server/knowledge-page-access": { POLICY_FIELDS: policyFields, readableKnowledgePages: async (_actor, rows) => { policyChecks.push(rows); return new Set(rows.filter(row => row.parent_document_id !== "hidden-parent").map(row => row.id)); } },
   };
   return { ...load("../app/api/v1/knowledge/canon/route.ts", modules), calls, policyChecks };
@@ -59,10 +61,13 @@ test("canon lists query only summaries and open proposal IDs while preserving mo
   assert.deepEqual(body.proposalDocumentIds, [documents[5].id]);
   assert.deepEqual(body.people, [{ id: "steward", display_name: "담당자" }]);
   assert.equal(api.policyChecks.length, 1, "all canonical summaries share one ancestor-policy pass");
-  assert.equal(api.calls.filter(call => call.table === "os_documents").length, 3);
+  // 3 pages of summaries + the two 업무 표 registries + their target statuses (2026-11-28)
+  assert.equal(api.calls.filter(call => call.table === "os_documents").length, 5);
   assert.equal(api.calls.filter(call => call.table === "os_document_proposals").length, 1, "no request per 100 canonical document IDs");
-  assert.deepEqual([...new Set(api.calls.map(call => call.table))].sort(), ["os_document_proposals", "os_documents", "os_profiles"]);
-  assert.ok(api.calls.every(call => !call.columns.includes("*") && !call.columns.includes("content_md")));
+  assert.deepEqual([...new Set(api.calls.map(call => call.table))].sort(), ["os_document_library", "os_document_proposals", "os_documents", "os_profiles"]);
+  // only the two registry documents are read with their text
+  const registryRead = call => call.filters.some(([kind, field, value]) => kind === "in" && field === "id" && JSON.stringify(value) === JSON.stringify(registry.REGISTRY_DOCUMENTS));
+  assert.ok(api.calls.every(call => !call.columns.includes("*") && (!call.columns.includes("content_md") || registryRead(call))));
   assert.doesNotMatch(JSON.stringify(body), /should never|hidden-parent|proposal-private|owner_id/);
   assert.equal(response.headers.get("Cache-Control"), "private, no-store");
 });

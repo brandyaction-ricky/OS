@@ -14,39 +14,64 @@ import { approverChoices, canDecideProposal } from "@/lib/knowledge/access";
 import type { KnowledgeDocument,DocumentVersion } from "@/lib/types";
 import { apiRequest } from "@/lib/api-client";
 import type { CanonListDocument } from "@/lib/knowledge/canon-list";
+import { ENTRY_DOCUMENT, ISSUE_LABELS, REGISTRY_DOCUMENTS, ROLE_GROUPS, ROUTING_DOCUMENT, roleGroup } from "@/lib/knowledge/registry";
 
 const KnowledgeDocumentPage=dynamic(()=>import("./editor").then(module=>module.KnowledgeDocumentPage),{loading:()=> <Empty>문서를 불러오는 중…</Empty>});
 const MarkdownView=dynamic(()=>import("@/components/knowledge-workspace").then(module=>module.MarkdownView),{loading:()=> <p>내용을 불러오는 중…</p>});
 const KnowledgeRichEditor=dynamic(()=>import("@/components/knowledge-rich-editor").then(module=>module.KnowledgeRichEditor),{loading:()=> <Empty>편집기를 불러오는 중…</Empty>});
 
+/** 회사 정본 (대표 2026-11-28): standards people work by, in three layers from the 업무 표; reference originals live in 자료실. */
 export function KnowledgeCanon(){
-  const {state,canonList,loading,error}=useKnowledge(),params=useSearchParams(),router=useRouter();
+  const {state,canonList,loading,error,command,notify,refresh,actor}=useKnowledge(),params=useSearchParams(),router=useRouter();
   const [searchText,setSearchText]=useState("");
-  const [q,setQ]=useState(""),[page,setPage]=useState(0);
-  const folder=params.get("folder")??"",filter=params.get("filter")??"all";
-  const all=canonList?.documents??state.documents.filter(d=>d.status==="canonical");
+  const [q,setQ]=useState(""),[page,setPage]=useState(0),[busy,setBusy]=useState(false);
+  const tab=params.get("tab")==="library"?"library":"canon",folder=params.get("folder")??"",filter=params.get("filter")??"all";
+  const everything:CanonListDocument[]=canonList?.documents??state.documents.filter(d=>d.status==="canonical");
+  const all=everything.filter(d=>tab==="library"?d.library:!d.library);
+  const libraryCount=everything.filter(d=>d.library).length;
   const people=new Map((canonList?.people??state.people).map(person=>[person.id,person.display_name]));
-  const folderCounts=new Map<string,number>();
-  for(const document of all)folderCounts.set(document.folder,(folderCounts.get(document.folder)??0)+1);
+  const roles=canonList?.roles??[];
+  const issues=roles.filter(r=>r.issue);
+  const admin=(canonList?.actor??actor).role==="admin";
+  const byId=new Map(everything.map(d=>[d.id,d]));
+  const mapped=new Set([ENTRY_DOCUMENT,ROUTING_DOCUMENT,...REGISTRY_DOCUMENTS,...roles.map(r=>r.id)]);
   const proposals=new Set(canonList?.proposalDocumentIds??state.proposals.filter(p=>p.status==="open").map(p=>p.document_id));
   const today=kstDay();
   const overdue=(d:CanonListDocument)=>Boolean(d.review_due_on&&d.review_due_on<today);
-  const rows=all.filter(d=>(!folder||d.folder===folder||d.folder.startsWith(folder+"/"))&&d.title.toLowerCase().includes(q.toLowerCase())&&(filter==="all"||filter==="overdue"&&overdue(d)||filter==="nosteward"&&!d.steward_id||filter==="proposal"&&proposals.has(d.id))).sort((a,b)=>b.updated_at.localeCompare(a.updated_at));
+  const folderCounts=new Map<string,number>();
+  for(const document of all)folderCounts.set(document.folder,(folderCounts.get(document.folder)??0)+1);
+  const filtered=all.filter(d=>(!folder||d.folder===folder||d.folder.startsWith(folder+"/"))&&d.title.toLowerCase().includes(q.toLowerCase())&&(filter==="all"||filter==="overdue"&&overdue(d)||filter==="nosteward"&&!d.steward_id||filter==="proposal"&&proposals.has(d.id)||filter==="unmapped"&&!mapped.has(d.id))).sort((a,b)=>b.updated_at.localeCompare(a.updated_at));
+  const layered=tab==="canon"&&!q&&!folder&&filter==="all"&&roles.length>0;   // without the 업무 표 (it could not be read) the flat list shows
   function query(patch:Record<string,string>){const next=new URLSearchParams(params);Object.entries(patch).forEach(([k,v])=>v?next.set(k,v):next.delete(k));setPage(0);router.replace(`/knowledge/canon?${next}`);}
+  async function move(ids:string[],on:boolean){if(!ids.length)return;setBusy(true);try{await command({action:"canon.library",ids,on});notify(on?"자료실로 옮겼습니다. 문서 주소와 내용은 그대로예요.":"회사 정본으로 되돌렸습니다.");await refresh();}catch(e){notify((e as Error).message);}finally{setBusy(false);}}
   if(loading)return <Empty>정본 목록을 불러오는 중입니다</Empty>;
   if(error)return <Empty>정본 목록을 확인하지 못했습니다. 위의 다시 불러오기를 눌러 주세요.</Empty>;
+  const roleDocs=(group:string)=>{const seen=new Set<string>();return roles.filter(r=>roleGroup(r.key)===group&&!r.issue&&byId.has(r.id)&&!seen.has(r.id)&&seen.add(r.id));};
+  const osRules=all.filter(d=>!mapped.has(d.id)&&d.folder.startsWith("00_Skills"));
+  const unmapped=all.filter(d=>!mapped.has(d.id)&&!d.folder.startsWith("00_Skills")).sort((a,b)=>a.folder.localeCompare(b.folder,"ko")||a.title.localeCompare(b.title,"ko"));
+  const docLink=(id:string,label?:string)=>{const d=byId.get(id);return d?<Link href={`/knowledge/canon/${d.id}`}>{label??d.title}</Link>:<span>{label??"볼 수 없는 문서"}</span>;};
   return <>
-    <Header title="회사 정본" description="승인된 업무 기준입니다. 직접 덮어쓰지 않고 변경 제안을 통해 새 버전으로 갱신합니다."><Link href="/knowledge/review?tab=todo">정본 검토</Link></Header>
-    <div className="kw-metrics">{[["all","전체 정본",all.length],["overdue","검토 기한 지남",all.filter(overdue).length],["nosteward","담당자 미지정",all.filter(d=>!d.steward_id).length],["proposal","변경 제안 대기",proposals.size]].map(([key,label,count])=><button className="kw-card" key={key} aria-pressed={filter===key} onClick={()=>query({filter:String(key)})}><span>{label}<strong>{count}</strong></span></button>)}</div>
-    <div className="kw-db">
-      <aside className="kw-card kw-categories"><h3>정본 폴더</h3><button aria-pressed={!folder} onClick={()=>query({folder:""})}>전체 폴더</button>{[...folderCounts].sort(([a],[b])=>a.localeCompare(b,"ko")).map(([path,count])=><button key={path} title={path||"분류 없음"} aria-pressed={folder===path} onClick={()=>query({folder:path})}><span className="kw-category-name">{path.includes("/")&&<em>{path.slice(0,path.lastIndexOf("/"))}</em>}{path.slice(path.lastIndexOf("/")+1)||"분류 없음"}</span><small>{count}</small></button>)}</aside>
-      <div>
-        <div className="kw-toolbar"><form className="kw-canon-search" role="search" onSubmit={event=>{event.preventDefault();setQ(searchText.trim());setPage(0);}}><input aria-label="정본 검색" placeholder="정본 제목 검색" value={searchText} onChange={event=>setSearchText(event.target.value)}/><button type="submit">검색</button></form><small>{rows.length}개</small></div>
-        <div className="kw-table-wrap"><table className="kw-table"><thead><tr><th>정본</th><th>담당자</th><th>검토일</th><th>버전</th><th>수정</th></tr></thead><tbody>{rows.slice(page*50,(page+1)*50).map(d=><tr key={d.id}><td><Link href={`/knowledge/canon/${d.id}`}>{d.title}</Link>{proposals.has(d.id)&&<span className="kw-badge">변경 제안</span>}</td><td>{people.get(d.steward_id??"")??"미지정"}</td><td className={overdue(d)?"kw-danger":""}>{d.review_due_on??"미지정"}</td><td>v{d.current_version}</td><td>{kstTime(d.updated_at)}</td></tr>)}</tbody></table>{!rows.length&&<Empty>조건에 맞는 정본이 없습니다</Empty>}</div>
-        <div className="kw-toolbar"><button disabled={!page} onClick={()=>setPage(page-1)}>이전</button><small>{page+1} / {Math.max(1,Math.ceil(rows.length/50))}</small><button disabled={(page+1)*50>=rows.length} onClick={()=>setPage(page+1)}>다음</button></div>
-      </div>
-    </div>
+    <Header title="회사 정본" description={tab==="library"?"근거·참고 원문이에요. 지우지 않고 주소와 내용 그대로 두며, 검색과 AI 참조도 그대로 돼요.":"일할 때 따르는 회사 기준이에요. 고칠 점은 변경 제안으로 보내면 승인 뒤 새 버전이 돼요."}><Link href="/knowledge/review?tab=todo">정본 검토</Link></Header>
+    <nav className="kw-tabs"><Link aria-current={tab==="canon"?"page":undefined} href="/knowledge/canon">정본<span className="kw-count kw-count-quiet">{everything.length-libraryCount}</span></Link><Link aria-current={tab==="library"?"page":undefined} href="/knowledge/canon?tab=library">자료실<span className="kw-count kw-count-quiet">{libraryCount}</span></Link></nav>
+    {tab==="canon"&&issues.length>0&&<details className="kw-conflict kw-registry-warn"><summary>업무 표가 정본이 아닌 문서 {issues.length}곳을 가리키고 있어요 — AI와 직원이 이 기준을 열지 못하거나 확정되지 않은 내용을 따를 수 있어요</summary><ul>{issues.map(r=><li key={r.key}><strong>{r.scope||r.key}</strong><span className="kw-review-badge kw-tone-warn">{ISSUE_LABELS[r.issue as keyof typeof ISSUE_LABELS]??r.issue}</span>{r.title&&<Link href={`/knowledge/doc/${r.id}`}>{r.title}</Link>}</li>)}</ul><p>정본으로 올리거나(문서에서 「정본으로 요청하기」), 업무 표에서 빼면 경고가 사라져요.</p></details>}
+    {tab==="canon"&&<div className="kw-metrics">{[["all","전체 정본",all.length],["unmapped","업무 표에 없음",all.filter(d=>!mapped.has(d.id)).length],["nosteward","담당자 미지정",all.filter(d=>!d.steward_id).length],["proposal","변경 제안 대기",all.filter(d=>proposals.has(d.id)).length]].map(([key,label,count])=><button className="kw-card" key={key} aria-pressed={filter===key} onClick={()=>query({filter:String(key)})}><span>{label}<strong>{count}</strong></span></button>)}</div>}
+    <div className="kw-toolbar"><form className="kw-canon-search" role="search" onSubmit={event=>{event.preventDefault();setQ(searchText.trim());setPage(0);}}><input aria-label="정본 검색" placeholder={tab==="library"?"자료 제목 검색":"정본 제목 검색"} value={searchText} onChange={event=>setSearchText(event.target.value)}/><button type="submit">검색</button></form>{(q||folder||filter!=="all")&&<button onClick={()=>{setSearchText("");setQ("");query({folder:"",filter:""});}}>처음 화면으로</button>}<small>{layered?`${all.length}개`:`${filtered.length}개`}</small></div>
+    {layered?<div className="kw-layers">
+      <section className="kw-layer"><header><span className="kw-layer-no">1층</span><h2>진입</h2><small>모든 AI·직원이 가장 먼저 여는 운영 정본</small></header><div className="kw-layer-docs">{docLink(ENTRY_DOCUMENT)}</div></section>
+      <section className="kw-layer"><header><span className="kw-layer-no">2층</span><h2>업무 표</h2><small>어떤 일에 어떤 정본을 쓰는지 정하는 표</small></header><div className="kw-layer-docs">{[ROUTING_DOCUMENT,...REGISTRY_DOCUMENTS].map(id=><span key={id}>{docLink(id)}</span>)}</div></section>
+      <section className="kw-layer"><header><span className="kw-layer-no">3층</span><h2>업무별 담당 정본</h2><small>업무 표가 가리키는 기준</small></header>
+        <div className="kw-layer-groups">{ROLE_GROUPS.map(([group])=>{const docs=roleDocs(group);return docs.length?<div className="kw-layer-group" key={group}><h3>{group}<span>{docs.length}</span></h3><ul>{docs.map(r=><li key={r.id}>{docLink(r.id)}{r.scope&&<small>{r.scope}</small>}</li>)}</ul></div>:null;})}
+        {osRules.length>0&&<div className="kw-layer-group"><h3>OS 운영 기준<span>{osRules.length}</span></h3><ul>{osRules.map(d=><li key={d.id}><Link href={`/knowledge/canon/${d.id}`}>{d.title}</Link></li>)}</ul></div>}</div></section>
+      {unmapped.length>0&&<section className="kw-layer kw-layer-loose"><header><span className="kw-layer-no">+</span><h2>업무 표에 없는 정본</h2><small>업무 표에 연결하거나, 참고 원문이면 자료실로 옮기세요</small></header><CanonTable rows={unmapped} people={people} proposals={proposals} overdue={overdue} admin={admin} busy={busy} move={move} library={false}/></section>}
+    </div>:<div className={tab==="library"?"kw-db":""}>
+      {tab==="library"&&<aside className="kw-card kw-categories"><h3>자료 폴더</h3><button aria-pressed={!folder} onClick={()=>query({folder:""})}>전체 폴더</button>{[...folderCounts].sort(([a],[b])=>a.localeCompare(b,"ko")).map(([path,count])=><button key={path} title={path||"분류 없음"} aria-pressed={folder===path} onClick={()=>query({folder:path})}><span className="kw-category-name">{path.includes("/")&&<em>{path.slice(0,path.lastIndexOf("/"))}</em>}{path.slice(path.lastIndexOf("/")+1)||"분류 없음"}</span><small>{count}</small></button>)}</aside>}
+      <div><CanonTable rows={filtered.slice(page*50,(page+1)*50)} people={people} proposals={proposals} overdue={overdue} admin={admin} busy={busy} move={move} library={tab==="library"}/>
+        <div className="kw-toolbar"><button disabled={!page} onClick={()=>setPage(page-1)}>이전</button><small>{page+1} / {Math.max(1,Math.ceil(filtered.length/50))}</small><button disabled={(page+1)*50>=filtered.length} onClick={()=>setPage(page+1)}>다음</button></div></div>
+    </div>}
   </>;
+}
+function CanonTable({rows,people,proposals,overdue,admin,busy,move,library}:{rows:CanonListDocument[];people:Map<string,string>;proposals:Set<string>;overdue:(d:CanonListDocument)=>boolean;admin:boolean;busy:boolean;move:(ids:string[],on:boolean)=>Promise<void>;library:boolean}){
+  return <div className="kw-table-wrap"><table className="kw-table"><thead><tr><th>{library?"자료":"정본"}</th>{!library&&<th>담당자</th>}{!library&&<th>검토일</th>}<th>버전</th><th>수정</th>{admin&&<th><span className="sr-only">옮기기</span></th>}</tr></thead><tbody>{rows.map(d=><tr key={d.id}><td><Link href={`/knowledge/canon/${d.id}`}>{d.title}</Link>{proposals.has(d.id)&&<span className="kw-badge">변경 제안</span>}<small className="kw-row-folder">{d.folder}</small></td>{!library&&<td>{people.get(d.steward_id??"")??"미지정"}</td>}{!library&&<td className={overdue(d)?"kw-danger":""}>{d.review_due_on??"미지정"}</td>}<td>v{d.current_version}</td><td>{kstTime(d.updated_at).slice(0,10)}</td>{admin&&<td><button className="kw-row-move" disabled={busy} onClick={()=>void move([d.id],!library)}>{library?"정본으로":"자료실로"}</button></td>}</tr>)}</tbody></table>{!rows.length&&<Empty>조건에 맞는 문서가 없습니다</Empty>}</div>;
 }
 export function KnowledgeCanonDocument({id}:{id:string}){return <KnowledgeDocumentPage id={id}/>;}
 export function KnowledgeProposalPage({id}:{id:string}){
