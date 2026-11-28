@@ -305,7 +305,7 @@ test("AI 사진: the storyboard may ask for up to 15 (대표 2026-11-29, was 6);
   assert.match(job, /assets\.filter\(\(a\) => "ai" in a\)\.length <= MYIN_AI_PHOTOS_MAX/);
   assert.match(job, /영상 하나에 \$\{MYIN_AI_PHOTOS_MAX\}장까지/, "the card says the same number");
   // 풀링형 화면 리듬 (대표 2026-11-29): only pulling videos get the 3–5 s picture rhythm, ahead of the beat rule.
-  assert.match(job, /\$\{input\.pulling \? `## 풀링형 화면 리듬 \(대표 2026-11-29[^`]*3~5초마다 그림이 바뀌게[^`]*흰 바탕에 작은 글자 몇 줄만 있는 장면은 쓰지 않습니다/);
+  assert.match(job, /\$\{input\.pulling \? `## 풀링형 화면 리듬 \(대표 2026-11-29[\s\S]*?3~5초마다 그림이 바뀌게[\s\S]*?흰 바탕에 작은 글자 몇 줄만 있는 장면은 쓰지 않습니다/);
   assert.match(job, /실존 인물\(연구자 · 저자 등\)은 AI로 만들지 않고/);
   const run = read("lib/server/myin-run.ts");
   assert.match(run, /if \(missing\.length\) \{ after\(\(\) => drawMyinAiPhotos\(saved\.id\)/, "drawn after the answer, not inside it");
