@@ -42,7 +42,7 @@ test("staff see one next step, the request needs only the why line, and the appr
 });
 
 test("the 업무 표 is read from the registries; a role pointing at non-canon or 자료실 is flagged; 자료실 is a list beside the document", async () => {
-  const { parseRegistry, registryIssue, roleGroup } = await import("../lib/knowledge/registry.ts");
+  const { parseRegistry, registryIssue, roleGroup, mergeRoles, REGISTRY_DOCUMENTS, ROUTING_DOCUMENT } = await import("../lib/knowledge/registry.ts");
   const roles = parseRegistry([
     "| 역할키 | 대상 doc_id | 담당 범위 | 별칭 |", "|---|---|---|---|",
     "| `content.advertising` | `6d38e1f4-4722-4ab1-9b26-cf4b378b3188` | 회사 유료 광고 | 메타광고 |",
@@ -52,6 +52,11 @@ test("the 업무 표 is read from the registries; a role pointing at non-canon o
   assert.deepEqual(roles.map(r => [r.key, r.id.slice(0, 8), r.scope]), [["content.advertising", "6d38e1f4", "회사 유료 광고"], ["brand.context", "d92c2bd6", "사업·브랜드 맥락"]]);
   assert.equal(roleGroup("content.advertising.myin"), "콘텐츠 제작");
   assert.equal(roleGroup("diagnosis.report"), "마이인");
+  assert.equal(roleGroup("os.dev-entry"), "OS 운영");
+  // one 업무 표: the routing document is read first and wins a key the old registries still list
+  assert.equal(REGISTRY_DOCUMENTS[0], ROUTING_DOCUMENT);
+  const merged = mergeRoles([[{ key: "brand.context", id: "a", scope: "new" }], [{ key: "brand.context", id: "b", scope: "old" }, { key: "business.advice", id: "c", scope: "" }]]);
+  assert.deepEqual(merged.map(r => [r.key, r.id]), [["brand.context", "a"], ["business.advice", "c"]]);
   assert.equal(registryIssue("canonical", false), null);
   assert.equal(registryIssue("draft", false), "draft");
   assert.equal(registryIssue("team", false, true), "draft");

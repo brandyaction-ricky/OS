@@ -5,7 +5,7 @@ import { createServiceSupabase } from "@/lib/supabase/server";
 import { knowledgeAccessContext } from "@/lib/server/knowledge-access";
 import { POLICY_FIELDS, readableKnowledgePages } from "@/lib/server/knowledge-page-access";
 import type { CanonListDocument, CanonListSnapshot, CanonRole } from "@/lib/knowledge/canon-list";
-import { parseRegistry, registryIssue, REGISTRY_DOCUMENTS } from "@/lib/knowledge/registry";
+import { mergeRoles, parseRegistry, registryIssue, REGISTRY_DOCUMENTS } from "@/lib/knowledge/registry";
 import type { KnowledgeDocument } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -57,9 +57,10 @@ export async function GET(request: Request) {
       }
     };
     const readRoles = async () => {
-      const registries = await service.from("os_documents").select("content_md").in("id", REGISTRY_DOCUMENTS);
+      const registries = await service.from("os_documents").select("id,content_md").in("id", REGISTRY_DOCUMENTS);
       if (registries.error) return [];
-      const roles = (registries.data ?? []).flatMap(row => parseRegistry(row.content_md ?? ""));
+      const rows = [...(registries.data ?? [])].sort((a, b) => REGISTRY_DOCUMENTS.indexOf(a.id) - REGISTRY_DOCUMENTS.indexOf(b.id));
+      const roles = mergeRoles(rows.map(row => parseRegistry(row.content_md ?? "")));
       const targets = await service.from("os_documents").select("id,title,status,owner_only").in("id", [...new Set(roles.map(role => role.id))]);
       return targets.error ? [] : roles.map(role => ({ role, target: (targets.data ?? []).find(row => row.id === role.id) }));
     };
