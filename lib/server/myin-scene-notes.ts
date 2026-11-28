@@ -3,13 +3,14 @@ import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { diagramCatalogCardSection, diagramCatalogTypes } from "@/lib/diagram-catalog";
 import { ApiError } from "@/lib/http";
-import { sameNotes, sceneNow, spliceScene, type SceneNotePin, type SceneProposal } from "@/lib/myin-scene-notes";
+import { sameNotes, sceneNow, spliceScene, spliceScenes, type SceneNotePin, type SceneProposal } from "@/lib/myin-scene-notes";
 import { anchorMyinCues, checkMyinStoryboard } from "@/lib/myin-storyboard";
 import type { OsRecord } from "@/lib/record-types";
 import { editWebShortTexts, WEB_SHORT_SCENES, webShortTextSlots } from "@/lib/web-short-storyboard";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { RequestActor } from "./auth";
 import { readDiagramCatalog } from "./diagram-catalog";
+import { editOrderSchema, submitEditOrder } from "./myin-edit";
 import { myinRunWords, presentMyinRun, saveMyinSceneEdit, sheetsStory, storyboardJson, visibleRun } from "./myin-run";
 
 // 점검 시트 장면 의견 (직원 요청 2026-11-12): a note is a content_feedback item with target "scene" (the 최종 검토 list leaves these out).
@@ -166,6 +167,43 @@ export async function applySceneNote(actor: RequestActor, runId: string, noteId:
   await actor.supabase.from("os_records").update({ status: "done", updated_by: actor.id,
     metadata: { ...(row.metadata as object), status: "done", doneBy: actor.name, doneAt: now, applied: { at: now, by: actor.name, n } } }).eq("id", row.id).eq("version", row.version);
   return presentMyinRun(saved);
+}
+
+/**
+ * 편집 주문으로 보내기 (대표 2026-11-28): once ③ is confirmed the storyboard is no longer changed in place, so after the 완성본 is out the
+ * 수정안 of the chosen notes go to the 영상 편집기 as one edit order — the editor's own path, as an order from the editor's AI chat; the
+ * computer that opens the editor makes the fixed video. One order for all: each order carries the whole storyboard, so a second one
+ * made from the same storyboard would undo the first.
+ */
+export async function orderSceneNotes(actor: RequestActor, runId: string, noteIds: string[]) {
+  const service = createServiceSupabase();
+  const { record, run } = await visibleRun(actor, runId);
+  if (record.stage !== "final_ready" || !run.clipsReview || !run.storyboard) throw new ApiError(409, "SCENE_ORDER_CLOSED", "완성본이 나온 뒤에 편집 주문으로 보낼 수 있어요.");
+  const { data, error } = await actor.supabase.from("os_records").select("*").in("id", noteIds).eq("parent_id", run.sourceId).eq("record_type", "content_feedback").is("archived_at", null);
+  if (error) throw new ApiError(500, "SCENE_NOTES_READ_FAILED", "장면 의견을 읽지 못했어요.");
+  const rows = ((data ?? []) as OsRecord[]).filter((row) => {
+    const m = row.metadata as NoteMeta;
+    return m.target === "scene" && m.scene?.runId === record.id && m.status === "open" && !m.deleted && m.proposal;
+  });
+  if (!rows.length || rows.length !== new Set(noteIds).size) throw new ApiError(409, "SCENE_NOTE_NO_PROPOSAL", "수정안이 온 열린 의견만 보낼 수 있어요. 목록을 다시 열어 주세요.");
+  const story = await storyboardJson(service, run);
+  const picked = rows.map((row) => {
+    const m = row.metadata as NoteMeta & { scene: SceneNotePin; proposal: SceneProposal }, p = m.proposal;
+    const n = sceneNow({ ...m.scene, n: p.base.n, at: String(p.base.scene.at ?? ""), storyboardAt: p.base.storyboardAt }, scenesOf(story), run.storyboard!.at);
+    if (!n) throw new ApiError(409, "SCENE_NOTE_LOST", `「${row.description.slice(0, 30)}」 수정안의 장면을 지금 기획표에서 찾지 못했어요. 의견을 다시 보내 주세요.`);
+    if (!isDeepStrictEqual(JSON.parse(JSON.stringify(story.scenes[n - 1])), JSON.parse(JSON.stringify(p.base.scene))))
+      throw new ApiError(409, "SCENE_CHANGED", `#${n} 장면이 수정안을 만든 뒤 바뀌었어요. 그 의견을 내 AI에 다시 보내 주세요.`);
+    return { row, n, p };
+  }).sort((a, b) => a.n - b.n);
+  if (new Set(picked.map((x) => x.n)).size !== picked.length) throw new ApiError(409, "SCENE_NOTES_SAME_SCENE", "같은 장면의 수정안이 둘 이상이에요. 하나만 골라 주세요.");
+  const next = spliceScenes(story, picked.map((x) => ({ n: x.n, scenes: x.p.scenes })));
+  const order = await submitEditOrder(actor, run.sourceId, editOrderSchema.parse({
+    text: `점검 시트 장면 의견: ${picked.map((x) => `#${x.n} ${x.row.description.trim()}`).join(" / ")}`.slice(0, 2000),
+    meaning: picked.map((x) => `#${x.n} ${x.p.why}`).join(" / ").slice(0, 2000), storyboard: next }));
+  const now = new Date().toISOString();
+  await Promise.all(picked.map(({ row, n }) => actor.supabase.from("os_records").update({ status: "done", updated_by: actor.id,
+    metadata: { ...(row.metadata as object), status: "done", doneBy: actor.name, doneAt: now, ordered: { at: now, by: actor.name, n, orderId: order.orderId } } }).eq("id", row.id).eq("version", row.version)));
+  return { orderId: order.orderId, sent: picked.length, notes: order.notes };
 }
 
 // ── 웹 숏폼 장면 글자 고치기 (대표 2026-11-19): a person edits a scene's text slots in place (no AI round); the changed scenes are drawn

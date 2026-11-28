@@ -542,7 +542,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       {/* 점검 시트 장면 의견 (직원 요청 11-12): the sheets cut into scenes with a note box under each; 내 AI sends a 수정안 per scene, applied one by one. */}
       {run ? <MyinSceneNotes projectId={sourceId} runId={run.id} token={accessToken} short={short} storyboardAt={run.storyboard?.at ?? ""} sheetCount={run.prepared?.sheets ?? 0}
         sheets={sheets} open={sheetsOpen} onOpen={(open) => { setSheetsOpen(open); if (open && !sheets) void showSheets(); }} refresh={`${run.review?.at}|${run.storyboard?.at}|${run.prepared?.at}`}
-        canSend={!materials} canApply={!materials && ["storyboard_review", "clips_review"].includes(run.stage)} onChanged={load} redraw={run.prepared?.redraw ?? null}
+        canSend canApply={!materials && ["storyboard_review", "clips_review"].includes(run.stage)} afterConfirm={materials} canOrder={materials && run.stage === "final_ready"} onChanged={load} redraw={run.prepared?.redraw ?? null}
         onRedraw={() => act("sheets_redraw", () => post("/myin", "PATCH", { action: "sheets_redraw", runId: run.id }))} /> : null}
       {run?.sound?.report ? <details className="yt-details"><summary>자동 선곡표</summary>
         <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, maxHeight: 360, overflow: "auto", margin: 0 }}>{run.sound.report}</pre></details> : null}

@@ -24,9 +24,10 @@ const when = (value: string) => new Date(value).toLocaleString("ko-KR", { month:
  * and applied one by one while the sheets stay open. A sheet is one frame per scene — movement, voice and sound are checked in the
  * 미리보기 · 완성 영상.
  */
-export function MyinSceneNotes({ projectId, runId, token, short, storyboardAt, sheetCount, sheets, open, onOpen, canSend, canApply, onChanged, refresh, redraw, onRedraw }: {
+/** afterConfirm: ③ is confirmed, so a 수정안 no longer changes the storyboard in place; canOrder: the 완성본 is out, so 수정안 go to the 영상 편집기 as one edit order. */
+export function MyinSceneNotes({ projectId, runId, token, short, storyboardAt, sheetCount, sheets, open, onOpen, canSend, canApply, afterConfirm = false, canOrder = false, onChanged, refresh, redraw, onRedraw }: {
   projectId: string; runId: string; token: string | null; short: boolean; storyboardAt: string; sheetCount: number; sheets: SceneSheets | null;
-  open: boolean; onOpen: (open: boolean) => void; canSend: boolean; canApply: boolean; onChanged: () => Promise<void>; refresh: string;
+  open: boolean; onOpen: (open: boolean) => void; canSend: boolean; canApply: boolean; afterConfirm?: boolean; canOrder?: boolean; onChanged: () => Promise<void>; refresh: string;
   redraw: Redraw | null; onRedraw: () => Promise<void> }) {
   const { profile } = useSession();
   const [notes, setNotes] = useState<SceneNote[]>([]);
@@ -93,6 +94,10 @@ export function MyinSceneNotes({ projectId, runId, token, short, storyboardAt, s
       setError(reason instanceof Error ? reason.message : "반영하지 못했어요.");
     } finally { setSaving(""); }
   };
+  // 편집 주문으로 보내기: every 수정안 that came, in one order (each order carries the whole storyboard).
+  const proposed = rows.filter((row) => row.state === "check" && row.note.proposal);
+  const sendOrder = () => write("order", () => apiRequest("/api/v1/content/youtube-automation/myin", { method: "PATCH", token,
+    body: JSON.stringify({ action: "scene_order", runId, noteIds: proposed.map((row) => row.note.id) }) })).then((ok) => { if (ok) void onChanged(); });
   const go = (n: number) => {
     onOpen(true); setShown(n);
     window.setTimeout(() => document.getElementById(`yt-scene-${n}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 400);
@@ -129,7 +134,7 @@ export function MyinSceneNotes({ projectId, runId, token, short, storyboardAt, s
     <span className="yt-scene-text">{note.text}</span>
     {state === "check" ? proposalBox(note) : null}
     <span className="yt-scene-acts">
-      {state === "check" && note.proposal ? <button type="button" className="primary-button compact" disabled={Boolean(saving) || !canApply} title={canApply ? undefined : "기획표 확인 중이거나 ③ 미리보기를 확인할 때 반영할 수 있어요"}
+      {state === "check" && note.proposal && !afterConfirm ? <button type="button" className="primary-button compact" disabled={Boolean(saving) || !canApply} title={canApply ? undefined : "기획표 확인 중이거나 ③ 미리보기를 확인할 때 반영할 수 있어요"}
         onClick={() => void apply(note)}>{saving === note.id ? "반영 중…" : "반영"}</button> : null}
       {state === "done" || state === "declined" ? <button type="button" className="secondary-button compact" disabled={Boolean(saving)} onClick={() => void actOn(note, "reopen")}>다시 열기</button>
         : <button type="button" className="secondary-button compact" disabled={Boolean(saving)} onClick={() => decline(note)}>반영 안 함</button>}
@@ -164,7 +169,12 @@ export function MyinSceneNotes({ projectId, runId, token, short, storyboardAt, s
         {picked.length ? <strong>장면 {rows.filter((row) => picked.includes(row.note.id)).map((row) => row.n ? `#${row.n}` : "?").join(" · ")}</strong> : null}
         <small>의견마다 그 장면만 고친 수정안이 와요. 앞에 보낸 요청이 아직 고치는 중이어도 이어서 보낼 수 있어요. 기획표는 「반영」을 누를 때만 바뀌어요.</small>
       </div> : null}
-      {count("check") ? <p className="yt-note">수정안이 온 의견은 아래 점검 시트의 그 장면에서 수정 전 · 후를 보고 「반영」을 눌러요. 반영하면 바뀐 장면만 시트에 다시 그려져요.</p> : null}
+      {count("check") && !afterConfirm ? <p className="yt-note">수정안이 온 의견은 아래 점검 시트의 그 장면에서 수정 전 · 후를 보고 「반영」을 눌러요. 반영하면 바뀐 장면만 시트에 다시 그려져요.</p> : null}
+      {proposed.length && afterConfirm ? canOrder ? <div className="yt-actions">
+        <button type="button" className="primary-button" disabled={Boolean(saving)} onClick={() => void sendOrder()}>{saving === "order" ? "보내는 중…" : `수정안 ${proposed.length}개 편집 주문으로 보내기`}</button>
+        <strong>장면 {proposed.map((row) => row.n ? `#${row.n}` : "?").join(" · ")}</strong>
+        <small>수정 전 · 후는 아래 점검 시트의 그 장면에서 봐요. 고친 장면만 바꾼 기획표가 편집 주문 하나로 가고, 편집 화면을 연 컴퓨터가 고친 영상을 만들어요. 「완성」을 누르면 새 완성본이 돼요. 안 보낼 수정안은 먼저 「반영 안 함」으로 빼 주세요.</small>
+      </div> : <p className="yt-note">③을 확인한 뒤라 수정안은 기획표에 바로 넣지 않아요. 완성본이 나오면 여기서 편집 주문으로 보내요.</p> : null}
       {error && !open ? <p className="yt-note yt-warn" role="alert">{error}</p> : null}
     </div> : null}
     {sheetCount ? <details className="yt-details" open={open} onToggle={(event) => onOpen((event.target as HTMLDetailsElement).open)}>

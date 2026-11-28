@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { sameNotes, sceneNow, sceneNoteState, sceneWords, spliceScene } from "../lib/myin-scene-notes.ts";
+import { sameNotes, sceneNow, sceneNoteState, sceneWords, spliceScene, spliceScenes } from "../lib/myin-scene-notes.ts";
 
 // 점검 시트 장면 의견 (직원 요청 2026-11-12) and its follow-up: a 수정안 per scene, applied one by one while the sheets stay open.
 const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
@@ -71,4 +71,21 @@ test("여러 장면에 같은 의견 (11-13): the same words read as one comment
   const screen = read("components/myin-scene-notes.tsx");
   assert.match(screen, /for \(const n of order\) ids\.push\(/);
   assert.match(screen, /group\.length === 1 \? listRow\(group\[0\]\) :/);
+});
+
+// 편집 주문으로 보내기 (대표 2026-11-28): after ③ is confirmed and the 완성본 is out, the 수정안 go to the 영상 편집기 as one order.
+test("after the 완성본 the 수정안 go to the editor as one edit order with every fixed scene, and the notes close", () => {
+  const story = { scenes: scenes(["a", "b", "c", "d"]) };
+  assert.deepEqual(spliceScenes(story, [{ n: 2, scenes: scenes(["x", "y"]) }, { n: 4, scenes: scenes(["z"]) }]).scenes.map((sc) => sc.at), ["a", "x", "y", "c", "z"],
+    "a split scene does not move the ones after it, whatever order the notes came in");
+  assert.deepEqual(story.scenes.map((sc) => sc.at), ["a", "b", "c", "d"], "the storyboard read is not changed");
+  const notes = read("lib/server/myin-scene-notes.ts");
+  const order = notes.slice(notes.indexOf("export async function orderSceneNotes"), notes.indexOf("// ── 웹 숏폼"));
+  assert.match(order, /if \(record\.stage !== "final_ready" \|\| !run\.clipsReview \|\| !run\.storyboard\) throw new ApiError\(409, "SCENE_ORDER_CLOSED"/);
+  assert.match(order, /const order = await submitEditOrder\(actor, run\.sourceId, editOrderSchema\.parse\(/, "the editor's own order path (it checks the storyboard again)");
+  assert.match(order, /status: "done", doneBy: actor\.name, doneAt: now, ordered: \{ at: now, by: actor\.name, n, orderId: order\.orderId \}/);
+  assert.doesNotMatch(order, /saveMyinSceneEdit/, "the storyboard the 완성본 was drawn from stays as it is");
+  assert.match(read("app/api/v1/content/youtube-automation/myin/route.ts"), /input\.action === "scene_order" \? await orderSceneNotes\(actor, input\.runId, input\.noteIds\)/);
+  const panel = read("components/myin-v13-panel.tsx");
+  assert.match(panel, /canSend canApply=\{!materials && \["storyboard_review", "clips_review"\]\.includes\(run\.stage\)\} afterConfirm=\{materials\} canOrder=\{materials && run\.stage === "final_ready"\}/);
 });
