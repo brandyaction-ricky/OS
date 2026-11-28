@@ -475,20 +475,21 @@ async function fixConfirmedPlan(actor: RequestActor, project: YpProject) {
 }
 /**
  * 롱폼 애니메이션: the A · B · C picked in the 기획안 arrive in 제작 「최종 썸네일」 as they are (썸네일 자동 제작 2026-11-09). Each PNG is
- * copied to the 제작 folder (YouTube takes it from there); a slot 제작 already filled keeps its file.
+ * copied to the 제작 folder (YouTube takes it from there). A slot 제작 filled itself (다듬기, 완성본 넣기, 다시 고르기) keeps its file; a slot
+ * still holding the 기획안 copy takes the new pick when the 기획안 is reopened and confirmed again (11-28: it kept the first pick).
  */
 async function pickedThumbsToMake(service: Supabase, actor: RequestActor, project: YpProject, make: Awaited<ReturnType<typeof readStages>>["make"], plan: YpPlan, now: string) {
   const thumbs = { ...make.data.thumbs };
   for (const [index, slot] of SLOTS.entries()) {
     const picked = plan.thumbs[index];
-    if (thumbs[slot] || picked?.mode !== "img" || !picked.path || !assetPath(project.id, "plan_thumb").test(picked.path)) continue;
+    if ((thumbs[slot] && thumbs[slot]!.name !== `기획안 ${slot}`) || picked?.mode !== "img" || !picked.path || !assetPath(project.id, "plan_thumb").test(picked.path)) continue;
     if (picked.path.endsWith(".webp") || picked.path.endsWith(".gif")) continue;   // YouTube takes JPEG and PNG only: those wait for 제작
     const path = `youtube/${project.id}/thumb/${randomUUID()}.${picked.path.split(".").pop()}`;
     const { error } = await service.storage.from(MEDIA_BUCKET).copy(picked.path, path);
     if (!error) thumbs[slot] = { path, name: `기획안 ${slot}`, at: now,
       ...(picked.pick && picked.copy ? { edit: { candidate: picked.pick.candidate, copy: { text: picked.copy, accent: picked.pick.accent ?? "" }, ...pickFrame(picked.pick) } } : {}) };
   }
-  if (Object.keys(thumbs).length !== Object.keys(make.data.thumbs).length)
+  if (SLOTS.some(slot => thumbs[slot] !== make.data.thumbs[slot]))
     await writeStage(service, actor.id, actor.team, project, "make", make, { ...make.data, thumbs }).catch(() => undefined);
 }
 

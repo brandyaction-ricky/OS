@@ -64,6 +64,9 @@ test("the AI hands each picture in while it holds the job, and a confirm carries
   const stages = read("lib/server/youtube-process-stages.ts");
   assert.match(stages, /if \(project\.yp\.topic\.type === "anim"\) await pickedThumbsToMake\(service, actor, project, stages\.make, plan, now\);/);
   assert.match(stages, /draftMissing\(stages\.plan\.data, project\.yp\.topic\.type\)/);
+  // a reopened 기획안 confirmed again replaces the slots that still hold its own copy; slots 제작 filled itself stay
+  assert.match(stages, /if \(\(thumbs\[slot\] && thumbs\[slot\]!\.name !== `기획안 \$\{slot\}`\) \|\| picked\?\.mode !== "img"/);
+  assert.match(stages, /if \(SLOTS\.some\(slot => thumbs\[slot\] !== make\.data\.thumbs\[slot\]\)\)/);
   assert.match(read("next.config.ts"), /"\/api\/v1\/content\/youtube\/projects\/\[id\]\/thumbs": \["\.\/lib\/cardnews\/fonts\/Pretendard-900\.otf", /);
 });
 
