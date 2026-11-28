@@ -1,5 +1,5 @@
 // What a video needs next, in one sentence and one button (owner request 2026-10-21: usable without any guide text).
-import { GATE_FIELDS, gateName } from "./confirm.ts";
+import { GATE_FIELDS, gateFields, gateName } from "./confirm.ts";
 import { flowOf, projectHref, stepName, YP_STAGE_INDEX, type YpGate, type YpProject } from "./project.ts";
 
 export type YpTone = "todo" | "wait" | "fix" | "hold" | "done";
@@ -31,7 +31,7 @@ export function nextAction(project: Pick<YpProject, "id" | "yp">): YpNext {
   const gate = GATE_OF[stage];
   const info = gate ? gates[gate] : null;
   if (gate && info?.state === "wait") return { ...base, tone: "wait", text: `${gateName(gate, project.yp.topic.type)} 대기 중 · PD가 직접 컨펌해도 돼요`, button: "컨펌하기" };
-  if (gate && info?.state === "changes") return { ...base, tone: "fix", text: `대표 수정 요청${info.fields?.length ? ` · 짚은 칸: ${info.fields.map(field => GATE_FIELDS[gate][field] ?? field).join(", ")}` : ` · ${info.memo ?? ""}`}`, button: "고치기" };
+  if (gate && info?.state === "changes") return { ...base, tone: "fix", text: `대표 수정 요청${info.fields?.length ? ` · 짚은 칸: ${info.fields.map(field => gateFields(gate, project.yp.topic.type)[field] ?? GATE_FIELDS[gate][field] ?? field).join(", ")}` : ` · ${info.memo ?? ""}`}`, button: "고치기" };
   if (gate && info?.state === "hold") return { ...base, tone: "hold", text: `보류됨${info.reason ? ` · ${info.reason}` : ""}`, button: "손보기" };
   const [text, button] = (project.yp.topic.type === "short" ? SHORT_TODO[stage] : project.yp.topic.type === "card" ? CARD_TODO[stage] : undefined) ?? TODO[stage];
   return { ...base, tone: "todo", text, button };

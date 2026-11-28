@@ -9,7 +9,7 @@ import { imageEstimate } from "@/lib/cost";
 import { cardsForFiles, castCharacters, myGptBatchPrompt, myGptFileName, type CardCharacterView } from "@/lib/cardnews/draw";
 import { unzipImages } from "@/lib/unzip";
 import type { CardDraft, CardPhoto } from "@/lib/cardnews/formats";
-import { referenceSheet } from "./card-draw-panel";
+import { CardImageChoice, referenceSheet } from "./card-draw-panel";
 import { CostTag, useCostConfirm, useCostModels } from "./cost-notice";
 import type { YpPage } from "./youtube-process-frame";
 
@@ -21,6 +21,8 @@ const pictures = async (files: File[]) => (await Promise.all(files.map(file => i
 
 export function CardDrawBatch({ page, projectId, draft, onPlace, onFile }: { page: YpPage; projectId: string; draft: CardDraft;
   onPlace: (index: number, photo: CardPhoto) => void; onFile: (index: number, file: File) => Promise<boolean> }) {
+  const [choices, setChoices] = useState<Record<number, { original: CardPhoto; candidate: CardPhoto }>>({});
+  const clearChoice = (index: number) => setChoices(old => Object.fromEntries(Object.entries(old).filter(([key]) => Number(key) !== index)));
   const [open, setOpen] = useState(false);
   const [characters, setCharacters] = useState<CardCharacterView[] | null>(null);
   const [ticked, setTicked] = useState<number[] | null>(null);
@@ -38,12 +40,13 @@ export function CardDrawBatch({ page, projectId, draft, onPlace, onFile }: { pag
     if (!open || characters || !client) return;
     client.cardCharacters().then(setCharacters, reason => { setCharacters([]); fail(reason); });
   }, [open, characters, client, fail]);
-  const cards = draft.slides.map((slide, index) => ({ slide, index })).filter(({ slide }) => slide.type === "toon" || slide.type === "panel");
+  const cards = draft.slides.map((slide, index) => ({ slide, index })).filter(({ slide }) => (slide.type === "toon" || slide.type === "panel") && !slide.imageLocked);
   const chosen = ticked ?? cards.filter(({ slide }) => !slide.photo).map(({ index }) => index);
   const scene = (index: number) => (draft.slides[index]?.fields.scene ?? "").trim();
   const refsOf = (index: number) => castCharacters(characters ?? [], draft.slides[index]?.fields.cast ?? "");
-  const drawable = chosen.filter(index => [...scene(index)].length >= 2).sort((a, b) => a - b);
-  const amount = drawable.reduce((sum, index) => sum + (imageEstimate(model, "high", refsOf(index).length) ?? 0), 0);
+  const drawable = chosen.filter(index => cards.some(row => row.index === index) && [...scene(index)].length >= 2).sort((a, b) => a - b);
+  const estimate = (indexes: number[]) => indexes.reduce((sum, index) => sum + (imageEstimate(model, "high", refsOf(index).length) ?? 0), 0);
+  const amount = estimate(drawable);
   const set = (index: number, state: CardState) => setStates(current => ({ ...current, [index]: state }));
   // Pictures coming back from ChatGPT go to the card their file name says (「card-05.png」), or else fill the ticked cards in order,
   // skipping the ones already filled.
@@ -87,14 +90,17 @@ export function CardDrawBatch({ page, projectId, draft, onPlace, onFile }: { pag
 
   if (!client) return null;
   const run = async (what: string, work: () => Promise<void>) => { setBusy(what); try { await work(); } catch (reason) { fail(reason); } finally { setBusy(""); } };
-  const drawAll = () => run("api", async () => {
-    if (!await cost.confirm({ model, amount, detail: `그림 ${drawable.length}장 · 장마다 나오는 사람의 캐릭터 그림 참고`, note: "GPT 크레딧(매달 500달러)에서 나가요. 그림은 설명용이에요 — 실제 기록처럼 쓰지 않아요.", ok: `${drawable.length}장 그리기` })) return;
-    const queue = [...drawable];
+  const drawAll = (targets = drawable) => run("api", async () => {
+    if (!await cost.confirm({ model, amount: estimate(targets), detail: `그림 ${targets.length}장 · 장마다 나오는 사람의 캐릭터 그림 참고`, note: "GPT 크레딧(매달 500달러)에서 나가요. 그림은 설명용이에요 — 실제 기록처럼 쓰지 않아요.", ok: `${targets.length}장 그리기` })) return;
+    const queue = [...targets];
     // Three at a time: a picture takes about half a minute.
     await Promise.all(Array.from({ length: Math.min(3, queue.length) }, async () => {
       for (let index = queue.shift(); index !== undefined; index = queue.shift()) {
         set(index, "drawing");
-        try { onPlace(index, await client.cardDraw(projectId, { scene: scene(index), style: "webtoon", quality: "high", refs: refsOf(index).map(row => row.id) })); set(index, "done"); }
+        try { const candidate = await client.cardDraw(projectId, { scene: scene(index), designReference: draft.production?.reference?.purpose === "design" ? draft.production.reference.photo.path : undefined, style: "webtoon", quality: "high", refs: refsOf(index).map(row => row.id) });
+          const original = draft.slides[index].photo;
+          if (original) setChoices(old => ({ ...old, [index]: { original, candidate } })); else onPlace(index, candidate);
+          set(index, "done"); }
         catch { set(index, "fail"); }
       }
     }));
@@ -134,7 +140,8 @@ export function CardDrawBatch({ page, projectId, draft, onPlace, onFile }: { pag
     <ul className="yp-card-batch-list">{cards.map(({ slide, index }) => { const on = chosen.includes(index), state = states[index];
       return <li key={index}><label className={on ? "yp-on" : ""}><input type="checkbox" checked={on} disabled={Boolean(busy)} onChange={() => toggle(index)} aria-label={`${index + 1}장 고르기`} />
         <b>{index + 1}장</b><span>{label(index)}</span>
-        <em>{state === "drawing" ? "그리는 중…" : state === "done" ? "✓ 넣었어요" : state === "fail" ? "못 넣었어요" : slide.photo ? "그림 있음" : [...scene(index)].length < 2 ? "장면 설명 없음" : "그림 없음"}</em></label></li>; })}</ul>
+        <em>{state === "drawing" ? "그리는 중…" : choices[index] ? "비교 대기" : state === "done" ? "✓ 넣었어요" : state === "fail" ? "못 넣었어요" : slide.photo ? "그림 있음" : [...scene(index)].length < 2 ? "장면 설명 없음" : "그림 없음"}</em></label>{state === "fail" && <button className="yp-btn" disabled={Boolean(busy)} onClick={() => void drawAll([index])}>이 장 재시도</button>}
+      {choices[index] && slide.photo?.path === choices[index].original.path && <CardImageChoice page={page} projectId={projectId} label={`${index + 1}장`} {...choices[index]} cancel={() => clearChoice(index)} apply={() => { onPlace(index, choices[index].candidate); clearChoice(index); }} />}</li>; })}</ul>
     <div className="yp-row-btns">
       <button type="button" className="yp-btn yp-pri" disabled={!drawable.length || characters === null || Boolean(busy)} onClick={() => void drawAll()}>{busy === "api" ? "그리는 중 · 장마다 30초쯤" : `회사 API로 ${drawable.length}장 그리기`}</button>
       <CostTag kind="paid" amount={amount} />

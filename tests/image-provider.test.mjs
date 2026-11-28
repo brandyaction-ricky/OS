@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import * as filePromises from "node:fs/promises";
+import * as path from "node:path";
+import { GUIDE_CAST } from "../lib/cardnews/formats.ts";
 import * as crypto from "node:crypto";
 import vm from "node:vm";
 import test from "node:test";
@@ -10,7 +13,7 @@ class ApiError extends Error { constructor(status,code,message) {super(message);
 const source=readFileSync(new URL("../lib/server/card-draw.ts",import.meta.url),"utf8");
 function provider(env,fetch) {
   const compiled={exports:{}};
-  const modules={"node:crypto":crypto,zod,"@/lib/http":{ApiError},"@/lib/cost":{DEFAULT_COST_MODELS:{image:"configured-default"}},
+  const modules={"node:crypto":crypto,"node:fs/promises":filePromises,"node:path":path,"@/lib/cardnews/formats":{GUIDE_CAST},zod,"@/lib/http":{ApiError},"@/lib/cost":{DEFAULT_COST_MODELS:{image:"configured-default"}},
     "@/lib/cardnews/draw":{CARD_DRAW_SCENE_MAX:2000,CARD_DRAW_REFS_MAX:4},"@/lib/supabase/server":{},"./youtube-process":{},"./youtube-process-stages":{}};
   vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,
     {module:compiled,exports:compiled.exports,require:name=>{assert.ok(name in modules,name);return modules[name];},process:{env},fetch,Buffer,FormData,File,AbortSignal,console:{error(){}}});

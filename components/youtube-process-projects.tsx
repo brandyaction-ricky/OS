@@ -5,6 +5,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, Copy, Plus, Radar, RotateCcw, Search, Trash2, X } from "lucide-react";
 import { mayTrash, projectName, searchProjects, stepHref, TRASH_KEEP_DAYS, trashDaysLeft, YP_KIND_SHORT, type YpProject, type YpTrashed } from "@/lib/youtube-process/project";
 import { nextAction } from "@/lib/youtube-process/next";
+import { CardStart } from "./youtube-process-card";
+import { isCardTestProject } from "@/lib/cardnews/sources";
+import { LIBRARY_LABELS, libraryCategory } from "@/lib/cardnews/categories";
+import { CardIdentity, CategoryFilters, type CategoryFilter } from "./card-library-category";
 import { TopicHub } from "./topic-hub";
 import { isTopicPlatform, projectPlatform, TOPIC_PLATFORMS } from "@/lib/content-platforms";
 import { useSession } from "./session-provider";
@@ -14,7 +18,7 @@ import { md } from "./youtube-process-frame";
 import { channelOf } from "@/lib/youtube-process/channel-style";
 import { useChannelCards } from "./youtube-channel-styles";
 
-type Filter = "open" | "mine" | "done" | "trash";
+type Filter = "open" | "mine" | "done" | "unpublished" | "trash";
 
 /** 내 영상 (S1, redesigned 2026-10-21 so it reads without a guide): new video in one line, then each video with what it needs next. */
 export function YoutubeProjectsScreen() {
@@ -24,6 +28,14 @@ export function YoutubeProjectsScreen() {
   // 내 롱폼 · 숏폼 · 광고 영상 (side menu, owner 2026-10-29): the same list for one platform; no ?platform= shows every video.
   const asked = search.get("platform");
   const platform = isTopicPlatform(asked) && asked !== "threads" ? asked : null;
+  const cardLibrary = platform === "card" && !discover;
+  const selected = search.get("category");
+  const category = cardLibrary && selected && Object.hasOwn(LIBRARY_LABELS, selected) ? selected as CategoryFilter : "all";
+  const changeCategoryFilter = (value: CategoryFilter) => {
+    const params = new URLSearchParams(search.toString());
+    if (value === "all") params.delete("category"); else params.set("category", value);
+    router.replace(`/content/projects?${params}`, { scroll: false });
+  };
   const { accessToken, demo, profile } = useSession();
   const client = useMemo(() => youtubeProcessClient(accessToken, demo), [accessToken, demo]);
   const canConfirm = useYoutubeCanConfirm(true, accessToken, demo, profile?.role === "admin");
@@ -34,6 +46,10 @@ export function YoutubeProjectsScreen() {
   // ?filter=done opens 끝난 영상 (한눈에 보기 「끝」 카드).
   const [filter, setFilter] = useState<Filter>(() => search.get("filter") === "done" ? "done" : "open");
   const [query, setQuery] = useState("");
+  const startCard = useRef<HTMLDialogElement>(null);
+  const [showTests, setShowTests] = useState(false);
+  const [categoryNotice, setCategoryNotice] = useState("");
+  const [cardSheet, setCardSheet] = useState(false);
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
@@ -58,11 +74,12 @@ export function YoutubeProjectsScreen() {
   useEffect(() => {
     if (!client) return;
     let active = true;
-    Promise.all([client.list(), client.members().catch(() => [] as YpMember[]), client.legacy().catch(() => [] as YpLegacyTopic[]), client.trashList().catch(() => [])])
+    const trash = cardLibrary ? client.trashList(true) : client.trashList().catch(() => []);
+    Promise.all([client.list(cardLibrary), client.members().catch(() => [] as YpMember[]), client.legacy().catch(() => [] as YpLegacyTopic[]), trash])
       .then(([list, people, old, bin]) => { if (active) { setProjects(list); setMembers(people); setLegacy(old); setTrashed(bin); setError(""); } })
       .catch(reason => { if (active) setError(errorMessage(reason)); });
     return () => { active = false; };
-  }, [client, attempt]);
+  }, [client, attempt, cardLibrary]);
 
   const create = async () => {
     if (!client || !title.trim()) return;
@@ -88,16 +105,22 @@ export function YoutubeProjectsScreen() {
   const openCopy = (project: YpProject) => { setCopying(project); copyDialog.current?.showModal(); };
   const openPurge = (item: YpTrashed) => { setPurging(item); setReason(""); setSure(false); purgeDialog.current?.showModal(); };
 
-  const all = (projects ?? []).filter(project => (!platform || projectPlatform(project.yp.topic) === platform) && inChannel(project));
+  const all = (projects ?? []).filter(project => (!platform || projectPlatform(project.yp.topic) === platform) && inChannel(project) && (platform !== "card" || showTests || !isCardTestProject(project)));
   const sorted = [...all].sort((a, b) => {
     // What needs someone first (수정 요청, then work to do), waiting ones after, finished last; newest edit first within.
     const rank = (project: YpProject) => ({ fix: 0, todo: 1, hold: 2, wait: 3, done: 4 })[nextAction(project).tone];
     return rank(a) - rank(b) || b.yp.contentUpdatedAt.localeCompare(a.yp.contentUpdatedAt);
   });
-  const trashedHere = trashed.filter(item => (!platform || projectPlatform(item.project.yp.topic) === platform) && inChannel(item.project));
-  const counts = { open: all.filter(row => row.yp.stage !== "done").length, mine: all.filter(row => row.yp.stage !== "done" && row.assigneeId === profile?.id).length, done: all.filter(row => row.yp.stage === "done").length, trash: trashedHere.length };
-  const shown = searchProjects(sorted, query).filter(row => filter === "done" ? row.yp.stage === "done" : row.yp.stage !== "done" && (filter === "open" || row.assigneeId === profile?.id));
-  const legacyShown = filter === "done" || filter === "trash" || (platform && platform !== "longform") ? [] : legacy.filter(topic => !query.trim() || topic.title.toLocaleLowerCase("ko-KR").includes(query.trim().toLocaleLowerCase("ko-KR")));
+  const trashedHere = trashed.filter(item => (!platform || projectPlatform(item.project.yp.topic) === platform) && inChannel(item.project) && (!cardLibrary || showTests || !isCardTestProject(item.project)));
+  const unposted = (project: YpProject) => project.yp.stage === "done" && project.yp.topic.type === "card" && project.yp.cardPublication?.status !== "published";
+  const counts = { open: all.filter(row => row.yp.stage !== "done").length, mine: all.filter(row => row.yp.stage !== "done" && row.assigneeId === profile?.id).length,
+    done: all.filter(row => row.yp.stage === "done" && !unposted(row)).length, unpublished: all.filter(unposted).length, trash: trashedHere.length };
+  const inView = searchProjects(sorted, query).filter(row => filter === "unpublished" ? unposted(row) : filter === "done" ? row.yp.stage === "done" && !unposted(row) : row.yp.stage !== "done" && (filter === "open" || row.assigneeId === profile?.id));
+  const inCategory = (row: YpProject) => category === "all" || libraryCategory(row.yp.cardCategory, row.cardSummary) === category;
+  const shown = inView.filter(inCategory);
+  const binSearch = trashedHere.filter(item => !query.trim() || projectName(item.project).toLocaleLowerCase("ko-KR").includes(query.trim().toLocaleLowerCase("ko-KR")));
+  const binShown = binSearch.filter(item => inCategory(item.project));
+  const legacyShown = filter === "unpublished" || filter === "done" || filter === "trash" || (platform && platform !== "longform") ? [] : legacy.filter(topic => !query.trim() || topic.title.toLocaleLowerCase("ko-KR").includes(query.trim().toLocaleLowerCase("ko-KR")));
   const waitingMine = canConfirm ? all.filter(row => nextAction(row).tone === "wait").length : 0;
   const pdName = (id: string | null) => members.find(member => member.id === id)?.name ?? "";
 
@@ -107,65 +130,80 @@ export function YoutubeProjectsScreen() {
     <div className="yp-mv-head"><h1 className="page-title" data-ui="page-title">{platform === "card" ? "내 카드뉴스" : platform ? `내 ${TOPIC_PLATFORMS[platform].label} 영상` : "내 영상"}</h1><span style={{ flex: 1 }} />
       <Link className="yp-btn yp-lg" href={platform ? `/content/projects?view=discover&platform=${platform}` : "/content/projects?view=discover&tab=discovery"}><Radar size={16} aria-hidden="true" /> 주제 찾기</Link>
       {/* A 숏폼 or 광고 starts from 주제 찾기 (its draft keywords make the project); a 롱폼 can start from one line here. */}
+      {platform === "card" && <button type="button" className="yp-btn yp-pri yp-lg" onClick={() => { setCardSheet(true); startCard.current?.showModal(); }}><Plus size={16} />새 카드뉴스</button>}
       {platform && platform !== "longform" ? null : <button type="button" className="yp-btn yp-pri yp-lg" onClick={() => setCreating(true)}><Plus size={16} aria-hidden="true" /> 새 영상 만들기</button>}</div>
+    {platform === "card" && <dialog ref={startCard} className="yp-modal" aria-label="새 카드뉴스" onClose={() => setCardSheet(false)}><div className="yp-modal-h"><strong>새 카드뉴스</strong><span className="yp-sp"/><button className="yp-btn" onClick={() => startCard.current?.close()}>닫기</button></div>{cardSheet && <div className="yp-card-b"><CardStart sheet /></div>}</dialog>}
     {creating ? <form className="yp-mv-new" onSubmit={event => { event.preventDefault(); void create(); }}>
       <input className="yp-in" autoFocus maxLength={200} placeholder="어떤 영상을 만들까요? 예) 하루 일이 두 개뿐인데 저녁마다 지치는 이유" aria-label="새 영상 주제" value={title} onChange={event => setTitle(event.target.value)} />
       <button type="submit" className="yp-btn yp-pri" disabled={busy || !title.trim()}>{busy ? "만드는 중…" : "시작하기"} <ArrowRight size={14} aria-hidden="true" /></button>
       <button type="button" className="yp-ib" aria-label="닫기" onClick={() => { setCreating(false); setTitle(""); }}><X size={14} /></button></form> : null}
-    {waitingMine ? <div className="yp-note yp-warn" role="status"><div>컨펌을 기다리는 영상이 <b>{waitingMine}개</b> 있어요. <Link className="yp-lnk" href="/content/confirm">컨펌하러 가기 →</Link></div></div> : null}
+    {waitingMine ? <div className="yp-note yp-warn" role="status"><div>컨펌을 기다리는 {platform === "card" ? "카드뉴스가" : "영상이"} <b>{waitingMine}개</b> 있어요. <Link className="yp-lnk" href="/content/confirm">컨펌하러 가기 →</Link></div></div> : null}
     {error ? <div className="yp-note yp-warn" role="alert"><div>{error} <button type="button" className="yp-lnk" onClick={() => setAttempt(value => value + 1)}>다시 불러오기</button></div></div> : null}
     {projects === null && !error ? <p className="yp-hint" role="status">불러오는 중이에요…</p>
       : <>
-        <div className="yp-mv-filters">
-          <div className="yp-seg2" role="tablist" aria-label="보기">{([["open", "진행 중"], ["mine", "내가 담당"], ["done", "끝난 영상"], ["trash", "휴지통"]] as const).map(([key, label]) =>
+        <div className={`yp-mv-filters${cardLibrary ? " yp-library-toolbar" : ""}`}>
+          <div className="yp-seg2" role="tablist" aria-label="보기">{([["open", "진행 중"], ["mine", "내가 담당"], ["done", platform === "card" ? "끝난 카드뉴스" : "끝난 영상"], ["unpublished", "미게시 · 기록 확인"], ["trash", "휴지통"]] as const).filter(([key]) => key !== "unpublished" || counts.unpublished > 0 || filter === key).map(([key, label]) =>
             <button key={key} type="button" role="tab" aria-selected={filter === key} className={filter === key ? "yp-on" : ""} onClick={() => setFilter(key)}>{label} {counts[key] + (key === "open" && (!platform || platform === "longform") ? legacy.length : 0)}</button>)}</div>
           <label className="yp-platform-filter"><span>플랫폼</span><select className="yp-in" aria-label="영상 플랫폼" value={platform ?? "all"} onChange={event => {
             const params = new URLSearchParams(search.toString());
+            params.delete("category");
             if (event.target.value === "all") params.delete("platform"); else params.set("platform", event.target.value);
             router.replace(`/content/projects${params.size ? `?${params}` : ""}`, { scroll: false });
           }}><option value="all">전체 플랫폼</option>{(["card", "ad", "short", "longform"] as const).map(key => <option key={key} value={key}>{TOPIC_PLATFORMS[key].label}</option>)}</select></label>
           {many ? <label className="yp-platform-filter"><span>채널</span><select className="yp-in" aria-label="채널" value={channel} onChange={event => setChannel(event.target.value)}>
             <option value="all">전체 채널</option>{channels.map(card => <option key={card.id} value={card.id}>{card.name}</option>)}</select></label> : null}
           <span className="yp-sp" />
-          <div className="yp-psearch"><Search size={15} className="yp-i" aria-hidden="true" /><input className="yp-in" placeholder="영상 이름으로 찾기" aria-label="영상 검색" value={query} onChange={event => setQuery(event.target.value)} /></div>
+          {platform === "card" && <label><input type="checkbox" checked={showTests} onChange={e => setShowTests(e.target.checked)} /> 시험·복사본 포함</label>}
+          <div className="yp-psearch"><Search size={15} className="yp-i" aria-hidden="true" /><input className="yp-in" placeholder={platform === "card" ? "카드뉴스 제목으로 찾기" : "영상 이름으로 찾기"} aria-label={platform === "card" ? "카드뉴스 검색" : "영상 검색"} value={query} onChange={event => setQuery(event.target.value)} /></div>
         </div>
+        {cardLibrary && <><CategoryFilters projects={filter === "trash" ? binSearch.map(item => item.project) : inView} value={category} onChange={changeCategoryFilter} />
+          <span className="yp-library-announcement" role="status">{categoryNotice}</span></>}
         {!projects?.length && !legacy.length && !trashed.length && !platform ? <div className="yp-mv-empty"><b>첫 영상을 만들어 보세요</b><span className="yp-muted">주제 한 줄만 쓰면 시작돼요. 나머지는 화면이 차례로 알려 줘요.</span>
           <button type="button" className="yp-btn yp-pri yp-lg" onClick={() => setCreating(true)}><Plus size={16} aria-hidden="true" /> 새 영상 만들기</button></div>
-          : filter === "trash" ? <div className="yp-mv-list">
-          <p className="yp-hint" style={{ margin: "0 0 4px" }}>지운 영상은 {TRASH_KEEP_DAYS}일 동안 여기 있어요. [복구]하면 하던 단계 그대로 돌아와요. {TRASH_KEEP_DAYS}일이 지나면 관리자가 영구 삭제할 수 있어요.</p>
-          {trashedHere.filter(item => !query.trim() || projectName(item.project).toLocaleLowerCase("ko-KR").includes(query.trim().toLocaleLowerCase("ko-KR"))).map(item => { const left = trashDaysLeft(item.trash.at);
+          : filter === "trash" ? <div className={`yp-mv-list${cardLibrary ? " yp-library-list" : ""}`}>
+          <p className="yp-hint" style={{ margin: "0 0 4px" }}>지운 {cardLibrary ? "카드뉴스는" : "영상은"} {TRASH_KEEP_DAYS}일 동안 여기 있어요. [복구]하면 하던 단계 그대로 돌아와요. {TRASH_KEEP_DAYS}일이 지나면 관리자가 영구 삭제할 수 있어요.</p>
+          {binShown.map(item => { const left = trashDaysLeft(item.trash.at);
             return <div key={item.project.id} className="yp-mv">
-              <div className="yp-mv-m"><div className="yp-mv-th"><span className="yp-mv-t" title={projectName(item.project)}>{projectName(item.project)}</span></div>
+              <div className="yp-mv-m">{cardLibrary && <CardIdentity project={item.project} />}<div className="yp-mv-th"><span className="yp-mv-t" title={projectName(item.project)}>{projectName(item.project)}</span></div>
                 <div className="yp-mv-s yp-wait">{item.trash.name}님이 {md(item.trash.at)}에 지웠어요{item.trash.reason ? ` · ${item.trash.reason}` : ""}</div></div>
               <div className="yp-mv-bar"><span>{left > 0 ? `보관 ${left}일 남음` : "영구 삭제할 수 있어요"}</span><span className="yp-mv-track"><i className="yp-wait" style={{ width: `${Math.round(left / TRASH_KEEP_DAYS * 100)}%` }} /></span></div>
               <div className="yp-mv-pd">{nextAction(item.project).stepName} 단계에서 멈춤</div>
               <div className="yp-mv-act">{item.canManage ? <button type="button" className="yp-btn" disabled={busy} onClick={() => void act(() => client!.restore(item.project.id))}><RotateCcw size={14} aria-hidden="true" /> 복구</button> : null}
                 {admin && left === 0 ? <button type="button" className="yp-btn yp-danger" disabled={busy} onClick={() => openPurge(item)}>영구 삭제</button> : null}</div>
             </div>; })}
-          {!trashed.length ? <p className="yp-pempty">휴지통이 비었어요</p> : null}
-        </div> : <div className="yp-mv-list">
+          {!binShown.length ? <p className="yp-pempty">{category !== "all" ? `휴지통에 ${LIBRARY_LABELS[category]} 카드뉴스가 없어요` : query ? "검색 결과가 없어요" : "휴지통이 비었어요"}</p> : null}
+        </div> : <div className={`yp-mv-list${cardLibrary ? " yp-library-list" : ""}`}>
           {shown.map(project => { const next = nextAction(project); const pd = pdName(project.assigneeId);
             // One grid per row (owner request 2026-10-25): title and next step · progress · PD · button line up down the list.
             // The platform as 주제 찾기 names it, in its colour: 롱폼 · 숏폼 · 릴스 · 광고.
             const platform = project.yp.topic.type ? projectPlatform(project.yp.topic) : null;
+            const canMarkTest = demo || mayTrash(project, profile?.id, admin);
+            const testSuggestion = !project.yp.isTest && /\[(?:QA|시험|테스트|시안)[^\]]*\]|\(복사본\)/i.test(project.title);
             const kind = platform ? TOPIC_PLATFORMS[platform].label : null;
             const currentStep = Math.min(next.step + 1, next.total);
             return <div key={project.id} className="yp-mv">
               {/* 로건 QA 10/30: 실사 or 애니메이션 and the last change tell same-titled rows and copies apart without opening them. */}
-              <div className="yp-mv-m"><div className="yp-mv-th">{many ? <span className="yp-tag">{channelOf(channels, project.yp.topic.channel)?.name}</span> : null}{kind ? <span className={`yp-tag yp-pf-tag yp-pf-${platform}`}>{kind}</span> : null}
+              <div className="yp-mv-m">{cardLibrary && <CardIdentity project={project} disabled={busy} onChange={canMarkTest ? value => void act(async () => {
+                await client!.update(project.id, project.version, { cardCategory: value });
+                setCategoryNotice(`${projectName(project)} 카테고리를 ${value ? LIBRARY_LABELS[value] : "자동 분류"}로 저장했어요.`);
+              }) : undefined} />}
+                <div className="yp-mv-th">{many ? <span className="yp-tag">{channelOf(channels, project.yp.topic.channel)?.name}</span> : null}{kind && !cardLibrary ? <span className={`yp-tag yp-pf-tag yp-pf-${platform}`}>{kind}</span> : null}
                 {project.yp.topic.type === "live" || project.yp.topic.type === "anim" ? <span className="yp-tag">{YP_KIND_SHORT[project.yp.topic.type]}</span> : null}
+                {project.yp.isTest ? <span className="yp-tag">시험</span> : null}
                 <Link href={next.href} className="yp-mv-t" title={projectName(project)}>{projectName(project)}</Link></div>
-                <div className={`yp-mv-s yp-${next.tone}`}>{next.text}<span className="yp-muted"> · 고친 날 {md(project.yp.contentUpdatedAt)}</span></div></div>
+                {cardLibrary && next.tone === "todo" && project.yp.stage !== "done" ? <div className="yp-library-meta">{project.yp.cardFrom && <span>{{ longform: "롱폼", short: "숏폼", threads: "스레드" }[project.yp.cardFrom.kind]}에서 가져옴 · </span>}수정 {md(project.yp.contentUpdatedAt)}</div>
+                  : <div className={`yp-mv-s yp-${next.tone}`}>{next.text}<span className="yp-muted"> · 고친 날 {md(project.yp.contentUpdatedAt)}</span></div>}</div>
               <div className="yp-mv-bar"><span>{currentStep}/{next.total} · {next.stepName}</span><span className="yp-mv-track" aria-hidden="true"><i className={`yp-${next.tone}`} style={{ width: `${currentStep / next.total * 100}%` }} /></span></div>
               <div className="yp-mv-pd">{pd ? <><span className="yp-mv-av" aria-hidden="true">{pd.slice(0, 1)}</span>{pd}</> : <span className="yp-muted">담당 없음</span>}</div>
               <div className="yp-mv-act"><Link className={`yp-btn${next.tone === "todo" || next.tone === "fix" ? " yp-pri" : ""}`} href={next.href}>{next.button}{next.tone === "todo" || next.tone === "fix" ? <ArrowRight size={14} aria-hidden="true" /> : null}</Link>
+                {canMarkTest && <button type="button" className="yp-btn yp-sm" aria-pressed={Boolean(project.yp.isTest)} disabled={busy} title="결정함·스케줄·정본 통계의 시험 분류" onClick={() => void act(async () => { await client!.update(project.id, project.version, { isTest: !project.yp.isTest }); })}>{project.yp.isTest ? "시험 해제" : testSuggestion ? "시험 표시 제안" : "시험 표시"}</button>}
                 <button type="button" className="yp-ib" aria-label={`${projectName(project)} 복제`} title="복제" onClick={() => openCopy(project)}><Copy size={15} /></button>
                 {mayTrash(project, profile?.id, admin) ? <button type="button" className="yp-ib" aria-label={`${projectName(project)} 삭제`} title="휴지통으로" onClick={() => openTrash(project)}><Trash2 size={15} /></button> : null}</div>
             </div>; })}
           {legacyShown.map(topic => <div key={topic.id} className="yp-mv">
             <div className="yp-mv-m"><div className="yp-mv-t" title={topic.title}>{topic.title}</div><div className="yp-mv-s">이전 화면에서 하던 영상이에요. 옮기면 여기서 이어서 해요.</div></div>
             <button type="button" className="yp-btn yp-pri" onClick={() => { setMoving(topic); moveDialog.current?.showModal(); }}>옮겨서 이어 하기 <ArrowRight size={14} aria-hidden="true" /></button></div>)}
-          {!shown.length && !legacyShown.length ? <p className="yp-pempty">{query.trim() ? "찾는 영상이 없어요" : filter === "done" ? "아직 끝난 영상이 없어요" : filter === "mine" ? "내가 담당한 영상이 없어요" : "진행 중인 영상이 없어요"}</p> : null}
+          {!shown.length && !legacyShown.length ? <p className="yp-pempty">{cardLibrary && category !== "all" ? <>{LIBRARY_LABELS[category]}에서 표시할 카드뉴스가 없어요. <button type="button" className="yp-lnk" onClick={() => changeCategoryFilter("all")}>전체 카테고리 보기</button></> : platform === "card" ? (query.trim() ? "찾는 카드뉴스가 없어요" : filter === "done" ? "아직 끝난 카드뉴스가 없어요" : "표시할 카드뉴스가 없어요") : query.trim() ? "찾는 영상이 없어요" : filter === "done" ? "아직 끝난 영상이 없어요" : filter === "mine" ? "내가 담당한 영상이 없어요" : "진행 중인 영상이 없어요"}</p> : null}
         </div>}
       </>}
 

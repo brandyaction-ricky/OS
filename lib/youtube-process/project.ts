@@ -1,5 +1,6 @@
 // 유튜브 공정 v1 project rules shared by the API, the screens and the demo store (지시서 6-2 · 8-1).
 import { editableFields } from "./confirm.ts";
+import type { CardCategory, CardListSummary } from "../cardnews/categories.ts";
 export type YpStage = "topic" | "draft" | "outline" | "make" | "review" | "upload" | "shorts" | "done";
 export type YpKind = "live" | "anim" | "short" | "card";
 export type YpGate = "topic" | "draft" | "review" | "shorts";
@@ -16,6 +17,10 @@ export interface YpRef { url: string; videoId?: string; title?: string }
 export interface YpTopic { type: YpKind | null; target: string; note: string; refs: YpRef[]; purpose?: "ad" | null; channel?: string }
 export interface YpMeta {
   v: 1; stage: YpStage; topic: YpTopic; gates: Record<YpGate, YpGateInfo>; contentUpdatedAt: string; multiFrom?: string;
+  isTest?: boolean;
+  cardCategory?: CardCategory | null;
+  stageEnteredAt?: string;
+  cardPublication?: { status: "published" | "withheld"; at: string; urls: string[]; posts?: { episode: number; url: string }[]; reason?: string };
   /** 쇼츠 확정 by the PD (owner decision 2026-10-25): each confirmed clip's script as it was confirmed (clipSignature); a later change needs a new 확정. */
   shortsConfirmed?: { at: string; by: string; clips: Record<string, string> };
   /** 쇼츠 확정 · 코멘트 기록, newest last: the 대표 reads it in 대표 메뉴 › 컨펌 and comments when something should change. */
@@ -30,7 +35,7 @@ export interface YpMeta {
   recycle?: { projectId: string; title: string; runId: string; cuts: [number, number][] };
 }
 export interface YpShortsLogEntry { at: string; by: string; byName: string; kind: "confirm" | "comment"; text: string; count?: number }
-export interface YpProject { id: string; version: number; title: string; assigneeId: string | null; ownerId: string; updatedAt: string; yp: YpMeta }
+export interface YpProject { id: string; version: number; title: string; assigneeId: string | null; ownerId: string; updatedAt: string; yp: YpMeta; cardSummary?: CardListSummary }
 
 export const YP_FLOW = ["주제", "기획안", "구성안", "제작", "최종 검토", "업로드", "쇼츠 · 칼럼"] as const;
 export const YP_STAGE_INDEX: Record<YpStage, number> = { topic: 0, draft: 1, outline: 2, make: 3, review: 4, upload: 5, shorts: 6, done: 7 };
@@ -131,6 +136,7 @@ export function topicEditable(project: Pick<YpProject, "yp">) {
 /** Topic edit keys (API and form) and the field keys the approver ticks. */
 export const TOPIC_FIELD_OF = { title: "topic.title", kind: "topic.type", target: "topic.target", refs: "topic.refs", note: "topic.note", purpose: "topic.type", channel: "topic.type" } as const;
 export function topicFieldEditable(project: Pick<YpProject, "yp">, key: keyof typeof TOPIC_FIELD_OF) {
+  if (project.yp.topic.type === "card" && project.yp.stage === "draft" && project.yp.gates.draft.state === "none" && (key === "title" || key === "target")) return true;
   const fields = editableFields(project, "topic");
   return fields === "all" || fields.includes(TOPIC_FIELD_OF[key]);
 }

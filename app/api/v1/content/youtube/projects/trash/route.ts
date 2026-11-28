@@ -10,6 +10,6 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   try {
     const actor = await youtubeActor(request);
-    return NextResponse.json({ items: await listYoutubeTrash(actor) }, { headers: { "cache-control": "private, no-store" } });
+    return NextResponse.json({ items: await listYoutubeTrash(actor, new URL(request.url).searchParams.get("cardLibrary") === "1") }, { headers: { "cache-control": "private, no-store" } });
   } catch (error) { return apiErrorResponse(error); }
 }

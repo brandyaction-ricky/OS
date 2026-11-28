@@ -1,17 +1,25 @@
 "use client";
 import Link from "next/link";
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, useSyncExternalStore, useState, type ReactNode } from "react";
 import { ArrowRight, ChevronDown, ChevronRight, Clock, Folder } from "lucide-react";
 import { flowOf, projectName, stepHref, YP_FLOW, YP_STAGE_INDEX, type YpProject } from "@/lib/youtube-process/project";
 
 /** The one 'what to do now' control at the right of the progress line (지시서 4-1 표). */
 export type YpAction =
-  | { kind: "button"; label: string; onClick: () => void; reason?: string; busy?: boolean; /** Shown before the button at the end of the step only. */ extra?: ReactNode }
+  | { kind: "button"; label: string; onClick: () => void; reason?: string; busy?: boolean; /** Shown before the button at the end of the step only. */ extra?: ReactNode; notice?: ReactNode }
   | { kind: "status"; status: string; secondary?: { label: string; onClick: () => void } }
   | { kind: "link"; label: string; href: string };
 
 /** S0 진행 줄: project, its steps (past ones ✓; a 숏폼 has four), the step on screen, and the action. */
-export function YoutubeFlow({ project, view, action }: { project: YpProject; view: number; action: YpAction }) {
+const mobileQuery = "(max-width: 700px)";
+function watchMobile(listener: () => void) {
+  const media = window.matchMedia(mobileQuery);
+  media.addEventListener("change", listener);
+  return () => media.removeEventListener("change", listener);
+}
+export function YoutubeFlow({ project, view, action: mainAction, mobileAction }: { project: YpProject; view: number; action: YpAction; mobileAction?: YpAction }) {
+  const mobile = useSyncExternalStore(watchMobile, () => window.matchMedia(mobileQuery).matches, () => false);
+  const action = mobile && mobileAction ? mobileAction : mainAction;
   const current = project.yp.stage === "done" ? YP_FLOW.length : YP_STAGE_INDEX[project.yp.stage];
   const [open, setOpen] = useState(false);
   const name = projectName(project);
@@ -19,7 +27,7 @@ export function YoutubeFlow({ project, view, action }: { project: YpProject; vie
   const shown = flow.find(step => step.index === view) ?? flow[0];
   const card = project.yp.topic.type === "card";
   return <div className={`yp-flow${card ? " yp-card-flow" : ""}`}>
-    <Link className="yp-fl-proj" href="/content/projects" title="내 영상으로"><Folder size={15} className="yp-i" aria-hidden="true" /><span>{name}</span></Link>
+    <Link className="yp-fl-proj" href={card ? "/content/projects?platform=card" : "/content/projects"} title={card ? "내 카드뉴스로" : "내 영상으로"}><Folder size={15} className="yp-i" aria-hidden="true" /><span>{name}</span></Link>
     <ol className="yp-fl-steps" aria-label="공정 흐름">
       {flow.map(({ index, name: step }, at) => {
         const state = index < current ? "yp-done" : index === current ? "yp-now" : "";
@@ -47,6 +55,7 @@ export function YoutubeFlow({ project, view, action }: { project: YpProject; vie
       </> : action.kind === "link"
         ? <Link className="yp-btn yp-pri yp-lg" href={action.href}>{action.label}<ArrowRight size={16} aria-hidden="true" /></Link>
         : <>
+          {action.notice}
           {action.reason ? <span className="yp-fl-hint" id="yp-fl-hint">{action.reason}</span> : null}
           <button type="button" className="yp-btn yp-pri yp-lg" disabled={Boolean(action.reason) || action.busy} aria-describedby={action.reason ? "yp-fl-hint" : undefined} title={action.reason || undefined} onClick={action.onClick}>
             {action.busy ? "처리 중…" : action.label}<ArrowRight size={16} aria-hidden="true" />

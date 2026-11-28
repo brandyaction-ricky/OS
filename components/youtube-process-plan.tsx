@@ -21,6 +21,7 @@ import { ShortTopicResearch } from "./youtube-process-short-script";
 import { TopicFormulas, TopicRefSearch } from "./youtube-process-topic-research";
 import { noteWithPick } from "@/lib/youtube-process/topic-research";
 import { channelFormats, channelOf, formatOfKind } from "@/lib/youtube-process/channel-style";
+import { useImageProductCatalog } from "./use-image-product-catalog";
 import { useChannelCards } from "./youtube-channel-styles";
 
 const LAST_KEY = "brandy-yp-last-project";
@@ -68,6 +69,9 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
   const [members, setMembers] = useState<YpMember[]>([]);
   const [form, setForm] = useState<Form>({ title: "", kind: null, target: "", note: "", refs: [], purpose: null, channel: null, assigneeId: null });
   const channels = useChannelCards();
+  const catalog = useImageProductCatalog(false, undefined, form.kind === "card");
+  const audiences = [...new Map((catalog.result?.items ?? []).filter(row => row.audience.trim() && row.audience.length <= 300)
+    .map(row => [row.audience, row])).values()];
   const [dirty, setDirty] = useState(false);
   const [savedAt, setSavedAt] = useState("");
   // 로건 피드백 10/26-1: a failed save left the old 「저장됨」 stamp, so it read as saved.
@@ -291,7 +295,12 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
           </div> : null}
         </Field>
         <Field n={3} title="정밀 타겟" question="어떤 질문을 품은 사람이 볼까요?" need rev={rev("topic.target")}>
-          <div className="yp-max720"><textarea className="yp-in yp-autogrow" id="yp-topic-target" rows={2} aria-label="정밀 타겟" placeholder="예) 내가 뭘 원하는지 모르겠다는 말을 자주 하는 사람" readOnly={!open("target")} value={form.target} onChange={event => edit({ target: event.target.value.replace(/\n/g, " ") })} />
+          <div className="yp-max720">{form.kind === "card" && <label>정본에서 타겟 선택
+            <select className="yp-in" disabled={!open("target")} value="" onChange={event => { if (event.target.value) editAndSave({ target: event.target.value }); }}>
+              <option value="">{demo ? "데모 타겟 예시 선택" : audiences.length ? "정본의 타겟 고르기" : "선택 가능한 정본 타겟 없음"}</option>
+              {demo ? <option>월요일 회의를 앞두고 무엇부터 준비할지 고민하는 직장인</option> : audiences.map(row => <option key={row.audience} value={row.audience}>{row.audience} · {(row.audienceSource ?? row.source).title} v{(row.audienceSource ?? row.source).version}</option>)}
+            </select></label>}
+            <textarea className="yp-in yp-autogrow" id="yp-topic-target" rows={2} aria-label="정밀 타겟" placeholder="예) 내가 뭘 원하는지 모르겠다는 말을 자주 하는 사람" readOnly={!open("target")} value={form.target} onChange={event => edit({ target: event.target.value.replace(/\n/g, " ") })} />
             {/* Owner decision 2026-10-26 (기획_절차): a situation-led target pulls the whole script into that situation's scenes. */}
             <p className="yp-hint">처한 상황(이직·퇴사)보다 그 질문을 품은 사람으로 적어요. 주제 자체가 퇴사 같은 상황이면 상황으로 적어도 돼요.</p></div>
         </Field>
@@ -336,7 +345,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
         </details>
         <StepFooter action={action} todo={editable ? [{ label: "주제", done: Boolean(lines.length) }, { label: "유형", done: Boolean(form.kind) }, { label: "정밀 타겟", done: Boolean(form.target.trim()) },
           ...(short ? [{ label: "참고 영상", done: research.refs }, { label: "공식", done: Boolean(research.formula) }] : [])] : undefined} />
-        <div className="yp-lists" style={{ marginTop: 16 }}><section className="yp-card"><div className="yp-card-h">우리가 했던 주제</div>
+        <div style={{ marginTop: 16 }}><section className="yp-card"><div className="yp-card-h">우리가 했던 주제</div>
           <div className="yp-card-b"><input className="yp-in" aria-label="했던 주제 검색" placeholder="이전에 쓴 주제 찾기" value={reuseQuery} onChange={event => { setReuseQuery(event.target.value); setReuseLimit(5); }} /></div>
           <div>{reusable.map(row => <div key={row.id} className="yp-lrow yp-reuse-row"><Link className="yp-lt" href={stepHref(0, row.id)}><b>{projectName(row)}</b><div className="yp-lm"><span>{row.yp.topic.type ? YP_KIND_SHORT[row.yp.topic.type] : "유형 없음"}</span><span>{stageLabel(row)}</span><span>{md(row.yp.contentUpdatedAt).split(" ")[0]}</span></div></Link>
             <button type="button" className="yp-btn yp-sm" disabled={!editable || busy} title={!editable ? "주제를 다시 연 뒤 불러올 수 있어요." : "현재 주제에 내용 복사"} aria-label={`${projectName(row)} 주제 불러오기`} onClick={() => importTopic(row)}>주제 불러오기</button></div>)}

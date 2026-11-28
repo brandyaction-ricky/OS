@@ -14,10 +14,12 @@ import { columnMeta } from "@/lib/seo-column";
 import { markReviewed, setReviewers, type YpReviewer } from "@/lib/youtube-process/reviewers";
 import { applyFeedback, cleanMarks, FEEDBACK_FILE_MAX, FEEDBACK_FILE_TYPES, FeedbackRuleError, type FeedbackAction, type FeedbackFile, type FeedbackMark, type FeedbackReply } from "@/lib/youtube-process/feedback";
 import { cutsFromScenes, scenesFromCuts, shortsAction, type YpShortAppeal, type YpShortBrief, type YpShortScene } from "@/lib/youtube-process/short";
-import { CardError, cardsMissing, nextCards, type CardsPatch } from "@/lib/cardnews/cards";
+import { mondayFields } from "@/lib/cardnews/planning";
+import { cardListSummary, type CardCategory } from "@/lib/cardnews/categories";
+import { CardError, cardsMissing, finishedCardPublication, nextCards, type CardsPatch } from "@/lib/cardnews/cards";
 import { cardSignature, emptyCardDraft, type CardDraft, type CardPhoto } from "@/lib/cardnews/formats";
 import { CARD_DRAW_SIZE, type CardCharacterView, type CardDrawInput } from "@/lib/cardnews/draw";
-import { cardSourceProjectReady, projectCardSources, type CardSourceChoice } from "@/lib/cardnews/sources";
+import { initialCardRecommendation, cardSourceProjectReady, projectCardSources, type CardSourceChoice } from "@/lib/cardnews/sources";
 
 /** What the CTA screen shows of one change (lib/server/youtube-cta.ts summary). */
 export interface CtaChangeView { id: string; at: string; by: string; find: string; replace: string; undoneAt: string | null; done: number; undone: number; failed: { videoId: string; error: string }[] }
@@ -27,7 +29,7 @@ const demoCta: { videos: CtaVideo[]; history: CtaChangeView[] } = { history: [],
   { id: "demoVid0003", title: "[예시] 숏폼 · 다른 링크", publishedAt: "2026-10-28T09:00:00Z", description: "전체 영상 보기 ▶ https://youtu.be/demo" },
 ] };
 export interface YpMember { id: string; name: string }
-export interface YpTopicInput { title?: string; kind?: YpKind | null; target?: string; note?: string; refs?: YpRef[]; purpose?: "ad" | null; channel?: string | null; assigneeId?: string | null }
+export interface YpTopicInput { cardCategory?: CardCategory | null; isTest?: boolean; title?: string; kind?: YpKind | null; target?: string; note?: string; refs?: YpRef[]; purpose?: "ad" | null; channel?: string | null; assigneeId?: string | null }
 export interface YpStageView<K extends YpStageKind = YpStageKind> { id: string | null; version: number; data: YpStageData[K] }
 export type YpStagesView = { [K in YpStageKind]: YpStageView<K> };
 export interface YpFinalView { v: number; at: string; source: "myin" | "short" | "upload"; name: string; bytes: number; durationSeconds: number | null; runId?: string; path?: string; aspect?: "1:1" | "4:5" }
@@ -52,7 +54,7 @@ export interface YpScheduleItem { project: YpProject; makeVersion: number; editD
 export interface YpLegacyTopic { id: string; title: string; updatedAt: string; step: string; assigneeId: string | null }
 export type YpAssetKind = "plan_thumb" | "thumb" | "final" | "srt" | "column" | "card";
 export interface YpClient {
-  list(): Promise<YpProject[]>;
+  list(includeCardSummary?: boolean): Promise<YpProject[]>;
   /** 한눈에 보기: the videos, the open staff-AI jobs on them, and whether I confirm. */
   overview(): Promise<{ projects: YpProject[]; jobs: OvJob[]; canConfirm: boolean }>;
   /** 채택 on 한눈에 보기: an AI result is taken and leaves the list. */
@@ -108,7 +110,7 @@ export interface YpClient {
   /** 영상 복제 (owner decision 2026-10-28): the same step (제작 at most), voice and video made again. */
   copy(id: string): Promise<YpProject>;
   /** 내 영상 휴지통 (staff request 2026-10-26): trash · restore by the maker, PD or an admin; 영구 삭제 by an admin after 30 days. */
-  trashList(): Promise<(YpTrashed & { canManage: boolean })[]>;
+  trashList(includeCardSummary?: boolean): Promise<(YpTrashed & { canManage: boolean })[]>;
   trash(id: string, expectedVersion: number, reason: string): Promise<void>;
   restore(id: string): Promise<void>;
   purge(id: string, reason: string): Promise<void>;
@@ -144,7 +146,7 @@ export interface YpClient {
   removeCardCharacter(characterId: string): Promise<CardCharacterView[]>;
   demo: boolean;
 }
-export type YpCardInput = { from: "none"; title: string; target: string; note?: string; channel?: string } | { from: "project"; projectId: string; focus?: string } | { from: "threads"; itemId: string };
+export type YpCardInput = { from: "none"; title: string; target: string; note?: string; channel?: string } | { from: "project"; projectId: string; focus?: string } | { from: "threads"; itemId: string; focus?: string };
 export interface YpConfirmExtra { fields?: string[]; memo?: string; reason?: string }
 
 const json = (body: unknown) => JSON.stringify(body);
@@ -156,7 +158,7 @@ function apiClient(token: string): YpClient {
   const shortVideoUrl = async (id: string, renderId: string, download = false) => (await apiRequest<{ url: string }>(`${base}/${id}/short?video=${renderId}${download ? "&download=1" : ""}`, { token })).url;
   return {
     demo: false,
-    list: async () => (await apiRequest<{ projects: YpProject[] }>(base, { token })).projects,
+    list: async include => (await apiRequest<{ projects: YpProject[] }>(include ? base + "?cardLibrary=1" : base, { token })).projects,
     overview: () => apiRequest("/api/v1/content/youtube/overview", { token }),
     adoptJob: async jobId => { await apiRequest("/api/v1/content/youtube/overview", { token, method: "POST", body: json({ jobId }) }); },
     get: async id => (await apiRequest<YpBundle>(`${base}/${id}`, { token })).project,
@@ -211,7 +213,7 @@ function apiClient(token: string): YpClient {
     ctaUndo: input => apiRequest("/api/v1/content/youtube/cta", { token, method: "POST", body: json({ action: "undo", ...input }) }),
     adopt: async id => (await apiRequest<{ project: YpProject }>("/api/v1/content/youtube/legacy", { token, method: "POST", body: json({ id }) })).project,
     copy: async id => (await apiRequest<{ project: YpProject }>(`${base}/${id}/copy`, { token, method: "POST", body: json({}) })).project,
-    trashList: async () => (await apiRequest<{ items: (YpTrashed & { canManage: boolean })[] }>(`${base}/trash`, { token })).items,
+    trashList: async include => (await apiRequest<{ items: (YpTrashed & { canManage: boolean })[] }>(`${base}/trash${include ? "?cardLibrary=1" : ""}`, { token })).items,
     trash: async (id, expectedVersion, reason) => { await apiRequest(`${base}/${id}/trash`, { token, method: "POST", body: json({ action: "trash", expectedVersion, reason }) }); },
     restore: async id => { await apiRequest(`${base}/${id}/trash`, { token, method: "POST", body: json({ action: "restore" }) }); },
     purge: async (id, reason) => { await apiRequest(`${base}/${id}/trash`, { token, method: "POST", body: json({ action: "purge", reason, confirm: true }) }); },
@@ -376,6 +378,17 @@ const demoFinals = new Map<string, YpFinalView[]>();
 const demoAdopted = new Set<string>();
 const demoFeedback = new Map<string, YpFeedbackView[]>();
 const demoFiles = new Map<string, string>();
+const demoCardCache = "brandy-os-demo-card-images-v1";
+
+async function demoAssetUrl(path: string) {
+  const url = demoFiles.get(path);
+  if (url || !path.startsWith("youtube/demo/card/")) return url ?? "";
+  const response = await (await caches.open(demoCardCache)).match("/" + path);
+  if (!response) return "";
+  const restored = URL.createObjectURL(await response.blob());
+  demoFiles.set(path, restored);
+  return restored;
+}
 const demoCharacters: CardCharacterView[] = [];
 /** The demo has no 영상 만드는 컴퓨터: [찾기] returns two example references at once (no images). */
 function exampleRefs(id: string, query: string): YpShortRefFetch {
@@ -399,14 +412,38 @@ const demoError = (status: number, code: string, message: string) => new ApiRequ
 const gateApply = (...args: Parameters<typeof applyGateAction>) => {
   try { return applyGateAction(...args); } catch (error) { throw error instanceof GateError ? demoError(error.status, error.code, error.message) : error; }
 };
+// Keep each practice tab independent while allowing a reload anywhere in the card flow.
+const cardSessionKey = "bos-demo-cards-v1";
+let cardSessionLoaded = false;
+function restoreCardSession() {
+  if (typeof window === "undefined" || cardSessionLoaded) return;
+  cardSessionLoaded = true;
+  const raw = window.sessionStorage.getItem(cardSessionKey);
+  if (!raw) return;
+  const saved = JSON.parse(raw) as { projects: YpProject[]; stages: [string, YpStagesView][]; trash: YpTrashed[] };
+  demoStore = [...saved.projects, ...demoProjects().filter(p => p.yp.topic.type !== "card")];
+  demoTrash.push(...saved.trash);
+  for (const [id, stages] of saved.stages) demoStages.set(id, stages);
+}
+function saveCardSession(project: YpProject) {
+  if (project.yp.topic.type !== "card" || typeof window === "undefined") return;
+  const projects = demoProjects().filter(p => p.yp.topic.type === "card");
+  const trash = demoTrash.filter(item => item.project.yp.topic.type === "card");
+  const ids = new Set([...projects, ...trash.map(item => item.project)].map(p => p.id));
+  const stages = [...demoStages].filter(([id]) => ids.has(id));
+  window.sessionStorage.setItem(cardSessionKey, JSON.stringify({ projects, stages, trash }));
+}
 function demoClient(): YpClient {
+  restoreCardSession();
   const find = (id: string) => {
     const project = demoProjects().find(row => row.id === id);
     if (!project) throw demoError(404, "YOUTUBE_PROJECT_NOT_FOUND", "프로젝트를 찾지 못했습니다.");
     return project;
   };
   const stagesOf = (project: YpProject) => { if (!demoStages.has(project.id)) demoStages.set(project.id, demoFilledStages(project)); return demoStages.get(project.id)!; };
-  const put = (next: YpProject) => { demoStore = demoProjects().map(row => row.id === next.id ? next : row); return structuredClone(next); };
+  const withCardSummary = (project: YpProject, include?: boolean) => include && project.yp.topic.type === "card"
+    ? { ...project, cardSummary: cardListSummary(stagesOf(project).cards.data, project.yp.stage) } : project;
+  const put = (next: YpProject) => { demoStore = demoProjects().map(row => row.id === next.id ? next : row); saveCardSession(next); return structuredClone(next); };
   const bump = (project: YpProject, yp: YpProject["yp"] = project.yp) => put({ ...project, version: project.version + 1, updatedAt: new Date().toISOString(), yp });
   const add = (title: string, input: YpTopicInput, multiFrom?: string) => {
     const now = new Date().toISOString();
@@ -449,7 +486,7 @@ function demoClient(): YpClient {
   };
   return {
     demo: true,
-    list: async () => structuredClone(demoProjects()),
+    list: async include => structuredClone(demoProjects().map(project => withCardSummary(project, include))),
     // One AI job running on the first video in 제작, one stopped on a 기획안 and one result that arrived on a 구성안, so the screen shows every group.
     overview: async () => {
       const projects = structuredClone(demoProjects()), at = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
@@ -474,7 +511,8 @@ function demoClient(): YpClient {
       const title = input.from === "none" ? input.title : from ? from.title : "[예시] 스레드 글";
       const made = add(title, { kind: "card", target: input.from === "none" ? input.target : "원본과 같아요", note: input.from === "none" ? input.note ?? "" : "" });
       const project = put({ ...made, yp: { ...gateApply(made, "topic", "confirm", { actor: DEMO_ME, now }), ...(from ? { cardFrom: { kind: from.yp.topic.type === "short" ? "short" as const : "longform" as const, id: from.id, title: from.title } } : input.from === "threads" ? { cardFrom: { kind: "threads" as const, id: input.itemId, title } } : {}) } });
-      demoStages.set(project.id, { ...stagesOf(project), cards: { id: null, version: 0, data: { ...emptyStage("cards", "card"), source: { kind: from ? (from.yp.topic.type === "short" ? "short" : "longform") : input.from === "threads" ? "threads" : "none", title, text: from ? "[예시] 원고" : "", at: now } } } });
+      demoStages.set(project.id, { ...stagesOf(project), cards: { id: null, version: 0, data: { ...emptyStage("cards", "card"), focus: input.from === "none" ? "" : input.focus ?? "", recommend: initialCardRecommendation(project.yp.cardFrom?.kind ?? "none"), source: { kind: from ? (from.yp.topic.type === "short" ? "short" : "longform") : input.from === "threads" ? "threads" : "none", title, text: from ? "[예시] 원고" : "", at: now } } } });
+      saveCardSession(project);
       return structuredClone(project);
     },
     cardSources: async () => [...projectCardSources(demoProjects()), { id: "demo-approved-thread", from: "threads", kind: "threads", title: "[예시] 스레드 글", updatedAt: daysAgo(0) }],
@@ -499,17 +537,19 @@ function demoClient(): YpClient {
       return structuredClone(demoCharacters);
     },
     removeCardCharacter: async characterId => { demoCharacters.splice(demoCharacters.findIndex(row => row.id === characterId) >>> 0, 1); return structuredClone(demoCharacters); },
-    update: async (id, expectedVersion, { assigneeId, ...fields }) => {
+    update: async (id, expectedVersion, { assigneeId, isTest, cardCategory, ...fields }) => {
       const project = find(id);
       checkVersion(project.version, expectedVersion);
       const content = Object.keys(fields).length > 0;
       if ((Object.keys(fields) as (keyof typeof TOPIC_FIELD_OF)[]).some(key => !topicFieldEditable(project, key))) throw demoError(409, "FIELD_LOCKED", "지금은 이 칸을 고칠 수 없어요.");
       const topic = project.yp.topic;
+      if (cardCategory !== undefined && (fields.kind === undefined ? topic.type : fields.kind) !== "card") throw demoError(400, "NOT_A_CARD", "카드뉴스의 카테고리만 바꿀 수 있어요.");
+      const meta = { ...project.yp, ...(isTest !== undefined ? { isTest } : {}), ...(cardCategory !== undefined ? { cardCategory } : {}) };
       return put({
         ...project, version: project.version + 1, updatedAt: new Date().toISOString(),
         title: fields.title ?? project.title, assigneeId: assigneeId !== undefined ? assigneeId : project.assigneeId,
-        yp: content ? { ...project.yp, contentUpdatedAt: new Date().toISOString(), topic: { type: fields.kind !== undefined ? fields.kind : topic.type, target: fields.target ?? topic.target, note: fields.note ?? topic.note, refs: fields.refs ?? topic.refs,
-          ...((fields.purpose !== undefined ? fields.purpose : topic.purpose) ? { purpose: (fields.purpose !== undefined ? fields.purpose : topic.purpose)! } : {}) } } : project.yp,
+        yp: content ? { ...meta, contentUpdatedAt: new Date().toISOString(), topic: { type: fields.kind !== undefined ? fields.kind : topic.type, target: fields.target ?? topic.target, note: fields.note ?? topic.note, refs: fields.refs ?? topic.refs,
+          ...((fields.purpose !== undefined ? fields.purpose : topic.purpose) ? { purpose: (fields.purpose !== undefined ? fields.purpose : topic.purpose)! } : {}) } } : meta,
       });
     },
     topicGate: (id, action, expectedVersion, reply, to) => gate(id, "topic", action, expectedVersion, reply, to),
@@ -552,11 +592,23 @@ function demoClient(): YpClient {
           : p.remove ? items.filter(item => item.id !== p.item) : items.map(item => item.id === p.item ? change(item) : item) } as YpStageData[typeof kind];
       }
       if (kind === "cards") {
-        try { data = nextCards(project, current.data as YpStageData["cards"], patch as CardsPatch, "리키", now, () => crypto.randomUUID().slice(0, 8)) as YpStageData[typeof kind]; }
+        try {
+          let cards = current.data as YpStageData["cards"];
+          const uid = () => crypto.randomUUID().slice(0, 8);
+          if ("mondaySample" in patch && id === "demo-p13") {
+            const previousPick = cards.picked;
+            cards = nextCards(project, cards, { add: "steps" }, "데모", now, uid);
+            const sample = cards.drafts.at(-1)!;
+            const slides = sample.slides.map((slide, index) => ({ ...slide, ...(index === 3 ? { layout: "spotlight" as const } : {}), fields: mondayFields(slide, index)! }));
+            cards = nextCards(project, cards, { draft: { ...sample, slides, caption: "일요일 밤 걱정을 내일의 첫 행동으로 옮기는 세 단계", hashtags: ["월요일", "업무기록", "직장인"] }, pick: previousPick }, "데모", now, uid);
+          } else cards = nextCards(project, cards, patch as CardsPatch, "리키", now, uid);
+          data = cards as YpStageData[typeof kind];
+        }
         catch (error) { throw error instanceof CardError ? demoError(error.status, error.code, error.message) : error; }
       }
       const stage = { id: current.id ?? `demo-${kind}-${id}`, version: current.version + 1, data } as YpStageView<typeof kind>;
       demoStages.set(id, { ...stages, [kind]: stage });
+      saveCardSession(project);
       return structuredClone({ stage, project });
     },
     // The demo has no MYIN site: it records what MYIN would answer, with the production address shape.
@@ -581,16 +633,25 @@ function demoClient(): YpClient {
       const project = find(id);
       checkVersion(project.version, expectedVersion);
       const stages = stagesOf(project);
+      if (project.yp.topic.type === "card" && to === "done") {
+        const evidence = finishedCardPublication(stages.cards.data, new Date().toISOString());
+        if (!["upload", "done"].includes(project.yp.stage) || project.yp.cardPublication || !evidence) throw demoError(409, "STAGE_NOT_READY", "게시 주소 또는 게시 안 함 이유를 저장해 주세요.");
+        return bump(project, { ...project.yp, stage: to, stageEnteredAt: new Date().toISOString(), cardPublication: evidence });
+      }
       const reason = to === "make" ? outlineMissing(stages.outline.data) : to === "review" ? ((demoFinals.get(id) ?? []).length ? thumbsMissing(stages.make.data) : "최종본을 올려주세요") : "";
       if (reason) throw demoError(409, "STAGE_NOT_READY", reason);
       return bump(project, { ...project.yp, stage: to });
     },
     uploadAsset: async (_id, kind, file) => {
       const path = `youtube/demo/${kind}/${crypto.randomUUID()}.${file.name.split(".").pop()?.toLowerCase() ?? "bin"}`;
+      if (kind === "card") {
+        try { await (await caches.open(demoCardCache)).put("/" + path, new Response(file)); }
+        catch { throw new Error("이 브라우저에 이미지를 저장하지 못했어요. 저장 공간을 확인하고 다시 첨부해 주세요."); }
+      }
       demoFiles.set(path, URL.createObjectURL(file));
       return { path, name: file.name, bytes: file.size };
     },
-    assetUrl: async (_id, path) => demoFiles.get(path) ?? "",
+    assetUrl: (_id, path) => demoAssetUrl(path),
     finalUrl: async (_id, final) => final.path ? demoFiles.get(final.path) ?? null : null,
     finalSrt: async () => null,
     feedback: async id => structuredClone(demoFeedback.get(id) ?? []),
@@ -693,18 +754,20 @@ function demoClient(): YpClient {
     },
     adopt: async () => { throw demoError(409, "DEMO", "데모에는 이전 화면 영상이 없어요."); },
     copy: async () => { throw demoError(409, "DEMO", "데모에서는 영상을 복제하지 않아요."); },
-    trashList: async () => structuredClone(demoTrash.map(item => ({ ...item, canManage: true }))),
+    trashList: async include => structuredClone(demoTrash.map(item => ({ ...item, project: withCardSummary(item.project, include), canManage: true }))),
     trash: async (id, expectedVersion, reason) => {
       const project = find(id);
       checkVersion(project.version, expectedVersion);
       demoStore = demoProjects().filter(row => row.id !== id);
       demoTrash.unshift({ project, trash: { at: new Date().toISOString(), by: DEMO_ME, name: "리키", reason, stage: project.yp.stage } });
+      saveCardSession(project);
     },
     restore: async id => {
       const item = demoTrash.find(row => row.project.id === id);
       if (!item) throw demoError(404, "NOT_IN_TRASH", "휴지통에 없는 영상이에요.");
       demoTrash = demoTrash.filter(row => row !== item);
       demoStore = [item.project, ...demoProjects()];
+      saveCardSession(item.project);
     },
     purge: async id => {
       const item = demoTrash.find(row => row.project.id === id);
@@ -712,6 +775,7 @@ function demoClient(): YpClient {
       const left = trashDaysLeft(item.trash.at);
       if (left > 0) throw demoError(409, "PURGE_TOO_EARLY", `휴지통에 넣은 지 30일이 지나야 영구 삭제할 수 있어요. ${left}일 남았어요.`);
       demoTrash = demoTrash.filter(row => row !== item);
+      saveCardSession(item.project);
     },
     short: async id => structuredClone(demoShort(find(id))),
     saveShort: async (id, expectedVersion, patch) => {

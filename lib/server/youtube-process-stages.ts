@@ -1,3 +1,4 @@
+import { finishedCardPublication } from "@/lib/cardnews/cards";
 import { createHash, randomUUID } from "node:crypto";
 import { getSharp } from "next/dist/server/image-optimizer";
 import { z } from "zod";
@@ -25,7 +26,7 @@ const shortRefsModule = () => import("./youtube-process-short-refs");
 const gptJobsModule = () => import("./youtube-gpt-jobs");
 const cardsModule = () => import("./youtube-process-cards");
 import { shortScriptMissing } from "@/lib/youtube-process/short-script";
-import { actOnGate, confirmActionSchema, confirmYoutubeGate, conflict, gateActionSchema, getYoutubeProject, notify, readFailed, saveProject } from "./youtube-process";
+import { withLegacyCardEvidence, actOnGate, confirmActionSchema, confirmYoutubeGate, conflict, gateActionSchema, getYoutubeProject, notify, readFailed, saveProject } from "./youtube-process";
 
 // 유튜브 공정 v1 stage records (지시서 6-1): each step keeps its own child record, so a 대표 decision on the project and a PD
 // edit on a step never fight over one version number.
@@ -410,7 +411,12 @@ export async function moveYoutubeStage(actor: RequestActor, id: string, input: z
     // A 숏폼 has no YouTube thumbnails.
     const missing = short ? "" : thumbsMissing(stages.make.data);
     need(!missing, missing);
-  } else if (project.yp.topic.type === "short" || project.yp.topic.type === "card") {
+  } else if (project.yp.topic.type === "card") {
+    need(input.to === "done" && (project.yp.stage === "upload" || (project.yp.stage === "done" && !project.yp.cardPublication)), "최종 검토 컨펌 OK 뒤에 마칠 수 있어요.");
+    const publication = finishedCardPublication(stages.cards.data, now);
+    need(Boolean(publication), "각 화의 게시 주소를 남기거나 게시 안 함 이유를 저장해 주세요.");
+    return saveProject(actor, project, input.expectedVersion, { yp: { ...project.yp, stage: "done", stageEnteredAt: now, contentUpdatedAt: now, cardPublication: publication } });
+  } else if (project.yp.topic.type === "short") {
     need(project.yp.stage === "upload" && input.to === "done", "최종 검토 컨펌 OK 뒤에 마칠 수 있어요.");
   } else {
     // After the YouTube upload: on to 쇼츠 · 칼럼, or done (from either).
@@ -598,7 +604,7 @@ export async function youtubeSchedule(actor: RequestActor) {
   const { data: rows, error } = await actor.supabase.from("os_records").select("id,version,title,assignee_id,owner_id,updated_at,metadata")
     .eq("record_type", "content_topic").eq("metadata->>workflow", "youtube_v1").is("archived_at", null).limit(500);
   if (error) throw readFailed();
-  const projects = (rows ?? []).map(row => projectFromRecord(row)).filter((row): row is YpProject => Boolean(row));
+  const projects = await withLegacyCardEvidence(actor.supabase, (rows ?? []).map(row => projectFromRecord(row)).filter((row): row is YpProject => Boolean(row)));
   const ids = projects.map(row => row.id);
   const { data: makes, error: makeError } = ids.length ? await actor.supabase.from("os_records").select("id,version,parent_id,metadata").in("parent_id", ids)
     .eq("record_type", "content_package").eq("metadata->>packageKind", "yp_make").is("archived_at", null) : { data: [], error: null };

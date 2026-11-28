@@ -4,7 +4,7 @@
 // The look is the MYIN 카드뉴스 디자인 정본 (2026-11-02): white body cards, a blue cover and ending, Pretendard 400 · 500 · 600 at its
 // sizes for 1080 × 1350, 96px text margins, photos and diagrams within 80% of the width, and the explanation right under what it explains.
 import type { CSSProperties, ReactNode } from "react";
-import { CARD_MARK, CARD_SIZE, cardPage, plainCardText, toonAim, toonBattery, type CardDraft, type CardPhoto, type CardSlide } from "./formats.ts";
+import { GUIDE_CAST, slideSpec, characterAsset, CARD_MARK, CARD_SIZE, cardPage, plainCardText, toonAim, toonBattery, type CardDraft, type CardPhoto, type CardSlide } from "./formats.ts";
 
 /** 디자인 정본 §2. Blue cards carry white text and gold only for the marked phrase; gold never sits on a light card. */
 export const CARD_THEME = { paper: "#FFFFFF", soft: "#EFEFF1", blue: "#212CB0", gold: "#EED467", title: "#151D2C", ink: "#1E1D1D", sub: "#43474C", white: "#FFFFFF" };
@@ -14,7 +14,7 @@ const PAD = 96, VISUAL = 864;   // 텍스트 좌우 안전 여백 80~96px · 도
 /** Font size, weight, line height and lines of each field (디자인 정본 §3–4): the PNG and the preview cut at the same place. */
 export const CARD_FIELD_STYLE: Record<string, { size: number; weight: number; leading: number; lines: number }> = {
   "cover.head": { size: 68, weight: 600, leading: 1.3, lines: 3 }, "cover.sub": { size: 30, weight: 400, leading: 1.5, lines: 2 },
-  "item.title": { size: 52, weight: 600, leading: 1.3, lines: 2 }, "item.body": { size: 30, weight: 400, leading: 1.55, lines: 4 },
+  "item.before": { size: 38, weight: 500, leading: 1.4, lines: 3 }, "item.title": { size: 52, weight: 600, leading: 1.3, lines: 2 }, "item.body": { size: 30, weight: 400, leading: 1.55, lines: 4 },
   "summary.line": { size: 52, weight: 600, leading: 1.3, lines: 3 },
   "pair.myth": { size: 36, weight: 500, leading: 1.4, lines: 2 }, "pair.fact": { size: 36, weight: 500, leading: 1.4, lines: 3 }, "pair.basis": { size: 26, weight: 400, leading: 1.5, lines: 2 },
   "line.text": { size: 52, weight: 600, leading: 1.35, lines: 4 }, "line.note": { size: 26, weight: 400, leading: 1.5, lines: 2 },
@@ -98,10 +98,26 @@ function Body({ draft, slide, index, theme, src }: { draft: CardDraft; slide: Ca
   const column: CSSProperties = { display: "flex", flexDirection: "column", flex: 1, justifyContent: "center" };
   const visual: CSSProperties = { display: "flex", flexDirection: "column", alignSelf: "center", width: VISUAL };
   const box = (background: string): CSSProperties => ({ display: "flex", flexDirection: "column", background, borderRadius: 24, padding: "36px 40px" });
+  if (draft.format === "list" && slide.type === "item" && slide.fields.before?.trim()) {
+    return <div style={column}>{f("title", title)}
+      <div style={{ ...box(theme.soft), marginTop: 48 }}><Label color={theme.sub}>바꾸기 전</Label>{f("before", ink)}</div>
+      <Arrow color={theme.blue} />
+      <div style={box(theme.blue)}><Label color={theme.white}>바꾼 뒤</Label>{f("body", blue)}</div>{photo(250)}</div>;
+  }
+  if (slide.layout === "spotlight" && ["item", "step", "part"].includes(slide.type)) {
+    return <div style={column}><Count n={countOf(draft, index)} color={theme.blue} />
+      <div style={{ ...box(theme.blue), marginTop: 32 }}>{f("title", blue)}</div>
+      {photo(420)}{f("body", ink, { marginTop: after })}</div>;
+  }
   switch (slide.type) {
     case "cover": return <div style={column}>{f("head", blue)}{f("sub", blue, { marginTop: 40 })}{slide.photo ? <Photo photo={slide.photo} src={src} maxHeight={520} theme={theme} style={{ marginTop: 64 }} /> : null}</div>;
     case "item": return <div style={column}>
-      <Count n={countOf(draft, index)} color={theme.blue} />{f("title", title, { marginTop: 32 })}{photo(480)}{f("body", ink, { marginTop: after })}</div>;
+      <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
+        <Count n={countOf(draft, index)} color={theme.blue} />
+        <div style={{ display: "flex", height: 4, background: theme.soft, flex: 1 }} />
+      </div>
+      {f("title", title, { marginTop: 48, fontSize: 60 })}{photo(420)}
+      <div style={{ ...box(theme.soft), marginTop: after, borderLeft: `8px solid ${theme.blue}` }}>{f("body", ink)}</div></div>;
     // 전후 변화 도식: the common thought, then what is actually so, with the basis right under it.
     case "pair": return <div style={column}><div style={visual}>
       <div style={box(theme.soft)}><Label color={theme.sub}>흔한 생각</Label>{f("myth", sub)}</div>
@@ -110,7 +126,8 @@ function Body({ draft, slide, index, theme, src }: { draft: CardDraft; slide: Ca
       {f("basis", sub, { marginTop: 48 })}</div></div>;
     // 병렬 항목: the one line first, then the body titles side by side in weight; only 단계 are joined by arrows (they are an order).
     case "summary": {
-      const titles = bodyTitles(draft, ["item", "compare", "step"]), steps = draft.format === "steps";
+      const worksheet = draft.format === "list" ? slide.fields.worksheet?.trim() : "";
+      const titles = worksheet ? worksheet.split(/\n+/).filter(Boolean) : bodyTitles(draft, ["item", "compare", "step"]), steps = draft.format === "steps";
       return <div style={column}>
         <Label color={theme.blue}>{draft.format === "webtoon" ? "오늘의 한 줄" : "정리"}</Label>{f("line", title)}
         {titles.length ? <div style={{ ...visual, marginTop: 56 }}>{titles.map((text, at) => <div key={at} style={{ display: "flex", flexDirection: "column" }}>
@@ -281,8 +298,56 @@ function ToonSlide({ draft, slide, index, theme, src }: { draft: CardDraft; slid
 }
 
 /** Card `index` of `draft` at 1080 × 1350; `photos` maps a photo's path to an address the drawing can load (a signed URL, or a data URL in the PNG). */
-export function CardSlideView({ draft, index, photos, theme = CARD_THEME }: { draft: CardDraft; index: number; photos?: Record<string, string>; theme?: Theme }) {
+interface CardViewProps { draft: CardDraft; index: number; photos?: Record<string, string>; characterSrc?: string; theme?: Theme }
+const CARD_RENDERERS = { 1: renderV1 };
+export function CardSlideView(props: CardViewProps) {
+  return CARD_RENDERERS[props.draft.formatVersion ?? 1](props);
+}
+function renderV1({ draft, index, photos, characterSrc, theme = CARD_THEME }: CardViewProps) {
   const slide = draft.slides[index];
+  if (slide?.scene?.action && draft.format !== "webtoon" && draft.format !== "steps") {
+    const plan = slide.scene;
+    const spec = slideSpec(draft.format, slide.type);
+    const keys = spec?.fields.map(field => field.key).filter(key => key !== "worksheet" && slide.fields[key]?.trim()) ?? [];
+    const worksheet = slide.fields.worksheet?.trim();
+    const art = slide.photo && photos?.[slide.photo.path];
+    const guide = GUIDE_CAST.find(name => name === plan.character);
+    const src = art || characterSrc || (guide && "/myin-2d/" + guide + ".png");
+    return <div style={{ display: "flex", flexDirection: "column", width: W, height: H, padding: "70px 84px", background: "#191919", color: "#fff", fontFamily: "Pretendard" }}>
+      <span style={{ alignSelf: "flex-end", fontSize: 24 }}>{cardPage(draft,index)}</span>
+      {keys.map((key, n) => <div data-card-field={key} key={key} style={{ display: "flex", marginTop: n ? 16 : 0, fontWeight: n ? 400 : 600, fontSize: n ? 32 : 64, color: n ? "#fff" : "#93F46C", lineHeight: 1.35, whiteSpace: "pre-wrap", wordBreak: "keep-all" }}>{plainCardText(slide.fields[key])}</div>)}
+      <div style={{ display: "flex", flexDirection: "column", marginTop: "auto", background: "#FFFCF5", color: "#26362D", borderRadius: 24, padding: worksheet ? 34 : 0, overflow: "hidden" }}>
+        {src && <img alt={plan.character} src={src} width={worksheet ? 145 : 912} height={worksheet ? 90 : 495} style={{ alignSelf: worksheet ? "flex-end" : "center", objectFit: art && !worksheet ? "cover" : "contain" }} />}
+        {worksheet?.split(/\n+/).map((line,i) => <div key={i} style={{ display: "flex", fontSize: 29, paddingTop: 16, paddingBottom: 64, borderBottom: "2px solid #A8B6AE" }}>{line}</div>)}
+      </div></div>;
+  }
+  const scene = draft.format === "list" && slide?.scene?.kind === "character" && ["cover", "item", "end"].includes(slide.type) ? slide.scene : undefined;
+  const asset = scene && characterAsset(scene.character);
+  const editorial = draft.format === "list" && slide?.scene;
+  if (editorial) {
+    const dark = editorial.dark !== false;
+    const ink = dark ? "#F7F7F5" : theme.title;
+    const accent = dark ? "#88EF59" : theme.blue;
+    const headline = slide.type === "cover" ? "head" : slide.type === "item" ? "title" : "line";
+    const body = slide.type === "cover" ? "sub" : slide.type === "end" ? "action" : "body";
+    const comparison = editorial.kind === "comparison" && slide.fields.before;
+    const worksheet = editorial.kind === "worksheet" && slide.fields.worksheet;
+    if ((scene && asset) || comparison || worksheet) return <div style={{ display: "flex", position: "relative", flexDirection: "column", width: W, height: H, padding: "86px 92px", background: dark ? "#181818" : "#F6F6F3", fontFamily: "Pretendard", overflow: "hidden" }}>
+      <div style={{ display: "flex", position: "absolute", top: 32, right: 36, borderRadius: 50, background: dark ? "#303030" : "#E6E6E2", color: ink, padding: "8px 20px", fontSize: 27 }}>{cardPage(draft,index)}</div>
+      <Field slide={slide} name={headline} tone={{ color: accent, accent }} style={{ fontSize: 76, lineHeight: 1.18, maxHeight: 280, fontWeight: 600, maxWidth: 840 }} />
+      {!comparison && !worksheet && <div style={{ display: "flex", flexDirection: "column", marginTop: 40, gap: 12 }}>
+        {["before", body].map(name => <Field key={name} slide={slide} name={name} tone={{ color: ink, accent }} style={{ fontSize: 38, lineHeight: 1.48, maxHeight: 240 }} />)}
+      </div>}
+      {scene && asset && <div style={{ display: "flex", position: "absolute", bottom: 0, ...(scene.side === "left" ? { left: 0 } : { right: 0 }), width: 860, height: 665, alignItems: "flex-end", justifyContent: scene.side === "left" ? "flex-start" : "flex-end" }}>
+        <div style={{ display: "flex", position: "absolute", width: 555, height: 555, top: 55, left: scene.side === "right" ? 10 : 220, borderRadius: "50%", background: "#64B6F5" }} />
+        {/* eslint-disable-next-line @next/next/no-img-element -- also rendered by next/og */}
+        <img alt={scene.character} src={characterSrc || asset} width={scene.size === "small" ? 460 : 660} height={scene.size === "small" ? 460 : 660} />
+      </div>}
+      {(comparison || worksheet) && <div style={{ display: "flex", flexDirection: "column", marginTop: "auto", background: "#FAFAF7", borderRadius: 26, padding: 52, gap: 42 }}>
+        {(comparison ? [["처음 떠오른 말", slide.fields.before], ["다시 적은 행동", slide.fields.body]] : slide.fields.worksheet.split("\n").filter(Boolean).map((line,i) => [String(i+1).padStart(2,"0"),line])).map(([label,value]) => <div key={label} style={{ display: "flex", flexDirection: "column", gap: 15, borderBottom: "2px solid #D7D8D5", paddingBottom: 28 }}><span style={{ color: theme.blue, fontSize: 28 }}>{label}</span><span style={{ color: theme.title, fontSize: 42, lineHeight: 1.35 }}>{plainCardText(value)}</span></div>)}
+      </div>}
+    </div>;
+  }
   const onBlue = ON_BLUE.has(slide?.type ?? "");
   if (slide?.type === "toon" || slide?.type === "panel") return <div style={{ display: "flex", position: "relative", overflow: "hidden", width: W, height: H, background: theme.soft, fontFamily: "Pretendard" }}>
     <ToonSlide draft={draft} slide={slide} index={index} theme={theme} src={slide.photo ? photos?.[slide.photo.path] : undefined} /></div>;

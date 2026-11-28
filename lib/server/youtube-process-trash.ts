@@ -3,7 +3,7 @@ import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { mayTrash, projectFromRecord, trashDaysLeft, type YpTrash, type YpTrashed } from "@/lib/youtube-process/project";
 import type { RequestActor } from "./auth";
-import { conflict } from "./youtube-process";
+import { conflict, withLegacyCardEvidence } from "./youtube-process";
 import { STAFF_AI_JOB_KIND } from "./youtube-ai-jobs";
 
 // 내 영상 휴지통 (staff request 2026-10-26, owner: 「관리자가 직접 영구 삭제」). 휴지통 = archived_at; the row and its history stay
@@ -45,11 +45,11 @@ async function filesUnder(bucket: string, prefix: string, depth = 2): Promise<st
   return found;
 }
 
-export async function listYoutubeTrash(actor: RequestActor): Promise<(YpTrashed & { canManage: boolean })[]> {
+export async function listYoutubeTrash(actor: RequestActor, includeCardSummary = false): Promise<(YpTrashed & { canManage: boolean })[]> {
   const { data, error } = await service().from("os_records").select(COLUMNS).eq("record_type", "content_topic").eq("metadata->>workflow", "youtube_v1")
     .not("archived_at", "is", null).order("archived_at", { ascending: false }).limit(200);
   if (error) throw new ApiError(503, "YOUTUBE_PROJECT_READ_FAILED", "휴지통을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
-  return ((data ?? []) as Row[]).flatMap(row => {
+  const items = ((data ?? []) as Row[]).flatMap(row => {
     const project = projectFromRecord(row);
     const trash = row.metadata.trash as StoredTrash | undefined;
     if (!project || !trash || trash.purged) return [];
@@ -57,6 +57,9 @@ export async function listYoutubeTrash(actor: RequestActor): Promise<(YpTrashed 
     void purged;
     return [{ project, trash: shown, canManage: mayTrash(project, actor.ownerId, actor.role === "admin") }];
   });
+  if (!includeCardSummary) return items;
+  const projects = await withLegacyCardEvidence(actor.supabase, items.map(item => item.project), true);
+  return items.map((item, index) => ({ ...item, project: projects[index] }));
 }
 
 export async function actOnYoutubeTrash(actor: RequestActor, id: string, input: z.infer<typeof trashActionSchema>) {
