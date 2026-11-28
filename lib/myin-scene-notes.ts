@@ -42,6 +42,11 @@ export function spliceScene<T extends { scenes: Record<string, unknown>[] }>(sto
   return copy;
 }
 
+/** Several 수정안 at once (편집 주문으로 보내기): from the last scene back, so one that splits a scene does not move the ones before it. */
+export function spliceScenes<T extends { scenes: Record<string, unknown>[] }>(story: T, fixes: { n: number; scenes: Record<string, unknown>[] }[]): T {
+  return [...fixes].sort((a, b) => b.n - a.n).reduce((s, fix) => spliceScene(s, fix.n, fix.scenes), story);
+}
+
 const SKIP = new Set(["type", "theme", "mood", "beat", "why", "at", "music", "amb", "sfx", "photo", "focus_y", "focus_x", "fit", "cam"]);
 /** A scene as a person reads it: its kind and the words it shows (cue keys and settings left out), for 수정 전 · 후 side by side. */
 export function sceneWords(scene: Record<string, unknown>) {

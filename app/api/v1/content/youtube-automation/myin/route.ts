@@ -6,7 +6,7 @@ import { checkMyinVoice, confirmMyinClips, retryMyinGptStoryboard, requestMyinTa
 import { findMyinPhotoCandidates, applyMyinPhotoCandidate } from "@/lib/server/myin-photo-candidates";
 import { readLocalRenderStatus } from "@/lib/server/youtube-render-pc";
 import { checkMyinScreens, myinScreenCheck } from "@/lib/server/myin-screen-check";
-import { applySceneNote, editWebShortScene, webShortScenes } from "@/lib/server/myin-scene-notes";
+import { applySceneNote, editWebShortScene, orderSceneNotes, webShortScenes } from "@/lib/server/myin-scene-notes";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
 
 export const runtime = "nodejs";
@@ -79,6 +79,8 @@ const patchSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("storyboard_gpt"), runId: z.string().uuid() }),
   // 점검 시트 장면 의견 › 반영 (직원 요청 11-12): one 수정안 into the storyboard; force after the person saw the scene had changed.
   z.object({ action: z.literal("scene_apply"), runId: z.string().uuid(), noteId: z.string().uuid(), force: z.boolean().default(false) }),
+  // 편집 주문으로 보내기 (대표 2026-11-28): the 수정안 of chosen notes as one edit order, once the 완성본 is out.
+  z.object({ action: z.literal("scene_order"), runId: z.string().uuid(), noteIds: z.array(z.string().uuid()).min(1).max(20) }),
   // 점검 시트 다시 그리기 (직원 요청 11-13): sheets his preview() drew, or a drawing that failed, drawn again on the video's computer.
   z.object({ action: z.literal("sheets_redraw"), runId: z.string().uuid() }),
   z.object({ action: z.literal("web_scene_edit"), runId: z.string().uuid(), n: z.number().int().min(1).max(30), storyboardAt: z.string().max(40),
@@ -115,6 +117,7 @@ export async function PATCH(request: Request) {
     const input = patchSchema.parse(await parseJson(request, 60_000));
     const result = input.action === "review" ? { run: await reviewMyinStoryboard(actor, input.runId, input.decision, input.note, input.place, input.screenCheck) }
       : input.action === "scene_apply" ? { run: await applySceneNote(actor, input.runId, input.noteId, input.force) }
+      : input.action === "scene_order" ? await orderSceneNotes(actor, input.runId, input.noteIds)
       : input.action === "sheets_redraw" ? { run: await requestMyinRedraw(actor, input.runId) }
       : input.action === "web_scene_edit" ? { run: await editWebShortScene(actor, input.runId, input.n, input.texts, input.storyboardAt) }
       : input.action === "screen_check_auto" ? { run: await setMyinScreenCheck(actor, input.runId, input.on) }
