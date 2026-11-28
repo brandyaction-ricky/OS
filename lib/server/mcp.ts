@@ -149,7 +149,7 @@ export const MCP_TOOLS = [
   },
   {
     name: "edit_document",
-    description: "문서를 수정하고 새 버전을 남깁니다. 이 키가 만든 AI 초안은 바로 고치고, 정본과 다른 사람이 쓴 문서(팀 문서 · 정본 요청 중 · 내 노트)는 변경 제안으로 남겨 문서 주인(정본은 승인자)이 승인하면 반영됩니다(응답 202, proposalId). expected_version으로 동시 수정 충돌을 감지할 수 있습니다.",
+    description: "문서를 수정하고 새 버전을 남깁니다. 이 키가 만든 AI 초안은 바로 고치고, 정본과 다른 사람의 팀 문서 · 정본 요청 중 문서는 변경 제안으로 남겨 문서 주인(정본은 승인자)이 승인하면 반영됩니다(응답 202, proposalId). 사람이 쓴 개인 노트는 AI 키가 열 수 없습니다. expected_version으로 동시 수정 충돌을 감지할 수 있습니다.",
     inputSchema: {
       type: "object",
       properties: {
