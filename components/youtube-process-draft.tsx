@@ -5,7 +5,7 @@ import { editableFields } from "@/lib/youtube-process/confirm";
 import { parseYoutubeRef, projectName, sameRef, topicKeywords } from "@/lib/youtube-process/project";
 import { draftMissing, PLAN_FIELD_KEY, SLOTS, slotOf, thumbFilled, ypFormat, type YpPlan, type YpSlot, type YpThumb } from "@/lib/youtube-process/stages";
 import { ThumbPicker, type ThumbPicked } from "./youtube-thumb-picker";
-import type { ThumbTool } from "@/lib/youtube-process/thumb-style";
+import type { ThumbFrameKind, ThumbTool } from "@/lib/youtube-process/thumb-style";
 import { GateBanner, gateAction, gateSub, hhmm, LockedStep, ReplyForm, Subject, useGate, useLeaveGuard, useYpBundle, YpFrame, YpSection } from "./youtube-process-frame";
 import type { YpProject } from "@/lib/youtube-process/project";
 import { ThumbView } from "./youtube-process-media";
@@ -43,7 +43,7 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
   const job = useStaffJob(page, "plan", onJobDone);
   // 롱폼 애니메이션 썸네일 후보: its own job, sent from the picker with the image tool and how many.
   const thumbsJob = useStaffJob(page, "thumbs", useCallback(() => undefined, []));
-  const [thumbAsk, setThumbAsk] = useState<{ tool: ThumbTool; count: number; frame?: "person" } | null>(null);
+  const [thumbAsk, setThumbAsk] = useState<{ tool: ThumbTool; count: number; frame?: ThumbFrameKind } | null>(null);
 
   const project = page.bundle?.project;
   const fields = project ? editableFields(project, "draft") : [];

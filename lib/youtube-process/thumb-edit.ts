@@ -1,9 +1,10 @@
 // 제작 「최종 썸네일」 상세 수정: the shape a saved edit takes, checked where it is rendered and where 제작 stores it.
 import { z } from "zod";
+import { THUMB_FRAMES } from "./thumb-style.ts";
 
 export const thumbCopySchema = z.object({ text: z.string().trim().min(1).max(60), accent: z.string().trim().max(20).default("") }).strict();
 export const thumbEditSchema = z.object({
-  frame: z.literal("person").optional(), flip: z.boolean().optional(),
+  frame: z.enum(THUMB_FRAMES).optional(), flip: z.boolean().optional(),
   size: z.number().min(56).max(220).optional(),
   photo: z.object({ scale: z.number(), x: z.number(), y: z.number(), brightness: z.number() }).strict().optional(),
   extras: z.array(z.object({ id: z.string().max(40), text: z.string().trim().min(1).max(20), color: z.enum(["ink", "accent", "red", "white"]),
