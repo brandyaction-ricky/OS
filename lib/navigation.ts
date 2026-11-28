@@ -95,6 +95,7 @@ export const NAV_STAGES: NavStage[] = [
     { label: "문서 보관함", href: "/knowledge/vault", icon: BookOpen, aliases: ["전체 문서", "문서 작업공간", "개인별 폴더"], ready: true },
     { label: "내 노트", href: "/knowledge/notes", icon: FileText, ready: true },
     { label: "회사 정본", href: "/knowledge/canon", icon: BookOpen, ready: true },
+    { label: "정본 검토", href: "/knowledge/review", icon: ListChecks, aliases: ["정본 승인", "정본 요청", "검토함"], ready: true },
     { label: "휴지통", href: "/knowledge/trash", icon: ScrollText, ready: true },
   ] },
   { id: "team", label: "업무 기록", icon: Users, href: "/organization/meetings", pages: [
@@ -163,7 +164,7 @@ export function findPage(path: string): NavPage {
   if (pathname === "/knowledge") return { label: "문서 보관함", href: pathname, navHref: "/knowledge/vault", icon: BookOpen, ready: true };
   const legacyDocuments: Record<string, string> = {
     "/knowledge/decisions": "결정 모음", "/knowledge/docs": "팀 문서", "/knowledge/graph": "연결",
-    "/knowledge/review": "정본 검토", "/knowledge/templates": "양식",
+    "/knowledge/templates": "양식",
   };
   if (legacyDocuments[pathname]) return { label: legacyDocuments[pathname], href: pathname, navHref: "/knowledge/vault", icon: FileText, ready: true };
   if (pathname === "/knowledge/search") return { label: "문서 찾기", href: "/knowledge/search", navHref: "/knowledge/vault", icon: Search, ready: true };
