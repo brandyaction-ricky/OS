@@ -92,6 +92,15 @@ test("scenes Logan's engine reads without a fallback must carry those fields", (
   assert.equal(of({ title: "무게", cue_tilt: undefined, right: "" }).length, 2);
 });
 
+// 2026-11-29 (7편): lib_gear_train times each gear by its item's cue; items without one failed the pre-render drawing.
+test("a lib_gear_train item without its own cue is sent back before the render PC tries to draw it", () => {
+  const gears = (items) => story([{ type: "opening", at: "오늘은 성격" }, { type: "lib_gear_train", at: "같은 성격인데", items },
+    { type: "outro", at: "마지막으로 정리해" }, { type: "summary", at_time: 25, title: "정리", points: [{ head: "자리", desc: "바꾸기" }] }, { type: "endscreen", at_time: 28 }]);
+  const of = (items) => checkMyinStoryboard(gears(items), words, ["lib_gear_train"]).issues.filter((issue) => issue.includes("items마다"));
+  assert.equal(of([{ name: "내 일" }, { name: "역할", cue: "같은 성격인데" }]).length, 1);
+  assert.deepEqual(of([{ name: "내 일", cue: "같은 성격인데" }, { name: "역할", cue: "같은 성격인데" }]), []);
+});
+
 // 2026-10-26: Unsplash page downloads got 429 on the render PC; the owner chose file links only, so a page link is refused up front.
 test("myinPhotoFetchUrl takes the image hosts' file links as they are and refuses Unsplash photo pages", () => {
   for (const link of ["https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=1920&fm=jpg", "https://upload.wikimedia.org/wikipedia/commons/a/a9/Example.jpg"])

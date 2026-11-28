@@ -341,9 +341,15 @@ const SCENE_NEEDS: Record<string, string[]> = {
   bars: ["title"], bigcircle: ["title"], hero: ["title"], layers: ["title"], list: ["title"], people: ["title"], profiles: ["title"],
   steps: ["title"], summary: ["title", "points"], versus: ["title", "left", "right"], scale: ["title", "left", "right", "cue_tilt"],
 };
+/** 도식 창고 drawers that time each item by its own cue (flow.py gear_train reads it["t"]): an item without one fails the drawing (7편, 2026-11-29). */
+const ITEM_CUES = new Set(["lib_gear_train"]);
 function sceneFieldIssues(scenes: Record<string, unknown>[]) {
-  return scenes.flatMap((sc, index) => (SCENE_NEEDS[String(sc.type)] ?? []).filter((key) => sc[key] === undefined || sc[key] === null || sc[key] === "")
-    .map((key) => `[장면 ${index + 1}] ${sc.type}: ${key} 칸이 비었어요. 비우면 렌더 PC가 이 장면을 그리지 못하고 멈춰요.`));
+  return scenes.flatMap((sc, index) => [
+    ...(SCENE_NEEDS[String(sc.type)] ?? []).filter((key) => sc[key] === undefined || sc[key] === null || sc[key] === "")
+      .map((key) => `[장면 ${index + 1}] ${sc.type}: ${key} 칸이 비었어요. 비우면 렌더 PC가 이 장면을 그리지 못하고 멈춰요.`),
+    ...(ITEM_CUES.has(String(sc.type)) && Array.isArray(sc.items) && (sc.items as { cue?: unknown }[]).some((item) => typeof item?.cue !== "string" || !item.cue.trim())
+      ? [`[장면 ${index + 1}] ${sc.type}: items마다 그 항목을 말하는 cue가 있어야 해요. 없으면 렌더 PC가 이 장면을 그리지 못해요.`] : []),
+  ]);
 }
 // ── 로건 「마이인 기획표 QA 기준 v1」 3부 (2026-10-27): what any AI's storyboard must pass, from the 연봉 video's QA. ──
 type Piece = { text: string; cue?: string };
