@@ -55,4 +55,10 @@ test("나눠 그리기: MYIN_HELPERS lists host:procs; the worker hands pieces o
   const script = readFileSync(new URL("../tools/myin_help_pieces.sh", import.meta.url), "utf8");
   assert.match(script, /render_myin\.py os_myin pieces \$procs <&3 &/);
   assert.match(script, /own work started: stop helping/);
+  // the helper always reads _shared/fonts: a PC without MYIN_FONT_DIR sends the package fonts it draws with (2026-11-28 test)
+  assert.match(script, /MYIN_FONT_DIR=\$S\/fonts/);
+  const split = readFileSync(new URL("../tools/myin-split.mjs", import.meta.url), "utf8");
+  assert.match(split, /env\.MYIN_FONT_DIR \|\| path\.join\(myinDir, "\.\.", "\.\.", "assets", "fonts"\)/);
+  assert.match(split, /\[fonts, "fonts"\]/);
+  assert.match(split, /"\/assets\/bgm\/", "\/assets\/amb\/", "\/assets\/sfx\/"/);   // pieces are silent: the sound libraries stay home
 });
