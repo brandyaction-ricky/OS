@@ -27,6 +27,22 @@ export async function cardDesignSource(supabase: Supabase) {
   const doc = data?.[0];
   return doc ? { id: String(doc.id), title: String(doc.title), version: Number(doc.current_version), status: String(doc.status) } : null;
 }
+export async function cardRequiredProcedures(supabase: RequestActor["supabase"], titles: string[]) {
+  const {data, error} = await supabase.from("os_documents").select("id,title,current_version,status").in("title", titles).in("status", ["canonical", "team", "reviewed"])
+    .order("updated_at", { ascending: false });
+  if (error) {
+    throw new ApiError(503, "PROCEDURE_READ_FAILED", "제작에 적용할 정본을 확인하지 못했어요.");
+  }
+  return titles.flatMap(title => {
+    const matches = (data ?? []).filter(doc => doc.title === title);
+    const approved = matches.filter(doc => doc.status === "canonical");
+    const eligible = approved.length ? approved : matches;
+    if (eligible.length !== 1)
+      throw new ApiError(409, "PROCEDURE_UNRESOLVED", `「${title}」 문서가 ${eligible.length ? "여러 개" : "미등록"}예요. 회사 문서에서 사용할 정본을 확인해 주세요.`);
+    const doc = eligible[0];
+    return doc ? [{ id: String(doc.id), title: String(doc.title), version: Number(doc.current_version) }] : [];
+  });
+}
 export const VOICE_CANON_TITLE = "원고 말투 정본";
 export const MYIN_CANON_TITLES = ["BRANDYACTION 핵심 컨텍스트", "카드뉴스 디자인 정본", "마이인 캐릭터 정본 · 2026-11-24"];
 /** 웹툰형's people: the three 동기, the 강점 낙서 and how one 화 runs. */

@@ -1,8 +1,8 @@
 import { adCopyIssues, adDisposition } from "@/lib/ad-production";
+import { finishedCardPublication } from "@/lib/cardnews/cards";
 import { createHash, randomUUID } from "node:crypto";
 import { getSharp } from "next/dist/server/image-optimizer";
 import { z } from "zod";
-import { finishedCardPublication } from "@/lib/cardnews/cards";
 import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { OsRecord } from "@/lib/record-types";

@@ -50,7 +50,7 @@ import { assertScriptNotesInputs, saveScriptNotes, scriptNotesCard, scriptNotesI
 import { markSceneNotesSent, sceneNoteInputs, sceneNotesCard, sceneNotesInputKey, saveSceneNotes } from "./myin-scene-notes";
 import { addThumbCandidate, assertV1ThumbsInputs, keepThumbFeed, THUMB_TOOLS, thumbsByJob, thumbsMadeCount, thumbUploadUrl, v1ThumbsCard, v1ThumbsInputKey } from "./youtube-thumbs";
 import { channelContext } from "./channel-canon";
-import { assertCardJobOpen, cardCanon, cardDesignSource, cardFormatsSchema, cardInputKey, cardJobCard, cardJobSource, checkCardResult, saveCardDrafts, MYIN_CANON_TITLES, VOICE_CANON_TITLE, WEBTOON_CAST_TITLE } from "./youtube-process-card-job";
+import { assertCardJobOpen, cardCanon, cardDesignSource, cardRequiredProcedures, cardFormatsSchema, cardInputKey, cardJobCard, cardJobSource, checkCardResult, saveCardDrafts, MYIN_CANON_TITLES, VOICE_CANON_TITLE, WEBTOON_CAST_TITLE } from "./youtube-process-card-job";
 
 /** The name a job carries: the adopted title, or a v1 project's confirmed A. */
 const jobTitle = (state: Awaited<ReturnType<typeof readPipeline>>) => isYoutubeV1(state.source) ? v1Title(v1Stages(state)) : state.writing.packageTitle || state.source.title;
@@ -80,9 +80,9 @@ complete 할 때 result 옆에 report도 보내 주세요. 사람은 「한눈�
 // 원고 공정 정본 §2 '역할'. ① 기획 has no such field yet, so the staff member picks it when sending ② to their AI.
 export const SCRIPT_ROLES = ["유입형", "전환형", "판매형"] as const;
 const jobMetaSchema = z.object({
+  canonTrace: z.array(z.object({ id: z.string().uuid(), title: z.string(), version: z.number().int(), bundle: z.string().optional() })).optional(),
   kind: z.literal(STAFF_AI_JOB_KIND), task: z.enum(["thumbs", "scene-plan", "script", "storyboard", "kit", "plan", "shorts", "short", "niche", "column", "short-copy", "retitle", "short-topics", "short-recycle", "short-formula", "short-script", "topic-formula", "card", "image-creative", "script-notes", "scene-notes"]), sourceId: z.string().uuid(), inputKey: z.string().length(64), noteIds: z.array(z.string()).optional(),
   // ruleVersions only on jobs made before 2026-10-18; a design no longer depends on script rule versions.
-  canonTrace: z.array(z.object({ id: z.string().uuid(), title: z.string(), version: z.number().int(), bundle: z.string().optional() })).optional(),
   templateVersion: z.string().optional(), ruleVersions: z.array(versionRef).optional(), targetMinutes: z.number().optional(), role: z.enum(SCRIPT_ROLES).optional(), attachments: z.string().optional(), slot: z.enum(SLOTS).optional(), myinRunId: z.string().uuid().optional(), requestedAt: z.string(),
   requestedStage: z.string().optional(), closedAt: z.string().optional(),
   lease: z.object({ token: z.string().uuid(), expiresAt: z.string() }).optional(), claimedAt: z.string().optional(),
@@ -857,7 +857,7 @@ async function claimJob(agent: RequestActor, jobId: string, byGpt: boolean) {
     if (!canon) throw new ApiError(409, "CARD_CANON_MISSING", "「카드뉴스 정본」을 찾지 못했어요.");
     const titles = formats.includes("webtoon") ? [VOICE_CANON_TITLE, WEBTOON_CAST_TITLE] : [VOICE_CANON_TITLE];
     if (cards.production?.design?.startsWith("myin-")) titles.push(...MYIN_CANON_TITLES);
-    const [references, design] = await Promise.all([namedProcedures(service(), titles, true), cardDesignSource(service())]);
+    const [references, design] = await Promise.all([cardRequiredProcedures(service(), titles), cardDesignSource(service())]);
     if (design && !references.some(doc => doc.id === design.id)) references.push(design);
     const voice = references.filter(doc => doc.title === VOICE_CANON_TITLE);
     const cast = references.find(doc => doc.title === WEBTOON_CAST_TITLE);
