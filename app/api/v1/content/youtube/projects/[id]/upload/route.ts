@@ -7,6 +7,8 @@ import {
 } from "@/lib/server/youtube-process-upload";
 
 export const runtime = "nodejs";
+// 업로드 뒤 저절로: after the upload is recorded, GPT writes the 숏폼 구간 and the 칼럼 (several minutes each) behind the response.
+export const maxDuration = 800;
 export const dynamic = "force-dynamic";
 const actionSchema = z.object({ action: z.enum(["session", "complete", "status", "ledger", "clip-session", "clip-complete"]) }).passthrough();
 

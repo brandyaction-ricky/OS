@@ -132,9 +132,11 @@ export async function completeYoutubeUpload(actor: RequestActor, id: string, inp
   }
   const short = project.yp.topic.type === "short";
   const videoUrl = short ? `https://www.youtube.com/shorts/${video.id}` : `https://www.youtube.com/watch?v=${video.id}`;
+  // 업로드 뒤 저절로 (요청 11-25): a longform goes on to its 숏폼 5편 and 칼럼 by itself unless the PD turned it off on this step.
+  const follow = ["live", "anim"].includes(project.yp.topic.type ?? "") && !stages.upload.data.autoOff;
   const run = { at: new Date().toISOString(), by: actor.name, status: "done" as const, videoId: video.id, videoUrl, finalV: final?.v, ...(final ? { finalAt: final.at } : {}), thumbnail,
     ...(video.status?.privacyStatus ? { privacy: video.status.privacyStatus } : {}), ...(video.status?.publishAt ? { publishAt: video.status.publishAt } : {}),
-    ...(typeof video.status?.containsSyntheticMedia === "boolean" ? { ai: video.status.containsSyntheticMedia } : {}) };
+    ...(typeof video.status?.containsSyntheticMedia === "boolean" ? { ai: video.status.containsSyntheticMedia } : {}), ...(follow ? { follow } : {}) };
   await writeStage(actor.supabase, actor.id, actor.team, project, "upload", stages.upload, { ...stages.upload.data, run }).catch(error => {
     throw error instanceof ApiError && error.code === conflict().code ? new ApiError(409, "UPLOAD_RECORD_CONFLICT", "영상은 올라갔지만 기록이 바뀌었어요. 같은 버튼을 다시 누르면 기록만 저장해요.") : error;
   });
@@ -154,6 +156,7 @@ export async function completeYoutubeUpload(actor: RequestActor, id: string, inp
   await auditChannelAction(actor.id, ownerId, "youtube", "업로드 결과 확인");
   // 링크 대장 (로건 요청 11-24): a failed ledger write never fails the upload; 「링크 대장에 남기기」 writes it later.
   if (!short) await ledgerYoutubeUpload(actor, project.id).catch(reason => console.warn(`ledger skipped (${reason instanceof Error ? reason.message : "error"})`));
+  if (follow) (await import("./youtube-gpt-jobs")).scheduleUploadFollowUps(project, { id: actor.id, name: actor.name, team: actor.team });
   return { videoId: video.id, videoUrl, thumbnail };
 }
 

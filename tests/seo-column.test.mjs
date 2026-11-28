@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkColumnHtml, cleanColumnHtml, columnForMyin, columnShorts, columnSlots, faqPairs, renderColumn } from "../lib/seo-column.ts";
+import { checkColumnHtml, cleanColumnHtml, columnEmptyPlaces, columnForMyin, columnShorts, columnSlots, faqPairs, renderColumn } from "../lib/seo-column.ts";
 import { columnSignature } from "../lib/youtube-process/stages.ts";
 
 // SEO 칼럼 (owner request 2026-10-25): the earlier 기획실 class contract, checked by the OS and dressed only when shown.
@@ -134,4 +134,11 @@ test("MYIN gets no empty places and no writer's note under the video; the OS pre
   assert.doesNotMatch(myin, /\[이미지\]|\[대표 이미지\]|\[영상\]/);
   assert.doesNotMatch(myin.match(/<figure class="filled embed"[\s\S]*?<\/figure>/)[0], /<figcaption>/);
   assert.match(renderColumn(column(), fills), /class="ph\b/);
+});
+
+test("업로드 뒤 저절로: only places nothing fills hold a column back (hero ← thumbnail A, video ← the uploaded longform)", () => {
+  const html = '<figure class="ph hero" data-slot="hero"><figcaption>대표</figcaption></figure><figure class="ph video" data-slot="video"></figure><figure class="ph" data-slot="1"></figure><figure class="ph" data-slot="2"></figure>';
+  assert.deepEqual(columnEmptyPlaces(html, { 1: { url: "https://a/b.jpg" } }, { hero: true, video: true }).map((place) => place.slot), ["2"]);
+  assert.deepEqual(columnEmptyPlaces(html, { 1: { path: "p.jpg" }, 2: { url: "https://a/c.jpg" } }, { hero: false, video: false }).map((place) => place.slot), ["hero", "video"]);
+  assert.deepEqual(columnEmptyPlaces(html, { 1: { path: "p.jpg" }, 2: { path: "q.jpg" } }, { hero: true, video: true }), []);
 });

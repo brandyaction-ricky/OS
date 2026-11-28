@@ -89,6 +89,7 @@ const jobMetaSchema = z.object({
   imagePhase: z.enum(["appeal-options", "appeals", "concepts", "scene", "formats", "copy"]).optional(),
   // 한눈에 보기: the AI's 결론 먼저 report, and who took the result (채택) so it leaves the list.
   report: jobReportSchema.optional(), adoptedAt: z.string().optional(), adoptedBy: z.string().optional(),
+  auto: z.boolean().optional(),
 }).passthrough();
 type JobMeta = z.infer<typeof jobMetaSchema>;
 
@@ -145,6 +146,9 @@ export const staffJobWorkerSchema = z.discriminatedUnion("action", [
 ]);
 
 const service = () => createServiceSupabase();
+// 업로드 뒤 저절로: loaded on use, since the GPT runner itself imports this file.
+const gptJobsModule = () => import("./youtube-gpt-jobs");
+const followOwner = (agent: RequestActor) => ({ id: agent.ownerId, name: agent.name, team: agent.team });
 const dbError = () => new ApiError(503, "STAFF_AI_JOB_UNAVAILABLE", "AI 작업을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.");
 const meta = (job: OsRecord) => jobMetaSchema.parse(job.metadata) as JobMeta;
 /** A 틈새 job carries the videos it was asked to group, frozen when it was requested. */
@@ -209,7 +213,8 @@ function recycledWebShort<T extends ReturnType<typeof checkWebShortResult>>(chec
   return checked;
 }
 
-export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof staffJobRequestSchema>, gpt?: { tier: GptTier }) {
+/** auto: started by the OS itself (업로드 뒤 저절로) — its completion goes on to the next step (칼럼 공개 · 숏폼 만들기) without a person. */
+export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof staffJobRequestSchema>, gpt?: { tier: GptTier }, auto = false) {
   let source: OsRecord; let title: string; let inputKey: string;
   let myinRunId: string | undefined;
   let sceneRows: OsRecord[] = [];
@@ -393,7 +398,7 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
     ...(input.task === "script-notes" || input.task === "scene-notes" ? { noteIds: [...new Set(input.notes)] } : {}),
     ...(input.task === "scene-notes" ? { myinRunId } : {}),
     ...(input.task === "image-creative" ? { space: "personal", ...(imagePhase ? {imagePhase} : {}), proc:"image-creative", targetId:input.sourceId, sub:"phase" in input.request ? "formats" : "copy", imageRequest: input.request, ...(input.target ? {target:input.target} : {}) } : {}),
-    ...(gpt ? { executor: "gpt" as const, tier: gpt.tier } : {}) };
+    ...(gpt ? { executor: "gpt" as const, tier: gpt.tier } : {}), ...(auto ? { auto: true } : {}) };
   const writer = input.task === "image-creative" ? service() : actor.supabase;
   const { data, error } = await writer.from("os_records").insert({
     id: randomUUID(), record_type: "ai_job", title: `${title} · ${taskName}`.slice(0, 240),
@@ -921,6 +926,7 @@ export async function completeStaffJob(agent: RequestActor, input: Extract<z.inf
     const by = await displayName(service(), agent.ownerId, agent.name);
     const saved = await keepIssues(job, m, () => saveRecycle(service(), agent.ownerId, state, input.result, { by, model: input.model, jobId: job.id }, m.targetMinutes ?? 5));
     await saveJob(job, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });
+    if (m.auto) await (await gptJobsModule()).makeRecycleAfterUpload(m.sourceId, followOwner(agent));
     return { done: true, ...saved, next: "담당 PD가 유튜브 공정 › 쇼츠 · 칼럼 › 롱폼에서 뽑기에서 구간과 제목을 확인하고 숏폼으로 만듭니다." };
   }
   if (m.task === "short-formula") {
@@ -957,6 +963,7 @@ export async function completeStaffJob(agent: RequestActor, input: Extract<z.inf
     const materials = await columnMaterials(service(), m.sourceId).catch(() => null);
     const saved = await keepIssues(job, m, () => saveV1Column(service(), agent.ownerId, state, input.result, { model: input.model, jobId: job.id, name: agent.name }, m.targetMinutes ?? 1, materials));
     await saveJob(job, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });
+    if (m.auto) await (await gptJobsModule()).publishColumnAfterUpload(m.sourceId, followOwner(agent));
     return { done: true, ...saved, next: "롱폼 사진은 칼럼에 들어갔습니다. 담당 PD가 유튜브 공정 › 쇼츠 · 칼럼에서 빈 이미지 자리만 채우고 마이인에 보냅니다." };
   }
   if (m.task === "short-copy") {
