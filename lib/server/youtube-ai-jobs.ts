@@ -48,6 +48,7 @@ import type { GptTier } from "@/lib/youtube-process/gpt-draft";
 import { readStages } from "./youtube-process-stages";
 import { assertScriptNotesInputs, saveScriptNotes, scriptNotesCard, scriptNotesInputKey } from "./youtube-script-notes";
 import { markSceneNotesSent, sceneNoteInputs, sceneNotesCard, sceneNotesInputKey, saveSceneNotes } from "./myin-scene-notes";
+import { THUMB_FRAMES } from "@/lib/youtube-process/thumb-style";
 import { addThumbCandidate, assertV1ThumbsInputs, keepThumbFeed, THUMB_TOOLS, thumbsByJob, thumbsMadeCount, thumbUploadUrl, v1ThumbsCard, v1ThumbsInputKey } from "./youtube-thumbs";
 import { channelContext } from "./channel-canon";
 import { assertCardJobOpen, cardCanon, cardDesignSource, cardRequiredProcedures, cardFormatsSchema, cardInputKey, cardJobCard, cardJobSource, checkCardResult, saveCardDrafts, MYIN_CANON_TITLES, VOICE_CANON_TITLE, WEBTOON_CAST_TITLE } from "./youtube-process-card-job";
@@ -138,7 +139,7 @@ export const staffJobRequestSchema = z.discriminatedUnion("task", [
   z.object({ task: z.literal("topic-formula"), sourceId: z.string().uuid(), query: z.string().trim().max(60).optional() }).strict(),
   // 롱폼 애니메이션 썸네일 (2026-11-09): pictures made with the PD's own image tool from the 기획안's words; query = the 참고 영상 검색어.
   z.object({ task: z.literal("thumbs"), sourceId: z.string().uuid(), tool: z.enum(THUMB_TOOLS).default("flow"), count: z.number().int().min(1).max(12).default(6),
-    frame: z.literal("person").optional(), query: z.string().trim().max(60).optional() }).strict(),
+    frame: z.enum(THUMB_FRAMES).optional(), query: z.string().trim().max(60).optional() }).strict(),
 ]);
 export const staffJobWorkerSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("claim"), jobId: z.string().uuid() }).strict(),
@@ -953,7 +954,7 @@ async function keepIssues<T>(job: OsRecord, m: JobMeta, check: () => Promise<T> 
   }
 }
 
-const thumbFrame = (m: JobMeta) => (m as { thumbFrame?: unknown }).thumbFrame === "person" ? "person" as const : undefined;
+const thumbFrame = (m: JobMeta) => { const frame = (m as { thumbFrame?: unknown }).thumbFrame; return THUMB_FRAMES.find(known => known === frame); };
 const thumbTool = (m: JobMeta) => { const tool = (m as { thumbTool?: unknown }).thumbTool; return tool === "chatgpt" ? "chatgpt" as const : "flow" as const; };
 /** 썸네일 후보 올리기 · 등록, only while this AI holds the job. */
 export async function thumbJobStep(agent: RequestActor, input: Extract<z.infer<typeof staffJobWorkerSchema>, { action: "upload" | "add" }>) {

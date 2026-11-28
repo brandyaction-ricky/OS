@@ -10,7 +10,8 @@ const nextConfig: NextConfig = {
     "/myin-information/receipt/*": ["./lib/cardnews/fonts/*.woff", "./lib/cardnews/examples/receipt/*.jpg"],
     "/api/v1/content/youtube/projects/[id]/cards": ["./lib/cardnews/fonts/*.woff", "./public/myin-card-cast/*.png", "./public/myin-2d/*.png", "./public/myin-cards/*"],
     // 롱폼 애니메이션 썸네일: the title is Pretendard 900 (the 썸네일 스타일).
-    "/api/v1/content/youtube/projects/[id]/thumbs": ["./lib/cardnews/fonts/Pretendard-900.otf"],
+    // 콜라주형 adds Pretendard Light and its noise tile and silhouette.
+    "/api/v1/content/youtube/projects/[id]/thumbs": ["./lib/cardnews/fonts/Pretendard-900.otf", "./lib/cardnews/fonts/Pretendard-300.woff", "./public/thumb-collage/*.png"],
     "/api/v1/content/image-creatives/*/preview": ["./lib/cardnews/fonts/*.woff", "./lib/cardnews/fonts/Pretendard-900.otf", "./lib/image-creative/fonts/*.woff"],
     "/api/v1/content/image-creatives/*/prompt-edit": ["./lib/cardnews/fonts/*.woff", "./lib/cardnews/fonts/Pretendard-900.otf", "./lib/image-creative/fonts/*.woff"],
     "/api/v1/content/image-creatives/*/export": ["./lib/cardnews/fonts/*.woff", "./lib/cardnews/fonts/Pretendard-900.otf", "./lib/image-creative/fonts/*.woff"],

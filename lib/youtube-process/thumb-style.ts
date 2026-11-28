@@ -3,6 +3,9 @@
 import type { YpKind } from "./project.ts";
 
 export type ThumbTool = "flow" | "chatgpt";
+/** The frames a candidate can be set in besides the 기본형: 인물형 (2026-11-24) and 콜라주형 (2026-11-28). */
+export const THUMB_FRAMES = ["person", "collage"] as const;
+export type ThumbFrameKind = typeof THUMB_FRAMES[number];
 export interface ThumbStyle {
   id: string; name: string; kinds: readonly YpKind[];
   width: number; height: number; background: string;
@@ -48,7 +51,8 @@ export interface ThumbCopy { text: string; accent?: string }
  */
 export interface ThumbEdit {
   /** 인물형 (마이인 가이드, 대표 확정 2026-11-24): the photo fills the frame, the copy sits in a blue and a black box on its left. */
-  frame?: "person";
+  /** 콜라주형 (썸네일 정본, 대표 2026-11-28): a text-free photo collage, film noise, the 고민 silhouette and two lines bottom-left. */
+  frame?: ThumbFrameKind;
   /** The photo mirrored, so the person stands on the right of the boxes. */
   flip?: boolean;
   size?: number;
@@ -67,7 +71,8 @@ export interface ThumbSubject { box: [number, number, number, number]; size: [nu
 export interface ThumbBox { left: number; top: number; width: number; height: number }
 /** photoBox: where the picture goes (objectFit contain inside it); clipBottom: the picture is cut there, just above the title's letters. */
 export interface ThumbLayout { lines: string[]; size: number; titleTop: number; subjectBox: { top: number; height: number }; photoBox: ThumbBox; clipBottom: number; checks: ThumbCheck[];
-  person?: { band: { text: string; top: number; size: number } | null; boxes: { text: string; top: number; height: number; bg: string }[] } }
+  person?: { band: { text: string; top: number; size: number } | null; boxes: { text: string; top: number; height: number; bg: string }[] };
+  collage?: { sub: { text: string; top: number; size: number } | null; main: { text: string; top: number; size: number }; silhouette: ThumbBox } }
 export interface ThumbCheck { id: "bottom" | "phone" | "lines" | "chars" | "extras"; ok: boolean; text: string }
 
 /** Glyph width in em (Pretendard Black): Hangul and wide symbols ≈ 1, Latin and digits narrower, spaces a third. */
@@ -103,6 +108,58 @@ export const THUMB_PERSON = { blue: "#315FFA", black: "#000000", text: "#FFFFFF"
   ],
 } as const;
 
+/**
+ * 콜라주형 틀 (「회사냐 일이냐」 썸네일 정본, 대표 2026-11-28): the AI's text-free photo collage over the whole frame, the shared film
+ * noise (fading to the bottom), a dark fade under the copy, the anonymous 고민 silhouette on the right cut by the bottom edge, and two
+ * lines from the bottom-left — a thin white line, then a heavy white line with one yellow word, both outlined behind the letters.
+ * The numbers are the canon's 실제 렌더 기준; the silhouette sits at the average of its nine test renders.
+ */
+export const THUMB_COLLAGE = {
+  left: 43, right: 180, bottom: 40, lineHeight: 1.03, tracking: -0.052, gap: 8, stroke: "#111316",
+  sub: { weight: 300, minPx: 72, maxPx: 94, color: "#F8F8F5", strokePx: 3 },
+  main: { weight: 900, minPx: 104, maxPx: 132, color: "#FFFDF7", accent: "#F9FF98", strokePx: 5 },
+  phoneMinPx: 26, maxLines: 2,
+  shade: "linear-gradient(180deg, rgba(11,12,16,0) 44%, rgba(11,12,16,0.05) 52%, rgba(11,12,16,0.41) 62%, rgba(9,10,14,0.79) 82%, rgba(8,10,16,0.93) 100%)",
+  // soft-light 94 % in the canon: the tile is that noise baked into black and white specks, so screen and PNG (no blend modes) match.
+  noise: { src: "/thumb-collage/noise.png", tile: 256, mask: "linear-gradient(180deg, #000 0%, #000 62%, rgba(0,0,0,0.73) 80%, rgba(0,0,0,0.33) 100%)" },
+  // ponytail: one fixed spot for every collage; add a nudge in 다듬기 if PDs find it covering the main prop.
+  silhouette: { src: "/thumb-collage/silhouette.png", ratio: 1159 / 1356, anchor: 1170, height: 620, bottom: -22, shift: 0.52, brightness: 1.43 },
+  /** The canon's common block: said before the scene the AI writes for this video (Korean works on Flow too). */
+  prompt: "첨부된 참고 그림은 디자인 참고용이다. 인물, 사진, 로고, 모든 글자는 빼고, 그 레퍼런스에서 입체적으로 겹친 큰 피사체들, 거친 사진 콜라주, 화면 끝까지 차는 비대칭 배치, 질감 있는 사무실·건물 배경만 이 이미지의 장면에 옮긴다. 가로 16:9, 유튜브 썸네일에 들어갈 무문자 완성 배경. 전체 캔버스를 실제 사진 콜라주로 채운다. 배경은 어두운 차콜과 채도를 낮춘 유리 청회색, 입자가 섬세한 편집 사진. 면을 넓게 차지하는 밝은 문서색과 코발트 사물을 앞에 두어 대비와 영상의 색 연속성이 있도록 한다. 윗부분에 가장 알아보기 쉬운 전경 사물을 크게, 중경의 다른 단서는 비대칭으로 겹쳐 두되 서로 다른 덩어리로 보인다. 오른쪽은 브랜드 로고나 사람이 없는 사무 공간과 보조 소재. 인물, 얼굴, 손, 사람의 실루엣이나 반사, 회사 로고, 유튜브 아이콘, 글자와 숫자, 무늬가 복잡한 소품, 화살표 그래픽 없이. 화면 아래 37%에는 나중에 두 줄 큰 흰색과 노란색 한글이 올라가므로 어두운 분위기를 만들되 위와 단절된 검정 띠나 액자, 둥근 카드, 칸은 그리지 않는다. 참고 그림처럼 화면 가장자리에 닿는 사물과 자연스럽게 이어지는 사진의 깊이와 선명한 대비. 작은 썸네일에서도 핵심 장면이 완전히 읽혀야 한다.",
+  rules: [
+    "그림 = 글자 없는 실제 사진 콜라주 한 장. 이 영상의 고민을 한눈에 말하는 큰 사물 하나(왼쪽 위 절반 가까이) + 다른 단서 하나(오른쪽 뒤에 겹쳐), 화면 끝까지 비대칭으로 채워요.",
+    "사람 · 얼굴 · 손 · 실루엣 · 로고 · 글자 · 숫자 · 화살표 없이. 사람 자리는 OS가 오른쪽에 익명 고민 실루엣으로 얹어요 — 오른쪽 3분의 1은 보조 소재만.",
+    "화면 아래 37%는 어둡게 이어지게(검정 띠 · 액자 · 카드 없이). 문구 두 줄은 OS가 왼쪽 아래에 흰 글자(첫 줄 가늘게 · 둘째 줄 굵게, 노랑 한 어절)로 얹어요.",
+    "어두운 차콜 · 채도 낮은 청회색 바탕에 밝은 문서색과 코발트 사물로 대비. 필름 노이즈는 OS가 얹어요.",
+  ],
+} as const;
+
+function collageLayout(copy: ThumbCopy, style: ThumbStyle, edit?: ThumbEdit): ThumbLayout {
+  const C = THUMB_COLLAGE;
+  const all = copy.text.replace(/\r/g, "").split(/\n|\s\/\s/).map((line) => line.trim()).filter(Boolean);
+  const [subText, mainText] = all.length >= 2 ? [all[0], all[1]] : [null, all[0] ?? ""];
+  const room = style.width - C.left - C.right;
+  const fitMain = Math.floor(room / Math.max(1, thumbLineEm(mainText, C.tracking)));
+  const size = Math.max(C.main.minPx, Math.min(C.main.maxPx, fitMain, edit?.size ?? C.main.maxPx));
+  const fitSub = subText ? Math.floor(room / Math.max(1, thumbLineEm(subText, C.tracking))) : C.sub.maxPx;
+  const subSize = Math.max(C.sub.minPx, Math.min(C.sub.maxPx, fitSub));
+  const mainTop = Math.round(style.height - C.bottom - size * C.lineHeight);
+  const sub = subText ? { text: subText, size: subSize, top: Math.round(mainTop - C.gap - subSize * C.lineHeight) } : null;
+  const S = C.silhouette, width = Math.round(S.height * S.ratio);
+  const silhouette = { left: Math.round(S.anchor - width * S.shift), top: style.height - S.bottom - S.height, width, height: S.height };
+  const photoBox = scalePhoto({ left: 0, top: 0, width: style.width, height: style.height }, edit?.photo, null);
+  const phonePx = size * style.phone.widthPx / style.width;
+  const checks: ThumbCheck[] = [
+    { id: "lines", ok: all.length >= 1 && all.length <= C.maxLines, text: `${all.length}줄 (콜라주형은 최대 ${C.maxLines}줄: 가는 첫 줄 · 굵은 둘째 줄)` },
+    { id: "chars", ok: fitMain >= C.main.minPx && fitSub >= C.sub.minPx, text: fitMain < C.main.minPx ? "둘째 줄이 길어 화면에 다 안 들어가요 — 줄여 주세요"
+      : fitSub < C.sub.minPx ? "첫 줄이 길어 화면에 다 안 들어가요 — 줄여 주세요" : `굵은 줄 ${size}px` },
+    { id: "phone", ok: phonePx >= C.phoneMinPx, text: `휴대폰 피드 글자 ${Math.round(phonePx)}px (기준 ${C.phoneMinPx}px 이상)` },
+    ...(edit?.extras?.length ? [extrasCheck(edit.extras, style)] : []),
+  ];
+  return { lines: sub ? [sub.text, mainText] : [mainText], size, titleTop: sub?.top ?? mainTop, subjectBox: { top: 0, height: style.height }, photoBox,
+    clipBottom: style.height, checks, collage: { sub, main: { text: mainText, top: mainTop, size }, silhouette } };
+}
+
 function personLayout(copy: ThumbCopy, style: ThumbStyle, edit?: ThumbEdit): ThumbLayout {
   const P = THUMB_PERSON;
   // 기획안 문구 칸은 한 줄이라 「 / 」로 나눠 쓰기도 한다(서율 3편 리메이크 2026-11-25) — 인물형에서는 줄바꿈과 같게 센다.
@@ -130,6 +187,7 @@ function personLayout(copy: ThumbCopy, style: ThumbStyle, edit?: ThumbEdit): Thu
 /** Where everything goes on the 1280×720 frame, and the checks that follow from it (the 50 px bottom, the phone text size, the line rules). */
 export function thumbLayout(copy: ThumbCopy, style: ThumbStyle, edit?: ThumbEdit, subject?: ThumbSubject | null): ThumbLayout {
   if (edit?.frame === "person") return personLayout(copy, style, edit);
+  if (edit?.frame === "collage") return collageLayout(copy, style, edit);
   const t = style.title, lines = thumbLines(copy.text, style);
   const widest = Math.max(1, ...lines.map((line) => thumbLineEm(line, t.tracking)));
   const fit = Math.floor((style.width - 2 * t.sidePx) / widest);
@@ -185,10 +243,11 @@ const clamp = (value: number, [low, high]: readonly [number, number]) => Math.mi
 export function cleanThumbEdit(edit: ThumbEdit | undefined, style: ThumbStyle): ThumbEdit {
   if (!edit) return {};
   const L = THUMB_PHOTO_LIMITS;
-  const person = edit.frame === "person";
+  const person = edit.frame === "person", collage = edit.frame === "collage";
+  const sizes: readonly [number, number] = person ? [THUMB_PERSON.minPx, THUMB_PERSON.maxPx] : collage ? [THUMB_COLLAGE.main.minPx, THUMB_COLLAGE.main.maxPx] : [style.title.minPx, style.title.maxPx];
   return {
-    ...(person ? { frame: "person" as const } : {}), ...(person && edit.flip ? { flip: true } : {}),
-    ...(edit.size ? { size: clamp(Math.round(edit.size), person ? [THUMB_PERSON.minPx, THUMB_PERSON.maxPx] : [style.title.minPx, style.title.maxPx]) } : {}),
+    ...(person || collage ? { frame: edit.frame } : {}), ...(person && edit.flip ? { flip: true } : {}),
+    ...(edit.size ? { size: clamp(Math.round(edit.size), sizes) } : {}),
     ...(edit.photo ? { photo: { scale: clamp(edit.photo.scale, L.scale), x: Math.round(clamp(edit.photo.x, L.x)), y: Math.round(clamp(edit.photo.y, L.y)), brightness: clamp(edit.photo.brightness, L.brightness) } } : {}),
     ...(edit.extras?.length ? { extras: edit.extras.slice(0, 4).map((x) => ({ ...x, size: clamp(Math.round(x.size), [36, 140]), x: Math.round(x.x), y: Math.round(x.y) })) } : {}),
   };
