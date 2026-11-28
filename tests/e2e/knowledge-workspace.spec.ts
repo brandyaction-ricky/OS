@@ -290,10 +290,10 @@ test("canonical proposal persists without changing the original, forbids self ap
  await page.getByRole("combobox",{name:"승인자",exact:true}).selectOption("example-approver");
  await page.getByRole("button",{name:"변경 제안 보내기"}).click();
  await expect(page).toHaveURL(/\/knowledge\/review\?tab=sent/);
- await expect(page.getByRole("button",{name:"변경 승인",exact:true})).toBeDisabled();
+ await expect(page.getByRole("button",{name:"승인하고 정본에 반영",exact:true})).toBeDisabled();
  await expect(page.locator(".kw-diff")).toContainText("QA 변경 제안 본문");
  await page.reload();await expect(page.locator(".kw-diff")).toContainText("QA 변경 제안 본문");
- await page.getByRole("button",{name:"철회",exact:true}).click();
+ await page.getByRole("button",{name:"제안 취소",exact:true}).click();
  await page.goto("/knowledge/canon/example-canonical");
  await expect(page.locator(".document-reader")).not.toContainText("QA 변경 제안 본문");
  await expect(page.locator(".document-reader")).toContainText("목적과 근거");

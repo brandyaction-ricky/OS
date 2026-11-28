@@ -250,7 +250,8 @@
 .kw-registry-warn ul { display: grid; gap: 6px; margin: 10px 0; padding: 0; list-style: none; }
 .kw-registry-warn li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--kw-fg); font-size: 13px; }
 .kw-registry-warn p { margin: 0; color: var(--kw-muted); font-size: 13px; }
-.kw-layers { display: grid; gap: 12px; }
+.kw-layers { display: grid; gap: 12px; min-width: 0; }
+.kw-layers > *, .kw-layer > *, .kw-canon-flat, .kw-canon-flat > * { min-width: 0; }
 .kw-layer { display: grid; gap: 10px; padding: 16px; border: 1px solid var(--kw-line); border-radius: 10px; background: var(--kw-surface); }
 .kw-layer > header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
 .kw-layer h2 { margin: 0; font-size: 15px; }

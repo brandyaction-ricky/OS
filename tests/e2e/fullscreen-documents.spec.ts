@@ -24,7 +24,8 @@ test("canonical list reads existing documents and keeps promotion in review",asy
 });
 test("canonical folders and result count remain inside their columns",async({page})=>{
   await page.setViewportSize({width:1280,height:900});
-  await page.goto("/knowledge/canon");
+  // 정본 tab shows the three layers (2026-11-28); the folder column lives in 자료실.
+  await page.goto("/knowledge/canon?tab=library");
   const sidebar=page.locator(".kw-categories");
   const table=page.locator(".kw-table-wrap");
   await expect(sidebar).toBeVisible();
@@ -45,7 +46,7 @@ test("a canonical proposal deep link opens its comparison without granting appro
   expect(id).toBeTruthy();
   await page.goto("/knowledge/review?proposal="+id);
   await expect(page.locator(".kw-diff")).toContainText("QA 연결된 제안");
-  await expect(page.getByRole("button",{name:"변경 승인",exact:true})).toBeDisabled();
+  await expect(page.getByRole("button",{name:"승인하고 정본에 반영",exact:true})).toBeDisabled();
 });
 test("canonical workflow APIs fail closed without a session",async({request})=>{
   for(const path of ["/api/v1/knowledge/canonical","/api/v1/knowledge/canonical/worker"]){
