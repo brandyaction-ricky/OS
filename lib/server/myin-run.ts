@@ -18,7 +18,7 @@ import { MYIN_VOICE_TUNING, synthesizeFishWav } from "./fish-audio";
 import { readDiagramCatalog } from "./diagram-catalog";
 import { readSoundCatalog } from "./sound-catalog";
 import { readYoutubeAutomationInput } from "./youtube-automation-input";
-import { readLocalRenderStatus, RENDER_PC_NAME, renderPcEngine, renderPcGone, renderPcJobs } from "./youtube-render-pc";
+import { fasterPcIdle, readLocalRenderStatus, RENDER_PC_NAME, renderPcEngine, renderPcGone, renderPcJobs } from "./youtube-render-pc";
 import { readChannelStyles } from "./youtube-channel-styles";
 import { channelOf, channelToneSchema, pinStyle, type ChannelStyle } from "@/lib/youtube-process/channel-style";
 import { assertSpokenScript } from "./youtube-script-canon";
@@ -746,12 +746,15 @@ async function scriptChanged(supabase: RequestActor["supabase"], run: MyinRun) {
 
 /** A render PC's claim (`pc`, its name; none from a worker that sends no name). A member's own computer passes none. */
 interface PcClaim { name?: string }
+/** 빠른 PC 먼저: how long a video no PC holds yet waits for a faster idle PC — an idle worker asks every 30 s; after this anyone takes it. */
+const FASTER_PC_WAIT_MS = 45_000;
 
 async function claim(service: Service, stage: string, leaseMs: number | ((run: MyinRun) => number), accept: (run: MyinRun) => boolean = () => true, input?: (run: MyinRun) => string,
   engineOf?: (run: MyinRun) => Promise<string | undefined>, pc?: PcClaim) {
   const { data } = await service.from("os_records").select("*").eq("record_type", "ai_job").eq("metadata->>kind", MYIN_RUN_KIND)
     .eq("stage", stage).in("status", ["backlog", "in_progress"]).is("archived_at", null).order("created_at").limit(10);
   const gone = new Map<string, Promise<boolean>>();
+  let faster: Promise<boolean> | undefined;
   for (const candidate of (data ?? []) as OsRecord[]) {
     let run: MyinRun; try { run = parse(candidate); } catch { continue; }
     if (!accept(run)) continue;
@@ -765,6 +768,8 @@ async function claim(service: Service, stage: string, leaseMs: number | ((run: M
       if (move === "prepare_again") await prepareAgain(service, candidate, run, stage);
       if (move !== "take") continue;
     }
+    // 빠른 PC 먼저 (대표 2026-11-28): the PC that first takes a video keeps it (and hands out the split), so a slower PC lets a faster idle one have it.
+    if (pc?.name && !run.pc && Date.now() - Date.parse(candidate.updated_at) < FASTER_PC_WAIT_MS && await (faster ??= fasterPcIdle(pc.name))) continue;
     const engine = await engineOf?.(run);
     const lease = { token: randomUUID(), expiresAt: new Date(Date.now() + (typeof leaseMs === "function" ? leaseMs(run) : leaseMs)).toISOString(), startedAt: new Date().toISOString(), stage, ...(input ? { input: input(run) } : {}), ...(engine ? { engine } : {}) };
     const next: MyinRun = { ...run, lease, attempts: run.attempts + 1 };

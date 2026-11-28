@@ -64,8 +64,9 @@ const PHASE: Record<string, string> = { breath_pending: "영상 만드는 컴퓨
 // ponytail: estimates, no per-scene progress — that needs the render PC to report it.
 // words: +4 min since 로건 호흡·타이밍 (2026-10-27) re-times the gaps between sentences with a transcription.
 // final: 30 fps again from 2026-11-25 (owner; 60 fps took 4.7 minutes a video minute on the Mac mini — 3편 43 minutes for 9 minutes),
-// half the frames, about 2.5 minutes a video minute.
-const FINAL_MIN_PER_MIN = 2.5;
+// about 2.5 minutes a video minute on one PC; 나눠 그리기 across the four render PCs (2026-11-28): 11 minutes in 7 m 04 s, about 0.65.
+// ponytail: assumes the other PCs are idle to help; a split with busy helpers runs longer and the bar says to check past 1.5×.
+const FINAL_MIN_PER_MIN = 0.7;
 const TYPICAL_MIN: Record<string, number> = { words_pending: 10, prep_pending: 5 };
 const finalWhere = (run: MyinRun) => run.localFinish ? `${run.localFinish.name}님 컴퓨터에서 만들어요 · 영상 만드는 컴퓨터로는 ${finalMinutes(run)}분쯤 걸려요 · 끝날 때까지 켜 두세요`
   : `영상 만드는 컴퓨터에서 ${finalMinutes(run)}분쯤 걸려요`;
