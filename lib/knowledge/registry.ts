@@ -1,11 +1,18 @@
 /**
- * 업무 표 (대표 2026-11-28): the role registries are Markdown tables `| \`role.key\` | \`doc id\` | 담당 범위 | 별칭 |`.
+ * 업무 표 (대표 2026-11-28): the role table is a Markdown table `| \`role.key\` | \`doc id\` | 담당 범위 | 별칭 |` in §9-2 of the routing document.
  * The canon list reads them to show company canon in three layers and to warn when a role points at a document
  * the team cannot use as canon (a draft, a team document, a review document, or one moved to 자료실).
  */
 export const ENTRY_DOCUMENT = "c6b7d39d-43aa-4b09-b58d-6cf8a8dd1563";
 export const ROUTING_DOCUMENT = "7745769b-4249-4aef-a354-cbb59846a00a";
-export const REGISTRY_DOCUMENTS = ["c5bc60fb-72bc-4202-90d4-fe21461d2385", "841b6f99-8984-4614-b819-8b67dcb752e3"];
+/** Where roles are read, first wins per key. The two old registries were merged into the routing document (11-28); they are still read
+ *  so the list keeps its roles whichever lands first, the code or the approved merge. */
+export const REGISTRY_DOCUMENTS = [ROUTING_DOCUMENT, "c5bc60fb-72bc-4202-90d4-fe21461d2385", "841b6f99-8984-4614-b819-8b67dcb752e3"];
+/** Merge role rows read from several documents (in REGISTRY_DOCUMENTS order): the first row for a key wins. */
+export function mergeRoles(lists: RegistryRole[][]) {
+  const seen = new Set<string>();
+  return lists.flat().filter(role => !seen.has(role.key) && Boolean(seen.add(role.key)));
+}
 
 export interface RegistryRole { key: string; id: string; scope: string }
 
@@ -25,6 +32,7 @@ export const ROLE_GROUPS: Array<[string, string[]]> = [
   ["콘텐츠 제작", ["content", "youtube", "script", "insights"]],
   ["AI 마케팅 채널", ["aimarketing"]],
   ["AI와 일하기", ["ai"]],
+  ["OS 운영", ["os"]],
 ];
 export function roleGroup(key: string) {
   const prefix = key.split(".")[0];
