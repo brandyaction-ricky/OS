@@ -25,4 +25,5 @@ test("an AI key's edit of a document it did not write becomes a proposal the doc
   assert.match(review, /const allowed=team\?ownerDecides:canDecideProposal\(actor,p,reason\)/);
   assert.match(review, /team\?"승인하고 문서에 반영":"승인하고 정본에 반영"/);
   assert.match(stage, /AI 변경 제안 \{aiWaiting\.length\}건 보기/);
+  assert.match(review, /\[item\.doc&&item\.doc\.status!=="canonical"\?"AI 변경 제안":"정본 변경","change"\]/, "the list card says so too");
 });

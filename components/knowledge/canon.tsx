@@ -137,7 +137,7 @@ export function KnowledgeReview(){
     <main>{selected?selected.kind==="candidate"?<CandidateReview key={selected.id} id={selected.id}/>:<ProposalReview key={selected.id} proposal={selected.proposal}/>:null}</main></div></>;
 }
 function reviewBadge(item:ReviewItem){
-  if(item.kind==="proposal")return item.stale?["낡은 제안","old"]:item.proposal.status==="open"?["정본 변경","change"]:[({approved:"반영됨",withdrawn:"취소됨",rejected:"반려",returned:"보완 요청"} as Record<string,string>)[item.proposal.status]??item.proposal.status,"done"];
+  if(item.kind==="proposal")return item.stale?["낡은 제안","old"]:item.proposal.status==="open"?[item.doc&&item.doc.status!=="canonical"?"AI 변경 제안":"정본 변경","change"]:[({approved:"반영됨",withdrawn:"취소됨",rejected:"반려",returned:"보완 요청"} as Record<string,string>)[item.proposal.status]??item.proposal.status,"done"];
   return {open:["새 정본 요청","new"],publish:["등록 대기","new"],changed:["다시 확인","warn"],done:[({approved:"정본 등록",returned:"보완 요청",withdrawn:"취소됨"} as Record<string,string>)[item.candidate.status]??item.candidate.status,"done"]}[item.state];
 }
 function ReviewCard({item,tab,current}:{item:ReviewItem;tab:string;current:boolean}){
