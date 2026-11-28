@@ -4,7 +4,8 @@ import { authenticateRequest } from "@/lib/server/auth";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { knowledgeAccessContext } from "@/lib/server/knowledge-access";
 import { POLICY_FIELDS, readableKnowledgePages } from "@/lib/server/knowledge-page-access";
-import type { CanonListDocument, CanonListSnapshot } from "@/lib/knowledge/canon-list";
+import type { CanonListDocument, CanonListSnapshot, CanonRole } from "@/lib/knowledge/canon-list";
+import { parseRegistry, registryIssue, REGISTRY_DOCUMENTS } from "@/lib/knowledge/registry";
 import type { KnowledgeDocument } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -45,9 +46,30 @@ export async function GET(request: Request) {
         if (!result.data || result.data.length < 500) return documentIds;
       }
     };
-    const [documents, proposals, access] = await Promise.all([
-      readDocuments(), readProposals(), knowledgeAccessContext(user, []),
+    // 자료실 ids and the 업무 표 roles; neither stops the list when their tables are not there yet.
+    const readLibrary = async () => {
+      const ids = new Set<string>();
+      for (let offset = 0;; offset += 1000) {
+        const result = await service.from("os_document_library").select("document_id").order("document_id").range(offset, offset + 999);
+        if (result.error) return ids;
+        (result.data ?? []).forEach(row => ids.add(row.document_id));
+        if (!result.data || result.data.length < 1000) return ids;
+      }
+    };
+    const readRoles = async () => {
+      const registries = await service.from("os_documents").select("content_md").in("id", REGISTRY_DOCUMENTS);
+      if (registries.error) return [];
+      const roles = (registries.data ?? []).flatMap(row => parseRegistry(row.content_md ?? ""));
+      const targets = await service.from("os_documents").select("id,title,status,owner_only").in("id", [...new Set(roles.map(role => role.id))]);
+      return targets.error ? [] : roles.map(role => ({ role, target: (targets.data ?? []).find(row => row.id === role.id) }));
+    };
+    const [documents, proposals, access, library, roleRows] = await Promise.all([
+      readDocuments(), readProposals(), knowledgeAccessContext(user, []), readLibrary(), readRoles(),
     ]);
+    const admin = access.actor.role === "admin";
+    const roles: CanonRole[] = roleRows.map(({ role, target }) => ({ ...role,
+      issue: registryIssue(target?.status, library.has(role.id), Boolean(target?.owner_only)),
+      ...(admin && target ? { title: target.title } : {}) }));
     const visibleIds = new Set(documents.map(row => row.id));
     const stewardIds = [...new Set(documents.map(row => row.steward_id).filter((id): id is string => Boolean(id)))];
     const people: CanonListSnapshot["people"] = [];
@@ -58,9 +80,9 @@ export async function GET(request: Request) {
       people.push(...(result.data ?? []));
     }
     const rows: CanonListDocument[] = documents.map(({ id, title, folder, steward_id, review_due_on, current_version, updated_at }) =>
-      ({ id, title, folder, steward_id, review_due_on, current_version, updated_at }));
+      ({ id, title, folder, steward_id, review_due_on, current_version, updated_at, ...(library.has(id) ? { library: true } : {}) }));
     return NextResponse.json({ documents: rows, people,
-      proposalDocumentIds: [...new Set(proposals.filter(id => visibleIds.has(id)))], actor: access.actor,
+      proposalDocumentIds: [...new Set(proposals.filter(id => visibleIds.has(id)))], actor: access.actor, roles,
     } satisfies CanonListSnapshot, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return apiErrorResponse(error instanceof ApiError ? error : readError());

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { confirmPlan, descChecks, diagnosisLink, linksMissing, oneArrow, paragraphTimes, publishAtProblem, scriptChars, shotLine, shotList, withLinks, shortLinkProblem, utmBase, utmUrl, draftMissing, emptyStage, hiddenTagsOf, lengthEstimate, outlineMissing, slotOf, specOption, stageData, thumbFilled, thumbsMissing, withScriptVersion } from "../lib/youtube-process/stages.ts";
+import { confirmPlan, descChecks, diagnosisLink, linksMissing, oneArrow, paragraphTimes, publishAtProblem, scriptChars, shotLine, shotList, withLinks, publicDesc, youtubeDesc, shortLinkProblem, utmBase, utmUrl, draftMissing, emptyStage, hiddenTagsOf, lengthEstimate, outlineMissing, slotOf, specOption, stageData, thumbFilled, thumbsMissing, withScriptVersion } from "../lib/youtube-process/stages.ts";
 import { applyGateAction, editableFields } from "../lib/youtube-process/confirm.ts";
 import { newProjectMeta } from "../lib/youtube-process/project.ts";
 
@@ -76,6 +76,16 @@ test("제작 finishes with thumbnails A · B; 설명란 checks are advisory and 
   assert.equal(withLinks(linked, linkUtm), linked);
   assert.equal(descChecks(linked, { srt: null, utm: linkUtm })[5].ok, true);
   assert.match(withLinks("소개\n-----\n[히든 태그]\n강점", linkUtm), /https:\/\/cafe\.naver\.com\/x\/1\n-----\n\[히든 태그\]/);
+  // 요청 11-25: [히든 태그] fills only the tags field and 「[설명문 본문]」 is a label — YouTube gets neither; the tags stay.
+  const shown = publicDesc(desc);
+  assert.doesNotMatch(shown, /히든 태그|설명문 본문|직장인, 이직/);
+  assert.match(shown, /-----\n1\n2\n3\n-----\n\[인용 및 출처\]\n- 수치 \/ 통계 \/ 기관 \(2026, 2026-01\)$/);
+  assert.deepEqual(hiddenTagsOf(desc).length, 6);
+  assert.equal(publicDesc("소개\n-----\n[히든 태그]\n강점\n-----\n[타임라인]\n00:00 시작"), "소개\n-----\n[타임라인]\n00:00 시작");
+  assert.equal(publicDesc("소개만"), "소개만");
+  const sent = youtubeDesc(desc, linkUtm, "p1");
+  assert.match(sent, /https:\/\/cafe\.naver\.com\/x\/1\n-----\n\[타임라인\]/);
+  assert.doesNotMatch(sent, /히든 태그/);
   // 예약: a time already past, or closer than 10 minutes, is refused before anything is sent.
   assert.equal(publishAtProblem(null), "");
   assert.notEqual(publishAtProblem("2026-10-31T09:05:00.000Z", Date.parse("2026-10-31T09:00:00.000Z")), "");

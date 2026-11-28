@@ -8,11 +8,12 @@ import { ENDSCREEN_CARD_DEFAULT, type EndscreenCard } from "@/lib/youtube-proces
 import { channelMismatch } from "@/lib/youtube-process/channel-style";
 import { useUploadChannel } from "./youtube-channel-styles";
 import { projectName, stepHref } from "@/lib/youtube-process/project";
-import { campaignFor, DESC_TEMPLATE, descChecks, descWritten, diagnosisLink, finalPair, reviewOkAt, uploadFinal, linksMissing, pinnedDraft, publishAtProblem, shortLinkProblem, SLOTS, UTM_DESTS, UTM_OPTIONS, utmBase, utmCode, utmUrl, withLinks, type YpUpload } from "@/lib/youtube-process/stages";
+import { campaignFor, DESC_TEMPLATE, descChecks, descWritten, diagnosisLink, finalPair, reviewOkAt, uploadFinal, linksMissing, pinnedDraft, publishAtProblem, shortLinkProblem, SLOTS, UTM_DESTS, UTM_OPTIONS, utmBase, utmCode, utmUrl, withLinks, youtubeDesc, type YpUpload } from "@/lib/youtube-process/stages";
 import { errorMessage } from "./youtube-process-data";
 import { JobLine, SendDialog, useStaffJob, type SendTab } from "./youtube-process-ai";
 import { draftTag, isGptModel } from "@/lib/youtube-process/gpt-draft";
 import { CostTag } from "./cost-notice";
+import { gptCard } from "./youtube-process-recycle";
 import { GateBanner, hhmm, LockedStep, stepAction, Subject, useYpBundle, YpFrame, YpSection, type YpPage } from "./youtube-process-frame";
 import { ShortExportScreen } from "./youtube-process-short";
 import { CardExportScreen } from "./youtube-process-card";
@@ -96,7 +97,7 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
     saving.current = true;
     const rev = editRev.current;
     try {
-      const result = await page.client.saveStage(project.id, "upload", upload.version, patch ?? { utm: next.utm, desc: next.desc, pinned: next.pinned, privacy: next.privacy, publishAt: next.publishAt ?? null, ai: next.ai ?? null });
+      const result = await page.client.saveStage(project.id, "upload", upload.version, patch ?? { utm: next.utm, desc: next.desc, pinned: next.pinned, privacy: next.privacy, publishAt: next.publishAt ?? null, ai: next.ai ?? null, autoOff: next.autoOff ?? false });
       page.setBundle(current => current ? { ...current, project: result.project, stages: { ...current.stages, upload: result.stage } } : current);
       setSavedAt(hhmm());
       if (editRev.current === rev) setDirty(false);
@@ -172,6 +173,7 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
         {form.run?.publishAt ? ` ${whenKo(form.run.publishAt)}에 공개돼요.` : ""}<br />
         {form.run?.privacy === "private" && !form.run.publishAt && form.privacy !== "private" ? <><b className="yp-warn-t">유튜브가 비공개로 올렸어요.</b> 스튜디오에서 공개 범위를 바꿔 주세요.<br /></> : null}
         {form.ai && form.run?.ai !== undefined && form.run.ai !== (form.ai === "yes") ? <><b className="yp-warn-t">유튜브의 AI 사용 표시가 고른 값과 달라요.</b> 스튜디오에서 「{form.ai === "yes" ? "예" : "아니요"}」로 바꿔 주세요.<br /></> : null}
+        {form.run?.follow ? <>숏폼 5편과 칼럼은 저절로 만들어요. 칼럼은 마이인에 공개되고 숏폼은 미리보기에서 기다려요(끝나면 알림).<br /></> : null}
         <Processing page={page} account={account} />
         {form.run?.videoUrl ? <a className="yp-lnk" href={form.run.videoUrl} target="_blank" rel="noreferrer">유튜브에서 보기 <ExternalLink size={12} /></a> : null}
         {project.yp.topic.type !== "short" && !page.demo ? <> · <button type="button" className="yp-lnk" disabled={ledgerBusy} onClick={() => void ledger()}>{ledgerBusy ? "남기는 중…" : "링크 대장에 남기기"}</button>{ledgerNote ? ` ${ledgerNote}` : ""}</> : null}</div></div> : <GateBanner page={page} gate="review" />}
@@ -220,7 +222,7 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
             <button type="button" className="yp-way yp-rec" onClick={() => setSend("gpt")}><b><Sparkles size={14} aria-hidden="true" /> GPT로 바로 만들기</b><span>3~6분 · 설명란 · 고정 댓글 · 다른 채널 문안까지</span></button>
             <button type="button" className="yp-way" onClick={() => setSend("queue")}><b>내 AI에게 맡기기 <CostTag kind="ai" /></b><span>내 AI 구독으로 만들어요</span></button>
             <button type="button" className="yp-way" onClick={() => edit({ desc: DESC_TEMPLATE })}><b>직접 쓰기</b><span>정해진 구역 순서가 들어간 칸에 바로 써요</span></button></div> : null) : <>
-            <div className="yp-row-btns" style={{ margin: "0 0 6px" }}><button type="button" className="yp-btn yp-sm" onClick={() => void copy("desc", form.desc)}><Copy size={14} /> {copied === "desc" ? "복사됨" : "설명란 복사"}</button>
+            <div className="yp-row-btns" style={{ margin: "0 0 6px" }}><button type="button" className="yp-btn yp-sm" onClick={() => void copy("desc", youtubeDesc(form.desc, form.utm, utmCode(project.id)))}><Copy size={14} /> {copied === "desc" ? "복사됨" : "설명란 복사"}</button>
               {editable && !early ? <button type="button" className="yp-btn yp-sm" onClick={() => setSend("gpt")}><RefreshCw size={14} /> 다시 만들기</button> : null}
               {form.descBy ? <span className="yp-aitag"><Sparkles size={11} aria-hidden="true" /> {draftTag(form.descBy.name, form.descBy.model)}</span> : null}</div>
             {job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(job.status?.job?.executor === "gpt" ? "gpt" : "queue")} /> : null}
@@ -232,6 +234,8 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
             {missing.length ? <p className="yp-hint"><span className="yp-warn-t">1번의 링크 {missing.length}개가 설명란에 없어요.</span> 올릴 때 진단 링크 아래에 자동으로 들어가요.
               {editable ? <> <button type="button" className="yp-lnk" onClick={() => edit({ desc: withLinks(form.desc, form.utm) }, true)}>지금 넣기</button></> : null}</p> : null}
             <p className="yp-hint">점검은 참고용이에요. 업로드를 막지 않아요.</p>
+            <label className="yp-lbl">유튜브에 올라갈 설명란 <span className="yp-gq">[히든 태그]는 태그 칸에만 들어가고, 구역 이름 [설명문 본문]은 빠져요{myinSrt ? " · 끝에 사진·음악 출처가 붙어요" : ""}</span></label>
+            <pre className="yp-utm yp-pubdesc" aria-label="유튜브에 올라갈 설명란">{youtubeDesc(form.desc, form.utm, utmCode(project.id))}</pre>
             <label className="yp-lbl">태그 <span className="yp-gq">히든 태그에서 자동으로</span></label>
             <div className="yp-chips">{form.hiddenTags.length ? form.hiddenTags.map(tag => <span key={tag} className="yp-tag">{tag}</span>) : <span className="yp-hint">없음</span>}</div>
             <label className="yp-lbl">고정 댓글<span style={{ flex: 1 }} /><button type="button" className="yp-btn yp-sm" onClick={() => void copy("pin", form.pinned || pinnedDraft(form.utm))}><Copy size={14} /> {copied === "pin" ? "복사됨" : "복사"}</button></label>
@@ -270,6 +274,11 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
           <div style={{ marginTop: 12 }}>{channels.length ? <span className="yp-chan"><Youtube size={15} aria-hidden="true" /> 유튜브 채널 연결됨 · {chosen?.accountName}</span>
             : page.demo ? <span className="yp-hint">데모에서는 채널 연결이 없어요</span> : <span className="yp-hint">유튜브 채널이 연결되지 않았어요. <Link className="yp-lnk" href="/settings/account">내 계정 › 채널 연결</Link>에서 연결해요.</span>}</div>
         </YpSection>
+        {/* 업로드 뒤 저절로 (요청 11-25 D2): on unless the PD turns it off here, since each upload spends GPT on the 숏폼 구간 and the 칼럼. */}
+        {["live", "anim"].includes(project.yp.topic.type ?? "") ? <YpSection n={6} title="올린 뒤" need={false}>
+          <label className="yp-check"><input type="checkbox" checked={!form.autoOff} disabled={!editable} onChange={event => edit({ autoOff: !event.target.checked }, true)} /> 숏폼 5편과 칼럼을 저절로 만들기</label>
+          <p className="yp-hint">칼럼은 마이인 「칼럼」에 공개까지, 숏폼은 미리보기까지 가요. 칼럼에 빈 이미지 자리가 있으면 공개하지 않고 알려 드려요. <CostTag kind="paid" upTo amount={gptCard() * 2} what="GPT" /></p>
+        </YpSection> : null}
         <section className="yp-upgo"><div className="yp-upgo-l"><b>올라갈 영상</b><span>{last ? `v${last.v} · ${last.source === "myin" ? "자동 제작" : last.name}${project?.yp.gates.review.decidedAt && last.at > project.yp.gates.review.decidedAt ? " · 컨펌 뒤 올린 버전" : ""}` : "최종본이 없어요"}</span>
           {waiting.length ? <span className="yp-hint">컨펌 뒤 자동으로 만든 {waiting.map(item => `v${item.v}`).join(" · ")}는 후보로 있어요. 그걸 올리려면 최종 검토를 다시 열어 컨펌해 주세요.</span> : null}
           {handouts.deck || handouts.summary ? <span style={{ fontSize: 12 }}>{handouts.deck ? <a className="yp-lnk" href={handouts.deck} target="_blank" rel="noreferrer">덱 PDF</a> : null}{handouts.deck && handouts.summary ? " · " : ""}{handouts.summary ? <a className="yp-lnk" href={handouts.summary} target="_blank" rel="noreferrer">한 장 정리 이미지</a> : null}</span> : null}

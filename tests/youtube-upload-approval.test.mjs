@@ -5,6 +5,7 @@ import test from "node:test";
 import ts from "typescript";
 import * as zod from "zod";
 import * as myinStoryboard from "../lib/myin-storyboard.ts";
+import * as stages from "../lib/youtube-process/stages.ts";
 
 const kitId = "4c345370-6af6-425a-9b28-c769f7ee9a30";
 const sourceId = "56d9ff8b-acde-4b95-8d8f-91b395643854";
@@ -31,7 +32,7 @@ function setup(options = {}) {
     return builder;
   } } };
   const modules = {
-    "next/server": { NextResponse: Response }, zod, "@/lib/myin-storyboard": myinStoryboard,
+    "next/server": { NextResponse: Response }, zod, "@/lib/myin-storyboard": myinStoryboard, "@/lib/youtube-process/stages": stages,
     "@/lib/http": { ApiError, parseJson: (request) => request.json(), apiErrorResponse: (error) => Response.json({ code: error.code }, { status: error.status ?? 500 }) },
     "@/lib/server/auth": { authenticateRequest: async () => actor },
     "@/lib/server/content-pipeline": { readPipeline: async () => ({ approved: controls.approved, release: { approved: controls.releaseApproved, plan: { channelId: controls.approvedChannel, privacyStatus: controls.approvedPrivacy } } }) },

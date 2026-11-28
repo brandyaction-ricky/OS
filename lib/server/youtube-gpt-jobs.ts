@@ -9,7 +9,10 @@ import { generateContentText } from "./content-model";
 import { creditTier } from "./openai-credit";
 import { cardJobPhase, claimStaffJob, completeStaffJob, failStaffJob, requestStaffJob, staffJobRequestSchema } from "./youtube-ai-jobs";
 import { displayName } from "./youtube-process-ai";
-import { readStages } from "./youtube-process-stages";
+import { columnToMyin, readStages } from "./youtube-process-stages";
+import { getYoutubeProject, notify } from "./youtube-process";
+import { makeShortFromRecycle } from "./youtube-process-short-recycle";
+import { columnEmptyPlaces } from "@/lib/seo-column";
 
 // GPT 초안 (owner 2026-10-29, ③): the OS does a staff-AI job card itself with the company's GPT credit — the same job record, the
 // same card, the same checks and saves as a staff member's own AI, so a GPT 초안 lands where theirs would and is fixed the same way.
@@ -74,6 +77,78 @@ export async function runGptJob(jobId: string, owner: Owner, tier: GptTier) {
   }
 }
 
+/** The project's PD, or the person who acted when there is none. */
+async function pdOf(project: YpProject, by: Owner): Promise<Owner> {
+  const id = project.assigneeId || by.id;
+  return { id, name: id === by.id ? by.name : await displayName(createServiceSupabase(), id, "담당자"), team: by.team };
+}
+
+/**
+ * 업로드 뒤 저절로 (요청 11-25): once a longform is on YouTube, its 숏폼 5편 (롱폼에서 뽑기) and its SEO 칼럼 go on with nobody pressing a
+ * button — the 칼럼 to public on MYIN, the 숏폼 to their previews — unless the PD turned it off on the upload step. Nothing already made is
+ * made again; a GPT job that is still to come carries on from its completion (requestStaffJob auto).
+ */
+export function scheduleUploadFollowUps(project: YpProject, by: Owner) {
+  after(async () => {
+    const owner = await pdOf(project, by);
+    const stages = await readStages(createServiceSupabase(), project);
+    const gpt = Boolean(process.env.OPENAI_API_KEY?.trim());
+    const start = async (task: "column" | "short-recycle") => {
+      if (!gpt) return;
+      const tier = await creditTier();
+      const job = await requestStaffJob(gptActor(owner), staffJobRequestSchema.parse({ task, sourceId: project.id, ...(task === "column" ? { count: 1 } : {}) }), { tier }, true);
+      if (job.status === "backlog") await runGptJob(job.id, owner, tier);
+    };
+    await Promise.all([
+      stages.column.data.items.length ? publishColumnAfterUpload(project.id, owner) : start("column"),
+      stages.shortTopics.data.recycle?.items.length ? makeRecycleAfterUpload(project.id, owner) : start("short-recycle"),
+    ].map((step) => step.catch((error) => console.error(`upload follow-up skipped: ${project.id}: ${error instanceof Error ? error.message : error}`))));
+  });
+}
+
+/** Only after this video's upload, with 업로드 뒤 저절로 on. */
+async function followReady(projectId: string, owner: Owner) {
+  const actor = gptActor(owner);
+  const project = await getYoutubeProject(actor, projectId);
+  const stages = await readStages(actor.supabase, project);
+  return { actor, stages, ok: Boolean(stages.upload.data.run?.status === "done" && stages.upload.data.run.follow) };
+}
+
+/**
+ * The 칼럼 to public on MYIN, as 「마이인에 임시 글로 올리기」 then 「공개하기」 would: the first column, when none was sent yet. An image place
+ * nothing would fill keeps it back (요청: 비면 공개하지 않고 알리기) — the 칼럼 screen says which. The PD hears it either way. Never throws.
+ */
+export async function publishColumnAfterUpload(projectId: string, owner: Owner) {
+  try {
+    const { actor, stages, ok } = await followReady(projectId, owner);
+    const item = stages.column.data.items[0];
+    if (!ok || !item || stages.column.data.items.some((row) => row.myin)) return;
+    const empty = columnEmptyPlaces(item.html, item.fills, { hero: Boolean(stages.make.data.thumbs?.A), video: Boolean(stages.upload.data.run?.videoUrl) });
+    if (!empty.length) {
+      const sent = await columnToMyin(actor, projectId, { item: item.id, action: "send", expectedVersion: stages.column.version });
+      await columnToMyin(actor, projectId, { item: item.id, action: "publish", expectedVersion: sent.stage.version });
+    }
+    await notify([owner.id], "ai_result", projectId, `auto-column:${projectId}:${item.id}`);
+  } catch (error) {
+    console.error(`auto column skipped: ${projectId}: ${error instanceof Error ? error.message : error}`);
+    await notify([owner.id], "ai_result", projectId, `auto-column-failed:${projectId}`).catch(() => undefined);
+  }
+}
+
+/**
+ * The picked stretches to 숏폼, as 「5편 모두 만들기」 would (each runs by itself to its preview and tells the PD there); none made yet. A
+ * stretch the OS refuses (a title line too long) stays on 「롱폼에서 뽑기」 for the PD. Never throws.
+ */
+export async function makeRecycleAfterUpload(projectId: string, owner: Owner) {
+  try {
+    const { actor, stages, ok } = await followReady(projectId, owner);
+    const items = stages.shortTopics.data.recycle?.items ?? [];
+    if (!ok || items.some((item) => item.made)) return;
+    for (const item of items) await makeShortFromRecycle(actor, projectId, { itemId: item.id, start: true })
+      .catch((error) => console.error(`auto short skipped: ${projectId}/${item.id}: ${error instanceof Error ? error.message : error}`));
+  } catch (error) { console.error(`auto shorts skipped: ${projectId}: ${error instanceof Error ? error.message : error}`); }
+}
+
 /** After the response that made the job: GPT takes several minutes, the person who asked does not wait for it. */
 export function scheduleGptJob(jobId: string, owner: Owner, tier: GptTier) {
   after(() => runGptJob(jobId, owner, tier).then(() => undefined, (error) => console.error(`gpt job failed: ${jobId}: ${error instanceof Error ? error.message : error}`)));
@@ -88,14 +163,14 @@ export function scheduleAutoDrafts(project: YpProject, by: Owner) {
   if (!process.env.OPENAI_API_KEY?.trim() || !["live", "anim"].includes(project.yp.topic.type ?? "")) return;
   after(async () => {
     const service = createServiceSupabase();
-    const ownerId = project.assigneeId || by.id;
-    const owner = { id: ownerId, name: ownerId === by.id ? by.name : await displayName(service, ownerId, "담당자"), team: by.team };
+    const owner = await pdOf(project, by);
     const [stages, tier] = await Promise.all([readStages(service, project), creditTier()]);
     const filled = { kit: Boolean(stages.upload.data.desc.trim()), column: stages.column.data.items.length > 0, "short-topics": stages.shortTopics.data.items.length > 0 };
     await Promise.all(GPT_AUTO_TASKS.filter((task) => !filled[task]).map(async (task) => {
       try {
         const input = staffJobRequestSchema.parse(task === "kit" ? { task, sourceId: project.id } : { task, sourceId: project.id, count: task === "column" ? 1 : 3 });
-        const job = await requestStaffJob(gptActor(owner), input, { tier });
+        // A 칼럼 that arrives after the upload is published by itself (업로드 뒤 저절로); before it, it waits for the upload.
+        const job = await requestStaffJob(gptActor(owner), input, { tier }, task === "column");
         if (job.status === "backlog") await runGptJob(job.id, owner, tier);
       } catch (error) { console.error(`gpt draft ${task} skipped: ${project.id}: ${error instanceof Error ? error.message : error}`); }
     }));

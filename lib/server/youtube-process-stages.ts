@@ -120,7 +120,7 @@ export const stagePatchSchemas = {
   upload: z.object({ utm: z.object({ cat: text(20), dest: text(30), camp: text(30), next: text(300), short: text(200), url: text(500).optional(),
       nextNote: text(100).optional(), others: z.array(z.object({ note: text(100), url: text(500) }).strict()).max(5).optional() }).strict(),
     srt: z.object({ path: text(300), name: text(240) }).strict().nullable(), desc: text(5000), pinned: text(2000), privacy: z.enum(["private", "unlisted", "public"]), title: text(100),
-    publishAt: z.string().datetime().nullable(), ai: z.enum(["yes", "no"]).nullable(),
+    publishAt: z.string().datetime().nullable(), ai: z.enum(["yes", "no"]).nullable(), autoOff: z.boolean(),
     checked: z.array(z.number().int().min(0).max(29)).max(30) }).partial().strict(),
   // On one column (item): its HTML edited by hand, one place filled (or emptied with neither path nor url), or the column taken out.
   // HTML without an item adds a column pasted by hand.

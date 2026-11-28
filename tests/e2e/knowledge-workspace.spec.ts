@@ -5,7 +5,7 @@ test.beforeEach(async({page})=>{
 const paths=[
  ["/knowledge","문서 보관함"],["/knowledge/notes","내 노트"],
  ["/knowledge/decisions","결정 모음"],["/knowledge/docs","팀 문서"],["/knowledge/canon","회사 정본"],
- ["/knowledge/graph","연결"],["/knowledge/review","정본 검토·등록"],["/knowledge/templates","양식"],
+ ["/knowledge/graph","연결"],["/knowledge/review","정본 검토"],["/knowledge/templates","양식"],
  ["/knowledge/trash","휴지통"],["/knowledge/search","문서 찾기"],["/knowledge/activity","문서 활동 기록"],
 ];
 for(const width of [1440,1024,390]) test(`company workspace routes and horizontal bounds at ${width}px`,async({page},info)=>{
@@ -16,7 +16,7 @@ for(const width of [1440,1024,390]) test(`company workspace routes and horizonta
   await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   await expect(page.getByText(/Application error/)).toHaveCount(0);
   if (path === "/knowledge") await expect(page.locator(".vault-workspace")).toBeVisible();
-  else if (path === "/knowledge/canon") await expect(page.getByRole("link",{name:"정본 검토·등록"})).toBeVisible();
+  else if (path === "/knowledge/canon") await expect(page.locator(".kw-header").getByRole("link",{name:"정본 검토",exact:true})).toBeVisible();
   else await expect(page.locator(".kw-root")).not.toContainText(/undefined|NaN|Infinity|\[object/);
   if(path==="/knowledge"||path==="/knowledge/graph"){await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:info.outputPath(`${path.endsWith("graph")?"graph":"home"}-${width}.png`)});}
  }
@@ -290,10 +290,10 @@ test("canonical proposal persists without changing the original, forbids self ap
  await page.getByRole("combobox",{name:"승인자",exact:true}).selectOption("example-approver");
  await page.getByRole("button",{name:"변경 제안 보내기"}).click();
  await expect(page).toHaveURL(/\/knowledge\/review\?tab=sent/);
- await expect(page.getByRole("button",{name:"변경 승인",exact:true})).toBeDisabled();
+ await expect(page.getByRole("button",{name:"승인하고 정본에 반영",exact:true})).toBeDisabled();
  await expect(page.locator(".kw-diff")).toContainText("QA 변경 제안 본문");
  await page.reload();await expect(page.locator(".kw-diff")).toContainText("QA 변경 제안 본문");
- await page.getByRole("button",{name:"철회",exact:true}).click();
+ await page.getByRole("button",{name:"제안 취소",exact:true}).click();
  await page.goto("/knowledge/canon/example-canonical");
  await expect(page.locator(".document-reader")).not.toContainText("QA 변경 제안 본문");
  await expect(page.locator(".document-reader")).toContainText("목적과 근거");

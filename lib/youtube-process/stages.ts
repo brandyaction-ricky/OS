@@ -123,11 +123,14 @@ export interface YpUpload {
   publishAt?: string | null;
   /** AI 사용 공개 (직원 요청 11-19): YouTube's altered or synthetic content label, sent as status.containsSyntheticMedia. Unset = not chosen yet. */
   ai?: "yes" | "no" | null;
+  /** 업로드 뒤 저절로 끄기 (요청 11-25 D2): true = after the upload nothing starts by itself (no GPT spend). Unset = on. */
+  autoOff?: boolean;
   /** 광고 성과 1단계 (로건 QA 10/30): an ad's numbers per period, copied from Meta Ads Manager. */
   ads?: AdResult[];
   run: { at: string; by: string; status: "done" | "failed"; videoId?: string; videoUrl?: string; finalV?: number; /** Which final was sent (its time), 유쓰 요청 공통 조건 3. */ finalAt?: string; thumbnail?: "ok" | "fail" | "skip"; error?: string;
     /** What YouTube reports after the upload: a project not yet audited by YouTube can only upload private. */
-    privacy?: string; publishAt?: string; /** What YouTube reports for the AI label after the upload. */ ai?: boolean } | null;
+    privacy?: string; publishAt?: string; /** What YouTube reports for the AI label after the upload. */ ai?: boolean;
+    /** 업로드 뒤 저절로 (요청 11-25): the 숏폼 5편 and the 칼럼 were started by themselves after this upload. */ follow?: boolean } | null;
 }
 /** One SEO 칼럼 (owner request 2026-10-25): the staff AI's HTML from the 구성안 원고 (lib/seo-column.ts), and what fills its image places. */
 export interface YpColumnItem {
@@ -606,5 +609,21 @@ export function descChecks(text: string, upload: Pick<YpUpload, "srt" | "utm">) 
     { ok: tags.length >= 6 && tags.length <= 12, text: tags.length >= 6 && tags.length <= 12 ? `히든 태그 ${tags.length}개예요` : `히든 태그가 ${tags.length}개예요 (6~12개)` },
   ];
 }
+/** What viewers see (요청 11-25): [히든 태그] only fills the tags field and 「[설명문 본문]」 is a writer's label, so both leave the public description. */
+export function publicDesc(text: string) {
+  let lines = text.split("\n");
+  const at = lines.findIndex(line => line.trim().startsWith("[히든 태그]"));
+  if (at >= 0) {
+    const next = lines.findIndex((line, i) => i > at && line.trim().startsWith("-----"));
+    let start = at;
+    while (start > 0 && !lines[start - 1].trim()) start--;
+    if (start > 0 && lines[start - 1].trim().startsWith("-----")) start--;
+    lines = [...lines.slice(0, start), ...(next < 0 ? [] : lines.slice(next))];
+  }
+  return lines.flatMap(line => line.trim().startsWith("[설명문 본문]") ? (line.replace(/^\s*\[설명문 본문\]\s*/, "") || []) : [line]).join("\n").trimEnd();
+}
+/** The description exactly as the upload sends it (before 마이인 credits): 1번 links, this video's UTM code, no input-only parts. */
+export const youtubeDesc = (desc: string, utm: YpUpload["utm"], code: string) =>
+  publicDesc(withLinks(desc, utm)).replaceAll("[업로드 후 영상 ID]", code).replaceAll(utmUrl(utm), utmUrl(utm, code));
 /** The hidden tags at the end of the description, for the YouTube tags field. */
 export const hiddenTagsOf = (text: string) => (section(text, "[히든 태그]") ?? []).join(",").split(",").map(tag => tag.trim().replace(/^#/, "")).filter(Boolean);

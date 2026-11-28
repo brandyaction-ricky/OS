@@ -9,12 +9,13 @@ import {renderToStaticMarkup} from 'react-dom/server';
 import * as model from '../lib/knowledge/model.ts';
 import * as legacy from '../lib/knowledge/legacy.ts';
 import * as access from '../lib/knowledge/access.ts';
+import * as registry from '../lib/knowledge/registry.ts';
 
 function render(file,name,context,props={}){
   const exports={},box=({children})=>React.createElement('section',null,children);
   const modules={react:React,'react/jsx-runtime':jsx,'next/link':{default:({children,href})=>React.createElement('a',{href},children)},'next/dynamic':{default:()=>box},'next/navigation':{useRouter:()=>({replace(){}}),useSearchParams:()=>new URLSearchParams()},
     './provider':{useKnowledge:()=>context},'./ui':{Empty:box,Header:box,SpaceBadge:box},'./use-graph':{useWorkspaceGraph:()=>({graph:null})},
-    '@/lib/knowledge/model':model,'@/lib/knowledge/legacy':legacy,'@/lib/knowledge/access':access};
+    '@/lib/knowledge/model':model,'@/lib/knowledge/legacy':legacy,'@/lib/knowledge/access':access,'@/lib/knowledge/registry':registry};
   const source=ts.transpileModule(readFileSync(new URL('../components/knowledge/'+file,import.meta.url),'utf8'),{compilerOptions:{jsx:ts.JsxEmit.ReactJSX,module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
   runInNewContext(source,{exports,require:name=>modules[name]??{},URLSearchParams,console});
   return renderToStaticMarkup(React.createElement(exports[name],props));
